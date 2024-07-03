@@ -7,6 +7,7 @@ import { tenantModels } from '../common/providers/tenant-models-provider';
 import { JwtService } from '@nestjs/jwt';
 import { TeamsModule } from 'src/teams/teams.module';
 import { ProductsModule } from 'src/products/products.module';
+import { TeamsService } from 'src/teams/teams.service';
 
 @Module({
   imports: [
@@ -15,7 +16,12 @@ import { ProductsModule } from 'src/products/products.module';
     forwardRef(() => ProductsModule),
   ],
   controllers: [MembersController],
-  providers: [MembersService, tenantModels.memberModel, JwtService],
+  providers: [
+    MembersService,
+    tenantModels.memberModel,
+    JwtService,
+    TeamsService,
+  ],
   exports: [MembersService, tenantModels.memberModel],
 })
 export class MembersModule {

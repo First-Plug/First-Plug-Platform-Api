@@ -14,6 +14,7 @@ import { CreateProductDto } from 'src/products/dto';
 import { Team } from 'src/teams/schemas/team.schema';
 import { ProductModel } from 'src/products/products.service';
 import { InjectConnection } from '@nestjs/mongoose';
+import { TeamsService } from 'src/teams/teams.service';
 
 export interface MemberModel
   extends Model<MemberDocument>,
@@ -26,6 +27,7 @@ export class MembersService {
     @Inject('PRODUCT_MODEL') private productRepository: ProductModel,
     @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
     @InjectConnection() private readonly connection: Connection,
+    private readonly teamsService: TeamsService,
   ) {}
 
   private normalizeTeamName(name: string): string {
@@ -142,18 +144,20 @@ export class MembersService {
         teamMap.set(team.name, team._id);
       });
 
-      const teamsToCreate = uniqueTeamNames.filter(
-        (teamName) => teamName !== undefined && !teamMap.has(teamName),
+      const teamsToCreate = uniqueTeamNames
+        .filter((teamName) => teamName !== undefined)
+        .map((teamName) => ({ name: teamName as string }));
+
+      const newTeams = await this.teamsService.bulkCreate(
+        teamsToCreate,
+        session,
       );
 
-      const newTeams = await this.teamRepository.insertMany(
-        teamsToCreate.map((teamName) => ({ name: teamName })),
-        { session },
-      );
-
-      newTeams.forEach((team) => {
-        teamMap.set(team.name, team._id);
-      });
+      if (newTeams && newTeams.length > 0) {
+        newTeams.forEach((team) => {
+          teamMap.set(team.name, team._id);
+        });
+      }
 
       const membersToCreate = normalizedMembers.map((member) => {
         if (member.team) {
@@ -404,47 +408,5 @@ export class MembersService {
     throw new InternalServerErrorException(
       'Unexcepted error, check server log',
     );
-  }
-
-  private async assignColor(): Promise<string> {
-    const colors = [
-      '#FFE8E8',
-      '#D6E1FF',
-      '#F2E8FF',
-      '#D2FAEE',
-      '#FFF2D1',
-      '#E8F1FF',
-      '#FFEBE8',
-      '#E8FFF2',
-      '#FFF8E8',
-      '#F2D1FF',
-      '#4260F5',
-      '#E8FFD6',
-      '#FFD1F2',
-      '#D1FFE8',
-      '#D6FFD6',
-      '#FFD6D6',
-      '#E8D1FF',
-      '#D1F2FF',
-      '#FFF2E8',
-      '#FFE8D1',
-      '#D1FFE1',
-      '#F2D1E8',
-      '#D6F2FF',
-      '#FFF2FF',
-      '#E8D1D1',
-    ];
-
-    const teams = await this.teamRepository.find();
-    const usedColors = teams.map((team) => team.color);
-
-    for (const color of colors) {
-      if (!usedColors.includes(color)) {
-        return color;
-      }
-    }
-
-    const randomIndex = Math.floor(Math.random() * colors.length);
-    return colors[randomIndex];
   }
 }

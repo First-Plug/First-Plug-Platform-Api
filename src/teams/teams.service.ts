@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 
-import { Model, ObjectId, Types } from 'mongoose';
+import { ClientSession, Model, ObjectId, Types } from 'mongoose';
 import { Team } from './schemas/team.schema';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
@@ -66,6 +66,42 @@ export class TeamsService {
         color,
       });
       return await team.save();
+    } catch (error) {
+      this.handleDBExceptions(error);
+    }
+  }
+
+  async bulkCreate(createTeamDtos: CreateTeamDto[], session: ClientSession) {
+    try {
+      const normalizedTeams = createTeamDtos.map((team) => ({
+        ...team,
+        name: this.normalizeTeamName(team.name),
+      }));
+
+      const existingTeams = await this.teamRepository.find({
+        name: { $in: normalizedTeams.map((team) => team.name) },
+      });
+
+      const existingTeamNames = existingTeams.map((team) => team.name);
+      const usedColors = existingTeams.map((team) => team.color);
+
+      const teamsToCreate = normalizedTeams.filter(
+        (team) => !existingTeamNames.includes(team.name),
+      );
+
+      const teamsWithColors = await Promise.all(
+        teamsToCreate.map(async (team) => ({
+          ...team,
+          color: await this.assignColor(usedColors),
+        })),
+      );
+
+      const createdTeams = await this.teamRepository.insertMany(
+        teamsWithColors,
+        { session },
+      );
+
+      return createdTeams;
     } catch (error) {
       this.handleDBExceptions(error);
     }
@@ -224,7 +260,7 @@ export class TeamsService {
     );
   }
 
-  private async assignColor(): Promise<string> {
+  private async assignColor(usedColors?: string[]): Promise<string> {
     const colors = [
       '#FFE8E8',
       '#D6E1FF',
@@ -253,11 +289,14 @@ export class TeamsService {
       '#E8D1D1',
     ];
 
-    const teams = await this.findAll();
-    const usedColors = teams.map((team) => team.color);
+    if (!usedColors) {
+      const teams = await this.findAll();
+      usedColors = teams.map((team) => team.color);
+    }
 
     for (const color of colors) {
       if (!usedColors.includes(color)) {
+        usedColors.push(color);
         return color;
       }
     }
