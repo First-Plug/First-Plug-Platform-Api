@@ -294,11 +294,14 @@ export class TeamsService {
       usedColors = teams.map((team) => team.color);
     }
 
-    for (const color of colors) {
-      if (!usedColors.includes(color)) {
-        usedColors.push(color);
-        return color;
-      }
+    const availableColors = colors.filter(
+      (color) => !usedColors.includes(color),
+    );
+
+    if (availableColors.length > 0) {
+      const selectedColor = availableColors[0];
+      usedColors.push(selectedColor);
+      return selectedColor;
     }
 
     const randomIndex = Math.floor(Math.random() * colors.length);
