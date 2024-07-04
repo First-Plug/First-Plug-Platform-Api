@@ -14,6 +14,7 @@ import { CreateProductDto } from 'src/products/dto';
 import { Team } from 'src/teams/schemas/team.schema';
 import { ProductModel } from 'src/products/products.service';
 import { InjectConnection } from '@nestjs/mongoose';
+import { TeamsService } from 'src/teams/teams.service';
 
 export interface MemberModel
   extends Model<MemberDocument>,
@@ -26,6 +27,7 @@ export class MembersService {
     @Inject('PRODUCT_MODEL') private productRepository: ProductModel,
     @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
     @InjectConnection() private readonly connection: Connection,
+    private readonly teamsService: TeamsService,
   ) {}
 
   private normalizeTeamName(name: string): string {
@@ -142,18 +144,20 @@ export class MembersService {
         teamMap.set(team.name, team._id);
       });
 
-      const teamsToCreate = uniqueTeamNames.filter(
-        (teamName) => teamName !== undefined && !teamMap.has(teamName),
+      const teamsToCreate = uniqueTeamNames
+        .filter((teamName) => teamName !== undefined)
+        .map((teamName) => ({ name: teamName as string }));
+
+      const newTeams = await this.teamsService.bulkCreate(
+        teamsToCreate,
+        session,
       );
 
-      const newTeams = await this.teamRepository.insertMany(
-        teamsToCreate.map((teamName) => ({ name: teamName })),
-        { session },
-      );
-
-      newTeams.forEach((team) => {
-        teamMap.set(team.name, team._id);
-      });
+      if (newTeams && newTeams.length > 0) {
+        newTeams.forEach((team) => {
+          teamMap.set(team.name, team._id);
+        });
+      }
 
       const membersToCreate = normalizedMembers.map((member) => {
         if (member.team) {

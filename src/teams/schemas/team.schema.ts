@@ -11,6 +11,9 @@ export class Team extends Document {
     unique: true,
   })
   name: string;
+
+  @Prop({ type: String })
+  color: string;
 }
 
 export const TeamSchema = SchemaFactory.createForClass(Team);
