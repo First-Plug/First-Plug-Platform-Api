@@ -53,68 +53,27 @@ export class TeamsService {
     '#E8D1D1',
   ];
 
-  private inUseColors: string[] = [];
-
   private async getUsedColors(): Promise<string[]> {
     const teams = await this.teamRepository.find({}, { color: 1, _id: 0 });
     return teams.map((team) => team.color);
   }
 
   private async assignColor(): Promise<string> {
-    try {
-      if (this.availableColors.length === 0 && this.inUseColors.length === 0) {
-        this.availableColors = [
-          '#FFE8E8',
-          '#D6E1FF',
-          '#F2E8FF',
-          '#D2FAEE',
-          '#FFF2D1',
-          '#E8F1FF',
-          '#FFEBE8',
-          '#E8FFF2',
-          '#FFF8E8',
-          '#F2D1FF',
-          '#4260F5',
-          '#E8FFD6',
-          '#FFD1F2',
-          '#D1FFE8',
-          '#D6FFD6',
-          '#FFD6D6',
-          '#E8D1FF',
-          '#D1F2FF',
-          '#FFF2E8',
-          '#FFE8D1',
-          '#D1FFE1',
-          '#F2D1E8',
-          '#D6F2FF',
-          '#FFF2FF',
-          '#E8D1D1',
-        ];
-        this.inUseColors = await this.getUsedColors();
-        this.availableColors = this.availableColors.filter(
-          (color) => !this.inUseColors.includes(color),
-        );
-      }
+    const usedColors = await this.getUsedColors();
+    const availableColors = this.availableColors.filter(
+      (color) => !usedColors.includes(color),
+    );
 
-      if (this.availableColors.length === 0) {
-        this.availableColors = [...this.inUseColors];
-        this.inUseColors = [];
-      }
-      const color = this.availableColors.shift();
-
-      if (!color) {
-        throw new InternalServerErrorException('No available colors to assign');
-      }
-      this.inUseColors.push(color);
-
-      console.log('Available Colors:', this.availableColors);
-      console.log('In Use Colors:', this.inUseColors);
-
-      return color;
-    } catch (error) {
-      console.error('Error in assignColor:', error);
-      throw error;
+    if (availableColors.length === 0) {
+      return this.availableColors[
+        Math.floor(Math.random() * this.availableColors.length)
+      ];
     }
+
+    const color =
+      availableColors[Math.floor(Math.random() * availableColors.length)];
+
+    return color;
   }
 
   async unassignMemberFromTeam(
@@ -153,10 +112,7 @@ export class TeamsService {
       let color;
       do {
         color = await this.assignColor();
-      } while (
-        (await this.teamRepository.findOne({ color })) &&
-        this.availableColors.length > 0
-      );
+      } while (await this.teamRepository.findOne({ color }));
 
       team = new this.teamRepository({
         ...createTeamDto,
@@ -186,12 +142,18 @@ export class TeamsService {
         (team) => !existingTeamNames.includes(team.name),
       );
 
-      const teamsWithColors = await Promise.all(
-        teamsToCreate.map(async (team) => ({
-          ...team,
-          color: await this.assignColor(),
-        })),
-      );
+      const teamsWithColors: CreateTeamDto[] = [];
+      for (const team of teamsToCreate) {
+        let color: string;
+        do {
+          color = await this.assignColor();
+        } while (
+          (await this.teamRepository.findOne({ color })) &&
+          this.availableColors.length > 0
+        );
+
+        teamsWithColors.push({ ...team, color });
+      }
 
       const createdTeams = await this.teamRepository.insertMany(
         teamsWithColors,
