@@ -96,20 +96,15 @@ export class TeamsService {
         );
       }
 
-      // Si no hay colores disponibles, recargamos desde inUseColors
       if (this.availableColors.length === 0) {
         this.availableColors = [...this.inUseColors];
         this.inUseColors = [];
       }
-
-      // Escogemos el primer color disponible
       const color = this.availableColors.shift();
 
       if (!color) {
         throw new InternalServerErrorException('No available colors to assign');
       }
-
-      // Movemos el color a inUseColors
       this.inUseColors.push(color);
 
       console.log('Available Colors:', this.availableColors);
@@ -155,7 +150,13 @@ export class TeamsService {
         return team;
       }
 
-      const color = await this.assignColor();
+      let color;
+      do {
+        color = await this.assignColor();
+      } while (
+        (await this.teamRepository.findOne({ color })) &&
+        this.availableColors.length > 0
+      );
 
       team = new this.teamRepository({
         ...createTeamDto,
@@ -355,52 +356,4 @@ export class TeamsService {
       'Unexcepted error, check server log',
     );
   }
-
-  // private async assignColor(usedColors?: string[]): Promise<string> {
-  //   const colors = [
-  //     '#FFE8E8',
-  //     '#D6E1FF',
-  //     '#F2E8FF',
-  //     '#D2FAEE',
-  //     '#FFF2D1',
-  //     '#E8F1FF',
-  //     '#FFEBE8',
-  //     '#E8FFF2',
-  //     '#FFF8E8',
-  //     '#F2D1FF',
-  //     '#4260F5',
-  //     '#E8FFD6',
-  //     '#FFD1F2',
-  //     '#D1FFE8',
-  //     '#D6FFD6',
-  //     '#FFD6D6',
-  //     '#E8D1FF',
-  //     '#D1F2FF',
-  //     '#FFF2E8',
-  //     '#FFE8D1',
-  //     '#D1FFE1',
-  //     '#F2D1E8',
-  //     '#D6F2FF',
-  //     '#FFF2FF',
-  //     '#E8D1D1',
-  //   ];
-
-  //   if (!usedColors) {
-  //     const teams = await this.findAll();
-  //     usedColors = teams.map((team) => team.color);
-  //   }
-
-  //   const availableColors = colors.filter(
-  //     (color) => !usedColors.includes(color),
-  //   );
-
-  //   if (availableColors.length > 0) {
-  //     const selectedColor = availableColors[0];
-  //     usedColors.push(selectedColor);
-  //     return selectedColor;
-  //   }
-
-  //   const randomIndex = Math.floor(Math.random() * colors.length);
-  //   return colors[randomIndex];
-  // }
 }
