@@ -21,11 +21,14 @@ async function bootstrap() {
   );
 
   app.useGlobalPipes(new ZodValidationPipe());
-
-  // Todo: configure CORS it with environment variables
-  app.enableCors();
-
   const config = app.get(ConfigService);
+
+  app.enableCors({
+    origin: config.get('server.frontendUrl'),
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+  });
+
   await app.listen(config.get('server.port')!);
 }
 bootstrap();
