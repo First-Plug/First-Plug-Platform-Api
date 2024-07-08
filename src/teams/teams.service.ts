@@ -58,6 +58,8 @@ export class TeamsService {
     '#ebdddd',
   ];
 
+  private usedColors: string[] = [];
+
   private async getUsedColors(): Promise<string[]> {
     const teams = await this.teamRepository.find({}, { color: 1, _id: 0 });
     return teams.map((team) => team.color);
@@ -78,6 +80,7 @@ export class TeamsService {
     const color =
       availableColors[Math.floor(Math.random() * availableColors.length)];
 
+    this.usedColors.push(color);
     return color;
   }
 
@@ -114,10 +117,7 @@ export class TeamsService {
         return team;
       }
 
-      let color;
-      do {
-        color = await this.assignColor();
-      } while (await this.teamRepository.findOne({ color }));
+      const color = await this.assignColor();
 
       team = new this.teamRepository({
         ...createTeamDto,
@@ -147,18 +147,18 @@ export class TeamsService {
         (team) => !existingTeamNames.includes(team.name),
       );
 
-      const teamsWithColors: CreateTeamDto[] = [];
-      for (const team of teamsToCreate) {
-        let color: string;
-        do {
-          color = await this.assignColor();
-        } while (
-          (await this.teamRepository.findOne({ color })) &&
-          this.availableColors.length > 0
-        );
+      const usedColors = await this.getUsedColors();
 
-        teamsWithColors.push({ ...team, color });
-      }
+      const teamsWithColors = await Promise.all(
+        teamsToCreate.map(async (team) => {
+          let color;
+          do {
+            color = await this.assignColor();
+          } while (usedColors.includes(color));
+          usedColors.push(color); // Add the assigned color to usedColors
+          return { ...team, color };
+        }),
+      );
 
       const createdTeams = await this.teamRepository.insertMany(
         teamsWithColors,
