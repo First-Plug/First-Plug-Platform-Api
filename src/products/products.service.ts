@@ -530,7 +530,8 @@ export class ProductsService {
       serialNumber: updateProductDto.serialNumber || product.serialNumber,
       assignedEmail: updateProductDto.assignedEmail,
       assignedMember: updateProductDto.assignedMember,
-      acquisitionDate: product.acquisitionDate,
+      acquisitionDate:
+        updateProductDto.acquisitionDate || product.acquisitionDate,
       location: updateProductDto.location || product.location,
       isDeleted: product.isDeleted,
       lastAssigned: lastAssigned,
@@ -572,7 +573,8 @@ export class ProductsService {
       assignedEmail: '',
       assignedMember: '',
       lastAssigned: member.email,
-      acquisitionDate: product.acquisitionDate,
+      acquisitionDate:
+        updateProductDto.acquisitionDate || product.acquisitionDate,
       location: updateProductDto.location || product.location,
       isDeleted: product.isDeleted,
     };
@@ -686,22 +688,11 @@ export class ProductsService {
             updateProductDto.assignedEmail === '' &&
             product.assignedEmail !== ''
           ) {
-            const currentMember =
-              await this.memberService.findByEmailNotThrowError(
-                product.assignedEmail!,
-              );
-            if (currentMember) {
-              await this.moveToProductsCollection(
-                session,
-                product,
-                currentMember,
-                updateProductDto,
-              );
-            } else {
-              throw new NotFoundException(
-                `Member with email "${product.assignedEmail}" not found`,
-              );
-            }
+            await this.handleProductUnassignment(
+              session,
+              product,
+              updateProductDto,
+            );
           } else {
             await this.updateProductAttributes(
               session,
@@ -745,11 +736,11 @@ export class ProductsService {
               );
             }
           } else if (updateProductDto.assignedEmail === '') {
-            await this.moveToProductsCollection(
+            await this.handleProductUnassignment(
               session,
               memberProduct.product as ProductDocument,
-              member,
               updateProductDto,
+              member,
             );
           } else {
             await this.updateProductAttributes(
@@ -772,6 +763,30 @@ export class ProductsService {
       await session.abortTransaction();
       session.endSession();
       throw error;
+    }
+  }
+
+  // Nueva función para manejar la desasignación del producto
+  private async handleProductUnassignment(
+    session: any,
+    product: ProductDocument,
+    updateProductDto: UpdateProductDto,
+    currentMember?: MemberDocument,
+  ) {
+    if (currentMember) {
+      await this.moveToProductsCollection(
+        session,
+        product,
+        currentMember,
+        updateProductDto,
+      );
+    } else {
+      await this.updateProductAttributes(
+        session,
+        product,
+        updateProductDto,
+        'products',
+      );
     }
   }
 
