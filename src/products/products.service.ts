@@ -88,17 +88,16 @@ export class ProductsService {
       );
 
       if (member) {
-        assignedMember = this.getFullName(member); // Usar el método getFullName aquí
+        assignedMember = this.getFullName(member);
         console.log('Producto asignado a miembro:', member.products.at(-1));
         return member.products.at(-1);
       }
     }
 
-    // Creando el producto con assignedEmail y assignedMember
     const newProduct = await this.productRepository.create({
       ...createData,
-      assignedEmail, // Asegurándonos de que assignedEmail se establezca aquí
-      assignedMember: assignedMember || this.getFullName(createProductDto), // Usar el método getFullName aquí también
+      assignedEmail,
+      assignedMember: assignedMember || this.getFullName(createProductDto),
     });
 
     console.log('Nuevo producto creado:', newProduct);
