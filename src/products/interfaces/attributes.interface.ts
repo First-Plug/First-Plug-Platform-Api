@@ -12,6 +12,9 @@ export const COLORS = [
   'Yellow',
   'Red',
   'Green',
+  'Natural Titanium',
+  'Pink',
+  'Purple',
   'Other',
   '',
 ] as const;
