@@ -330,6 +330,7 @@ export class MembersService {
           : rest;
 
       productData.assignedMember = `${member.firstName} ${member.lastName}`;
+      productData.assignedEmail = email;
       member.products.push(productData);
       await member.save({ session });
     }

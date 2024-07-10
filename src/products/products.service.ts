@@ -68,6 +68,8 @@ export class ProductsService {
     const normalizedProduct = this.normalizeProductData(createProductDto);
     const { assignedEmail, serialNumber, ...rest } = normalizedProduct;
 
+    console.log('Datos recibidos en el backend:', normalizedProduct);
+
     if (serialNumber && serialNumber.trim() !== '') {
       await this.validateSerialNumber(serialNumber);
     }
@@ -77,6 +79,8 @@ export class ProductsService {
         ? { ...rest, serialNumber }
         : rest;
 
+    let assignedMember = '';
+
     if (assignedEmail) {
       const member = await this.memberService.assignProduct(
         assignedEmail,
@@ -84,14 +88,21 @@ export class ProductsService {
       );
 
       if (member) {
+        assignedMember = this.getFullName(member); // Usar el método getFullName aquí
+        console.log('Producto asignado a miembro:', member.products.at(-1));
         return member.products.at(-1);
       }
     }
 
-    return await this.productRepository.create({
+    // Creando el producto con assignedEmail y assignedMember
+    const newProduct = await this.productRepository.create({
       ...createData,
-      assignedEmail,
+      assignedEmail, // Asegurándonos de que assignedEmail se establezca aquí
+      assignedMember: assignedMember || this.getFullName(createProductDto), // Usar el método getFullName aquí también
     });
+
+    console.log('Nuevo producto creado:', newProduct);
+    return newProduct;
   }
 
   async bulkCreate(createProductDtos: CreateProductDto[]) {
