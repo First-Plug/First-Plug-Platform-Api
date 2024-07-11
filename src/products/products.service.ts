@@ -77,6 +77,8 @@ export class ProductsService {
         ? { ...rest, serialNumber }
         : rest;
 
+    let assignedMember = '';
+
     if (assignedEmail) {
       const member = await this.memberService.assignProduct(
         assignedEmail,
@@ -84,14 +86,18 @@ export class ProductsService {
       );
 
       if (member) {
+        assignedMember = this.getFullName(member);
         return member.products.at(-1);
       }
     }
 
-    return await this.productRepository.create({
+    const newProduct = await this.productRepository.create({
       ...createData,
       assignedEmail,
+      assignedMember: assignedMember || this.getFullName(createProductDto),
     });
+
+    return newProduct;
   }
 
   async bulkCreate(createProductDtos: CreateProductDto[]) {
@@ -801,6 +807,7 @@ export class ProductsService {
 
       if (product) {
         product.status = 'Deprecated';
+        product.isDeleted = true;
         await product.save();
         await this.productRepository.softDelete({ _id: id }, { session });
 
@@ -824,7 +831,6 @@ export class ProductsService {
           assignedMember,
           acquisitionDate,
           deleteAt,
-          isDeleted,
           location,
           recoverable,
           serialNumber,
@@ -841,7 +847,7 @@ export class ProductsService {
               assignedMember,
               acquisitionDate,
               deleteAt,
-              isDeleted,
+              isDeleted: true,
               location,
               recoverable,
               serialNumber,
@@ -855,7 +861,7 @@ export class ProductsService {
         await this.productRepository.softDelete({ _id: id }, { session });
 
         const memberId = memberProduct.member._id;
-        await this.memberService.deleteProductFromMember(memberId, id);
+        await this.memberService.deleteProductFromMember(memberId, id, session);
 
         await session.commitTransaction();
         session.endSession();

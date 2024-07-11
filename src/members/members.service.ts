@@ -200,7 +200,6 @@ export class MembersService {
     } catch (error) {
       await session.abortTransaction();
       session.endSession();
-      console.error('Bulk create of members error:', error);
       if (error instanceof BadRequestException) {
         throw new BadRequestException('Error creating members');
       } else {
@@ -214,7 +213,6 @@ export class MembersService {
       const members = await this.memberRepository.find().populate('team');
       return members;
     } catch (error) {
-      console.error('Error while querying the database:', error);
       throw new InternalServerErrorException('Error while fetching members');
     }
   }
@@ -250,14 +248,13 @@ export class MembersService {
         throw new NotFoundException(`Member with id "${id}" not found`);
       }
 
-      if (updateMemberDto.products && updateMemberDto.products.length > 0) {
-        member.products = updateMemberDto.products;
-      } else {
-        delete updateMemberDto.products;
-      }
+      Object.fromEntries(
+        Object.entries(updateMemberDto).filter(
+          ([key, value]) => key !== 'products' && value !== undefined,
+        ),
+      );
 
       Object.assign(member, updateMemberDto);
-
       return await member.save();
     } catch (error) {
       this.handleDBExceptions(error);
@@ -331,6 +328,7 @@ export class MembersService {
           : rest;
 
       productData.assignedMember = `${member.firstName} ${member.lastName}`;
+      productData.assignedEmail = email;
       member.products.push(productData);
       await member.save({ session });
     }
@@ -379,7 +377,6 @@ export class MembersService {
 
       await member.save({ session });
     } catch (error) {
-      console.error('Error while deleting product from member:', error);
       throw error;
     }
   }
