@@ -200,7 +200,6 @@ export class MembersService {
     } catch (error) {
       await session.abortTransaction();
       session.endSession();
-      console.error('Bulk create of members error:', error);
       if (error instanceof BadRequestException) {
         throw new BadRequestException('Error creating members');
       } else {
@@ -214,7 +213,6 @@ export class MembersService {
       const members = await this.memberRepository.find().populate('team');
       return members;
     } catch (error) {
-      console.error('Error while querying the database:', error);
       throw new InternalServerErrorException('Error while fetching members');
     }
   }
@@ -379,7 +377,6 @@ export class MembersService {
 
       await member.save({ session });
     } catch (error) {
-      console.error('Error while deleting product from member:', error);
       throw error;
     }
   }

@@ -68,8 +68,6 @@ export class ProductsService {
     const normalizedProduct = this.normalizeProductData(createProductDto);
     const { assignedEmail, serialNumber, ...rest } = normalizedProduct;
 
-    console.log('Datos recibidos en el backend:', normalizedProduct);
-
     if (serialNumber && serialNumber.trim() !== '') {
       await this.validateSerialNumber(serialNumber);
     }
@@ -89,7 +87,6 @@ export class ProductsService {
 
       if (member) {
         assignedMember = this.getFullName(member);
-        console.log('Producto asignado a miembro:', member.products.at(-1));
         return member.products.at(-1);
       }
     }
@@ -100,7 +97,6 @@ export class ProductsService {
       assignedMember: assignedMember || this.getFullName(createProductDto),
     });
 
-    console.log('Nuevo producto creado:', newProduct);
     return newProduct;
   }
 
