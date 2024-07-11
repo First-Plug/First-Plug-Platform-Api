@@ -811,6 +811,7 @@ export class ProductsService {
 
       if (product) {
         product.status = 'Deprecated';
+        product.isDeleted = true;
         await product.save();
         await this.productRepository.softDelete({ _id: id }, { session });
 
@@ -834,7 +835,6 @@ export class ProductsService {
           assignedMember,
           acquisitionDate,
           deleteAt,
-          isDeleted,
           location,
           recoverable,
           serialNumber,
@@ -851,7 +851,7 @@ export class ProductsService {
               assignedMember,
               acquisitionDate,
               deleteAt,
-              isDeleted,
+              isDeleted: true,
               location,
               recoverable,
               serialNumber,
@@ -865,7 +865,7 @@ export class ProductsService {
         await this.productRepository.softDelete({ _id: id }, { session });
 
         const memberId = memberProduct.member._id;
-        await this.memberService.deleteProductFromMember(memberId, id);
+        await this.memberService.deleteProductFromMember(memberId, id, session);
 
         await session.commitTransaction();
         session.endSession();
