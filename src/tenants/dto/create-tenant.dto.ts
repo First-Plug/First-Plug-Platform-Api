@@ -5,6 +5,7 @@ import {
   IsString,
   MinLength,
 } from 'class-validator';
+import { Provider } from '../schemas/tenant.schema';
 
 export class CreateTenantDto {
   @IsString()
@@ -27,4 +28,8 @@ export class CreateTenantDto {
   @IsString()
   @MinLength(1)
   password: string;
+
+  @IsString()
+  @MinLength(1)
+  accountProvider: Provider;
 }

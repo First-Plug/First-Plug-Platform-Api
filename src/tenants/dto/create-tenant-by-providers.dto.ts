@@ -1,4 +1,11 @@
-import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
+import { Provider } from '../schemas/tenant.schema';
 
 export class CreateTenantByProvidersDto {
   @IsString()
@@ -8,6 +15,10 @@ export class CreateTenantByProvidersDto {
   @IsEmail()
   @MinLength(1)
   email: string;
+
+  @IsString()
+  @IsOptional()
+  accountProvider: Provider;
 
   @IsString()
   @IsOptional()
