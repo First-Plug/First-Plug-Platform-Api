@@ -17,7 +17,7 @@ export class AuthController {
   ) {}
 
   @Post('user')
-  async getUserIngo(@Body() { id }: { id: string }) {
+  async getUserInfo(@Body() { id }: { id: string }) {
     return await this.tenantService.getTenantById(id);
   }
   @Post('register')
