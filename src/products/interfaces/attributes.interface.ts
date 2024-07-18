@@ -1,6 +1,6 @@
 // Attributes generics
 export const COLORS = [
-  'Space Gray',
+  'Space Grey',
   'Silver',
   'Midnight',
   'Starlight',
