@@ -1,6 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { genSalt, hash } from 'bcrypt';
 import { Document } from 'mongoose';
+
+export const PROVIDERS = ['credentials', 'google', 'azure-ad'] as const;
+export type Provider = (typeof PROVIDERS)[number];
 @Schema({ timestamps: true })
 export class Tenant extends Document {
   @Prop({ type: String, default: '' })
@@ -11,6 +14,9 @@ export class Tenant extends Document {
 
   @Prop({ type: String, required: true })
   email: string;
+
+  @Prop({ enum: PROVIDERS, required: false })
+  accountProvider: Provider;
 
   @Prop({ type: String, default: '' })
   image?: string;

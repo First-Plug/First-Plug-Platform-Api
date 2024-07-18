@@ -41,7 +41,7 @@ export class TenantsService {
     if (user) {
       user.name = createTenantByProvidersDto.name;
       user.image = createTenantByProvidersDto.image;
-
+      user.accountProvider = createTenantByProvidersDto.accountProvider;
       await user.save();
       return user;
     }
@@ -60,6 +60,7 @@ export class TenantsService {
   }
   async getTenantById(id: string) {
     const user = await this.tenantRepository.findOne({ _id: id });
+    user?.accountProvider;
     return {
       _id: user?._id,
       phone: user?.phone,
@@ -73,6 +74,7 @@ export class TenantsService {
       tenantName: user?.tenantName,
       name: user?.name,
       email: user?.email,
+      accountProvider: user?.accountProvider,
     };
   }
 
@@ -103,6 +105,7 @@ export class TenantsService {
       address: userUpdated?.address,
       apartment: userUpdated?.apartment,
       image: userUpdated?.image,
+      accountProvider: userUpdated?.accountProvider,
     };
 
     return sanitizedUser;

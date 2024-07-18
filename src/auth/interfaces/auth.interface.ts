@@ -1,4 +1,5 @@
 import { ObjectId } from 'mongoose';
+import { Provider } from 'src/tenants/schemas/tenant.schema';
 
 export type UserJWT = {
   _id: ObjectId;
@@ -6,6 +7,7 @@ export type UserJWT = {
   email: string;
   image?: string;
   tenantName: string;
+  accountProvider: Provider;
 };
 
 export type validatePassword = {
