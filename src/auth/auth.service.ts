@@ -32,6 +32,7 @@ export class AuthService {
       state,
       zipCode,
       phone,
+      accountProvider,
     } = user;
 
     const payload = {
@@ -47,6 +48,7 @@ export class AuthService {
       state,
       zipCode,
       phone,
+      accountProvider,
     };
 
     return {
@@ -91,7 +93,7 @@ export class AuthService {
     );
 
     if (user) {
-      const { _id, email, name, image, tenantName } = user;
+      const { _id, email, name, image, tenantName, accountProvider } = user;
 
       const payload = {
         _id,
@@ -99,6 +101,7 @@ export class AuthService {
         name,
         image,
         tenantName,
+        accountProvider,
       };
 
       return {
@@ -137,6 +140,7 @@ export class AuthService {
       state,
       zipCode,
       phone,
+      accountProvider,
     } = updatedUser;
 
     const payload = {
@@ -152,6 +156,7 @@ export class AuthService {
       state,
       zipCode,
       phone,
+      accountProvider,
     };
 
     return {
