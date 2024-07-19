@@ -34,7 +34,12 @@ export class MembersService {
     return name
       .trim()
       .toLowerCase()
-      .replace(/\b\w/g, (char) => char.toUpperCase());
+      .replace(/\b\w/g, (char, index) => {
+        if (index === 0 || name.charAt(index - 1) === ' ') {
+          return char.toUpperCase();
+        }
+        return char;
+      });
   }
 
   private normalizeMemberData(member: CreateMemberDto) {
