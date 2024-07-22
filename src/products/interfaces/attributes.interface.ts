@@ -66,6 +66,7 @@ export const RAMS = [
   '8GB',
   '12GB',
   '16GB',
+  '18GB',
   '20GB',
   '24GB',
   '32GB',
@@ -149,9 +150,15 @@ export const PERIPHERALS_BRANDS = [
   'Other',
 ] as const;
 
-export const AUDIO_BRANDS = ['Apple', 'Sony', 'Logitech', 'Other'] as const;
+export const AUDIO_BRANDS = [
+  'Apple',
+  'Sony',
+  'Logitech',
+  'JBL',
+  'Other',
+] as const;
 
-export const MONITOR_BRANDS = ['Samsung', 'LG', 'Other'] as const;
+export const MONITOR_BRANDS = ['Samsung', 'LG', 'Dell', 'Other'] as const;
 
 export const OTHER_BRANDS = [
   'Acer',
@@ -170,6 +177,7 @@ export const OTHER_BRANDS = [
   'Baseus',
   'Satechi',
   'Sony',
+  'JBL',
   'Other',
 ] as const;
 
@@ -297,6 +305,7 @@ export const PERIPHERALS_MODELS = [
   'Cable cargador USB-C a USB-C ',
   'Cable Thunderbolt 4',
   'Craft Teclado Bluetooth',
+  'Case',
   'Docking Station',
   'HUB Thunderbolt 4 Slim',
   'HUB USB-C 10 en 1',
@@ -308,6 +317,7 @@ export const PERIPHERALS_MODELS = [
   'HUB USB-C 7 en 1',
   'HUB USB-C 8 en 1',
   'HUB USB-C 9 en 1',
+  'HDMI',
   'K120 Teclado con cable',
   'K270 Teclado inalambrico',
   'K380 Teclado Bluetooth',
@@ -365,6 +375,8 @@ export const OTHER_MODELS = [
   'AirPods Max',
   'AirPods Pro 1st Gen',
   'AirPods Pro 2nd Gen',
+  'Case',
+  'HDMI',
   'H111',
   'H151',
   'H340',
