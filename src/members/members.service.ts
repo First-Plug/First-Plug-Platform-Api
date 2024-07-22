@@ -34,26 +34,26 @@ export class MembersService {
     return name
       .trim()
       .toLowerCase()
-      .replace(/\b\w/g, (char, index) => {
-        if (index === 0 || name.charAt(index - 1) === ' ') {
-          return char.toUpperCase();
-        }
-        return char;
-      });
+      .replace(/(?:^|\s|["'([{])\S/g, (char) => char.toUpperCase());
+  }
+
+  private normalizeName(name: string): string {
+    return name
+      .trim()
+      .toLowerCase()
+      .replace(/(?:^|\s)\S/g, (char) => char.toUpperCase());
   }
 
   private normalizeMemberData(member: CreateMemberDto) {
     return {
       ...member,
       email: member.email.toLowerCase(),
-      firstName: member.firstName
-        .trim()
-        .toLowerCase()
-        .replace(/\b\w/g, (char) => char.toUpperCase()),
-      lastName: member.lastName
-        .trim()
-        .toLowerCase()
-        .replace(/\b\w/g, (char) => char.toUpperCase()),
+      firstName: this.normalizeName(member.firstName),
+      lastName: this.normalizeName(member.lastName),
+      position: member.position
+        ? this.normalizeName(member.position)
+        : undefined,
+      team: member.team ? this.normalizeTeamName(member.team) : undefined,
     };
   }
 
