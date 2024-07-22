@@ -22,12 +22,7 @@ export class TeamsService {
     return name
       .trim()
       .toLowerCase()
-      .replace(/\b\w/g, (char, index) => {
-        if (index === 0 || name.charAt(index - 1) === ' ') {
-          return char.toUpperCase();
-        }
-        return char;
-      });
+      .replace(/(?:^|\s|["'([{])\S/g, (char) => char.toUpperCase());
   }
 
   private availableColors: string[] = [
