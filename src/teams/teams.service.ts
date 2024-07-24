@@ -252,7 +252,10 @@ export class TeamsService {
   }
 
   async findAll() {
-    const teams = this.teamRepository.find();
+    const teams = this.teamRepository
+      .find()
+      .collation({ locale: 'es', strength: 1 })
+      .sort({ name: 1 });
     return teams;
   }
 
