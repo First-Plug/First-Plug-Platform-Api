@@ -215,7 +215,11 @@ export class MembersService {
 
   async findAll() {
     try {
-      const members = await this.memberRepository.find().populate('team');
+      const members = await this.memberRepository
+        .find()
+        .populate('team')
+        .collation({ locale: 'es', strength: 1 })
+        .sort({ firstName: 1, lastName: 1 });
       return members;
     } catch (error) {
       throw new InternalServerErrorException('Error while fetching members');
