@@ -48,12 +48,26 @@ export class MembersService {
     return {
       ...member,
       email: member.email.toLowerCase(),
-      firstName: this.normalizeName(member.firstName),
-      lastName: this.normalizeName(member.lastName),
+      firstName: member.firstName
+        .trim()
+        .toLowerCase()
+        .replace(/(?:^|\s)\p{L}/gu, (char) => char.toUpperCase()),
+      lastName: member.lastName
+        .trim()
+        .toLowerCase()
+        .replace(/(?:^|\s)\p{L}/gu, (char) => char.toUpperCase()),
       position: member.position
-        ? this.normalizeName(member.position)
+        ? member.position
+            .trim()
+            .toLowerCase()
+            .replace(/(?:^|\s)\p{L}/gu, (char) => char.toUpperCase())
         : undefined,
-      team: member.team ? this.normalizeTeamName(member.team) : undefined,
+      team: member.team
+        ? member.team
+            .trim()
+            .toLowerCase()
+            .replace(/(?:^|\s)\p{L}/gu, (char) => char.toUpperCase())
+        : undefined,
     };
   }
 
@@ -203,6 +217,7 @@ export class MembersService {
 
       return createdMembers;
     } catch (error) {
+      console.log('ERROR EM MEMBERBULK ', error);
       await session.abortTransaction();
       session.endSession();
       if (error instanceof BadRequestException) {
