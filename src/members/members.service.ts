@@ -266,21 +266,51 @@ export class MembersService {
   }
 
   async update(id: ObjectId, updateMemberDto: UpdateMemberDto) {
+    const session = await this.connection.startSession();
+    session.startTransaction();
+
     try {
-      const member = await this.memberRepository.findById(id);
+      const member = await this.memberRepository.findById(id).session(session);
       if (!member) {
         throw new NotFoundException(`Member with id "${id}" not found`);
       }
 
-      Object.fromEntries(
-        Object.entries(updateMemberDto).filter(
-          ([key, value]) => key !== 'products' && value !== undefined,
-        ),
-      );
+      const oldEmail = member.email.trim().toLowerCase();
+      const oldFullName = `${member.firstName.trim()} ${member.lastName.trim()}`;
 
       Object.assign(member, updateMemberDto);
-      return await member.save();
+      member.email = member.email.trim().toLowerCase();
+      member.firstName = member.firstName.trim();
+      member.lastName = member.lastName.trim();
+      await member.save({ session });
+
+      const emailUpdated = oldEmail !== member.email;
+      const fullNameUpdated =
+        oldFullName !== `${member.firstName} ${member.lastName}`;
+
+      if (emailUpdated || fullNameUpdated) {
+        const updatedProducts = member.products.map((product) => {
+          if (
+            product.assignedEmail === oldEmail &&
+            product.assignedMember === oldFullName
+          ) {
+            product.assignedEmail = member.email;
+            product.assignedMember = `${member.firstName} ${member.lastName}`;
+          }
+          return product;
+        });
+
+        member.products = updatedProducts;
+        await member.save({ session });
+      }
+
+      await session.commitTransaction();
+      session.endSession();
+
+      return member;
     } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
       this.handleDBExceptions(error);
     }
   }
