@@ -48,10 +48,6 @@ export class MembersController {
   findAll() {
     return this.membersService.findAll();
   }
-  @Get('update-dni-all-tenants')
-  async updateDniForAllTenants() {
-    return await this.membersService.updateDniForAllTenants();
-  }
 
   @Get(':id')
   findById(@Param('id', ParseMongoIdPipe) id: ObjectId) {
@@ -75,9 +71,13 @@ export class MembersController {
   async findMembersByTeam(@Param('teamId', ParseMongoIdPipe) teamId: ObjectId) {
     return await this.membersService.findMembersByTeam(teamId);
   }
-
-  @Get('update-dni/:tenantName')
-  async updateDniForTenant(@Param('tenantName') tenantName: string) {
-    return await this.membersService.updateDniForTenant(tenantName);
-  }
+  // already run this code, I leave it here for reference
+  // @Get('update-dni-all-tenants')
+  // async updateDniForAllTenants() {
+  //   return await this.membersService.updateDniForAllTenants();
+  // }
+  // @Get('update-dni/:tenantName')
+  // async updateDniForTenant(@Param('tenantName') tenantName: string) {
+  //   return await this.membersService.updateDniForTenant(tenantName);
+  // }
 }
