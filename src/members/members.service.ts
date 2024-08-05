@@ -4,11 +4,12 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { ClientSession, Connection, Model, ObjectId, Schema } from 'mongoose';
-import { MemberDocument } from './schemas/member.schema';
+import { MemberDocument, MemberSchema } from './schemas/member.schema';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { CreateProductDto } from 'src/products/dto';
 import { Team } from 'src/teams/schemas/team.schema';
@@ -22,6 +23,7 @@ export interface MemberModel
 
 @Injectable()
 export class MembersService {
+  private readonly logger = new Logger(MembersService.name);
   constructor(
     @Inject('MEMBER_MODEL') private memberRepository: MemberModel,
     @Inject('PRODUCT_MODEL') private productRepository: ProductModel,
@@ -29,6 +31,59 @@ export class MembersService {
     @InjectConnection() private readonly connection: Connection,
     private readonly teamsService: TeamsService,
   ) {}
+
+  async updateDniForTenant(tenantName: string) {
+    try {
+      const tenantDbName = `tenant_${tenantName}`;
+      const connection = this.connection.useDb(tenantDbName);
+      const MemberModel = connection.model<MemberDocument>(
+        'Member',
+        MemberSchema,
+      );
+
+      const members = await MemberModel.find();
+
+      for (const member of members) {
+        if (typeof member.dni === 'undefined') {
+          member.dni = 0;
+          await member.save();
+          this.logger.log(
+            `Updated member ${member._id} with DNI: ${member.dni}`,
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.error('Failed to update member DNI', error);
+    }
+  }
+
+  async updateDniForAllTenants() {
+    try {
+      const tenantDbNames = await this.connection.db.admin().listDatabases();
+      for (const tenant of tenantDbNames.databases) {
+        if (tenant.name.startsWith('tenant_')) {
+          const connection = this.connection.useDb(tenant.name);
+          const MemberModel = connection.model<MemberDocument>(
+            'Member',
+            MemberSchema,
+          );
+
+          const members = await MemberModel.find();
+          for (const member of members) {
+            if (typeof member.dni === 'undefined') {
+              member.dni = 0; // Asignar 0 como valor por defecto
+              await member.save();
+              this.logger.log(
+                `Updated member ${member._id} in ${tenant.name} with DNI: ${member.dni}`,
+              );
+            }
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error('Failed to update member DNI for all tenants', error);
+    }
+  }
 
   private normalizeTeamName(name: string): string {
     return name

@@ -40,6 +40,7 @@ export const MemberSchemaZod = z.object({
   birthDate: z.string().trim().refine(validator.isISO8601).optional(),
   products: z.array(ProductSchemaZod).optional(),
   team: z.string().trim().optional(),
+  dni: z.number().optional(),
 });
 
 export const MemberSchemaZodArray = z.array(MemberSchemaZod);
