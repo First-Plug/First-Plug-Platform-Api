@@ -64,6 +64,9 @@ export class Member {
 
   @Prop({ type: Types.ObjectId, ref: 'Team' })
   team?: Types.ObjectId;
+
+  @Prop({ type: Number, min: 0, required: false })
+  dni?: number;
 }
 
 export const MemberSchema =
