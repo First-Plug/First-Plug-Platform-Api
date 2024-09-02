@@ -93,6 +93,7 @@ export class MembersService {
     }
     const memberWithSameDni = await this.memberRepository.findOne({ dni });
     if (memberWithSameDni) {
+      // console.log('MEMBER WITH SAME DNI', memberWithSameDni);
       throw new BadRequestException(`DNI ${dni} is already in use`);
     }
   }
@@ -534,12 +535,19 @@ export class MembersService {
 
   private handleDBExceptions(error: any) {
     if (error.code === 11000) {
-      const field = Object.keys(error.keyPattern).join(', ');
-      throw new BadRequestException(`${field} is already in use`);
-    }
+      const duplicateKey = Object.keys(error.keyPattern)[0];
 
-    throw new InternalServerErrorException(
-      'Unexpected error, check server log',
-    );
+      if (duplicateKey === 'email') {
+        throw new BadRequestException('Email is already in use');
+      } else if (duplicateKey === 'dni') {
+        throw new BadRequestException('DNI is already in use');
+      }
+    } else if (error instanceof BadRequestException) {
+      throw new BadRequestException(error.message);
+    } else {
+      throw new InternalServerErrorException(
+        'Unexpected error, check server log',
+      );
+    }
   }
 }
