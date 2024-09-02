@@ -65,7 +65,7 @@ export class Member {
   @Prop({ type: Types.ObjectId, ref: 'Team' })
   team?: Types.ObjectId;
 
-  @Prop({ type: Number, min: 0, required: false })
+  @Prop({ type: Number, min: 0, required: false, unique: true })
   dni?: number;
 }
 

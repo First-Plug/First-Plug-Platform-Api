@@ -87,6 +87,16 @@ export class MembersService {
   //   }
   // }
 
+  private async validateDni(dni: number) {
+    if (!dni) {
+      return;
+    }
+    const memberWithSameDni = await this.memberRepository.findOne({ dni });
+    if (memberWithSameDni) {
+      throw new BadRequestException(`DNI ${dni} is already in use`);
+    }
+  }
+
   private normalizeTeamName(name: string): string {
     return name
       .trim()
@@ -161,6 +171,10 @@ export class MembersService {
 
     try {
       const normalizedMember = this.normalizeMemberData(createMemberDto);
+      if (normalizedMember.dni) {
+        await this.validateDni(normalizedMember.dni);
+      }
+
       const createdMember = (
         await this.memberRepository.create([normalizedMember], { session })
       )[0];
@@ -191,6 +205,12 @@ export class MembersService {
 
     try {
       const normalizedMembers = createMemberDtos.map(this.normalizeMemberData);
+
+      for (const member of normalizedMembers) {
+        if (member.dni) {
+          await this.validateDni(member.dni);
+        }
+      }
 
       const emails = normalizedMembers.map((member) => member.email);
 
@@ -330,6 +350,10 @@ export class MembersService {
       const member = await this.memberRepository.findById(id).session(session);
       if (!member) {
         throw new NotFoundException(`Member with id "${id}" not found`);
+      }
+
+      if (updateMemberDto.dni && updateMemberDto.dni !== member.dni) {
+        await this.validateDni(updateMemberDto.dni);
       }
 
       const oldEmail = member.email.trim().toLowerCase();
@@ -510,11 +534,12 @@ export class MembersService {
 
   private handleDBExceptions(error: any) {
     if (error.code === 11000) {
-      throw new BadRequestException(`Email is already in use`);
+      const field = Object.keys(error.keyPattern).join(', ');
+      throw new BadRequestException(`${field} is already in use`);
     }
 
     throw new InternalServerErrorException(
-      'Unexcepted error, check server log',
+      'Unexpected error, check server log',
     );
   }
 }
