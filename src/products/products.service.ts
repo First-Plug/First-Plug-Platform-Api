@@ -271,12 +271,31 @@ export class ProductsService {
     const groupedProducts = productsWithFilteredAttributes.reduce(
       (acc, product) => {
         if (product.category !== 'Merchandising') {
-          const key = JSON.stringify({
-            category: product.category,
-            attributes: product.filteredAttributes
-              .sort((a, b) => a.key.localeCompare(b.key))
-              .map((atr) => atr.value),
-          });
+          const brandValue = product.filteredAttributes.find(
+            (attr) => attr.key === 'brand',
+          )?.value;
+          const modelValue = product.filteredAttributes.find(
+            (attr) => attr.key === 'model',
+          )?.value;
+
+          let key;
+
+          // Si el modelo es "Other", incluye el nombre en la clave de agrupamiento
+          if (modelValue === 'Other') {
+            key = JSON.stringify({
+              category: product.category,
+              brand: brandValue,
+              model: modelValue,
+              name: product.name, // Incluir el nombre si el modelo es "Other"
+            });
+          } else {
+            // Agrupamiento estándar por categoría, brand y model
+            key = JSON.stringify({
+              category: product.category,
+              brand: brandValue,
+              model: modelValue,
+            });
+          }
 
           if (!acc[key]) {
             acc[key] = {

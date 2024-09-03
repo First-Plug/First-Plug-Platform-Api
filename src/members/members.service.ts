@@ -4,6 +4,7 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
@@ -22,6 +23,7 @@ export interface MemberModel
 
 @Injectable()
 export class MembersService {
+  private readonly logger = new Logger(MembersService.name);
   constructor(
     @Inject('MEMBER_MODEL') private memberRepository: MemberModel,
     @Inject('PRODUCT_MODEL') private productRepository: ProductModel,
@@ -29,6 +31,72 @@ export class MembersService {
     @InjectConnection() private readonly connection: Connection,
     private readonly teamsService: TeamsService,
   ) {}
+
+  // already run this methods to create a new property in all existing members.
+  // I´ll leave it here for future reference or future new properties
+  // async updateDniForTenant(tenantName: string) {
+  //   try {
+  //     const tenantDbName = `tenant_${tenantName}`;
+  //     const connection = this.connection.useDb(tenantDbName);
+  //     const MemberModel = connection.model<MemberDocument>(
+  //       'Member',
+  //       MemberSchema,
+  //     );
+
+  //     const members = await MemberModel.find();
+
+  //     for (const member of members) {
+  //       if (typeof member.dni === 'undefined') {
+  //         member.dni = 0;
+  //         await member.save();
+  //         this.logger.log(
+  //           `Updated member ${member._id} with DNI: ${member.dni}`,
+  //         );
+  //       }
+  //     }
+  //   } catch (error) {
+  //     this.logger.error('Failed to update member DNI', error);
+  //   }
+  // }
+
+  // async updateDniForAllTenants() {
+  //   try {
+  //     const tenantDbNames = await this.connection.db.admin().listDatabases();
+  //     for (const tenant of tenantDbNames.databases) {
+  //       if (tenant.name.startsWith('tenant_')) {
+  //         const connection = this.connection.useDb(tenant.name);
+  //         const MemberModel = connection.model<MemberDocument>(
+  //           'Member',
+  //           MemberSchema,
+  //         );
+
+  //         const members = await MemberModel.find();
+  //         for (const member of members) {
+  //           if (typeof member.dni === 'undefined') {
+  //             member.dni = 0; // Asignar 0 como valor por defecto
+  //             await member.save();
+  //             this.logger.log(
+  //               `Updated member ${member._id} in ${tenant.name} with DNI: ${member.dni}`,
+  //             );
+  //           }
+  //         }
+  //       }
+  //     }
+  //   } catch (error) {
+  //     this.logger.error('Failed to update member DNI for all tenants', error);
+  //   }
+  // }
+
+  private async validateDni(dni: number) {
+    if (!dni) {
+      return;
+    }
+    const memberWithSameDni = await this.memberRepository.findOne({ dni });
+    if (memberWithSameDni) {
+      // console.log('MEMBER WITH SAME DNI', memberWithSameDni);
+      throw new BadRequestException(`DNI ${dni} is already in use`);
+    }
+  }
 
   private normalizeTeamName(name: string): string {
     return name
@@ -104,6 +172,10 @@ export class MembersService {
 
     try {
       const normalizedMember = this.normalizeMemberData(createMemberDto);
+      if (normalizedMember.dni) {
+        await this.validateDni(normalizedMember.dni);
+      }
+
       const createdMember = (
         await this.memberRepository.create([normalizedMember], { session })
       )[0];
@@ -134,6 +206,12 @@ export class MembersService {
 
     try {
       const normalizedMembers = createMemberDtos.map(this.normalizeMemberData);
+
+      for (const member of normalizedMembers) {
+        if (member.dni) {
+          await this.validateDni(member.dni);
+        }
+      }
 
       const emails = normalizedMembers.map((member) => member.email);
 
@@ -266,21 +344,55 @@ export class MembersService {
   }
 
   async update(id: ObjectId, updateMemberDto: UpdateMemberDto) {
+    const session = await this.connection.startSession();
+    session.startTransaction();
+
     try {
-      const member = await this.memberRepository.findById(id);
+      const member = await this.memberRepository.findById(id).session(session);
       if (!member) {
         throw new NotFoundException(`Member with id "${id}" not found`);
       }
 
-      Object.fromEntries(
-        Object.entries(updateMemberDto).filter(
-          ([key, value]) => key !== 'products' && value !== undefined,
-        ),
-      );
+      if (updateMemberDto.dni && updateMemberDto.dni !== member.dni) {
+        await this.validateDni(updateMemberDto.dni);
+      }
+
+      const oldEmail = member.email.trim().toLowerCase();
+      const oldFullName = `${member.firstName.trim()} ${member.lastName.trim()}`;
 
       Object.assign(member, updateMemberDto);
-      return await member.save();
+      member.email = member.email.trim().toLowerCase();
+      member.firstName = member.firstName.trim();
+      member.lastName = member.lastName.trim();
+      await member.save({ session });
+
+      const emailUpdated = oldEmail !== member.email;
+      const fullNameUpdated =
+        oldFullName !== `${member.firstName} ${member.lastName}`;
+
+      if (emailUpdated || fullNameUpdated) {
+        const updatedProducts = member.products.map((product) => {
+          if (
+            product.assignedEmail === oldEmail &&
+            product.assignedMember === oldFullName
+          ) {
+            product.assignedEmail = member.email;
+            product.assignedMember = `${member.firstName} ${member.lastName}`;
+          }
+          return product;
+        });
+
+        member.products = updatedProducts;
+        await member.save({ session });
+      }
+
+      await session.commitTransaction();
+      session.endSession();
+
+      return member;
     } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
       this.handleDBExceptions(error);
     }
   }
@@ -423,11 +535,19 @@ export class MembersService {
 
   private handleDBExceptions(error: any) {
     if (error.code === 11000) {
-      throw new BadRequestException(`Email is already in use`);
-    }
+      const duplicateKey = Object.keys(error.keyPattern)[0];
 
-    throw new InternalServerErrorException(
-      'Unexcepted error, check server log',
-    );
+      if (duplicateKey === 'email') {
+        throw new BadRequestException('Email is already in use');
+      } else if (duplicateKey === 'dni') {
+        throw new BadRequestException('DNI is already in use');
+      }
+    } else if (error instanceof BadRequestException) {
+      throw new BadRequestException(error.message);
+    } else {
+      throw new InternalServerErrorException(
+        'Unexpected error, check server log',
+      );
+    }
   }
 }
