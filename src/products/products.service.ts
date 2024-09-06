@@ -817,83 +817,88 @@ export class ProductsService {
 
   async softDelete(id: ObjectId) {
     const session = await this.connection.startSession();
-    session.startTransaction();
+    let retries = 0;
+    const maxRetries = 3; 
 
-    try {
-      const product = await this.productRepository
-        .findById(id)
-        .session(session);
+    while (retries < maxRetries) {
+      try {
+        session.startTransaction();
+        const product = await this.productRepository
+          .findById(id)
+          .session(session);
 
-      if (product) {
-        product.status = 'Deprecated';
-        product.isDeleted = true;
-        await product.save();
-        await this.productRepository.softDelete({ _id: id }, { session });
+        if (product) {
+          product.status = 'Deprecated';
+          product.isDeleted = true;
+          await product.save();
+          await this.productRepository.softDelete({ _id: id }, { session });
 
-        await session.commitTransaction();
-        session.endSession();
+          await session.commitTransaction();
+          session.endSession();
 
-        return {
-          message: `Product with id ${id} has been soft deleted`,
-        };
-      }
+          return { message: `Product with id ${id} has been soft deleted` };
+        }
 
-      const memberProduct = await this.memberService.getProductByMembers(id);
+        const memberProduct = await this.memberService.getProductByMembers(id);
 
-      if (memberProduct && memberProduct.product) {
-        const {
-          _id,
-          name,
-          attributes,
-          category,
-          assignedEmail,
-          assignedMember,
-          acquisitionDate,
-          deleteAt,
-          location,
-          recoverable,
-          serialNumber,
-        } = memberProduct.product;
+        if (memberProduct && memberProduct.product) {
+          await this.productRepository.create(
+            [
+              {
+                _id: memberProduct.product._id,
+                name: memberProduct.product.name,
+                attributes: memberProduct.product.attributes,
+                category: memberProduct.product.category,
+                assignedEmail: memberProduct.product.assignedEmail,
+                assignedMember: memberProduct.product.assignedMember,
+                acquisitionDate: memberProduct.product.acquisitionDate,
+                deleteAt: memberProduct.product.deleteAt,
+                isDeleted: true,
+                location: memberProduct.product.location,
+                recoverable: memberProduct.product.recoverable,
+                serialNumber: memberProduct.product.serialNumber,
+                lastAssigned: memberProduct.member.email,
+                status: 'Deprecated',
+              },
+            ],
+            { session },
+          );
 
-        await this.productRepository.create(
-          [
-            {
-              _id,
-              name,
-              attributes,
-              category,
-              assignedEmail,
-              assignedMember,
-              acquisitionDate,
-              deleteAt,
-              isDeleted: true,
-              location,
-              recoverable,
-              serialNumber,
-              lastAssigned: memberProduct.member.email,
-              status: 'Deprecated',
-            },
-          ],
-          { session },
+          await this.productRepository.softDelete({ _id: id }, { session });
+
+          const memberId = memberProduct.member._id;
+          await this.memberService.deleteProductFromMember(
+            memberId,
+            id,
+            session,
+          );
+
+          await session.commitTransaction();
+          session.endSession();
+
+          return { message: `Product with id ${id} has been soft deleted` };
+        }
+        throw new NotFoundException(`Product with id "${id}" not found`);
+      } catch (error) {
+        console.error(
+          `Error en softDelete para el producto con id ${id}:`,
+          error,
         );
 
-        await this.productRepository.softDelete({ _id: id }, { session });
+        if (error.message.includes('catalog changes')) {
+          retries++;
+          console.log(`Reintento ${retries}/${maxRetries} para softDelete`);
+          await session.abortTransaction();
+          continue;
+        }
 
-        const memberId = memberProduct.member._id;
-        await this.memberService.deleteProductFromMember(memberId, id, session);
-
-        await session.commitTransaction();
+        await session.abortTransaction();
         session.endSession();
-
-        return {
-          message: `Product with id ${id} has been soft deleted`,
-        };
+        throw error;
       }
-      throw new NotFoundException(`Product with id "${id}" not found`);
-    } catch (error) {
-      await session.abortTransaction();
-      session.endSession();
-      throw error;
     }
+    throw new InternalServerErrorException(
+      `Failed to soft delete product after ${maxRetries} retries`,
+    );
   }
 }
