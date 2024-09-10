@@ -54,6 +54,11 @@ export class ProductsController {
     return this.productsService.getProductForReassign(id);
   }
 
+  @Get('/export-csv')
+  async exportProductsCsv(@Res() res: Response) {
+    await this.productsService.exportProductsCsv(res);
+  }
+
   @Patch('/reassign/:id')
   reassignProduct(
     @Param('id', ParseMongoIdPipe) id: ObjectId,

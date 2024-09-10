@@ -14,6 +14,8 @@ import { Attribute } from './interfaces/product.interface';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 import { MemberDocument } from 'src/members/schemas/member.schema';
+import { Response } from 'express';
+import { Parser } from 'json2csv';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -905,5 +907,82 @@ export class ProductsService {
     throw new InternalServerErrorException(
       `Failed to soft delete product after ${maxRetries} retries`,
     );
+  }
+
+  private getAttributeValue(attributes: Attribute[], key: string): string {
+    const attribute = attributes.find((attr) => attr.key === key);
+    return attribute && typeof attribute.value === 'string'
+      ? attribute.value
+      : '';
+  }
+
+  private formatDate(date: string | Date | undefined | null): string {
+    if (!date) return '';
+    const parsedDate = new Date(date);
+    if (isNaN(parsedDate.getTime())) return '';
+    const day = String(parsedDate.getDate()).padStart(2, '0');
+    const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+    const year = parsedDate.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+
+  async exportProductsCsv(res: Response) {
+    const allProducts = (await this.tableGrouping()) as {
+      products: ProductDocument[];
+    }[];
+
+    const products = allProducts.map((group) => group.products).flat();
+
+    const csvFields = [
+      { label: 'Category', value: 'category' },
+      { label: 'Recoverable', value: 'recoverable' },
+      { label: 'Name', value: 'name' },
+      { label: 'Acquisition Date', value: 'acquisitionDate' },
+      { label: 'Brand', value: 'brand' },
+      { label: 'Model', value: 'model' },
+      { label: 'Color', value: 'color' },
+      { label: 'Screen', value: 'screen' },
+      { label: 'Keyboard Language', value: 'keyboardLanguage' },
+      { label: 'Processor', value: 'processor' },
+      { label: 'RAM', value: 'ram' },
+      { label: 'Storage', value: 'storage' },
+      { label: 'GPU', value: 'gpu' },
+      { label: 'Serial Number', value: 'serialNumber' },
+      { label: 'Assigned Member', value: 'assignedMember' },
+      { label: 'Assigned Email', value: 'assignedEmail' },
+      { label: 'Location', value: 'location' },
+      { label: 'Status', value: 'status' },
+    ];
+
+    const productsFormatted = products.map((product) => ({
+      category: product.category,
+      recoverable: product.recoverable ? 'yes' : 'no',
+      name: product.name,
+      acquisitionDate: this.formatDate(new Date(product.acquisitionDate || '')),
+      brand: this.getAttributeValue(product.attributes, 'brand'),
+      model: this.getAttributeValue(product.attributes, 'model'),
+      color: this.getAttributeValue(product.attributes, 'color'),
+      screen: this.getAttributeValue(product.attributes, 'screen'),
+      keyboardLanguage: this.getAttributeValue(
+        product.attributes,
+        'keyboardLanguage',
+      ),
+      processor: this.getAttributeValue(product.attributes, 'processor'),
+      ram: this.getAttributeValue(product.attributes, 'ram'),
+      storage: this.getAttributeValue(product.attributes, 'storage'),
+      gpu: this.getAttributeValue(product.attributes, 'gpu'),
+      serialNumber: product.serialNumber,
+      assignedMember: product.assignedMember,
+      assignedEmail: product.assignedEmail,
+      location: product.location,
+      status: product.status,
+    }));
+
+    const csvParser = new Parser({ fields: csvFields });
+    const csvData = csvParser.parse(productsFormatted);
+
+    res.header('Content-Type', 'text/csv');
+    res.attachment('products_report.csv');
+    res.send(csvData);
   }
 }
