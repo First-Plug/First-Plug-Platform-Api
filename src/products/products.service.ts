@@ -308,9 +308,14 @@ export class ProductsService {
           acc[key].products.push(product);
           return acc;
         } else {
+          const colorValue = product.attributes.find(
+            (attr) => attr.key === 'color',
+          )?.value;
+
           const key = JSON.stringify({
             category: product.category,
             name: product.name,
+            color: colorValue,
           });
 
           if (!acc[key]) {
@@ -818,7 +823,7 @@ export class ProductsService {
   async softDelete(id: ObjectId) {
     const session = await this.connection.startSession();
     let retries = 0;
-    const maxRetries = 3; 
+    const maxRetries = 3;
 
     while (retries < maxRetries) {
       try {
