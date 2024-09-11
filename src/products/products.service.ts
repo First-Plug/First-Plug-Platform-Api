@@ -271,10 +271,9 @@ export class ProductsService {
     const groupedProducts = productsWithFilteredAttributes.reduce(
       (acc, product) => {
         let key: string;
-        // Agrupamiento específico por categoría
+
         switch (product.category) {
           case 'Merchandising':
-            // Agrupar por name + color
             const colorValue = product.attributes.find(
               (attr) => attr.key === 'color',
             )?.value;
@@ -286,7 +285,6 @@ export class ProductsService {
             break;
 
           case 'Computer':
-            // Agrupar por brand + model + name si model es "Other" + processor + ram + storage + screen
             const computerBrand = product.filteredAttributes.find(
               (attr) => attr.key === 'brand',
             )?.value;
@@ -319,7 +317,6 @@ export class ProductsService {
             break;
 
           case 'Monitor':
-            // Agrupar por brand + model + name si model es "Other" + screen
             const monitorBrand = product.filteredAttributes.find(
               (attr) => attr.key === 'brand',
             )?.value;
@@ -340,7 +337,6 @@ export class ProductsService {
             break;
 
           case 'Audio':
-            // Agrupar por brand + model + name si model es "Other"
             const audioBrand = product.filteredAttributes.find(
               (attr) => attr.key === 'brand',
             )?.value;
@@ -357,7 +353,6 @@ export class ProductsService {
             break;
 
           case 'Peripherals':
-            // Agrupar por brand + model + name si model es "Other"
             const peripheralsBrand = product.filteredAttributes.find(
               (attr) => attr.key === 'brand',
             )?.value;
@@ -374,7 +369,6 @@ export class ProductsService {
             break;
 
           case 'Other':
-            // Agrupar por brand + model + name si model es "Other"
             const otherBrand = product.filteredAttributes.find(
               (attr) => attr.key === 'brand',
             )?.value;
@@ -391,7 +385,6 @@ export class ProductsService {
             break;
 
           default:
-            // En caso de que la categoría no esté manejada
             key = JSON.stringify({
               category: product.category,
               name: product.name,
@@ -399,7 +392,6 @@ export class ProductsService {
             break;
         }
 
-        // Agregar producto al agrupamiento
         if (!acc[key]) {
           acc[key] = {
             category: product.category,
