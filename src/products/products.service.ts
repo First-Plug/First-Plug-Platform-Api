@@ -244,9 +244,7 @@ export class ProductsService {
       } = product;
       const filteredAttributes = attributes.filter(
         (attribute: Attribute) =>
-          attribute.key !== 'color' &&
-          attribute.key !== 'keyboardLanguage' &&
-          attribute.key !== 'gpu',
+          attribute.key !== 'keyboardLanguage' && attribute.key !== 'gpu',
       );
 
       return {
@@ -270,64 +268,137 @@ export class ProductsService {
 
     const groupedProducts = productsWithFilteredAttributes.reduce(
       (acc, product) => {
-        if (product.category !== 'Merchandising') {
-          const brandValue = product.filteredAttributes.find(
-            (attr) => attr.key === 'brand',
-          )?.value;
-          const modelValue = product.filteredAttributes.find(
-            (attr) => attr.key === 'model',
-          )?.value;
+        let key: string;
 
-          let key;
-
-          // Si el modelo es "Other", incluye el nombre en la clave de agrupamiento
-          if (modelValue === 'Other') {
+        switch (product.category) {
+          case 'Merchandising':
+            const colorValue = product.attributes.find(
+              (attr) => attr.key === 'color',
+            )?.value;
             key = JSON.stringify({
               category: product.category,
-              brand: brandValue,
-              model: modelValue,
-              name: product.name, // Incluir el nombre si el modelo es "Other"
+              name: product.name,
+              color: colorValue,
             });
-          } else {
-            // Agrupamiento estándar por categoría, brand y model
+            break;
+
+          case 'Computer':
+            const computerBrand = product.filteredAttributes.find(
+              (attr) => attr.key === 'brand',
+            )?.value;
+            const computerModel = product.filteredAttributes.find(
+              (attr) => attr.key === 'model',
+            )?.value;
+            const computerProcessor = product.filteredAttributes.find(
+              (attr) => attr.key === 'processor',
+            )?.value;
+            const computerRam = product.filteredAttributes.find(
+              (attr) => attr.key === 'ram',
+            )?.value;
+            const computerStorage = product.filteredAttributes.find(
+              (attr) => attr.key === 'storage',
+            )?.value;
+            const computerScreen = product.filteredAttributes.find(
+              (attr) => attr.key === 'screen',
+            )?.value;
+
             key = JSON.stringify({
               category: product.category,
-              brand: brandValue,
-              model: modelValue,
+              brand: computerBrand,
+              model: computerModel,
+              name: computerModel === 'Other' ? product.name : undefined,
+              processor: computerProcessor,
+              ram: computerRam,
+              storage: computerStorage,
+              screen: computerScreen,
             });
-          }
+            break;
 
-          if (!acc[key]) {
-            acc[key] = {
+          case 'Monitor':
+            const monitorBrand = product.filteredAttributes.find(
+              (attr) => attr.key === 'brand',
+            )?.value;
+            const monitorModel = product.filteredAttributes.find(
+              (attr) => attr.key === 'model',
+            )?.value;
+            const monitorScreen = product.filteredAttributes.find(
+              (attr) => attr.key === 'screen',
+            )?.value;
+
+            key = JSON.stringify({
               category: product.category,
+              brand: monitorBrand,
+              model: monitorModel,
+              name: monitorModel === 'Other' ? product.name : undefined,
+              screen: monitorScreen,
+            });
+            break;
 
-              products: [],
-            };
-          }
+          case 'Audio':
+            const audioBrand = product.filteredAttributes.find(
+              (attr) => attr.key === 'brand',
+            )?.value;
+            const audioModel = product.filteredAttributes.find(
+              (attr) => attr.key === 'model',
+            )?.value;
 
-          acc[key].products.push(product);
-          return acc;
-        } else {
-          const colorValue = product.attributes.find(
-            (attr) => attr.key === 'color',
-          )?.value;
-
-          const key = JSON.stringify({
-            category: product.category,
-            name: product.name,
-            color: colorValue,
-          });
-
-          if (!acc[key]) {
-            acc[key] = {
+            key = JSON.stringify({
               category: product.category,
-              products: [],
-            };
-          }
+              brand: audioBrand,
+              model: audioModel,
+              name: audioModel === 'Other' ? product.name : undefined,
+            });
+            break;
 
-          acc[key].products.push(product);
-          return acc;
+          case 'Peripherals':
+            const peripheralsBrand = product.filteredAttributes.find(
+              (attr) => attr.key === 'brand',
+            )?.value;
+            const peripheralsModel = product.filteredAttributes.find(
+              (attr) => attr.key === 'model',
+            )?.value;
+
+            key = JSON.stringify({
+              category: product.category,
+              brand: peripheralsBrand,
+              model: peripheralsModel,
+              name: peripheralsModel === 'Other' ? product.name : undefined,
+            });
+            break;
+
+          case 'Other':
+            const otherBrand = product.filteredAttributes.find(
+              (attr) => attr.key === 'brand',
+            )?.value;
+            const otherModel = product.filteredAttributes.find(
+              (attr) => attr.key === 'model',
+            )?.value;
+
+            key = JSON.stringify({
+              category: product.category,
+              brand: otherBrand,
+              model: otherModel,
+              name: otherModel === 'Other' ? product.name : undefined,
+            });
+            break;
+
+          default:
+            key = JSON.stringify({
+              category: product.category,
+              name: product.name,
+            });
+            break;
         }
+
+        if (!acc[key]) {
+          acc[key] = {
+            category: product.category,
+            products: [],
+          };
+        }
+
+        acc[key].products.push(product);
+        return acc;
       },
       {},
     );
