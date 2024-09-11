@@ -14,6 +14,8 @@ import { Attribute } from './interfaces/product.interface';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 import { MemberDocument } from 'src/members/schemas/member.schema';
+import { Response } from 'express';
+import { Parser } from 'json2csv';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -244,9 +246,7 @@ export class ProductsService {
       } = product;
       const filteredAttributes = attributes.filter(
         (attribute: Attribute) =>
-          attribute.key !== 'color' &&
-          attribute.key !== 'keyboardLanguage' &&
-          attribute.key !== 'gpu',
+          attribute.key !== 'keyboardLanguage' && attribute.key !== 'gpu',
       );
 
       return {
@@ -270,59 +270,137 @@ export class ProductsService {
 
     const groupedProducts = productsWithFilteredAttributes.reduce(
       (acc, product) => {
-        if (product.category !== 'Merchandising') {
-          const brandValue = product.filteredAttributes.find(
-            (attr) => attr.key === 'brand',
-          )?.value;
-          const modelValue = product.filteredAttributes.find(
-            (attr) => attr.key === 'model',
-          )?.value;
+        let key: string;
 
-          let key;
-
-          // Si el modelo es "Other", incluye el nombre en la clave de agrupamiento
-          if (modelValue === 'Other') {
+        switch (product.category) {
+          case 'Merchandising':
+            const colorValue = product.attributes.find(
+              (attr) => attr.key === 'color',
+            )?.value;
             key = JSON.stringify({
               category: product.category,
-              brand: brandValue,
-              model: modelValue,
-              name: product.name, // Incluir el nombre si el modelo es "Other"
+              name: product.name,
+              color: colorValue,
             });
-          } else {
-            // Agrupamiento estándar por categoría, brand y model
+            break;
+
+          case 'Computer':
+            const computerBrand = product.filteredAttributes.find(
+              (attr) => attr.key === 'brand',
+            )?.value;
+            const computerModel = product.filteredAttributes.find(
+              (attr) => attr.key === 'model',
+            )?.value;
+            const computerProcessor = product.filteredAttributes.find(
+              (attr) => attr.key === 'processor',
+            )?.value;
+            const computerRam = product.filteredAttributes.find(
+              (attr) => attr.key === 'ram',
+            )?.value;
+            const computerStorage = product.filteredAttributes.find(
+              (attr) => attr.key === 'storage',
+            )?.value;
+            const computerScreen = product.filteredAttributes.find(
+              (attr) => attr.key === 'screen',
+            )?.value;
+
             key = JSON.stringify({
               category: product.category,
-              brand: brandValue,
-              model: modelValue,
+              brand: computerBrand,
+              model: computerModel,
+              name: computerModel === 'Other' ? product.name : undefined,
+              processor: computerProcessor,
+              ram: computerRam,
+              storage: computerStorage,
+              screen: computerScreen,
             });
-          }
+            break;
 
-          if (!acc[key]) {
-            acc[key] = {
+          case 'Monitor':
+            const monitorBrand = product.filteredAttributes.find(
+              (attr) => attr.key === 'brand',
+            )?.value;
+            const monitorModel = product.filteredAttributes.find(
+              (attr) => attr.key === 'model',
+            )?.value;
+            const monitorScreen = product.filteredAttributes.find(
+              (attr) => attr.key === 'screen',
+            )?.value;
+
+            key = JSON.stringify({
               category: product.category,
+              brand: monitorBrand,
+              model: monitorModel,
+              name: monitorModel === 'Other' ? product.name : undefined,
+              screen: monitorScreen,
+            });
+            break;
 
-              products: [],
-            };
-          }
+          case 'Audio':
+            const audioBrand = product.filteredAttributes.find(
+              (attr) => attr.key === 'brand',
+            )?.value;
+            const audioModel = product.filteredAttributes.find(
+              (attr) => attr.key === 'model',
+            )?.value;
 
-          acc[key].products.push(product);
-          return acc;
-        } else {
-          const key = JSON.stringify({
-            category: product.category,
-            name: product.name,
-          });
-
-          if (!acc[key]) {
-            acc[key] = {
+            key = JSON.stringify({
               category: product.category,
-              products: [],
-            };
-          }
+              brand: audioBrand,
+              model: audioModel,
+              name: audioModel === 'Other' ? product.name : undefined,
+            });
+            break;
 
-          acc[key].products.push(product);
-          return acc;
+          case 'Peripherals':
+            const peripheralsBrand = product.filteredAttributes.find(
+              (attr) => attr.key === 'brand',
+            )?.value;
+            const peripheralsModel = product.filteredAttributes.find(
+              (attr) => attr.key === 'model',
+            )?.value;
+
+            key = JSON.stringify({
+              category: product.category,
+              brand: peripheralsBrand,
+              model: peripheralsModel,
+              name: peripheralsModel === 'Other' ? product.name : undefined,
+            });
+            break;
+
+          case 'Other':
+            const otherBrand = product.filteredAttributes.find(
+              (attr) => attr.key === 'brand',
+            )?.value;
+            const otherModel = product.filteredAttributes.find(
+              (attr) => attr.key === 'model',
+            )?.value;
+
+            key = JSON.stringify({
+              category: product.category,
+              brand: otherBrand,
+              model: otherModel,
+              name: otherModel === 'Other' ? product.name : undefined,
+            });
+            break;
+
+          default:
+            key = JSON.stringify({
+              category: product.category,
+              name: product.name,
+            });
+            break;
         }
+
+        if (!acc[key]) {
+          acc[key] = {
+            category: product.category,
+            products: [],
+          };
+        }
+
+        acc[key].products.push(product);
+        return acc;
       },
       {},
     );
@@ -818,7 +896,7 @@ export class ProductsService {
   async softDelete(id: ObjectId) {
     const session = await this.connection.startSession();
     let retries = 0;
-    const maxRetries = 3; 
+    const maxRetries = 3;
 
     while (retries < maxRetries) {
       try {
@@ -900,5 +978,94 @@ export class ProductsService {
     throw new InternalServerErrorException(
       `Failed to soft delete product after ${maxRetries} retries`,
     );
+  }
+
+  private getAttributeValue(attributes: Attribute[], key: string): string {
+    const attribute = attributes.find((attr) => attr.key === key);
+    return attribute && typeof attribute.value === 'string'
+      ? attribute.value
+      : '';
+  }
+
+  private formatDate(date: string | Date | undefined | null): string {
+    if (!date) return '';
+    const parsedDate = new Date(date);
+    if (isNaN(parsedDate.getTime())) return '';
+    const day = String(parsedDate.getDate()).padStart(2, '0');
+    const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+    const year = parsedDate.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+
+  async getDeprecatedProducts(): Promise<ProductDocument[]> {
+    return this.productRepository.find({
+      status: 'Deprecated',
+      isDeleted: true,
+    });
+  }
+
+  async exportProductsCsv(res: Response) {
+    const allProducts = (await this.tableGrouping()) as {
+      products: ProductDocument[];
+    }[];
+
+    const deprecatedProducts = await this.getDeprecatedProducts();
+
+    const products = allProducts
+      .map((group) => group.products)
+      .flat()
+      .concat(deprecatedProducts);
+
+    const csvFields = [
+      { label: 'Category', value: 'category' },
+      { label: 'Recoverable', value: 'recoverable' },
+      { label: 'Name', value: 'name' },
+      { label: 'Acquisition Date', value: 'acquisitionDate' },
+      { label: 'Brand', value: 'brand' },
+      { label: 'Model', value: 'model' },
+      { label: 'Color', value: 'color' },
+      { label: 'Screen', value: 'screen' },
+      { label: 'Keyboard Language', value: 'keyboardLanguage' },
+      { label: 'Processor', value: 'processor' },
+      { label: 'RAM', value: 'ram' },
+      { label: 'Storage', value: 'storage' },
+      { label: 'GPU', value: 'gpu' },
+      { label: 'Serial Number', value: 'serialNumber' },
+      { label: 'Assigned Member', value: 'assignedMember' },
+      { label: 'Assigned Email', value: 'assignedEmail' },
+      { label: 'Location', value: 'location' },
+      { label: 'Status', value: 'status' },
+    ];
+
+    const productsFormatted = products.map((product) => ({
+      category: product.category,
+      recoverable: product.recoverable ? 'yes' : 'no',
+      name: product.name,
+      acquisitionDate: this.formatDate(new Date(product.acquisitionDate || '')),
+      brand: this.getAttributeValue(product.attributes, 'brand'),
+      model: this.getAttributeValue(product.attributes, 'model'),
+      color: this.getAttributeValue(product.attributes, 'color'),
+      screen: this.getAttributeValue(product.attributes, 'screen'),
+      keyboardLanguage: this.getAttributeValue(
+        product.attributes,
+        'keyboardLanguage',
+      ),
+      processor: this.getAttributeValue(product.attributes, 'processor'),
+      ram: this.getAttributeValue(product.attributes, 'ram'),
+      storage: this.getAttributeValue(product.attributes, 'storage'),
+      gpu: this.getAttributeValue(product.attributes, 'gpu'),
+      serialNumber: product.serialNumber,
+      assignedMember: product.assignedMember,
+      assignedEmail: product.assignedEmail,
+      location: product.location,
+      status: product.status,
+    }));
+
+    const csvParser = new Parser({ fields: csvFields });
+    const csvData = csvParser.parse(productsFormatted);
+
+    res.header('Content-Type', 'text/csv');
+    res.attachment('products_report.csv');
+    res.send(csvData);
   }
 }
