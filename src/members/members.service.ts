@@ -353,7 +353,10 @@ export class MembersService {
         throw new NotFoundException(`Member with id "${id}" not found`);
       }
 
-      if (updateMemberDto.dni && updateMemberDto.dni !== member.dni) {
+      if (
+        updateMemberDto.dni !== undefined &&
+        updateMemberDto.dni !== member.dni
+      ) {
         await this.validateDni(updateMemberDto.dni);
       }
 
@@ -361,6 +364,11 @@ export class MembersService {
       const oldFullName = `${member.firstName.trim()} ${member.lastName.trim()}`;
 
       Object.assign(member, updateMemberDto);
+
+      if (updateMemberDto.dni === undefined) {
+        member.dni = undefined;
+      }
+
       member.email = member.email.trim().toLowerCase();
       member.firstName = member.firstName.trim();
       member.lastName = member.lastName.trim();
