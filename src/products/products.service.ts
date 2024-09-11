@@ -997,12 +997,24 @@ export class ProductsService {
     return `${day}/${month}/${year}`;
   }
 
+  async getDeprecatedProducts(): Promise<ProductDocument[]> {
+    return this.productRepository.find({
+      status: 'Deprecated',
+      isDeleted: true,
+    });
+  }
+
   async exportProductsCsv(res: Response) {
     const allProducts = (await this.tableGrouping()) as {
       products: ProductDocument[];
     }[];
 
-    const products = allProducts.map((group) => group.products).flat();
+    const deprecatedProducts = await this.getDeprecatedProducts();
+
+    const products = allProducts
+      .map((group) => group.products)
+      .flat()
+      .concat(deprecatedProducts);
 
     const csvFields = [
       { label: 'Category', value: 'category' },
