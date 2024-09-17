@@ -17,6 +17,78 @@ export class TenantsService {
     @InjectSlack() private readonly slack: IncomingWebhook,
   ) {}
 
+  async migrateRecoverableConfig(tenantName: string) {
+    // Encuentra todos los tenants con el mismo tenantName
+    const tenants = await this.tenantRepository.find({ tenantName });
+
+    if (!tenants || tenants.length === 0) {
+      throw new Error(
+        `No se encontró ningún tenant con el tenantName ${tenantName}`,
+      );
+    }
+
+    const updated = await this.tenantRepository.updateMany(
+      { tenantName },
+      {
+        $set: {
+          isRecoverableConfig: new Map([
+            ['Merchandising', false],
+            ['Computer', true],
+            ['Monitor', true],
+            ['Audio', true],
+            ['Peripherals', true],
+            ['Other', true],
+          ]),
+        },
+      },
+    );
+    if (updated.modifiedCount > 0) {
+      console.log(
+        `Configuración de isRecoverable migrada para ${updated.modifiedCount} usuarios con tenantName: ${tenantName}`,
+      );
+    } else {
+      console.log(
+        `No se realizaron cambios en la configuración de isRecoverable para tenantName: ${tenantName}`,
+      );
+    }
+  }
+
+  async getRecoverableConfig(tenantName: string) {
+    const tenant = await this.tenantRepository.findOne({ tenantName });
+
+    if (!tenant) {
+      throw new Error(
+        `No se encontró ningún tenant con el tenantName ${tenantName}`,
+      );
+    }
+
+    return tenant.isRecoverableConfig;
+  }
+
+  async updateRecoverableConfig(
+    tenantName: string,
+    newConfig: Record<string, boolean>, // Recibe un objeto plano (Record)
+  ) {
+    // Convertir el objeto plano a un Map
+    const configMap = new Map(Object.entries(newConfig)); // Convierte el objeto a un Map
+
+    // Actualizar la configuración en la base de datos
+    const updated = await this.tenantRepository.updateMany(
+      { tenantName },
+      { $set: { isRecoverableConfig: configMap } }, // Guardar el Map en la base de datos
+    );
+
+    if (updated.modifiedCount === 0) {
+      throw new Error(
+        `No se encontró ningún tenant con el tenantName ${tenantName}`,
+      );
+    }
+
+    console.log(
+      `Configuración de isRecoverable actualizada para tenant: ${tenantName}`,
+    );
+  }
+
   async create(createTenantDto: CreateTenantDto) {
     const user = await this.findByEmail(createTenantDto.email);
 
