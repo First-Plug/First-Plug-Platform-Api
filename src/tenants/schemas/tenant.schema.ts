@@ -51,14 +51,7 @@ export class Tenant extends Document {
   @Prop({
     type: Map,
     of: Boolean,
-    default: new Map([
-      ['Merchandising', false],
-      ['Computer', true],
-      ['Monitor', true],
-      ['Audio', true],
-      ['Peripherals', true],
-      ['Other', true],
-    ]),
+    default: new Map(),
   })
   isRecoverableConfig: Map<string, boolean>;
 }

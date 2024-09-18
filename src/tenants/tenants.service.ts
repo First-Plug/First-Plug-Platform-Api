@@ -67,15 +67,13 @@ export class TenantsService {
 
   async updateRecoverableConfig(
     tenantName: string,
-    newConfig: Record<string, boolean>, // Recibe un objeto plano (Record)
+    newConfig: Record<string, boolean>,
   ) {
-    // Convertir el objeto plano a un Map
-    const configMap = new Map(Object.entries(newConfig)); // Convierte el objeto a un Map
+    const configMap = new Map(Object.entries(newConfig));
 
-    // Actualizar la configuración en la base de datos
     const updated = await this.tenantRepository.updateMany(
       { tenantName },
-      { $set: { isRecoverableConfig: configMap } }, // Guardar el Map en la base de datos
+      { $set: { isRecoverableConfig: configMap } },
     );
 
     if (updated.modifiedCount === 0) {
