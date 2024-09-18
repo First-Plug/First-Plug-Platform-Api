@@ -47,6 +47,13 @@ export class Tenant extends Document {
 
   @Prop({ type: String, required: false, default: '' })
   apartment: string;
+
+  @Prop({
+    type: Map,
+    of: Boolean,
+    default: new Map(),
+  })
+  isRecoverableConfig: Map<string, boolean>;
 }
 
 export const TenantSchema = SchemaFactory.createForClass(Tenant);
