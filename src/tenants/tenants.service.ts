@@ -18,7 +18,6 @@ export class TenantsService {
   ) {}
 
   async migrateRecoverableConfig(tenantName: string) {
-    // Encuentra todos los tenants con el mismo tenantName
     const tenants = await this.tenantRepository.find({ tenantName });
 
     if (!tenants || tenants.length === 0) {
@@ -42,6 +41,7 @@ export class TenantsService {
         },
       },
     );
+
     if (updated.modifiedCount > 0) {
       console.log(
         `Configuración de isRecoverable migrada para ${updated.modifiedCount} usuarios con tenantName: ${tenantName}`,
