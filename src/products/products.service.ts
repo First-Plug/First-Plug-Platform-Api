@@ -71,14 +71,9 @@ export class ProductsService {
   private async getRecoverableConfigForTenant(
     tenantName: string,
   ): Promise<Map<string, boolean>> {
-    console.log(`Buscando tenant con nombre: ${tenantName}`);
     const user = await this.tenantsService.getByTenantName(tenantName);
 
     if (user && user.isRecoverableConfig) {
-      console.log(
-        `Configuración de recoverable encontrada para tenant: ${tenantName}`,
-      );
-      console.log(user.isRecoverableConfig);
       return user.isRecoverableConfig;
     }
     console.log(
@@ -98,26 +93,14 @@ export class ProductsService {
     const normalizedProduct = this.normalizeProductData(createProductDto);
     const { assignedEmail, serialNumber, ...rest } = normalizedProduct;
 
-    // Obtenemos la configuración de recoverable para el tenant
     const recoverableConfig =
       await this.getRecoverableConfigForTenant(tenantName);
 
-    // Log para verificar el valor de recoverable en el DTO antes de procesar
-    console.log(
-      'Valor de recoverable en createProductDto:',
-      createProductDto.recoverable,
-    );
-
-    // Determinamos el valor de recoverable: si viene en el DTO o usamos el valor por defecto
     const isRecoverable =
       createProductDto.recoverable !== undefined
         ? createProductDto.recoverable
         : recoverableConfig.get(createProductDto.category) ?? false;
 
-    // Log para verificar qué valor se usará al final
-    console.log('Valor de isRecoverable que se guardará:', isRecoverable);
-
-    // Validación del serial number si está presente
     if (serialNumber && serialNumber.trim() !== '') {
       await this.validateSerialNumber(serialNumber);
     }
@@ -141,15 +124,12 @@ export class ProductsService {
       }
     }
 
-    // Creación del producto con los valores correctos, incluyendo recoverable
     const newProduct = await this.productRepository.create({
       ...createData,
       assignedEmail,
       assignedMember: assignedMember || this.getFullName(createProductDto),
       recoverable: isRecoverable,
     });
-
-    console.log('Producto creado con recoverable:', newProduct.recoverable); // Verificar el valor final guardado
 
     return newProduct;
   }
@@ -714,7 +694,7 @@ export class ProductsService {
       .session(session);
   }
 
-  // Función para mover un producto de un miembro a la colección de productos
+  // Metodo para mover un producto de un miembro a la colección de productos
   private async moveToProductsCollection(
     session: any,
     product: ProductDocument,
