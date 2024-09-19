@@ -9,6 +9,7 @@ import {
   Post,
   Res,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -25,16 +26,22 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Post()
-  create(@Body() createProductDto: CreateProductDto) {
-    return this.productsService.create(createProductDto);
+  create(@Body() createProductDto: CreateProductDto, @Request() req: any) {
+    const tenantName = req.user.tenantName;
+    return this.productsService.create(createProductDto, tenantName);
   }
 
   @Post('/bulkcreate')
   async bulkcreate(
     @Body() createProductDto: CreateProductArrayDto,
     @Res() res: Response,
+    @Request() req: any,
   ) {
-    const products = await this.productsService.bulkCreate(createProductDto);
+    const tenantName = req.user.tenantName;
+    const products = await this.productsService.bulkCreate(
+      createProductDto,
+      tenantName,
+    );
 
     res.status(HttpStatus.CREATED).json(products);
   }
@@ -63,8 +70,14 @@ export class ProductsController {
   reassignProduct(
     @Param('id', ParseMongoIdPipe) id: ObjectId,
     @Body() updateProductDto: UpdateProductDto,
+    @Request() req: any,
   ) {
-    return this.productsService.reassignProduct(id, updateProductDto);
+    const tenantName = req.user.tenantName;
+    return this.productsService.reassignProduct(
+      id,
+      updateProductDto,
+      tenantName,
+    );
   }
 
   @Get(':id')
@@ -76,8 +89,10 @@ export class ProductsController {
   update(
     @Param('id', ParseMongoIdPipe) id: ObjectId,
     @Body() updateProductDto: UpdateProductDto,
+    @Request() req: any,
   ) {
-    return this.productsService.update(id, updateProductDto);
+    const tenantName = req.user.tenantName;
+    return this.productsService.update(id, updateProductDto, tenantName);
   }
 
   @Delete(':id')
