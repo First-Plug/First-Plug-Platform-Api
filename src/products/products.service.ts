@@ -787,8 +787,9 @@ export class ProductsService {
         // let isRecoverable: boolean;
 
         const isRecoverable =
-          updateProductDto.recoverable ??
-          (recoverableConfig.get(product.category) || false);
+          updateProductDto.recoverable !== undefined
+            ? updateProductDto.recoverable
+            : recoverableConfig.get(product.category) || false;
 
         // Caso en que el producto tiene un assignedEmail desconocido y se deben actualizar los atributos
         if (
