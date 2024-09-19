@@ -10,6 +10,7 @@ import { CreateProductDto, UpdateProductDto } from './dto';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { BadRequestException } from '@nestjs/common';
 import { MembersService } from 'src/members/members.service';
+import { TenantsService } from 'src/tenants/tenants.service';
 import { Attribute } from './interfaces/product.interface';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
@@ -27,6 +28,7 @@ export class ProductsService {
     @Inject('PRODUCT_MODEL')
     private readonly productRepository: ProductModel,
     private readonly memberService: MembersService,
+    private readonly tenantsService: TenantsService,
     @InjectConnection() private readonly connection: Connection,
   ) {}
 
@@ -66,10 +68,56 @@ export class ProductsService {
     }
   }
 
-  async create(createProductDto: CreateProductDto) {
+  private async getRecoverableConfigForTenant(
+    tenantName: string,
+  ): Promise<Map<string, boolean>> {
+    console.log(`Buscando tenant con nombre: ${tenantName}`);
+    const user = await this.tenantsService.getByTenantName(tenantName);
+
+    if (user && user.isRecoverableConfig) {
+      console.log(
+        `Configuración de recoverable encontrada para tenant: ${tenantName}`,
+      );
+      console.log(user.isRecoverableConfig);
+      return user.isRecoverableConfig;
+    }
+    console.log(
+      `No se encontró la configuración de isRecoverable para el tenant: ${tenantName}`,
+    );
+    return new Map([
+      ['Merchandising', false],
+      ['Computer', true],
+      ['Monitor', true],
+      ['Audio', true],
+      ['Peripherals', true],
+      ['Other', true],
+    ]);
+  }
+
+  async create(createProductDto: CreateProductDto, tenantName: string) {
     const normalizedProduct = this.normalizeProductData(createProductDto);
     const { assignedEmail, serialNumber, ...rest } = normalizedProduct;
 
+    // Obtenemos la configuración de recoverable para el tenant
+    const recoverableConfig =
+      await this.getRecoverableConfigForTenant(tenantName);
+
+    // Log para verificar el valor de recoverable en el DTO antes de procesar
+    console.log(
+      'Valor de recoverable en createProductDto:',
+      createProductDto.recoverable,
+    );
+
+    // Determinamos el valor de recoverable: si viene en el DTO o usamos el valor por defecto
+    const isRecoverable =
+      createProductDto.recoverable !== undefined
+        ? createProductDto.recoverable
+        : recoverableConfig.get(createProductDto.category) ?? false;
+
+    // Log para verificar qué valor se usará al final
+    console.log('Valor de isRecoverable que se guardará:', isRecoverable);
+
+    // Validación del serial number si está presente
     if (serialNumber && serialNumber.trim() !== '') {
       await this.validateSerialNumber(serialNumber);
     }
@@ -93,16 +141,20 @@ export class ProductsService {
       }
     }
 
+    // Creación del producto con los valores correctos, incluyendo recoverable
     const newProduct = await this.productRepository.create({
       ...createData,
       assignedEmail,
       assignedMember: assignedMember || this.getFullName(createProductDto),
+      recoverable: isRecoverable,
     });
+
+    console.log('Producto creado con recoverable:', newProduct.recoverable); // Verificar el valor final guardado
 
     return newProduct;
   }
 
-  async bulkCreate(createProductDtos: CreateProductDto[]) {
+  async bulkCreate(createProductDtos: CreateProductDto[], tenantName: string) {
     const session = await this.connection.startSession();
     session.startTransaction();
 
@@ -110,6 +162,9 @@ export class ProductsService {
       const normalizedProducts = createProductDtos.map(
         this.normalizeProductData,
       );
+
+      const recoverableConfig =
+        await this.getRecoverableConfigForTenant(tenantName);
 
       const productsWithSerialNumbers = normalizedProducts.filter(
         (product) => product.serialNumber,
@@ -132,7 +187,10 @@ export class ProductsService {
       }
 
       for (const product of normalizedProducts) {
-        const { serialNumber } = product;
+        const { serialNumber, category } = product;
+
+        const isRecoverable = recoverableConfig.get(category) || false;
+        product.recoverable = isRecoverable;
 
         if (serialNumber && serialNumber.trim() !== '') {
           await this.validateSerialNumber(serialNumber);
@@ -520,11 +578,15 @@ export class ProductsService {
     return { product, options };
   }
 
-  async reassignProduct(id: ObjectId, updateProductDto: UpdateProductDto) {
+  async reassignProduct(
+    id: ObjectId,
+    updateProductDto: UpdateProductDto,
+    tenantName: string,
+  ) {
     if (updateProductDto.assignedEmail === 'none') {
       updateProductDto.assignedEmail = '';
     }
-    return this.update(id, updateProductDto);
+    return this.update(id, updateProductDto, tenantName);
   }
 
   private getUpdatedFields(
@@ -721,7 +783,11 @@ export class ProductsService {
     }
   }
 
-  async update(id: ObjectId, updateProductDto: UpdateProductDto) {
+  async update(
+    id: ObjectId,
+    updateProductDto: UpdateProductDto,
+    tenantName: string,
+  ) {
     const session = await this.connection.startSession();
     session.startTransaction();
 
@@ -731,6 +797,15 @@ export class ProductsService {
         .session(session);
 
       if (product) {
+        const recoverableConfig =
+          await this.getRecoverableConfigForTenant(tenantName);
+
+        // let isRecoverable: boolean;
+
+        const isRecoverable =
+          updateProductDto.recoverable ??
+          (recoverableConfig.get(product.category) || false);
+
         // Caso en que el producto tiene un assignedEmail desconocido y se deben actualizar los atributos
         if (
           product.assignedEmail &&
@@ -742,25 +817,23 @@ export class ProductsService {
             !updateProductDto.assignedEmail ||
             updateProductDto.assignedEmail === product.assignedEmail
           ) {
-            await this.handleUnknownEmailUpdate(
-              session,
-              product,
-              updateProductDto,
-            );
+            await this.handleUnknownEmailUpdate(session, product, {
+              ...updateProductDto,
+              recoverable: isRecoverable,
+            });
           } else if (
             updateProductDto.assignedEmail &&
             updateProductDto.assignedEmail !== 'none'
           ) {
-            await this.handleUnknownEmailToMemberUpdate(
-              session,
-              product,
-              updateProductDto,
-            );
+            await this.handleUnknownEmailToMemberUpdate(session, product, {
+              ...updateProductDto,
+              recoverable: isRecoverable,
+            });
           } else {
             await this.updateProductAttributes(
               session,
               product,
-              updateProductDto,
+              { ...updateProductDto, recoverable: isRecoverable },
               'products',
             );
           }
@@ -779,7 +852,7 @@ export class ProductsService {
                 session,
                 product,
                 newMember,
-                updateProductDto,
+                { ...updateProductDto, recoverable: isRecoverable },
                 product.assignedEmail || '',
               );
             } else {
@@ -791,16 +864,15 @@ export class ProductsService {
             updateProductDto.assignedEmail === '' &&
             product.assignedEmail !== ''
           ) {
-            await this.handleProductUnassignment(
-              session,
-              product,
-              updateProductDto,
-            );
+            await this.handleProductUnassignment(session, product, {
+              ...updateProductDto,
+              recoverable: isRecoverable,
+            });
           } else {
             await this.updateProductAttributes(
               session,
               product,
-              updateProductDto,
+              { ...updateProductDto, recoverable: isRecoverable },
               'products',
             );
           }
@@ -817,6 +889,11 @@ export class ProductsService {
 
         if (memberProduct?.product) {
           const member = memberProduct.member;
+          const recoverableConfig =
+            await this.getRecoverableConfigForTenant(tenantName);
+          const isRecoverable =
+            updateProductDto.recoverable ??
+            (recoverableConfig.get(memberProduct.product.category) || false);
 
           if (
             updateProductDto.assignedEmail &&
@@ -830,7 +907,7 @@ export class ProductsService {
                 session,
                 memberProduct.product as ProductDocument,
                 newMember,
-                updateProductDto,
+                { ...updateProductDto, recoverable: isRecoverable },
                 member.email,
               );
             } else {
@@ -842,14 +919,14 @@ export class ProductsService {
             await this.handleProductUnassignment(
               session,
               memberProduct.product as ProductDocument,
-              updateProductDto,
+              { ...updateProductDto, recoverable: isRecoverable },
               member,
             );
           } else {
             await this.updateProductAttributes(
               session,
               memberProduct.product as ProductDocument,
-              updateProductDto,
+              { ...updateProductDto, recoverable: isRecoverable },
               'members',
               member,
             );
