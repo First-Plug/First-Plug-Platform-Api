@@ -187,9 +187,13 @@ export class ProductsService {
       }
 
       for (const product of normalizedProducts) {
-        const { serialNumber, category } = product;
+        const { serialNumber, category, recoverable } = product;
 
-        const isRecoverable = recoverableConfig.get(category) || false;
+        const isRecoverable =
+          recoverable !== undefined
+            ? recoverable
+            : recoverableConfig.get(category) || false;
+
         product.recoverable = isRecoverable;
 
         if (serialNumber && serialNumber.trim() !== '') {
