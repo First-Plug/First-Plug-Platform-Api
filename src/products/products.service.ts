@@ -675,7 +675,11 @@ export class ProductsService {
       category: product.category,
       attributes: updateProductDto.attributes || product.attributes,
       status: updateProductDto.status || product.status,
-      recoverable: product.recoverable,
+      // recoverable: product.recoverable,
+      recoverable:
+        updateProductDto.recoverable !== undefined
+          ? updateProductDto.recoverable
+          : product.recoverable,
       serialNumber: updateProductDto.serialNumber || product.serialNumber,
       assignedEmail: updateProductDto.assignedEmail,
       assignedMember: updateProductDto.assignedMember,
@@ -685,7 +689,6 @@ export class ProductsService {
       isDeleted: product.isDeleted,
       lastAssigned: lastAssigned,
     };
-
     newMember.products.push(updateData);
     await newMember.save({ session });
 
@@ -717,7 +720,11 @@ export class ProductsService {
       category: product.category,
       attributes: updateProductDto.attributes || product.attributes,
       status: updateProductDto.status || product.status,
-      recoverable: product.recoverable,
+      // recoverable: product.recoverable,
+      recoverable:
+        updateProductDto.recoverable !== undefined
+          ? updateProductDto.recoverable
+          : product.recoverable,
       serialNumber: updateProductDto.serialNumber || product.serialNumber,
       assignedEmail: '',
       assignedMember: '',
@@ -727,7 +734,6 @@ export class ProductsService {
       location: updateProductDto.location || product.location,
       isDeleted: product.isDeleted,
     };
-
     await this.productRepository.create([updateData], { session });
   }
 

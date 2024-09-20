@@ -37,7 +37,7 @@ export const ProductSchemaZod = z
       .string()
       .transform((val) => val.toLowerCase())
       .optional(),
-    recoverable: z.boolean().default(true).optional(),
+    recoverable: z.boolean().optional(),
     assignedEmail: z.string().optional(),
     assignedMember: z.string().optional(),
     acquisitionDate: z.string().optional(),
