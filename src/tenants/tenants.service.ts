@@ -145,6 +145,7 @@ export class TenantsService {
       name: user?.name,
       email: user?.email,
       accountProvider: user?.accountProvider,
+      isRecoverableConfig: user?.isRecoverableConfig,
     };
   }
 
