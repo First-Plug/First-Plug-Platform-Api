@@ -81,10 +81,6 @@ export class TenantsService {
         `No se encontró ningún tenant con el tenantName ${tenantName}`,
       );
     }
-
-    console.log(
-      `Configuración de isRecoverable actualizada para tenant: ${tenantName}`,
-    );
   }
 
   async create(createTenantDto: CreateTenantDto) {
@@ -166,6 +162,27 @@ export class TenantsService {
       updateTenantInformationSchemaDto,
       { new: true },
     );
+
+    if (!userUpdated) {
+      throw new Error(`No se encontró el usuario con id: ${user._id}`);
+    }
+
+    const updateFields = {
+      phone: userUpdated?.phone,
+      country: userUpdated?.country,
+      city: userUpdated?.city,
+      state: userUpdated?.state,
+      zipCode: userUpdated?.zipCode,
+      address: userUpdated?.address,
+      apartment: userUpdated?.apartment,
+      image: userUpdated?.image,
+    };
+    if (userUpdated?.tenantName) {
+      await this.tenantRepository.updateMany(
+        { tenantName: userUpdated.tenantName, _id: { $ne: user._id } },
+        { $set: updateFields },
+      );
+    }
 
     const sanitizedUser = {
       phone: userUpdated?.phone,
