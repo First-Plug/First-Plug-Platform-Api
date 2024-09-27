@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { ZodValidationPipe } from '@anatine/zod-nestjs';
 
+const URL_PREVIEW = "https://first-plug-testing"
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
@@ -24,7 +26,15 @@ async function bootstrap() {
   const config = app.get(ConfigService);
 
   app.enableCors({
-    origin: config.get('server.frontendUrl'),
+    origin: (origin, callback) => {
+      const allowedOrigins = [config.get('server.frontendUrl')];
+
+      if (origin && (allowedOrigins.includes(origin) || origin.startsWith(URL_PREVIEW))) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
