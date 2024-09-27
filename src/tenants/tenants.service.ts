@@ -198,4 +198,19 @@ export class TenantsService {
 
     return sanitizedUser;
   }
+
+  async findUsersWithSameTenant(tenantName: string, createdAt: Date) {
+    return await this.tenantRepository
+      .find({
+        tenantName,
+        createdAt: { $lt: createdAt },
+      })
+      .sort({ createdAt: 1 });
+  }
+
+  async updateUserConfig(userId: ObjectId, updatedConfig: any) {
+    return await this.tenantRepository.findByIdAndUpdate(userId, {
+      $set: updatedConfig,
+    });
+  }
 }

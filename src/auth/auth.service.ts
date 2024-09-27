@@ -19,6 +19,8 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const user = await this.validateUser(loginDto);
 
+    await this.checkAndPropagateTenantConfig(user);
+
     const {
       _id,
       email,
@@ -66,6 +68,38 @@ export class AuthService {
         expireIn: new Date().setTime(new Date().getTime()) * EXPIRE_TIME,
       },
     };
+  }
+
+  async checkAndPropagateTenantConfig(user: any) {
+    if (!user.tenantName) {
+      return;
+    }
+
+    const otherUsers = await this.tenantService.findUsersWithSameTenant(
+      user.tenantName,
+      user.createdAt,
+    );
+
+    if (otherUsers.length > 0) {
+      const otherUser = otherUsers[0];
+
+      if (
+        JSON.stringify(otherUser.isRecoverableConfig) !==
+          JSON.stringify(user.isRecoverableConfig) ||
+        otherUser.address !== user.address
+      ) {
+        await this.tenantService.updateUserConfig(user._id, {
+          isRecoverableConfig: otherUser.isRecoverableConfig,
+          phone: otherUser.phone,
+          country: otherUser.country,
+          city: otherUser.city,
+          state: otherUser.state,
+          zipCode: otherUser.zipCode,
+          address: otherUser.address,
+          apartment: otherUser.apartment,
+        });
+      }
+    }
   }
 
   async validateUser(loginDto: LoginDto) {
