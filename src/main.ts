@@ -29,7 +29,7 @@ async function bootstrap() {
     origin: (origin, callback) => {
       const allowedOrigins = [config.get('server.frontendUrl')];
 
-      if (origin && (allowedOrigins.includes(origin) || origin.startsWith(URL_PREVIEW))) {
+      if (!origin || allowedOrigins.includes(origin) || origin.startsWith(URL_PREVIEW)){
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));
