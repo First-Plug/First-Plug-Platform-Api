@@ -17,6 +17,22 @@ export class TenantsService {
     @InjectSlack() private readonly slack: IncomingWebhook,
   ) {}
 
+  async notifyBirthdayGiftInterest(email: string, tenantName: string) {
+    const message = `Cliente ${email}-${tenantName} está interesado en regalos de cumpleaños`;
+
+    try {
+      await this.slack.send({
+        text: message,
+        channel: '#merch-cumples',
+      });
+
+      return { message: 'Notification sent to Slack' };
+    } catch (error) {
+      console.error('Error sending notification to Slack:', error);
+      throw new Error('Failed to send notification to Slack');
+    }
+  }
+
   async migrateRecoverableConfig(tenantName: string) {
     const tenants = await this.tenantRepository.find({ tenantName });
 
