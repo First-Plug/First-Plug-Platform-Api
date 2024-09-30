@@ -37,7 +37,7 @@ export const ProductSchemaZod = z
       .string()
       .transform((val) => val.toLowerCase())
       .optional(),
-    recoverable: z.boolean().default(true).optional(),
+    recoverable: z.boolean().optional(),
     assignedEmail: z.string().optional(),
     assignedMember: z.string().optional(),
     acquisitionDate: z.string().optional(),
@@ -52,11 +52,11 @@ export const ProductSchemaZod = z
         path: ['name'],
       });
     }
-    if (data.category === 'Merchandising') {
-      data.recoverable = false;
-    } else {
-      data.recoverable = true;
-    }
+    // if (data.category === 'Merchandising') {
+    //   data.recoverable = false;
+    // } else {
+    //   data.recoverable = true;
+    // }
     if (data.category !== 'Merchandising') {
       const attributeKeys = data.attributes.map((attr) => attr.key);
       if (!attributeKeys.includes('brand')) {

@@ -17,6 +17,72 @@ export class TenantsService {
     @InjectSlack() private readonly slack: IncomingWebhook,
   ) {}
 
+  async migrateRecoverableConfig(tenantName: string) {
+    const tenants = await this.tenantRepository.find({ tenantName });
+
+    if (!tenants || tenants.length === 0) {
+      throw new Error(
+        `No se encontró ningún tenant con el tenantName ${tenantName}`,
+      );
+    }
+
+    const updated = await this.tenantRepository.updateMany(
+      { tenantName },
+      {
+        $set: {
+          isRecoverableConfig: new Map([
+            ['Merchandising', false],
+            ['Computer', true],
+            ['Monitor', true],
+            ['Audio', true],
+            ['Peripherals', true],
+            ['Other', true],
+          ]),
+        },
+      },
+    );
+
+    if (updated.modifiedCount > 0) {
+      console.log(
+        `Configuración de isRecoverable migrada para ${updated.modifiedCount} usuarios con tenantName: ${tenantName}`,
+      );
+    } else {
+      console.log(
+        `No se realizaron cambios en la configuración de isRecoverable para tenantName: ${tenantName}`,
+      );
+    }
+  }
+
+  async getRecoverableConfig(tenantName: string) {
+    const tenant = await this.tenantRepository.findOne({ tenantName });
+
+    if (!tenant) {
+      throw new Error(
+        `No se encontró ningún tenant con el tenantName ${tenantName}`,
+      );
+    }
+
+    return tenant.isRecoverableConfig;
+  }
+
+  async updateRecoverableConfig(
+    tenantName: string,
+    newConfig: Record<string, boolean>,
+  ) {
+    const configMap = new Map(Object.entries(newConfig));
+
+    const updated = await this.tenantRepository.updateMany(
+      { tenantName },
+      { $set: { isRecoverableConfig: configMap } },
+    );
+
+    if (updated.modifiedCount === 0) {
+      throw new Error(
+        `No se encontró ningún tenant con el tenantName ${tenantName}`,
+      );
+    }
+  }
+
   async create(createTenantDto: CreateTenantDto) {
     const user = await this.findByEmail(createTenantDto.email);
 
@@ -75,6 +141,7 @@ export class TenantsService {
       name: user?.name,
       email: user?.email,
       accountProvider: user?.accountProvider,
+      isRecoverableConfig: user?.isRecoverableConfig,
     };
   }
 
@@ -96,6 +163,27 @@ export class TenantsService {
       { new: true },
     );
 
+    if (!userUpdated) {
+      throw new Error(`No se encontró el usuario con id: ${user._id}`);
+    }
+
+    const updateFields = {
+      phone: userUpdated?.phone,
+      country: userUpdated?.country,
+      city: userUpdated?.city,
+      state: userUpdated?.state,
+      zipCode: userUpdated?.zipCode,
+      address: userUpdated?.address,
+      apartment: userUpdated?.apartment,
+      image: userUpdated?.image,
+    };
+    if (userUpdated?.tenantName) {
+      await this.tenantRepository.updateMany(
+        { tenantName: userUpdated.tenantName, _id: { $ne: user._id } },
+        { $set: updateFields },
+      );
+    }
+
     const sanitizedUser = {
       phone: userUpdated?.phone,
       country: userUpdated?.country,
@@ -109,5 +197,20 @@ export class TenantsService {
     };
 
     return sanitizedUser;
+  }
+
+  async findUsersWithSameTenant(tenantName: string, createdAt: Date) {
+    return await this.tenantRepository
+      .find({
+        tenantName,
+        createdAt: { $lt: createdAt },
+      })
+      .sort({ createdAt: 1 });
+  }
+
+  async updateUserConfig(userId: ObjectId, updatedConfig: any) {
+    return await this.tenantRepository.findByIdAndUpdate(userId, {
+      $set: updatedConfig,
+    });
   }
 }
