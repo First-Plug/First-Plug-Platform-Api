@@ -37,7 +37,7 @@ export const MemberSchemaZod = z.object({
       message: 'Start date must be a valid ISO 8601 date',
     })
     .optional(),
-  birthDate: z.string().trim().refine(validator.isISO8601).optional(),
+  birthDate: z.string().trim().refine(validator.isISO8601).nullable(),
   products: z.array(ProductSchemaZod).optional(),
   team: z.string().trim().optional(),
   dni: z
