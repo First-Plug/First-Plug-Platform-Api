@@ -3,6 +3,7 @@ import {
   Controller,
   Patch,
   Get,
+  Post,
   Req,
   UseGuards,
   Param,
@@ -29,6 +30,14 @@ export class TenantsController {
   async getRecoverableConfig(@Param('tenantName') tenantName: string) {
     const config = await this.tenantService.getRecoverableConfig(tenantName);
     return config;
+  }
+
+  @Post('notify-birthday-gift')
+  async notifyBirthdayGiftInterest(
+    @Body('email') email: string,
+    @Body('tenantName') tenantName: string,
+  ) {
+    return this.tenantService.notifyBirthdayGiftInterest(email, tenantName);
   }
 
   @Patch()
