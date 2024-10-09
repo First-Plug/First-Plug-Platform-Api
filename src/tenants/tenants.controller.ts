@@ -40,6 +40,14 @@ export class TenantsController {
     return this.tenantService.notifyBirthdayGiftInterest(email, tenantName);
   }
 
+  @Post('notify-shop')
+  async notifyShopInterest(
+    @Body('email') email: string,
+    @Body('tenantName') tenantName: string,
+  ) {
+    return this.tenantService.notifyShopInterest(email, tenantName);
+  }
+
   @Patch()
   async update(
     @Req() request: Request,
