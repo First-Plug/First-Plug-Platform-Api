@@ -11,11 +11,36 @@ import { UserJWT } from 'src/auth/interfaces/auth.interface';
 
 @Injectable()
 export class TenantsService {
+  private slackMerchWebhook: IncomingWebhook;
   constructor(
     @InjectModel(Tenant.name)
     private tenantRepository: Model<Tenant>,
     @InjectSlack() private readonly slack: IncomingWebhook,
-  ) {}
+  ) {
+    const slackMerchWebhookUrl = process.env.SLACK_WEBHOOK_URL_MERCH;
+
+    if (!slackMerchWebhookUrl) {
+      throw new Error('SLACK_WEBHOOK_URL_MERCH is not defined');
+    }
+
+    this.slackMerchWebhook = new IncomingWebhook(slackMerchWebhookUrl);
+  }
+
+  async notifyBirthdayGiftInterest(email: string, tenantName: string) {
+    const message = `Cliente ${email}-${tenantName} está interesado en regalos de cumpleaños`;
+
+    try {
+      await this.slackMerchWebhook.send({
+        text: message,
+        channel: '#merch-cumples',
+      });
+
+      return { message: 'Notification sent to Slack' };
+    } catch (error) {
+      console.error('Error sending notification to Slack:', error);
+      throw new Error('Failed to send notification to Slack');
+    }
+  }
 
   async migrateRecoverableConfig(tenantName: string) {
     const tenants = await this.tenantRepository.find({ tenantName });
