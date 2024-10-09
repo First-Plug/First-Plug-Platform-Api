@@ -4,6 +4,7 @@ export const EnvConfiguration = () => ({
     jwtsecretkey: process.env.JWTSECRETKEY,
     jwtrefreshtokenkey: process.env.JWTREFRESHTOKENKEY,
     slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
+    slackWebhookUrlMerch: process.env.SLACK_WEBHOOK_URL_MERCH,
     frontendUrl: process.env.FRONTEND_URL,
   },
   database: {

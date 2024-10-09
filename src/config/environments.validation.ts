@@ -6,5 +6,6 @@ export const ZodEnvironmentsSchema = z.object({
   JWTSECRETKEY: z.string().min(1),
   JWTREFRESHTOKENKEY: z.string().min(1),
   SLACK_WEBHOOK_URL: z.string().min(1),
+  SLACK_WEBHOOK_URL_MERCH: z.string().min(1),
   FRONTEND_URL: z.string().min(1),
 });
