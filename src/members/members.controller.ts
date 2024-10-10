@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   UseInterceptors,
+  Request,
 } from '@nestjs/common';
 import { MembersService } from './members.service';
 import { CreateMemberDto, UpdateMemberDto } from './dto';
@@ -16,12 +17,16 @@ import { ParseMongoIdPipe } from '../common/pipes/parse-mongo-id.pipe';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { CreateMemberArrayDto } from './dto/create-member-array.dto';
 import { AddFullNameInterceptor } from './interceptors/add-full-name.interceptor';
+import { ProductsService } from 'src/products/products.service';
 
 @Controller('members')
 @UseGuards(JwtGuard)
 @UseInterceptors(AddFullNameInterceptor)
 export class MembersController {
-  constructor(private readonly membersService: MembersService) {}
+  constructor(
+    private readonly membersService: MembersService,
+    private readonly productService: ProductsService,
+  ) {}
 
   @Post()
   create(@Body() createMemberDto: CreateMemberDto) {
@@ -34,6 +39,70 @@ export class MembersController {
     createMemberDto: CreateMemberArrayDto,
   ) {
     return await this.membersService.bulkCreate(createMemberDto);
+  }
+
+  @Post('/offboarding/:id')
+  async offboarding(
+    @Param('id', ParseMongoIdPipe) id: ObjectId,
+    @Body() objectOffBoarding: any,
+    @Request() req: any,
+  ) {
+    const tenantName = req.user.tenantName;
+
+    const productsToUpdate: Array<{
+      id: ObjectId;
+      product: any;
+      tenantName: string;
+    }> = [];
+
+    objectOffBoarding.forEach((element) => {
+      const product = element.product;
+
+      switch (element.relocation) {
+        case 'New employee':
+          product.assignedEmail = element.newMember.email;
+          product.assignedMember = element.newMember.fullName;
+
+          productsToUpdate.push({
+            id: product._id,
+            product,
+            tenantName,
+          });
+          break;
+
+        case 'FP warehouse':
+          product.assignedEmail = '';
+          product.location = 'FP warehouse';
+          product.status = 'Available';
+
+          productsToUpdate.push({
+            id: product._id,
+            product,
+            tenantName,
+          });
+          break;
+
+        case 'My office':
+          product.assignedEmail = '';
+          product.location = 'Our office';
+          product.status = 'Available';
+
+          productsToUpdate.push({
+            id: product._id,
+            product,
+            tenantName,
+          });
+          break;
+      }
+    });
+
+    if (productsToUpdate.length > 0) {
+      await this.productService.updateMultipleProducts(productsToUpdate);
+    }
+
+    await this.membersService.softDeleteMember(id);
+
+    return { message: 'Offboarding process completed successfully' };
   }
 
   // @Post('/assign-many-products')
