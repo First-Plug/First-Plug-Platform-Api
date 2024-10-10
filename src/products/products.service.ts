@@ -563,13 +563,14 @@ export class ProductsService {
   }
 
   async updateMultipleProducts(
-    productsToUpdate: Array<{ id: ObjectId; product: any; tenantName: string }>,
+    productsToUpdate: { id: ObjectId; product: any }[],
+    tenantName: string,
   ) {
     const session = await this.connection.startSession();
     session.startTransaction();
 
     try {
-      for (const { id, product, tenantName } of productsToUpdate) {
+      for (const { id, product } of productsToUpdate) {
         const updateProductDto = { ...product };
 
         await this.update(id, { ...updateProductDto }, tenantName);

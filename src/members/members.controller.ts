@@ -44,7 +44,7 @@ export class MembersController {
   @Post('/offboarding/:id')
   async offboarding(
     @Param('id', ParseMongoIdPipe) id: ObjectId,
-    @Body() objectOffBoarding: any,
+    @Body() data: any,
     @Request() req: any,
   ) {
     const tenantName = req.user.tenantName;
@@ -52,10 +52,9 @@ export class MembersController {
     const productsToUpdate: Array<{
       id: ObjectId;
       product: any;
-      tenantName: string;
     }> = [];
 
-    objectOffBoarding.forEach((element) => {
+    data.forEach((element) => {
       const product = element.product;
 
       switch (element.relocation) {
@@ -66,7 +65,6 @@ export class MembersController {
           productsToUpdate.push({
             id: product._id,
             product,
-            tenantName,
           });
           break;
 
@@ -78,7 +76,6 @@ export class MembersController {
           productsToUpdate.push({
             id: product._id,
             product,
-            tenantName,
           });
           break;
 
@@ -90,17 +87,23 @@ export class MembersController {
           productsToUpdate.push({
             id: product._id,
             product,
-            tenantName,
           });
           break;
       }
     });
 
     if (productsToUpdate.length > 0) {
-      await this.productService.updateMultipleProducts(productsToUpdate);
+      await this.productService.updateMultipleProducts(
+        productsToUpdate,
+        tenantName,
+      );
     }
 
+    const offboardingMember = await this.membersService.findById(id);
+
     await this.membersService.softDeleteMember(id);
+
+    await this.membersService.notifyOffBoarding(offboardingMember, data);
 
     return { message: 'Offboarding process completed successfully' };
   }
