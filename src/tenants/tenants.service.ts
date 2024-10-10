@@ -12,18 +12,25 @@ import { UserJWT } from 'src/auth/interfaces/auth.interface';
 @Injectable()
 export class TenantsService {
   private slackMerchWebhook: IncomingWebhook;
+  private slackShopWebhook: IncomingWebhook;
   constructor(
     @InjectModel(Tenant.name)
     private tenantRepository: Model<Tenant>,
     @InjectSlack() private readonly slack: IncomingWebhook,
   ) {
     const slackMerchWebhookUrl = process.env.SLACK_WEBHOOK_URL_MERCH;
+    const slackShopWebhookUrl = process.env.SLACK_WEBHOOK_URL_SHOP;
 
     if (!slackMerchWebhookUrl) {
       throw new Error('SLACK_WEBHOOK_URL_MERCH is not defined');
     }
 
+    if (!slackShopWebhookUrl) {
+      throw new Error('SLACK_WEBHOOK_URL_SHOP is not defined');
+    }
+
     this.slackMerchWebhook = new IncomingWebhook(slackMerchWebhookUrl);
+    this.slackShopWebhook = new IncomingWebhook(slackShopWebhookUrl);
   }
 
   async notifyBirthdayGiftInterest(email: string, tenantName: string) {
@@ -33,6 +40,22 @@ export class TenantsService {
       await this.slackMerchWebhook.send({
         text: message,
         channel: '#merch-cumples',
+      });
+
+      return { message: 'Notification sent to Slack' };
+    } catch (error) {
+      console.error('Error sending notification to Slack:', error);
+      throw new Error('Failed to send notification to Slack');
+    }
+  }
+
+  async notifyShopInterest(email: string, tenantName: string) {
+    const message = `Cliente ${email}-${tenantName} está interesado en nuestro shop/productos.`;
+
+    try {
+      await this.slackShopWebhook.send({
+        text: message,
+        channel: 'shop',
       });
 
       return { message: 'Notification sent to Slack' };
