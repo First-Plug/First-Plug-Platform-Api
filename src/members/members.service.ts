@@ -105,35 +105,19 @@ export class MembersService {
   async notifyOffBoarding(member: any, products: any) {
     const memberOffboardingMessage = {
       type: 'section',
-      fields: [
-        {
-          type: 'mrkdwn',
-          text: `*Nombre y apellido*\n${member.firstName} ${member.lastName}`,
-        },
-        {
-          type: 'mrkdwn',
-          text: `*DNI/CI*\n${member.dni}`,
-        },
-        {
-          type: 'mrkdwn',
-          text: `*Dirección*\n${member.city}, ${member.country}, ${member.address}, ${member.apartment}`,
-        },
-        {
-          type: 'mrkdwn',
-          text: `*Codigo Postal*\n${member.zipCode}`,
-        },
-        {
-          type: 'mrkdwn',
-          text: `*Teléfono*\n+${member.phone}`,
-        },
-        {
-          type: 'mrkdwn',
-          text: `*Personal mail*\n${member.personalEmail}`,
-        },
-      ],
+      text: {
+        type: 'mrkdwn',
+        text:
+          `*Nombre y apellido*: ${member.firstName} ${member.lastName}\n` +
+          `*DNI/CI*: ${member.dni}\n` +
+          `*Dirección*: ${member.city}, ${member.country}, ${member.address}, ${member.apartment}\n` +
+          `*Código Postal*: ${member.zipCode}\n` +
+          `*Teléfono*: +${member.phone}\n` +
+          `*Correo Personal*: ${member.personalEmail}`,
+      },
     };
 
-    const productsSend = products.map((product, index) => {
+    const productsSend = products.flatMap((product, index) => {
       const productRecoverable = product.product;
 
       const brandAttribute = productRecoverable.attributes.find(
@@ -152,62 +136,48 @@ export class MembersService {
         ? productRecoverable.serialNumber
         : 'Desconocido';
 
+      let relocationAction = '';
+      let newMemberInfo = '';
+
       switch (product.relocation) {
         case 'FP warehouse':
-          return {
-            type: 'section',
-            fields: [
-              {
-                type: 'mrkdwn',
-                text: `*Producto ${index + 1}*\n Marca: ${brand}\n Modelo: ${model}\n Nombre: ${name}\n Serial: ${serialNumber}\n Acción: enviar a FP Warehouse`,
-              },
-            ],
-          };
+          relocationAction = 'enviar a FP Warehouse';
+          break;
         case 'My office':
-          return {
-            type: 'section',
-            fields: [
-              {
-                type: 'mrkdwn',
-                text: `*Producto ${index + 1}*\n Marca: ${brand}\n Modelo: ${model}\n Nombre: ${name}\n Serial: ${serialNumber}\n Acción: enviar a oficina del cliente`,
-              },
-            ],
-          };
+          relocationAction = 'enviar a oficina del cliente';
+          break;
         case 'New employee':
-          return {
-            type: 'section',
-            fields: [
-              {
-                type: 'mrkdwn',
-                text: `*Producto ${index + 1}*\nMarca: ${brand}\nModelo: ${model}\nNombre: ${name}\nSerial: ${serialNumber}\nAcción: enviar a member\n\n`,
-              },
-              {
-                type: 'mrkdwn',
-                text: `*Nombre y apellido*\n${member.firstName} ${member.lastName}`,
-              },
-              {
-                type: 'mrkdwn',
-                text: `*DNI/CI*\n${member.dni ?? 'Desconocido'}`,
-              },
-              {
-                type: 'mrkdwn',
-                text: `*Dirección*\n${member.city}, ${member.country}, ${member.address}, ${member.apartment}`,
-              },
-              {
-                type: 'mrkdwn',
-                text: `*Codigo Postal*\n${member.zipCode}`,
-              },
-              {
-                type: 'mrkdwn',
-                text: `*Teléfono*\n+${member.phone}`,
-              },
-              {
-                type: 'mrkdwn',
-                text: `*Personal mail*\n${member.personalEmail}`,
-              },
-            ],
-          };
+          relocationAction = 'enviar a nuevo miembro\n';
+          newMemberInfo =
+            `\n*Nombre y apellido*: ${member.firstName} ${member.lastName}\n` +
+            `*DNI/CI*: ${member.dni ?? 'Desconocido'}\n` +
+            `*Dirección*: ${member.city}, ${member.country}, ${member.address}, ${member.apartment}\n` +
+            `*Código Postal*: ${member.zipCode}\n` +
+            `*Teléfono*: +${member.phone}\n` +
+            `*Correo Personal*: ${member.personalEmail}`;
+          break;
       }
+
+      // Devuelve el bloque del producto seguido de un divider
+      return [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text:
+              `*Producto ${index + 1}*: \n` +
+              `Marca: ${brand}\n` +
+              `Modelo: ${model}\n` +
+              `Nombre: ${name}\n` +
+              `Serial: ${serialNumber}\n` +
+              `Acción: ${relocationAction}` +
+              newMemberInfo,
+          },
+        },
+        {
+          type: 'divider', // Añade una línea separadora
+        },
+      ];
     });
 
     try {
@@ -222,7 +192,7 @@ export class MembersService {
             },
           },
           memberOffboardingMessage,
-          ...productsSend,
+          ...productsSend.slice(0, -1), // Remueve el último 'divider' para que no esté al final
         ],
       });
 
