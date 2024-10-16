@@ -797,11 +797,6 @@ export class ProductsService {
             ? updateProductDto.recoverable
             : recoverableConfig.get(product.category) || false;
 
-        const filteredUpdateDto = { ...updateProductDto };
-        if (filteredUpdateDto.serialNumber === '') {
-          delete filteredUpdateDto.serialNumber;
-        }
-
         // Caso en que el producto tiene un assignedEmail desconocido y se deben actualizar los atributos
         if (
           product.assignedEmail &&
