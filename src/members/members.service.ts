@@ -149,16 +149,15 @@ export class MembersService {
         case 'New employee':
           relocationAction = 'enviar a nuevo miembro\n';
           newMemberInfo =
-            `\n*Nombre y apellido*: ${member.firstName} ${member.lastName}\n` +
-            `*DNI/CI*: ${member.dni ?? 'Desconocido'}\n` +
-            `*Dirección*: ${member.city}, ${member.country}, ${member.address}, ${member.apartment}\n` +
-            `*Código Postal*: ${member.zipCode}\n` +
-            `*Teléfono*: +${member.phone}\n` +
-            `*Correo Personal*: ${member.personalEmail}`;
+            `\n*Nombre y apellido*: ${product.newMember.firstName} ${product.newMember.lastName}\n` +
+            `*DNI/CI*: ${product.newMember.dni ?? 'Desconocido'}\n` +
+            `*Dirección*: ${product.newMember.country}, ${product.newMember.city}, ${product.newMember.address}, ${product.newMember.apartment}\n` +
+            `*Código Postal*: ${product.newMember.zipCode}\n` +
+            `*Teléfono*: +${product.newMember.phone}\n` +
+            `*Correo Personal*: ${product.newMember.personalEmail}`;
           break;
       }
 
-      // Devuelve el bloque del producto seguido de un divider
       return [
         {
           type: 'section',
