@@ -151,7 +151,7 @@ export class MembersService {
           newMemberInfo =
             `\n*Nombre y apellido*: ${product.newMember.firstName} ${product.newMember.lastName}\n` +
             `*DNI/CI*: ${product.newMember.dni ?? 'Desconocido'}\n` +
-            `*Dirección*: ${product.newMember.country}, ${product.newMember.city}, ${product.newMember.address}, ${product.newMember.apartment ?? ""} \n` +
+            `*Dirección*: ${product.newMember.country}, ${product.newMember.city}, ${product.newMember.address}, ${product.newMember.apartment ?? ""}\n` +
             `*Código Postal*: ${product.newMember.zipCode}\n` +
             `*Teléfono*: +${product.newMember.phone}\n` +
             `*Correo Personal*: ${product.newMember.personalEmail}`;
