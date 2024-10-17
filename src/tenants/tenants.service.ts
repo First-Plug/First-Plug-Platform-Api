@@ -13,6 +13,7 @@ import { UserJWT } from 'src/auth/interfaces/auth.interface';
 export class TenantsService {
   private slackMerchWebhook: IncomingWebhook;
   private slackShopWebhook: IncomingWebhook;
+  private slackComputerUpgradeWebhook: IncomingWebhook;
   constructor(
     @InjectModel(Tenant.name)
     private tenantRepository: Model<Tenant>,
@@ -20,6 +21,8 @@ export class TenantsService {
   ) {
     const slackMerchWebhookUrl = process.env.SLACK_WEBHOOK_URL_MERCH;
     const slackShopWebhookUrl = process.env.SLACK_WEBHOOK_URL_SHOP;
+    const slackComputerUpgradeWebhook =
+      process.env.SLACK_WEBHOOK_URL_COMPUTER_UPGRADE;
 
     if (!slackMerchWebhookUrl) {
       throw new Error('SLACK_WEBHOOK_URL_MERCH is not defined');
@@ -29,8 +32,63 @@ export class TenantsService {
       throw new Error('SLACK_WEBHOOK_URL_SHOP is not defined');
     }
 
+    if (!slackComputerUpgradeWebhook) {
+      throw new Error('SLACK_WEBHOOK_URL_COMPUTER_UPGRADE is not defined');
+    }
+
     this.slackMerchWebhook = new IncomingWebhook(slackMerchWebhookUrl);
     this.slackShopWebhook = new IncomingWebhook(slackShopWebhookUrl);
+    this.slackComputerUpgradeWebhook = new IncomingWebhook(
+      slackComputerUpgradeWebhook,
+    );
+  }
+
+  async notifyComputerUpgrade(data: {
+    email: string;
+    tenantName: string;
+    category: string;
+    brand: string;
+    model: string;
+    serialNumber: string;
+    acquisitionDate: string;
+    status: string;
+    location: string;
+  }) {
+    const {
+      email,
+      tenantName,
+      category,
+      brand,
+      model,
+      serialNumber,
+      acquisitionDate,
+      status,
+      location,
+    } = data;
+
+    const message = {
+      text: `El cliente *${tenantName}* (*${email}*) quiere hacer un upgrade.`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Cliente:* *${tenantName}* (*${email}*)\n*Producto:* *${category}* *${brand}* *${model}*\n*Serial:* *${serialNumber}*\n*Fecha de adquisición:* *${acquisitionDate}*\n*Estado:* *${status}*\n*Ubicación:* *${location}*`,
+          },
+        },
+        {
+          type: 'divider',
+        },
+      ],
+    };
+    try {
+      await this.slackComputerUpgradeWebhook.send(message);
+
+      return { message: 'Notification sent to Slack' };
+    } catch (error) {
+      console.error('Error sending notification to Slack:', error);
+      throw new Error('Failed to send notification to Slack');
+    }
   }
 
   async notifyBirthdayGiftInterest(email: string, tenantName: string) {
