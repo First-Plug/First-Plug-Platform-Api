@@ -66,21 +66,13 @@ export class TenantsService {
       location,
     } = data;
 
-    const message = {
-      text: `El cliente *${tenantName}* (*${email}*) quiere hacer un upgrade.`,
-      blocks: [
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*Cliente:* *${tenantName}* (*${email}*)\n*Producto:* *${category}* *${brand}* *${model}*\n*Serial:* *${serialNumber}*\n*Fecha de adquisición:* *${acquisitionDate}*\n*Estado:* *${status}*\n*Ubicación:* *${location}*`,
-          },
-        },
-        {
-          type: 'divider',
-        },
-      ],
-    };
+    const message =
+      `*Cliente:* *${tenantName}* (*${email}*)\n` +
+      `*Producto:* *${category}* *${brand}* *${model}*\n` +
+      `*Serial:* *${serialNumber}*\n` +
+      `*Fecha de adquisición:* *${parseFloat(acquisitionDate).toFixed(1)} years*\n` +
+      `*Estado:* *${status}*\n` +
+      `*Ubicación:* *${location}*`;
     try {
       await this.slackComputerUpgradeWebhook.send(message);
 
