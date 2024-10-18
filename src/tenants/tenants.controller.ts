@@ -48,6 +48,31 @@ export class TenantsController {
     return this.tenantService.notifyShopInterest(email, tenantName);
   }
 
+  @Post('notify-computer-upgrade')
+  async notifyComputerUpgrade(
+    @Body('email') email: string,
+    @Body('tenantName') tenantName: string,
+    @Body('category') category: string,
+    @Body('brand') brand: string,
+    @Body('model') model: string,
+    @Body('serialNumber') serialNumber: string,
+    @Body('acquisitionDate') acquisitionDate: string,
+    @Body('status') status: string,
+    @Body('location') location: string,
+  ) {
+    return this.tenantService.notifyComputerUpgrade({
+      email,
+      tenantName,
+      category,
+      brand,
+      model,
+      serialNumber,
+      acquisitionDate,
+      status,
+      location,
+    });
+  }
+
   @Patch()
   async update(
     @Req() request: Request,
