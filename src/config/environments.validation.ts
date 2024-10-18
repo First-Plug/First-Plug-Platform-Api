@@ -9,5 +9,6 @@ export const ZodEnvironmentsSchema = z.object({
   SLACK_WEBHOOK_URL_MERCH: z.string().min(1),
   SLACK_WEBHOOK_URL_SHOP: z.string().min(1),
   SLACK_WEBHOOK_URL_OFFBOARDING: z.string().min(1),
+  SLACK_WEBHOOK_URL_COMPUTER_UPGRADE: z.string().min(1),
   FRONTEND_URL: z.string().min(1),
 });
