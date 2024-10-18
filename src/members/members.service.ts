@@ -110,7 +110,7 @@ export class MembersService {
         text:
           `*Nombre y apellido*: ${member.firstName} ${member.lastName}\n` +
           `*DNI/CI*: ${member.dni}\n` +
-          `*Dirección*: ${member.city}, ${member.country}, ${member.address}, ${member.apartment ?? ""}\n` +
+          `*Dirección*: ${member.country}, ${member.city}, ${member.address}, ${member.apartment ?? ""}\n` +
           `*Código Postal*: ${member.zipCode}\n` +
           `*Teléfono*: +${member.phone}\n` +
           `*Correo Personal*: ${member.personalEmail}`,
