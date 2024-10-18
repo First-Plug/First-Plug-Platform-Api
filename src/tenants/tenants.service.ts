@@ -53,6 +53,7 @@ export class TenantsService {
     acquisitionDate: string;
     status: string;
     location: string;
+    assignedMember?: string;
   }) {
     const {
       email,
@@ -64,7 +65,13 @@ export class TenantsService {
       acquisitionDate,
       status,
       location,
+      assignedMember,
     } = data;
+
+    const locationMessage =
+      location === 'Employee' && assignedMember
+        ? `*Assigned to:* *${assignedMember}*`
+        : `*Ubicación:* *${location}*`;
 
     const message =
       `*Cliente:* *${tenantName}* (*${email}*)\n` +
@@ -72,7 +79,7 @@ export class TenantsService {
       `*Serial:* *${serialNumber}*\n` +
       `*Fecha de adquisición:* *${parseFloat(acquisitionDate).toFixed(1)} years*\n` +
       `*Estado:* *${status}*\n` +
-      `*Ubicación:* *${location}*`;
+      `${locationMessage}`;
     try {
       await this.slackComputerUpgradeWebhook.send(message);
 
