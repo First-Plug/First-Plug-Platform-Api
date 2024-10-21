@@ -13,6 +13,7 @@ import { UserJWT } from 'src/auth/interfaces/auth.interface';
 export class TenantsService {
   private slackMerchWebhook: IncomingWebhook;
   private slackShopWebhook: IncomingWebhook;
+  private slackComputerUpgradeWebhook: IncomingWebhook;
   constructor(
     @InjectModel(Tenant.name)
     private tenantRepository: Model<Tenant>,
@@ -20,6 +21,8 @@ export class TenantsService {
   ) {
     const slackMerchWebhookUrl = process.env.SLACK_WEBHOOK_URL_MERCH;
     const slackShopWebhookUrl = process.env.SLACK_WEBHOOK_URL_SHOP;
+    const slackComputerUpgradeWebhook =
+      process.env.SLACK_WEBHOOK_URL_COMPUTER_UPGRADE;
 
     if (!slackMerchWebhookUrl) {
       throw new Error('SLACK_WEBHOOK_URL_MERCH is not defined');
@@ -29,8 +32,62 @@ export class TenantsService {
       throw new Error('SLACK_WEBHOOK_URL_SHOP is not defined');
     }
 
+    if (!slackComputerUpgradeWebhook) {
+      throw new Error('SLACK_WEBHOOK_URL_COMPUTER_UPGRADE is not defined');
+    }
+
     this.slackMerchWebhook = new IncomingWebhook(slackMerchWebhookUrl);
     this.slackShopWebhook = new IncomingWebhook(slackShopWebhookUrl);
+    this.slackComputerUpgradeWebhook = new IncomingWebhook(
+      slackComputerUpgradeWebhook,
+    );
+  }
+
+  async notifyComputerUpgrade(data: {
+    email: string;
+    tenantName: string;
+    category: string;
+    brand: string;
+    model: string;
+    serialNumber: string;
+    acquisitionDate: string;
+    status: string;
+    location: string;
+    assignedMember?: string;
+  }) {
+    const {
+      email,
+      tenantName,
+      category,
+      brand,
+      model,
+      serialNumber,
+      acquisitionDate,
+      status,
+      location,
+      assignedMember,
+    } = data;
+
+    const locationMessage =
+      location === 'Employee' && assignedMember
+        ? `*Assigned to:* *${assignedMember}*`
+        : `*Ubicación:* *${location}*`;
+
+    const message =
+      `*Cliente:* *${tenantName}* (*${email}*)\n` +
+      `*Producto:* *${category}* *${brand}* *${model}*\n` +
+      `*Serial:* *${serialNumber}*\n` +
+      `*Fecha de adquisición:* *${parseFloat(acquisitionDate).toFixed(1)} years*\n` +
+      `*Estado:* *${status}*\n` +
+      `${locationMessage}`;
+    try {
+      await this.slackComputerUpgradeWebhook.send(message);
+
+      return { message: 'Notification sent to Slack' };
+    } catch (error) {
+      console.error('Error sending notification to Slack:', error);
+      throw new Error('Failed to send notification to Slack');
+    }
   }
 
   async notifyBirthdayGiftInterest(email: string, tenantName: string) {
@@ -101,6 +158,31 @@ export class TenantsService {
     }
   }
 
+  async migrateComputerExpiration(tenantName: string) {
+    const tenants = await this.tenantRepository.find({ tenantName });
+
+    if (!tenants || tenants.length === 0) {
+      throw new Error(
+        `No se encontró ningún tenant con el tenantName ${tenantName}`,
+      );
+    }
+
+    const updated = await this.tenantRepository.updateMany(
+      { tenantName },
+      { $set: { computerExpiration: 3 } },
+    );
+
+    if (updated.modifiedCount > 0) {
+      console.log(
+        `Se actualizó la propiedad computerExpiration para ${updated.modifiedCount} usuarios con tenantName: ${tenantName}`,
+      );
+    } else {
+      console.log(
+        `No se realizaron cambios en la propiedad computerExpiration para tenantName: ${tenantName}`,
+      );
+    }
+  }
+
   async getRecoverableConfig(tenantName: string) {
     const tenant = await this.tenantRepository.findOne({ tenantName });
 
@@ -110,7 +192,10 @@ export class TenantsService {
       );
     }
 
-    return tenant.isRecoverableConfig;
+    return {
+      isRecoverableConfig: tenant.isRecoverableConfig,
+      computerExpiration: tenant.computerExpiration,
+    };
   }
 
   async updateRecoverableConfig(
@@ -122,6 +207,19 @@ export class TenantsService {
     const updated = await this.tenantRepository.updateMany(
       { tenantName },
       { $set: { isRecoverableConfig: configMap } },
+    );
+
+    if (updated.modifiedCount === 0) {
+      throw new Error(
+        `No se encontró ningún tenant con el tenantName ${tenantName}`,
+      );
+    }
+  }
+
+  async updateComputerExpiration(tenantName: string, expirationYears: number) {
+    const updated = await this.tenantRepository.updateMany(
+      { tenantName },
+      { $set: { computerExpiration: expirationYears } },
     );
 
     if (updated.modifiedCount === 0) {

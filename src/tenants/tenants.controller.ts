@@ -48,6 +48,31 @@ export class TenantsController {
     return this.tenantService.notifyShopInterest(email, tenantName);
   }
 
+  @Post('notify-computer-upgrade')
+  async notifyComputerUpgrade(
+    @Body('email') email: string,
+    @Body('tenantName') tenantName: string,
+    @Body('category') category: string,
+    @Body('brand') brand: string,
+    @Body('model') model: string,
+    @Body('serialNumber') serialNumber: string,
+    @Body('acquisitionDate') acquisitionDate: string,
+    @Body('status') status: string,
+    @Body('location') location: string,
+  ) {
+    return this.tenantService.notifyComputerUpgrade({
+      email,
+      tenantName,
+      category,
+      brand,
+      model,
+      serialNumber,
+      acquisitionDate,
+      status,
+      location,
+    });
+  }
+
   @Patch()
   async update(
     @Req() request: Request,
@@ -70,6 +95,28 @@ export class TenantsController {
     );
     return {
       message: `Configuración de isRecoverable actualizada para tenant: ${tenantName}`,
+    };
+  }
+
+  @Patch('migrate-expiration/:tenantName')
+  async migrateExpiration(@Param('tenantName') tenantName: string) {
+    await this.tenantService.migrateComputerExpiration(tenantName);
+    return {
+      message: `Migración de computerExpiration completada para tenantName: ${tenantName}`,
+    };
+  }
+
+  @Patch('update-computer-expiration/:tenantName')
+  async updateComputerExpiration(
+    @Param('tenantName') tenantName: string,
+    @Body('computerExpiration') computerExpiration: number,
+  ) {
+    await this.tenantService.updateComputerExpiration(
+      tenantName,
+      computerExpiration,
+    );
+    return {
+      message: `Configuración de computerExpiration actualizada para tenant: ${tenantName}`,
     };
   }
 }
