@@ -97,4 +97,26 @@ export class TenantsController {
       message: `Configuración de isRecoverable actualizada para tenant: ${tenantName}`,
     };
   }
+
+  @Patch('migrate-expiration/:tenantName')
+  async migrateExpiration(@Param('tenantName') tenantName: string) {
+    await this.tenantService.migrateComputerExpiration(tenantName);
+    return {
+      message: `Migración de computerExpiration completada para tenantName: ${tenantName}`,
+    };
+  }
+
+  @Patch('update-computer-expiration/:tenantName')
+  async updateComputerExpiration(
+    @Param('tenantName') tenantName: string,
+    @Body('computerExpiration') computerExpiration: number,
+  ) {
+    await this.tenantService.updateComputerExpiration(
+      tenantName,
+      computerExpiration,
+    );
+    return {
+      message: `Configuración de computerExpiration actualizada para tenant: ${tenantName}`,
+    };
+  }
 }
