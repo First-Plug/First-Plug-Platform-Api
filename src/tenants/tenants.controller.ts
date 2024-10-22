@@ -98,6 +98,7 @@ export class TenantsController {
     };
   }
 
+  
   @Patch('migrate-expiration/:tenantName')
   async migrateExpiration(@Param('tenantName') tenantName: string) {
     await this.tenantService.migrateComputerExpiration(tenantName);

@@ -83,11 +83,11 @@ export class AuthService {
     if (otherUsers.length > 0) {
       const otherUser = otherUsers[0];
 
+      // || otherUser.computerExpiration !== user.computerExpiration
       if (
         JSON.stringify(otherUser.isRecoverableConfig) !==
           JSON.stringify(user.isRecoverableConfig) ||
-        otherUser.address !== user.address ||
-        otherUser.computerExpiration !== user.computerExpiration
+        otherUser.address !== user.address
       ) {
         await this.tenantService.updateUserConfig(user._id, {
           isRecoverableConfig: otherUser.isRecoverableConfig,
@@ -98,7 +98,7 @@ export class AuthService {
           zipCode: otherUser.zipCode,
           address: otherUser.address,
           apartment: otherUser.apartment,
-          computerExpiration: otherUser.computerExpiration,
+          // computerExpiration: otherUser.computerExpiration,
         });
       }
     }

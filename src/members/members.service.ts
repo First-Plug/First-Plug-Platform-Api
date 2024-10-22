@@ -110,7 +110,7 @@ export class MembersService {
         text:
           `*Nombre y apellido*: ${member.firstName} ${member.lastName}\n` +
           `*DNI/CI*: ${member.dni}\n` +
-          `*Dirección*: ${member.city}, ${member.country}, ${member.address}, ${member.apartment}\n` +
+          `*Dirección*: ${member.country}, ${member.city}, ${member.address}, ${member.apartment ?? ""}\n` +
           `*Código Postal*: ${member.zipCode}\n` +
           `*Teléfono*: +${member.phone}\n` +
           `*Correo Personal*: ${member.personalEmail}`,
@@ -127,14 +127,16 @@ export class MembersService {
         (attribute) => attribute.key === 'model',
       );
 
-      const brand = brandAttribute ? brandAttribute.value : 'Desconocido';
-      const model = modelAttribute ? modelAttribute.value : 'Desconocido';
+      const brand = brandAttribute ? brandAttribute.value : '';
+      const model = modelAttribute ? modelAttribute.value : '';
       const name = productRecoverable.name
         ? productRecoverable.name
-        : 'Desconocido';
+        : '';
       const serialNumber = productRecoverable.serialNumber
         ? productRecoverable.serialNumber
-        : 'Desconocido';
+        : '';
+
+      const category = productRecoverable.category
 
       let relocationAction = '';
       let newMemberInfo = '';
@@ -149,16 +151,15 @@ export class MembersService {
         case 'New employee':
           relocationAction = 'enviar a nuevo miembro\n';
           newMemberInfo =
-            `\n*Nombre y apellido*: ${member.firstName} ${member.lastName}\n` +
-            `*DNI/CI*: ${member.dni ?? 'Desconocido'}\n` +
-            `*Dirección*: ${member.city}, ${member.country}, ${member.address}, ${member.apartment}\n` +
-            `*Código Postal*: ${member.zipCode}\n` +
-            `*Teléfono*: +${member.phone}\n` +
-            `*Correo Personal*: ${member.personalEmail}`;
+            `\n*Nombre y apellido*: ${product.newMember.firstName} ${product.newMember.lastName}\n` +
+            `*DNI/CI*: ${product.newMember.dni ?? ''}\n` +
+            `*Dirección*: ${product.newMember.country}, ${product.newMember.city}, ${product.newMember.address}, ${product.newMember.apartment ?? ""}\n` +
+            `*Código Postal*: ${product.newMember.zipCode}\n` +
+            `*Teléfono*: +${product.newMember.phone}\n` +
+            `*Correo Personal*: ${product.newMember.personalEmail}`;
           break;
       }
 
-      // Devuelve el bloque del producto seguido de un divider
       return [
         {
           type: 'section',
@@ -166,6 +167,7 @@ export class MembersService {
             type: 'mrkdwn',
             text:
               `*Producto ${index + 1}*: \n` +
+              `Categoría: ${category}\n` +
               `Marca: ${brand}\n` +
               `Modelo: ${model}\n` +
               `Nombre: ${name}\n` +
@@ -175,7 +177,7 @@ export class MembersService {
           },
         },
         {
-          type: 'divider', // Añade una línea separadora
+          type: 'divider', 
         },
       ];
     });
@@ -192,7 +194,10 @@ export class MembersService {
             },
           },
           memberOffboardingMessage,
-          ...productsSend.slice(0, -1), // Remueve el último 'divider' para que no esté al final
+          {
+            type: 'divider', 
+          },
+          ...productsSend.slice(0, -1),
         ],
       });
 
