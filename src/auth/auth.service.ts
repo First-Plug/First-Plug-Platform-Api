@@ -98,7 +98,7 @@ export class AuthService {
           zipCode: otherUser.zipCode,
           address: otherUser.address,
           apartment: otherUser.apartment,
-          // computerExpiration: otherUser.computerExpiration,
+          computerExpiration: otherUser.computerExpiration,
         });
       }
     }
