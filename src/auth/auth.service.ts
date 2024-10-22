@@ -83,6 +83,7 @@ export class AuthService {
     if (otherUsers.length > 0) {
       const otherUser = otherUsers[0];
 
+      // || otherUser.computerExpiration !== user.computerExpiration
       if (
         JSON.stringify(otherUser.isRecoverableConfig) !==
           JSON.stringify(user.isRecoverableConfig) ||
@@ -97,6 +98,7 @@ export class AuthService {
           zipCode: otherUser.zipCode,
           address: otherUser.address,
           apartment: otherUser.apartment,
+          // computerExpiration: otherUser.computerExpiration,
         });
       }
     }

@@ -12,18 +12,82 @@ import { UserJWT } from 'src/auth/interfaces/auth.interface';
 @Injectable()
 export class TenantsService {
   private slackMerchWebhook: IncomingWebhook;
+  private slackShopWebhook: IncomingWebhook;
+  private slackComputerUpgradeWebhook: IncomingWebhook;
   constructor(
     @InjectModel(Tenant.name)
     private tenantRepository: Model<Tenant>,
     @InjectSlack() private readonly slack: IncomingWebhook,
   ) {
     const slackMerchWebhookUrl = process.env.SLACK_WEBHOOK_URL_MERCH;
+    const slackShopWebhookUrl = process.env.SLACK_WEBHOOK_URL_SHOP;
+    const slackComputerUpgradeWebhook =
+      process.env.SLACK_WEBHOOK_URL_COMPUTER_UPGRADE;
 
     if (!slackMerchWebhookUrl) {
       throw new Error('SLACK_WEBHOOK_URL_MERCH is not defined');
     }
 
+    if (!slackShopWebhookUrl) {
+      throw new Error('SLACK_WEBHOOK_URL_SHOP is not defined');
+    }
+
+    if (!slackComputerUpgradeWebhook) {
+      throw new Error('SLACK_WEBHOOK_URL_COMPUTER_UPGRADE is not defined');
+    }
+
     this.slackMerchWebhook = new IncomingWebhook(slackMerchWebhookUrl);
+    this.slackShopWebhook = new IncomingWebhook(slackShopWebhookUrl);
+    this.slackComputerUpgradeWebhook = new IncomingWebhook(
+      slackComputerUpgradeWebhook,
+    );
+  }
+
+  async notifyComputerUpgrade(data: {
+    email: string;
+    tenantName: string;
+    category: string;
+    brand: string;
+    model: string;
+    serialNumber: string;
+    acquisitionDate: string;
+    status: string;
+    location: string;
+    assignedMember?: string;
+  }) {
+    const {
+      email,
+      tenantName,
+      category,
+      brand,
+      model,
+      serialNumber,
+      acquisitionDate,
+      status,
+      location,
+      assignedMember,
+    } = data;
+
+    const locationMessage =
+      location === 'Employee' && assignedMember
+        ? `*Assigned to:* *${assignedMember}*`
+        : `*Ubicación:* *${location}*`;
+
+    const message =
+      `*Cliente:* *${tenantName}* (*${email}*)\n` +
+      `*Producto:* *${category}* *${brand}* *${model}*\n` +
+      `*Serial:* *${serialNumber}*\n` +
+      `*Fecha de adquisición:* *${parseFloat(acquisitionDate).toFixed(1)} years*\n` +
+      `*Estado:* *${status}*\n` +
+      `${locationMessage}`;
+    try {
+      await this.slackComputerUpgradeWebhook.send(message);
+
+      return { message: 'Notification sent to Slack' };
+    } catch (error) {
+      console.error('Error sending notification to Slack:', error);
+      throw new Error('Failed to send notification to Slack');
+    }
   }
 
   async notifyBirthdayGiftInterest(email: string, tenantName: string) {
@@ -33,6 +97,22 @@ export class TenantsService {
       await this.slackMerchWebhook.send({
         text: message,
         channel: '#merch-cumples',
+      });
+
+      return { message: 'Notification sent to Slack' };
+    } catch (error) {
+      console.error('Error sending notification to Slack:', error);
+      throw new Error('Failed to send notification to Slack');
+    }
+  }
+
+  async notifyShopInterest(email: string, tenantName: string) {
+    const message = `Cliente ${email}-${tenantName} está interesado en nuestro shop/productos.`;
+
+    try {
+      await this.slackShopWebhook.send({
+        text: message,
+        channel: 'shop',
       });
 
       return { message: 'Notification sent to Slack' };
@@ -78,6 +158,54 @@ export class TenantsService {
     }
   }
 
+  async migrateComputerExpiration(tenantName: string) {
+    const tenants = await this.tenantRepository.find({ tenantName });
+
+    if (!tenants || tenants.length === 0) {
+      throw new Error(
+        `No se encontró ningún tenant con el tenantName ${tenantName}`,
+      );
+    }
+
+    const updated = await this.tenantRepository.updateMany(
+      { tenantName },
+      { $set: { computerExpiration: 3 } },
+    );
+
+    if (updated.modifiedCount > 0) {
+      console.log(
+        `Se actualizó la propiedad computerExpiration para ${updated.modifiedCount} usuarios con tenantName: ${tenantName}`,
+      );
+    } else {
+      console.log(
+        `No se realizaron cambios en la propiedad computerExpiration para tenantName: ${tenantName}`,
+      );
+    }
+  }
+
+  async migrateAllComputerExpirations() {
+    const tenants = await this.tenantRepository.find({});
+
+    if (!tenants || tenants.length === 0) {
+      throw new Error('No se encontraron tenants en la base de datos');
+    }
+
+    const updated = await this.tenantRepository.updateMany(
+      {},
+      { $set: { computerExpiration: 3 } },
+    );
+
+    if (updated.modifiedCount > 0) {
+      console.log(
+        `Se actualizó la propiedad computerExpiration para ${updated.modifiedCount} tenants.`,
+      );
+    } else {
+      console.log(
+        `No se realizaron cambios en la propiedad computerExpiration.`,
+      );
+    }
+  }
+
   async getRecoverableConfig(tenantName: string) {
     const tenant = await this.tenantRepository.findOne({ tenantName });
 
@@ -87,7 +215,12 @@ export class TenantsService {
       );
     }
 
-    return tenant.isRecoverableConfig;
+    return {
+      isRecoverableConfig: tenant.isRecoverableConfig,
+      computerExpiration: tenant.computerExpiration,
+    };
+
+    // return tenant.isRecoverableConfig;
   }
 
   async updateRecoverableConfig(
@@ -99,6 +232,19 @@ export class TenantsService {
     const updated = await this.tenantRepository.updateMany(
       { tenantName },
       { $set: { isRecoverableConfig: configMap } },
+    );
+
+    if (updated.modifiedCount === 0) {
+      throw new Error(
+        `No se encontró ningún tenant con el tenantName ${tenantName}`,
+      );
+    }
+  }
+
+  async updateComputerExpiration(tenantName: string, expirationYears: number) {
+    const updated = await this.tenantRepository.updateMany(
+      { tenantName },
+      { $set: { computerExpiration: expirationYears } },
     );
 
     if (updated.modifiedCount === 0) {
@@ -167,6 +313,7 @@ export class TenantsService {
       email: user?.email,
       accountProvider: user?.accountProvider,
       isRecoverableConfig: user?.isRecoverableConfig,
+      computerExpiration: user?.computerExpiration,
     };
   }
 

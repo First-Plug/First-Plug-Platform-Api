@@ -16,6 +16,8 @@ import { Team } from 'src/teams/schemas/team.schema';
 import { ProductModel } from 'src/products/products.service';
 import { InjectConnection } from '@nestjs/mongoose';
 import { TeamsService } from 'src/teams/teams.service';
+import { InjectSlack } from 'nestjs-slack-webhook';
+import { IncomingWebhook } from '@slack/webhook';
 
 export interface MemberModel
   extends Model<MemberDocument>,
@@ -23,6 +25,7 @@ export interface MemberModel
 
 @Injectable()
 export class MembersService {
+  private slackOffboardingWebhook: IncomingWebhook;
   private readonly logger = new Logger(MembersService.name);
   constructor(
     @Inject('MEMBER_MODEL') private memberRepository: MemberModel,
@@ -30,7 +33,19 @@ export class MembersService {
     @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
     @InjectConnection() private readonly connection: Connection,
     private readonly teamsService: TeamsService,
-  ) {}
+    @InjectSlack() private readonly slack: IncomingWebhook,
+  ) {
+    const slackOffboardingWebhookUrl =
+      process.env.SLACK_WEBHOOK_URL_OFFBOARDING;
+
+    if (!slackOffboardingWebhookUrl) {
+      throw new Error('SLACK_WEBHOOK_URL_OFFBOARDING is not defined');
+    }
+
+    this.slackOffboardingWebhook = new IncomingWebhook(
+      slackOffboardingWebhookUrl,
+    );
+  }
 
   // already run this methods to create a new property in all existing members.
   // I´ll leave it here for future reference or future new properties
@@ -86,6 +101,112 @@ export class MembersService {
   //     this.logger.error('Failed to update member DNI for all tenants', error);
   //   }
   // }
+
+  async notifyOffBoarding(member: any, products: any) {
+    const memberOffboardingMessage = {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text:
+          `*Nombre y apellido*: ${member.firstName} ${member.lastName}\n` +
+          `*DNI/CI*: ${member.dni}\n` +
+          `*Dirección*: ${member.country}, ${member.city}, ${member.address}, ${member.apartment ?? ""}\n` +
+          `*Código Postal*: ${member.zipCode}\n` +
+          `*Teléfono*: +${member.phone}\n` +
+          `*Correo Personal*: ${member.personalEmail}`,
+      },
+    };
+
+    const productsSend = products.flatMap((product, index) => {
+      const productRecoverable = product.product;
+
+      const brandAttribute = productRecoverable.attributes.find(
+        (attribute) => attribute.key === 'brand',
+      );
+      const modelAttribute = productRecoverable.attributes.find(
+        (attribute) => attribute.key === 'model',
+      );
+
+      const brand = brandAttribute ? brandAttribute.value : '';
+      const model = modelAttribute ? modelAttribute.value : '';
+      const name = productRecoverable.name
+        ? productRecoverable.name
+        : '';
+      const serialNumber = productRecoverable.serialNumber
+        ? productRecoverable.serialNumber
+        : '';
+
+      const category = productRecoverable.category
+
+      let relocationAction = '';
+      let newMemberInfo = '';
+
+      switch (product.relocation) {
+        case 'FP warehouse':
+          relocationAction = 'enviar a FP Warehouse';
+          break;
+        case 'My office':
+          relocationAction = 'enviar a oficina del cliente';
+          break;
+        case 'New employee':
+          relocationAction = 'enviar a nuevo miembro\n';
+          newMemberInfo =
+            `\n*Nombre y apellido*: ${product.newMember.firstName} ${product.newMember.lastName}\n` +
+            `*DNI/CI*: ${product.newMember.dni ?? ''}\n` +
+            `*Dirección*: ${product.newMember.country}, ${product.newMember.city}, ${product.newMember.address}, ${product.newMember.apartment ?? ""}\n` +
+            `*Código Postal*: ${product.newMember.zipCode}\n` +
+            `*Teléfono*: +${product.newMember.phone}\n` +
+            `*Correo Personal*: ${product.newMember.personalEmail}`;
+          break;
+      }
+
+      return [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text:
+              `*Producto ${index + 1}*: \n` +
+              `Categoría: ${category}\n` +
+              `Marca: ${brand}\n` +
+              `Modelo: ${model}\n` +
+              `Nombre: ${name}\n` +
+              `Serial: ${serialNumber}\n` +
+              `Acción: ${relocationAction}` +
+              newMemberInfo,
+          },
+        },
+        {
+          type: 'divider', 
+        },
+      ];
+    });
+
+    try {
+      await this.slackOffboardingWebhook.send({
+        channel: 'offboardings',
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*Offboarding:*',
+            },
+          },
+          memberOffboardingMessage,
+          {
+            type: 'divider', 
+          },
+          ...productsSend.slice(0, -1),
+        ],
+      });
+
+      return { message: 'Notification sent to Slack' };
+    } catch (error) {
+      console.error('Error sending notification to Slack:', error);
+      throw new Error('Failed to send notification to Slack');
+    }
+  }
 
   private async validateDni(dni: number) {
     if (!dni) {

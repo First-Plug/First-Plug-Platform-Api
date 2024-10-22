@@ -48,6 +48,9 @@ export class Tenant extends Document {
   @Prop({ type: String, required: false, default: '' })
   apartment: string;
 
+  @Prop({ type: Number, required: false, default: 3 })
+  computerExpiration: number;
+
   @Prop({
     type: Map,
     of: Boolean,
