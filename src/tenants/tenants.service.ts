@@ -158,30 +158,30 @@ export class TenantsService {
     }
   }
 
-  // async migrateComputerExpiration(tenantName: string) {
-  //   const tenants = await this.tenantRepository.find({ tenantName });
+  async migrateComputerExpiration(tenantName: string) {
+    const tenants = await this.tenantRepository.find({ tenantName });
 
-  //   if (!tenants || tenants.length === 0) {
-  //     throw new Error(
-  //       `No se encontró ningún tenant con el tenantName ${tenantName}`,
-  //     );
-  //   }
+    if (!tenants || tenants.length === 0) {
+      throw new Error(
+        `No se encontró ningún tenant con el tenantName ${tenantName}`,
+      );
+    }
 
-  //   const updated = await this.tenantRepository.updateMany(
-  //     { tenantName },
-  //     { $set: { computerExpiration: 3 } },
-  //   );
+    const updated = await this.tenantRepository.updateMany(
+      { tenantName },
+      { $set: { computerExpiration: 3 } },
+    );
 
-  //   if (updated.modifiedCount > 0) {
-  //     console.log(
-  //       `Se actualizó la propiedad computerExpiration para ${updated.modifiedCount} usuarios con tenantName: ${tenantName}`,
-  //     );
-  //   } else {
-  //     console.log(
-  //       `No se realizaron cambios en la propiedad computerExpiration para tenantName: ${tenantName}`,
-  //     );
-  //   }
-  // }
+    if (updated.modifiedCount > 0) {
+      console.log(
+        `Se actualizó la propiedad computerExpiration para ${updated.modifiedCount} usuarios con tenantName: ${tenantName}`,
+      );
+    } else {
+      console.log(
+        `No se realizaron cambios en la propiedad computerExpiration para tenantName: ${tenantName}`,
+      );
+    }
+  }
 
   async migrateAllComputerExpirations() {
     const tenants = await this.tenantRepository.find({});
@@ -215,12 +215,12 @@ export class TenantsService {
       );
     }
 
-    // return {
-    //   isRecoverableConfig: tenant.isRecoverableConfig,
-    //   computerExpiration: tenant.computerExpiration,
-    // };
+    return {
+      isRecoverableConfig: tenant.isRecoverableConfig,
+      computerExpiration: tenant.computerExpiration,
+    };
 
-    return tenant.isRecoverableConfig;
+    // return tenant.isRecoverableConfig;
   }
 
   async updateRecoverableConfig(
@@ -240,24 +240,6 @@ export class TenantsService {
       );
     }
   }
-
-  // async updateRecoverableConfig(
-  //   tenantName: string,
-  //   newConfig: Record<string, boolean>,
-  // ) {
-  //   const configMap = new Map(Object.entries(newConfig));
-
-  //   const updated = await this.tenantRepository.updateMany(
-  //     { tenantName },
-  //     { $set: { isRecoverableConfig: configMap } },
-  //   );
-
-  //   if (updated.modifiedCount === 0) {
-  //     throw new Error(
-  //       `No se encontró ningún tenant con el tenantName ${tenantName}`,
-  //     );
-  //   }
-  // }
 
   async updateComputerExpiration(tenantName: string, expirationYears: number) {
     const updated = await this.tenantRepository.updateMany(
