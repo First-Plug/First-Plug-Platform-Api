@@ -183,6 +183,29 @@ export class TenantsService {
   //   }
   // }
 
+  async migrateAllComputerExpirations() {
+    const tenants = await this.tenantRepository.find({});
+
+    if (!tenants || tenants.length === 0) {
+      throw new Error('No se encontraron tenants en la base de datos');
+    }
+
+    const updated = await this.tenantRepository.updateMany(
+      {},
+      { $set: { computerExpiration: 3 } },
+    );
+
+    if (updated.modifiedCount > 0) {
+      console.log(
+        `Se actualizó la propiedad computerExpiration para ${updated.modifiedCount} tenants.`,
+      );
+    } else {
+      console.log(
+        `No se realizaron cambios en la propiedad computerExpiration.`,
+      );
+    }
+  }
+
   async getRecoverableConfig(tenantName: string) {
     const tenant = await this.tenantRepository.findOne({ tenantName });
 
