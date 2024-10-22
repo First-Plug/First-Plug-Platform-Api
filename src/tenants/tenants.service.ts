@@ -288,6 +288,7 @@ export class TenantsService {
       email: user?.email,
       accountProvider: user?.accountProvider,
       isRecoverableConfig: user?.isRecoverableConfig,
+      computerExpiration: user?.computerExpiration,
     };
   }
 
