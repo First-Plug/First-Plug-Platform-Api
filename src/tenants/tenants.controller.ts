@@ -105,6 +105,13 @@ export class TenantsController {
       message: `Migración de computerExpiration completada para tenantName: ${tenantName}`,
     };
   }
+  @Patch('migrate-expiration')
+  async migrateAllExpirations() {
+    await this.tenantService.migrateAllComputerExpirations();
+    return {
+      message: `Migración de computerExpiration completada para todos los tenants.`,
+    };
+  }
 
   @Patch('update-computer-expiration/:tenantName')
   async updateComputerExpiration(
