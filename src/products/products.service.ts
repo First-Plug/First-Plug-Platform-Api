@@ -810,7 +810,6 @@ export class ProductsService {
         .session(session);
 
       if (product) {
-        // const recoverableConfig =
         await this.getRecoverableConfigForTenant(tenantName);
 
         // let isRecoverable: boolean;

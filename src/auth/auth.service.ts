@@ -86,7 +86,7 @@ export class AuthService {
       if (
         JSON.stringify(otherUser.isRecoverableConfig) !==
           JSON.stringify(user.isRecoverableConfig) ||
-        otherUser.computerExpiration !== user.computerExpiration ||
+        // otherUser.computerExpiration !== user.computerExpiration ||
         otherUser.address !== user.address
       ) {
         await this.tenantService.updateUserConfig(user._id, {
@@ -98,7 +98,7 @@ export class AuthService {
           zipCode: otherUser.zipCode,
           address: otherUser.address,
           apartment: otherUser.apartment,
-          computerExpiration: otherUser.computerExpiration,
+          // computerExpiration: otherUser.computerExpiration,
         });
       }
     }
