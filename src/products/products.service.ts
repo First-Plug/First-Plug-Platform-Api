@@ -902,11 +902,12 @@ export class ProductsService {
 
         if (memberProduct?.product) {
           const member = memberProduct.member;
-          const recoverableConfig =
-            await this.getRecoverableConfigForTenant(tenantName);
+          // const recoverableConfig =
+          await this.getRecoverableConfigForTenant(tenantName);
           const isRecoverable =
-            updateProductDto.recoverable ??
-            (recoverableConfig.get(memberProduct.product.category) || false);
+            updateProductDto.recoverable !== undefined
+              ? updateProductDto.recoverable
+              : memberProduct.product.recoverable;
 
           if (
             updateProductDto.assignedEmail &&
