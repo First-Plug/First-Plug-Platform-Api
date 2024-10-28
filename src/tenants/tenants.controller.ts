@@ -114,17 +114,17 @@ export class TenantsController {
     };
   }
 
-  // @Patch('update-computer-expiration/:tenantName')
-  // async updateComputerExpiration(
-  //   @Param('tenantName') tenantName: string,
-  //   @Body('computerExpiration') computerExpiration: number,
-  // ) {
-  //   await this.tenantService.updateComputerExpiration(
-  //     tenantName,
-  //     computerExpiration,
-  //   );
-  //   return {
-  //     message: `Configuración de computerExpiration actualizada para tenant: ${tenantName}`,
-  //   };
-  // }
+  @Patch('update-computer-expiration/:tenantName')
+  async updateComputerExpiration(
+    @Param('tenantName') tenantName: string,
+    @Body('computerExpiration') computerExpiration: number,
+  ) {
+    await this.tenantService.updateComputerExpiration(
+      tenantName,
+      computerExpiration,
+    );
+    return {
+      message: `Configuración de computerExpiration actualizada para tenant: ${tenantName}`,
+    };
+  }
 }

@@ -217,7 +217,7 @@ export class TenantsService {
 
     return {
       isRecoverableConfig: tenant.isRecoverableConfig,
-      // computerExpiration: tenant.computerExpiration,
+      computerExpiration: tenant.computerExpiration,
     };
 
     // return tenant.isRecoverableConfig;
@@ -313,7 +313,7 @@ export class TenantsService {
       email: user?.email,
       accountProvider: user?.accountProvider,
       isRecoverableConfig: user?.isRecoverableConfig,
-      // computerExpiration: user?.computerExpiration,
+      computerExpiration: user?.computerExpiration,
     };
   }
 
