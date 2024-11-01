@@ -62,6 +62,22 @@ export class Product {
   @Prop({ type: String })
   location?: string;
 
+  @Prop({
+    type: {
+      amount: { type: Number, required: true },
+      currencyCode: {
+        type: String,
+        enum: ['USD', 'ARS', 'BRL', 'CLP', 'COP', 'MXN', 'PEN', 'UYU'],
+        required: true,
+      },
+    },
+    required: true,
+  })
+  price: {
+    amount: number;
+    currencyCode: string;
+  };
+
   isDeleted?: boolean;
 
   deleteAt?: string | null;

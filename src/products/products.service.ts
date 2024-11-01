@@ -3,9 +3,10 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { Model, ObjectId, Types } from 'mongoose';
-import { ProductDocument } from './schemas/product.schema';
+import { ProductDocument, ProductSchema } from './schemas/product.schema';
 import { CreateProductDto, UpdateProductDto } from './dto';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { BadRequestException } from '@nestjs/common';
@@ -14,7 +15,10 @@ import { TenantsService } from 'src/tenants/tenants.service';
 import { Attribute } from './interfaces/product.interface';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
-import { MemberDocument } from 'src/members/schemas/member.schema';
+import {
+  MemberDocument,
+  MemberSchema,
+} from 'src/members/schemas/member.schema';
 import { Response } from 'express';
 import { Parser } from 'json2csv';
 
@@ -24,6 +28,7 @@ export interface ProductModel
 
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
   constructor(
     @Inject('PRODUCT_MODEL')
     private readonly productRepository: ProductModel,
@@ -65,6 +70,65 @@ export class ProductsService {
 
     if (productWithSameSerialNumber || memberProductWithSameSerialNumber) {
       throw new BadRequestException('Serial Number already exists');
+    }
+  }
+
+  async migratePriceForTenant(tenantName: string) {
+    try {
+      const tenantDbName = `tenant_${tenantName}`;
+      const connection = this.connection.useDb(tenantDbName);
+
+      // Definir modelos
+      const ProductModel = connection.model<ProductDocument>(
+        'Product',
+        ProductSchema,
+      );
+      const MemberModel = connection.model<MemberDocument>(
+        'Member',
+        MemberSchema,
+      );
+
+      const defaultPrice = {
+        amount: 0,
+        currencyCode: 'USD',
+      };
+
+      const unassignedProducts = await ProductModel.find({
+        price: { $exists: false },
+      });
+      for (const product of unassignedProducts) {
+        product.price = defaultPrice;
+        await product.save();
+        this.logger.log(
+          `Updated unassigned product ${product._id} in ${tenantDbName} with price: ${JSON.stringify(defaultPrice)}`,
+        );
+      }
+
+      const members = await MemberModel.find();
+      for (const member of members) {
+        let updated = false;
+        for (const product of member.products) {
+          if (!product.price) {
+            product.price = defaultPrice;
+            updated = true;
+          }
+        }
+        if (updated) {
+          await member.save();
+          this.logger.log(
+            `Updated products in member ${member._id} in ${tenantDbName} with price: ${JSON.stringify(defaultPrice)}`,
+          );
+        }
+      }
+
+      return {
+        message: `Migrated price field for unassigned products and assigned products in members for tenant ${tenantDbName}`,
+      };
+    } catch (error) {
+      this.logger.error('Failed to migrate price field', error);
+      throw new InternalServerErrorException(
+        'Failed to migrate price field for the specified tenant',
+      );
     }
   }
 
@@ -711,6 +775,13 @@ export class ProductsService {
       location: updateProductDto.location || product.location,
       isDeleted: product.isDeleted,
       lastAssigned: lastAssigned,
+      price: updateProductDto.price
+        ? {
+            amount: updateProductDto.price.amount || product.price.amount,
+            currencyCode:
+              updateProductDto.price.currencyCode || product.price.currencyCode,
+          }
+        : product.price,
     };
     newMember.products.push(updateData);
     await newMember.save({ session });

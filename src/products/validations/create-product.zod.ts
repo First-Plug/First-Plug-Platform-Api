@@ -13,6 +13,17 @@ import {
   LOCATIONS,
 } from '../interfaces/product.interface';
 
+const CURRENCY_CODES = [
+  'USD',
+  'ARS',
+  'BRL',
+  'CLP',
+  'COP',
+  'MXN',
+  'PEN',
+  'UYU',
+] as const;
+
 export const ProductSchemaZod = z
   .object({
     name: z.string().optional(),
@@ -43,6 +54,12 @@ export const ProductSchemaZod = z
     acquisitionDate: z.string().optional(),
     location: z.enum(LOCATIONS),
     status: z.enum(STATES),
+    price: z.object({
+      amount: z.number().min(0, { message: 'Amount must be non-negative' }),
+      currencyCode: z.enum(CURRENCY_CODES, {
+        message: 'Invalid currency code',
+      }),
+    }),
   })
   .superRefine((data, ctx) => {
     if (data.category === 'Merchandising' && !data.name) {
