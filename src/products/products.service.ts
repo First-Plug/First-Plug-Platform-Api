@@ -777,9 +777,10 @@ export class ProductsService {
       lastAssigned: lastAssigned,
       price: updateProductDto.price
         ? {
-            amount: updateProductDto.price.amount || product.price.amount,
+            amount: updateProductDto.price.amount || product.price?.amount,
             currencyCode:
-              updateProductDto.price.currencyCode || product.price.currencyCode,
+              updateProductDto.price.currencyCode ||
+              product.price?.currencyCode,
           }
         : product.price,
     };

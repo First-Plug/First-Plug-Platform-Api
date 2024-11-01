@@ -54,12 +54,17 @@ export const ProductSchemaZod = z
     acquisitionDate: z.string().optional(),
     location: z.enum(LOCATIONS),
     status: z.enum(STATES),
-    price: z.object({
-      amount: z.number().min(0, { message: 'Amount must be non-negative' }),
-      currencyCode: z.enum(CURRENCY_CODES, {
-        message: 'Invalid currency code',
-      }),
-    }),
+    price: z
+      .object({
+        amount: z
+          .number()
+          .min(0, { message: 'Amount must be non-negative' })
+          .optional(),
+        currencyCode: z
+          .enum(CURRENCY_CODES, { message: 'Invalid currency code' })
+          .optional(),
+      })
+      .optional(),
   })
   .superRefine((data, ctx) => {
     if (data.category === 'Merchandising' && !data.name) {
