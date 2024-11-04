@@ -349,6 +349,7 @@ export class ProductsService {
         location,
         recoverable,
         serialNumber,
+        price,
       } = product;
       const filteredAttributes = attributes.filter(
         (attribute: Attribute) =>
@@ -371,6 +372,7 @@ export class ProductsService {
         recoverable,
         serialNumber,
         filteredAttributes,
+        price,
       };
     });
 
