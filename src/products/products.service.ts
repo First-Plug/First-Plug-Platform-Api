@@ -810,15 +810,14 @@ export class ProductsService {
         .session(session);
 
       if (product) {
-        const recoverableConfig =
-          await this.getRecoverableConfigForTenant(tenantName);
+        await this.getRecoverableConfigForTenant(tenantName);
 
         // let isRecoverable: boolean;
 
         const isRecoverable =
           updateProductDto.recoverable !== undefined
             ? updateProductDto.recoverable
-            : recoverableConfig.get(product.category) || false;
+            : product.recoverable;
 
         // Caso en que el producto tiene un assignedEmail desconocido y se deben actualizar los atributos
         if (
@@ -903,11 +902,12 @@ export class ProductsService {
 
         if (memberProduct?.product) {
           const member = memberProduct.member;
-          const recoverableConfig =
-            await this.getRecoverableConfigForTenant(tenantName);
+          // const recoverableConfig =
+          await this.getRecoverableConfigForTenant(tenantName);
           const isRecoverable =
-            updateProductDto.recoverable ??
-            (recoverableConfig.get(memberProduct.product.category) || false);
+            updateProductDto.recoverable !== undefined
+              ? updateProductDto.recoverable
+              : memberProduct.product.recoverable;
 
           if (
             updateProductDto.assignedEmail &&
