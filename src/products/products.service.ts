@@ -141,7 +141,7 @@ export class ProductsService {
       };
 
       for (const tenant of tenants) {
-        const tenantDbName = `tenant_${tenant.name}`;
+        const tenantDbName = `tenant_${tenant.tenantName}`;
         const connection = this.connection.useDb(tenantDbName);
 
         const ProductModel = connection.model<ProductDocument>(

@@ -16,12 +16,22 @@ import {
 const CURRENCY_CODES = [
   'USD',
   'ARS',
+  'BOB',
   'BRL',
   'CLP',
   'COP',
+  'CRC',
+  'GTQ',
+  'HNL',
+  'ILS',
   'MXN',
+  'NIO',
+  'PAB',
   'PEN',
+  'PYG',
+  'EUR',
   'UYU',
+  'VES',
 ] as const;
 
 export const ProductSchemaZod = z
