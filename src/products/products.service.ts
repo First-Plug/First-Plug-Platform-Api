@@ -132,6 +132,65 @@ export class ProductsService {
     }
   }
 
+  async migratePriceForAllTenant() {
+    try {
+      const tenants = await this.tenantsService.findAllTenants();
+      const defaultPrice = {
+        amount: 0,
+        currencyCode: 'USD',
+      };
+
+      for (const tenant of tenants) {
+        const tenantDbName = `tenant_${tenant.name}`;
+        const connection = this.connection.useDb(tenantDbName);
+
+        const ProductModel = connection.model<ProductDocument>(
+          'Product',
+          ProductSchema,
+        );
+        const MemberModel = connection.model<MemberDocument>(
+          'Member',
+          MemberSchema,
+        );
+
+        const unassignedProducts = await ProductModel.find({
+          price: { $exists: false },
+        });
+        for (const product of unassignedProducts) {
+          product.price = defaultPrice;
+          await product.save();
+          this.logger.log(
+            `Updated unassigned product ${product._id} in ${tenantDbName} with price: ${JSON.stringify(defaultPrice)}`,
+          );
+        }
+        const members = await MemberModel.find();
+        for (const member of members) {
+          let updated = false;
+          for (const product of member.products) {
+            if (!product.price) {
+              product.price = defaultPrice;
+              updated = true;
+            }
+          }
+          if (updated) {
+            await member.save();
+            this.logger.log(
+              `Updated products in member ${member._id} in ${tenantDbName} with price: ${JSON.stringify(defaultPrice)}`,
+            );
+          }
+        }
+      }
+      return {
+        message: 'Migrated price field for all tenants',
+      };
+    } catch (error) {
+      this.logger.error('Failed to migrate price field', error);
+      throw new InternalServerErrorException(
+        'Failed to migrate price field for all tenants',
+      );
+    }
+  }
+
   private async getRecoverableConfigForTenant(
     tenantName: string,
   ): Promise<Map<string, boolean>> {
