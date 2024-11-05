@@ -169,7 +169,7 @@ export class TenantsService {
 
     const updated = await this.tenantRepository.updateMany(
       { tenantName },
-      // { $set: { computerExpiration: 3 } },
+      { $set: { computerExpiration: 3 } },
     );
 
     if (updated.modifiedCount > 0) {
