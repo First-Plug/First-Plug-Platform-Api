@@ -45,7 +45,15 @@ export class ProductsController {
 
     res.status(HttpStatus.CREATED).json(products);
   }
+  @Get('/migrate-price')
+  async migratePriceForAllTenant() {
+    return await this.productsService.migratePriceForAllTenant();
+  }
 
+  @Get('migrate-price/:tenantName')
+  async migratePriceForTenant(@Param('tenantName') tenantName: string) {
+    return await this.productsService.migratePriceForTenant(tenantName);
+  }
   @Get('/table')
   getProductsTable() {
     return this.productsService.tableGrouping();
