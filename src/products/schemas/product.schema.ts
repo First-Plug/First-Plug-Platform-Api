@@ -64,7 +64,7 @@ export class Product {
 
   @Prop({
     type: {
-      amount: { type: Number, required: false },
+      amount: { type: Number },
       currencyCode: {
         type: String,
         enum: [
@@ -87,14 +87,13 @@ export class Product {
           'UYU',
           'VES',
         ],
-        required: false,
       },
     },
     required: false,
   })
   price?: {
-    amount?: number;
-    currencyCode?: string;
+    amount: number;
+    currencyCode: string;
   };
 
   isDeleted?: boolean;

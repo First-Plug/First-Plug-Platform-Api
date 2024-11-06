@@ -110,7 +110,7 @@ export class MembersService {
         text:
           `*Nombre y apellido*: ${member.firstName} ${member.lastName}\n` +
           `*DNI/CI*: ${member.dni}\n` +
-          `*Dirección*: ${member.country}, ${member.city}, ${member.address}, ${member.apartment ?? ""}\n` +
+          `*Dirección*: ${member.country}, ${member.city}, ${member.address}, ${member.apartment ?? ''}\n` +
           `*Código Postal*: ${member.zipCode}\n` +
           `*Teléfono*: +${member.phone}\n` +
           `*Correo Personal*: ${member.personalEmail}`,
@@ -129,14 +129,12 @@ export class MembersService {
 
       const brand = brandAttribute ? brandAttribute.value : '';
       const model = modelAttribute ? modelAttribute.value : '';
-      const name = productRecoverable.name
-        ? productRecoverable.name
-        : '';
+      const name = productRecoverable.name ? productRecoverable.name : '';
       const serialNumber = productRecoverable.serialNumber
         ? productRecoverable.serialNumber
         : '';
 
-      const category = productRecoverable.category
+      const category = productRecoverable.category;
 
       let relocationAction = '';
       let newMemberInfo = '';
@@ -153,7 +151,7 @@ export class MembersService {
           newMemberInfo =
             `\n*Nombre y apellido*: ${product.newMember.firstName} ${product.newMember.lastName}\n` +
             `*DNI/CI*: ${product.newMember.dni ?? ''}\n` +
-            `*Dirección*: ${product.newMember.country}, ${product.newMember.city}, ${product.newMember.address}, ${product.newMember.apartment ?? ""}\n` +
+            `*Dirección*: ${product.newMember.country}, ${product.newMember.city}, ${product.newMember.address}, ${product.newMember.apartment ?? ''}\n` +
             `*Código Postal*: ${product.newMember.zipCode}\n` +
             `*Teléfono*: +${product.newMember.phone}\n` +
             `*Correo Personal*: ${product.newMember.personalEmail}`;
@@ -177,7 +175,7 @@ export class MembersService {
           },
         },
         {
-          type: 'divider', 
+          type: 'divider',
         },
       ];
     });
@@ -195,7 +193,7 @@ export class MembersService {
           },
           memberOffboardingMessage,
           {
-            type: 'divider', 
+            type: 'divider',
           },
           ...productsSend.slice(0, -1),
         ],
@@ -585,15 +583,20 @@ export class MembersService {
     const member = await this.findByEmailNotThrowError(email);
 
     if (member) {
-      const { serialNumber, ...rest } = createProductDto;
+      const { serialNumber, price, ...rest } = createProductDto;
 
-      const productData =
-        serialNumber && serialNumber.trim() !== ''
-          ? { ...rest, serialNumber }
-          : rest;
+      const productData = {
+        ...rest,
+        ...(serialNumber && serialNumber.trim() !== '' ? { serialNumber } : {}),
+        assignedMember: `${member.firstName} ${member.lastName}`,
+        assignedEmail: email,
+        ...(price?.amount !== undefined && price?.currencyCode
+          ? {
+              price: { amount: price.amount, currencyCode: price.currencyCode },
+            }
+          : {}),
+      };
 
-      productData.assignedMember = `${member.firstName} ${member.lastName}`;
-      productData.assignedEmail = email;
       member.products.push(productData);
       await member.save({ session });
     }

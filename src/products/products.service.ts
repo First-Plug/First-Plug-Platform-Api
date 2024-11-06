@@ -214,7 +214,7 @@ export class ProductsService {
 
   async create(createProductDto: CreateProductDto, tenantName: string) {
     const normalizedProduct = this.normalizeProductData(createProductDto);
-    const { assignedEmail, serialNumber, ...rest } = normalizedProduct;
+    const { assignedEmail, serialNumber, price, ...rest } = normalizedProduct;
 
     const recoverableConfig =
       await this.getRecoverableConfigForTenant(tenantName);
@@ -228,10 +228,12 @@ export class ProductsService {
       await this.validateSerialNumber(serialNumber);
     }
 
-    const createData =
-      serialNumber && serialNumber.trim() !== ''
-        ? { ...rest, serialNumber }
-        : rest;
+    const createData = {
+      ...rest,
+      serialNumber: serialNumber?.trim() || undefined,
+      recoverable: isRecoverable,
+      ...(price?.amount !== undefined && price?.currencyCode ? { price } : {}),
+    };
 
     let assignedMember = '';
 
@@ -836,14 +838,6 @@ export class ProductsService {
       location: updateProductDto.location || product.location,
       isDeleted: product.isDeleted,
       lastAssigned: lastAssigned,
-      price: updateProductDto.price
-        ? {
-            amount: updateProductDto.price.amount || product.price?.amount,
-            currencyCode:
-              updateProductDto.price.currencyCode ||
-              product.price?.currencyCode,
-          }
-        : product.price,
     };
     newMember.products.push(updateData);
     await newMember.save({ session });
@@ -951,6 +945,19 @@ export class ProductsService {
           updateProductDto.recoverable !== undefined
             ? updateProductDto.recoverable
             : product.recoverable;
+
+        if (
+          updateProductDto.price?.amount !== undefined &&
+          updateProductDto.price?.currencyCode !== undefined
+        ) {
+          product.price = {
+            amount: updateProductDto.price.amount,
+            currencyCode: updateProductDto.price.currencyCode,
+          };
+        } else if (product.price && !updateProductDto.price) {
+        } else {
+          product.price = undefined;
+        }
 
         // Caso en que el producto tiene un assignedEmail desconocido y se deben actualizar los atributos
         if (

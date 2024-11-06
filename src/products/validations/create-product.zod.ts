@@ -74,6 +74,17 @@ export const ProductSchemaZod = z
           .enum(CURRENCY_CODES, { message: 'Invalid currency code' })
           .optional(),
       })
+      .partial()
+      .refine(
+        (data) =>
+          (data.amount !== undefined && data.currencyCode !== undefined) ||
+          (data.amount === undefined && data.currencyCode === undefined),
+        {
+          message:
+            'Both amount and currencyCode must be defined if price is set',
+          path: ['price'],
+        },
+      )
       .optional(),
   })
   .superRefine((data, ctx) => {
