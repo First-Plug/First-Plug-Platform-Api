@@ -122,6 +122,14 @@ export class TenantsService {
     }
   }
 
+  async findAllTenants() {
+    const tenants = await this.tenantRepository.find({});
+    if (!tenants || tenants.length === 0) {
+      throw new Error('No se encontraron tenants en la base de datos');
+    }
+    return tenants;
+  }
+
   async migrateRecoverableConfig(tenantName: string) {
     const tenants = await this.tenantRepository.find({ tenantName });
 
@@ -169,7 +177,7 @@ export class TenantsService {
 
     const updated = await this.tenantRepository.updateMany(
       { tenantName },
-      // { $set: { computerExpiration: 3 } },
+      { $set: { computerExpiration: 3 } },
     );
 
     if (updated.modifiedCount > 0) {

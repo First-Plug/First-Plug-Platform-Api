@@ -3,9 +3,10 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { Model, ObjectId, Types } from 'mongoose';
-import { ProductDocument } from './schemas/product.schema';
+import { ProductDocument, ProductSchema } from './schemas/product.schema';
 import { CreateProductDto, UpdateProductDto } from './dto';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { BadRequestException } from '@nestjs/common';
@@ -14,7 +15,10 @@ import { TenantsService } from 'src/tenants/tenants.service';
 import { Attribute } from './interfaces/product.interface';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
-import { MemberDocument } from 'src/members/schemas/member.schema';
+import {
+  MemberDocument,
+  MemberSchema,
+} from 'src/members/schemas/member.schema';
 import { Response } from 'express';
 import { Parser } from 'json2csv';
 
@@ -24,6 +28,7 @@ export interface ProductModel
 
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
   constructor(
     @Inject('PRODUCT_MODEL')
     private readonly productRepository: ProductModel,
@@ -68,6 +73,124 @@ export class ProductsService {
     }
   }
 
+  async migratePriceForTenant(tenantName: string) {
+    try {
+      const tenantDbName = `tenant_${tenantName}`;
+      const connection = this.connection.useDb(tenantDbName);
+
+      // Definir modelos
+      const ProductModel = connection.model<ProductDocument>(
+        'Product',
+        ProductSchema,
+      );
+      const MemberModel = connection.model<MemberDocument>(
+        'Member',
+        MemberSchema,
+      );
+
+      const defaultPrice = {
+        amount: 0,
+        currencyCode: 'USD',
+      };
+
+      const unassignedProducts = await ProductModel.find({
+        price: { $exists: false },
+      });
+      for (const product of unassignedProducts) {
+        product.price = defaultPrice;
+        await product.save();
+        this.logger.log(
+          `Updated unassigned product ${product._id} in ${tenantDbName} with price: ${JSON.stringify(defaultPrice)}`,
+        );
+      }
+
+      const members = await MemberModel.find();
+      for (const member of members) {
+        let updated = false;
+        for (const product of member.products) {
+          if (!product.price) {
+            product.price = defaultPrice;
+            updated = true;
+          }
+        }
+        if (updated) {
+          await member.save();
+          this.logger.log(
+            `Updated products in member ${member._id} in ${tenantDbName} with price: ${JSON.stringify(defaultPrice)}`,
+          );
+        }
+      }
+
+      return {
+        message: `Migrated price field for unassigned products and assigned products in members for tenant ${tenantDbName}`,
+      };
+    } catch (error) {
+      this.logger.error('Failed to migrate price field', error);
+      throw new InternalServerErrorException(
+        'Failed to migrate price field for the specified tenant',
+      );
+    }
+  }
+
+  async migratePriceForAllTenant() {
+    try {
+      const tenants = await this.tenantsService.findAllTenants();
+      const defaultPrice = {
+        amount: 0,
+        currencyCode: 'USD',
+      };
+
+      for (const tenant of tenants) {
+        const tenantDbName = `tenant_${tenant.tenantName}`;
+        const connection = this.connection.useDb(tenantDbName);
+
+        const ProductModel = connection.model<ProductDocument>(
+          'Product',
+          ProductSchema,
+        );
+        const MemberModel = connection.model<MemberDocument>(
+          'Member',
+          MemberSchema,
+        );
+
+        const unassignedProducts = await ProductModel.find({
+          price: { $exists: false },
+        });
+        for (const product of unassignedProducts) {
+          product.price = defaultPrice;
+          await product.save();
+          this.logger.log(
+            `Updated unassigned product ${product._id} in ${tenantDbName} with price: ${JSON.stringify(defaultPrice)}`,
+          );
+        }
+        const members = await MemberModel.find();
+        for (const member of members) {
+          let updated = false;
+          for (const product of member.products) {
+            if (!product.price) {
+              product.price = defaultPrice;
+              updated = true;
+            }
+          }
+          if (updated) {
+            await member.save();
+            this.logger.log(
+              `Updated products in member ${member._id} in ${tenantDbName} with price: ${JSON.stringify(defaultPrice)}`,
+            );
+          }
+        }
+      }
+      return {
+        message: 'Migrated price field for all tenants',
+      };
+    } catch (error) {
+      this.logger.error('Failed to migrate price field', error);
+      throw new InternalServerErrorException(
+        'Failed to migrate price field for all tenants',
+      );
+    }
+  }
+
   private async getRecoverableConfigForTenant(
     tenantName: string,
   ): Promise<Map<string, boolean>> {
@@ -91,7 +214,7 @@ export class ProductsService {
 
   async create(createProductDto: CreateProductDto, tenantName: string) {
     const normalizedProduct = this.normalizeProductData(createProductDto);
-    const { assignedEmail, serialNumber, ...rest } = normalizedProduct;
+    const { assignedEmail, serialNumber, price, ...rest } = normalizedProduct;
 
     const recoverableConfig =
       await this.getRecoverableConfigForTenant(tenantName);
@@ -105,10 +228,12 @@ export class ProductsService {
       await this.validateSerialNumber(serialNumber);
     }
 
-    const createData =
-      serialNumber && serialNumber.trim() !== ''
-        ? { ...rest, serialNumber }
-        : rest;
+    const createData = {
+      ...rest,
+      serialNumber: serialNumber?.trim() || undefined,
+      recoverable: isRecoverable,
+      ...(price?.amount !== undefined && price?.currencyCode ? { price } : {}),
+    };
 
     let assignedMember = '';
 
@@ -285,6 +410,7 @@ export class ProductsService {
         location,
         recoverable,
         serialNumber,
+        price,
       } = product;
       const filteredAttributes = attributes.filter(
         (attribute: Attribute) =>
@@ -307,6 +433,7 @@ export class ProductsService {
         recoverable,
         serialNumber,
         filteredAttributes,
+        price,
       };
     });
 
@@ -818,6 +945,19 @@ export class ProductsService {
           updateProductDto.recoverable !== undefined
             ? updateProductDto.recoverable
             : product.recoverable;
+
+        if (
+          updateProductDto.price?.amount !== undefined &&
+          updateProductDto.price?.currencyCode !== undefined
+        ) {
+          product.price = {
+            amount: updateProductDto.price.amount,
+            currencyCode: updateProductDto.price.currencyCode,
+          };
+        } else if (product.price && !updateProductDto.price) {
+        } else {
+          product.price = undefined;
+        }
 
         // Caso en que el producto tiene un assignedEmail desconocido y se deben actualizar los atributos
         if (
