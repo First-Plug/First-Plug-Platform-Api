@@ -1085,6 +1085,8 @@ export class ProductsService {
               member,
             );
           }
+          console.log('Datos recibidos para actualización:', updateProductDto);
+          console.log('Producto actual en la base de datos:', product);
 
           await session.commitTransaction();
           session.endSession();
