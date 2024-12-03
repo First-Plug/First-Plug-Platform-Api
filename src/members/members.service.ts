@@ -482,6 +482,15 @@ export class MembersService {
       const oldEmail = member.email.trim().toLowerCase();
       const oldFullName = `${member.firstName.trim()} ${member.lastName.trim()}`;
 
+      if (
+        updateMemberDto.personalEmail === null ||
+        updateMemberDto.personalEmail === ''
+      ) {
+        member.personalEmail = undefined;
+      } else if (updateMemberDto.personalEmail) {
+        member.personalEmail = updateMemberDto.personalEmail.trim();
+      }
+
       Object.assign(member, updateMemberDto);
 
       if (updateMemberDto.dni === undefined) {
