@@ -10,6 +10,7 @@ import { TenantsMiddleware } from 'src/common/middlewares/tenants.middleware';
   imports: [TenantsModule],
   controllers: [HistoryController],
   providers: [HistoryService, tenantModels.historyModel, JwtService],
+  exports: [HistoryService, tenantModels.historyModel],
 })
 export class HistoryModule {
   configure(consumer: MiddlewareConsumer) {
