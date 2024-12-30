@@ -267,7 +267,7 @@ export const AUDIO_MODELS = [
   'H340',
   'H390',
   'H540',
-  'Headphones  CH720N inalambrico con cancelacion de sonido',
+  'Headphones CH720N inalambrico con cancelacion de sonido',
   'Headphones CH520 inalambrico',
   'Headphones INZONE H3 con cable',
   'Headphones INZONE H3 inalambrico',
