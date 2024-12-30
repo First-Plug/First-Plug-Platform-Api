@@ -37,14 +37,27 @@ export class ProductsController {
     @Res() res: Response,
     @Request() req: any,
   ) {
-    const tenantName = req.user.tenantName;
-    const products = await this.productsService.bulkCreate(
-      createProductDto,
-      tenantName,
-    );
-
-    res.status(HttpStatus.CREATED).json(products);
+    try {
+      const tenantName = req.user.tenantName;
+      const products = await this.productsService.bulkCreate(
+        createProductDto,
+        tenantName,
+      );
+      res.status(HttpStatus.CREATED).json(products);
+    } catch (error) {
+      if (error.codeName === 'WriteConflict') {
+        console.error('⚠️ WriteConflict detected, unable to retry:', error);
+        return res.status(HttpStatus.CONFLICT).json({
+          message: 'A transient error occurred, please retry the operation.',
+        });
+      }
+      console.error('❌ Error during bulkCreate:', error);
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        message: 'An unexpected error occurred',
+      });
+    }
   }
+
   @Get('/migrate-price')
   async migratePriceForAllTenant() {
     return await this.productsService.migratePriceForAllTenant();
