@@ -9,6 +9,7 @@ import {
   Put,
   Delete,
   ParseArrayPipe,
+  Req,
 } from '@nestjs/common';
 import { TeamsService } from './teams.service';
 import { CreateTeamDto } from './dto/create-team.dto';
@@ -23,9 +24,11 @@ export class TeamsController {
   @Delete('bulk-delete')
   async bulkDelete(
     @Body('ids', new ParseArrayPipe({ items: String })) ids: string[],
+    @Req() req,
   ) {
+    const { userId } = req;
     const teamIds = ids.map((id) => new Types.ObjectId(id));
-    return await this.teamsService.bulkDelete(teamIds);
+    return await this.teamsService.bulkDelete(teamIds, userId);
   }
 
   @Get()
@@ -41,8 +44,9 @@ export class TeamsController {
   }
 
   @Post()
-  async create(@Body() createTeamDto: CreateTeamDto) {
-    const teams = await this.teamsService.create(createTeamDto);
+  async create(@Body() createTeamDto: CreateTeamDto, @Req() req) {
+    const { userId } = req;
+    const teams = await this.teamsService.create(createTeamDto, userId);
     return teams;
   }
 
@@ -50,8 +54,10 @@ export class TeamsController {
   async update(
     @Param('id', ParseMongoIdPipe) id: ObjectId,
     @Body() updateTeamDto: UpdateTeamDto,
+    @Req() req,
   ) {
-    const teams = await this.teamsService.update(id, updateTeamDto);
+    const { userId } = req;
+    const teams = await this.teamsService.update(id, updateTeamDto, userId);
     return teams;
   }
 
@@ -111,7 +117,8 @@ export class TeamsController {
   }
 
   @Delete(':id')
-  async delete(@Param('id', ParseMongoIdPipe) id: Types.ObjectId) {
-    return await this.teamsService.delete(id);
+  async delete(@Param('id', ParseMongoIdPipe) id: Types.ObjectId, @Req() req) {
+    const { userId } = req;
+    return await this.teamsService.delete(id, userId);
   }
 }

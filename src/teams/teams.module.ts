@@ -6,9 +6,10 @@ import { TenantsModule } from 'src/tenants/tenants.module';
 import { TenantsMiddleware } from 'src/common/middlewares/tenants.middleware';
 import { JwtService } from '@nestjs/jwt';
 import { MembersModule } from 'src/members/members.module';
+import { HistoryModule } from 'src/history/history.module';
 
 @Module({
-  imports: [TenantsModule, forwardRef(() => MembersModule)],
+  imports: [TenantsModule, forwardRef(() => MembersModule), HistoryModule],
   controllers: [TeamsController],
   providers: [TeamsService, tenantModels.teamModel, JwtService],
   exports: [tenantModels.teamModel],

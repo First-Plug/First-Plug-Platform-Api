@@ -10,6 +10,7 @@ import { ShipmentsModule } from './shipments/shipments.module';
 import { AuthModule } from './auth/auth.module';
 import { TeamsModule } from './teams/teams.module';
 import { SlackModule } from 'nestjs-slack-webhook';
+import { HistoryModule } from './history/history.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { SlackModule } from 'nestjs-slack-webhook';
     ShipmentsModule,
     AuthModule,
     forwardRef(() => TeamsModule),
+    HistoryModule,
   ],
   controllers: [],
   providers: [],

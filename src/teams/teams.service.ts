@@ -10,12 +10,16 @@ import { Team } from './schemas/team.schema';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
 import { Member } from '../members/schemas/member.schema';
+import { HistoryService } from 'src/history/history.service';
+import { emptyTeam } from './utils/empty-team';
+import { flattenTeam } from './utils/flatten-team';
 
 @Injectable()
 export class TeamsService {
   constructor(
     @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
     @Inject('MEMBER_MODEL') private memberRepository: Model<Member>,
+    private readonly historyService: HistoryService,
   ) {}
 
   private normalizeTeamName(name: string): string {
@@ -106,7 +110,7 @@ export class TeamsService {
     }
   }
 
-  async create(createTeamDto: CreateTeamDto) {
+  async create(createTeamDto: CreateTeamDto, userId: string) {
     try {
       const normalizedTeamName = this.normalizeTeamName(createTeamDto.name);
       let team = await this.teamRepository.findOne({
@@ -124,6 +128,17 @@ export class TeamsService {
         name: normalizedTeamName,
         color,
       });
+
+      await this.historyService.create({
+        actionType: 'create',
+        itemType: 'teams',
+        userId: userId,
+        changes: {
+          oldData: emptyTeam,
+          newData: { _id: team.id, name: team.name, color: team.color },
+        },
+      });
+
       return await team.save();
     } catch (error) {
       this.handleDBExceptions(error);
@@ -224,7 +239,7 @@ export class TeamsService {
     }
   }
 
-  async update(id: ObjectId, updateTeamDto: UpdateTeamDto) {
+  async update(id: ObjectId, updateTeamDto: UpdateTeamDto, userId: string) {
     try {
       const normalizedTeamName = this.normalizeTeamName(updateTeamDto.name);
       const existingTeam = await this.teamRepository.findOne({
@@ -245,8 +260,32 @@ export class TeamsService {
         },
       );
 
+      const payloadOldData = {
+        _id: id,
+        name: updateTeamDto?.name,
+        color: team?.color,
+      };
+
+      const payloadTeam = {
+        _id: team?._id.toString(),
+        name: team?.name,
+        color: team?.color,
+      };
+
+      await this.historyService.create({
+        actionType: 'update',
+        itemType: 'teams',
+        userId: userId,
+        changes: {
+          oldData: payloadOldData,
+          newData: payloadTeam,
+        },
+      });
+
       return team;
     } catch (error) {
+      console.log(error);
+
       this.handleDBExceptions(error);
     }
   }
@@ -269,7 +308,7 @@ export class TeamsService {
     return team;
   }
 
-  async delete(id: Types.ObjectId) {
+  async delete(id: Types.ObjectId, userId: string) {
     try {
       const members = await this.memberRepository.find({ team: id });
       if (members.length > 0) {
@@ -281,6 +320,17 @@ export class TeamsService {
       if (!result) {
         throw new BadRequestException('Team not found');
       }
+
+      await this.historyService.create({
+        actionType: 'delete',
+        itemType: 'teams',
+        userId: userId,
+        changes: {
+          oldData: flattenTeam(result),
+          newData: emptyTeam,
+        },
+      });
+
       return result;
     } catch (error) {
       this.handleDBExceptions(error);
@@ -304,12 +354,35 @@ export class TeamsService {
     }
   }
 
-  async bulkDelete(ids: Types.ObjectId[]) {
+  async bulkDelete(ids: Types.ObjectId[], userId: string) {
     try {
+      const teams = await this.teamRepository.find({ _id: { $in: ids } });
+
       await this.unassignTeamsFromMembers(ids);
       const result = await this.teamRepository.deleteMany({
         _id: { $in: ids.map((id) => new Types.ObjectId(id)) },
       });
+
+      const historyData = {
+        oldData: teams.map((team) => ({
+          id: team.id,
+          name: team.name,
+          color: team.color,
+        })),
+        newData: teams.map((team) => ({
+          id: team.id,
+          name: '',
+          color: '',
+        })),
+      };
+
+      await this.historyService.create({
+        actionType: 'bulk-delete',
+        itemType: 'teams',
+        userId: userId,
+        changes: historyData,
+      });
+
       return result;
     } catch (error) {
       this.handleDBExceptions(error);
