@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Model } from 'mongoose';
 
 import { CreateHistoryDto } from './dto/create-history.dto';
-import { History } from './entities/history.schema';
+import { History } from './schemas/history.schema';
 
 @Injectable()
 export class HistoryService {
