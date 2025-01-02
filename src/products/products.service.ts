@@ -261,27 +261,24 @@ export class ProductsService {
 
   async bulkCreate(createProductDtos: CreateProductDto[], tenantName: string) {
     const session = await this.connection.startSession();
+
     for (let attempt = 0; attempt < 3; attempt++) {
       session.startTransaction();
 
       try {
-        console.log(`Attempt ${attempt + 1} for bulk creation`);
-        console.log('Starting bulk creation');
         // Normalizar los productos
         const normalizedProducts = createProductDtos.map(
           this.normalizeProductData,
         );
-        console.log('Normalized products:', normalizedProducts);
+
         // Recuperar la configuración de 'recoverable'
         const recoverableConfig =
           await this.getRecoverableConfigForTenant(tenantName);
-        console.log('Recoverable config:', recoverableConfig);
 
         // Validar números de serie existentes en un único query
         const serialNumbersToValidate = normalizedProducts
           .map((p) => p.serialNumber)
           .filter((serialNumber) => !!serialNumber); // Filtrar solo los que tienen serialNumber
-        console.log('Serial numbers to validate:', serialNumbersToValidate);
 
         if (serialNumbersToValidate.length > 0) {
           const existingSerialNumbers = new Set(
@@ -289,7 +286,6 @@ export class ProductsService {
               .find({ serialNumber: { $in: serialNumbersToValidate } })
               .distinct('serialNumber'),
           );
-          console.log('Existing serial numbers:', existingSerialNumbers);
 
           normalizedProducts.forEach((product) => {
             if (existingSerialNumbers.has(product.serialNumber)) {
@@ -308,7 +304,6 @@ export class ProductsService {
               ? recoverable
               : recoverableConfig.get(category) || false;
         });
-        console.log('Products with recoverable set:', normalizedProducts);
 
         // Preparar datos para crear productos
         const createData = normalizedProducts.map((product) => {
@@ -317,7 +312,6 @@ export class ProductsService {
             ? { ...rest, serialNumber }
             : rest;
         });
-        console.log('Prepared create data:', createData);
 
         const productsWithIds = createData.map((product) => ({
           ...product,
@@ -334,9 +328,26 @@ export class ProductsService {
 
         const createdProducts: ProductDocument[] = [];
 
+        const existingProducts = await this.productRepository.find({
+          _id: { $in: productsWithIds.map((p) => p._id) },
+        });
+
+        if (existingProducts.length > 0) {
+          throw new Error('Products already created in a previous attempt');
+        }
+
         // Procesar productos con assignedEmail
         const assignProductPromises = productsWithAssignedEmail.map(
           async (product) => {
+            const existingProduct = await this.productRepository.findOne({
+              _id: product._id,
+            });
+
+            if (existingProduct) {
+              console.log('Product already exists, skipping:', product._id);
+              return;
+            }
+
             if (product.assignedEmail) {
               const member = await this.memberService.findByEmailNotThrowError(
                 product.assignedEmail,
@@ -367,6 +378,7 @@ export class ProductsService {
         );
 
         // Insertar productos sin assignedEmail
+
         const insertManyPromise = this.productRepository.insertMany(
           productsWithoutAssignedEmail,
           {
@@ -375,16 +387,16 @@ export class ProductsService {
         );
 
         const createdProductsWithoutAssignedEmail = await insertManyPromise;
+
         createdProducts.push(...createdProductsWithoutAssignedEmail);
 
         await Promise.all(assignProductPromises);
 
         await session.commitTransaction();
         session.endSession();
-        console.log('Bulk creation completed successfully');
+
         return createdProducts;
       } catch (error) {
-        console.error('Error during bulk creation:', error);
         await session.abortTransaction();
         if (
           error.codeName === 'WriteConflict' ||
