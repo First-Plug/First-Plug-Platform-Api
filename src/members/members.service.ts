@@ -18,6 +18,7 @@ import { InjectConnection } from '@nestjs/mongoose';
 import { TeamsService } from 'src/teams/teams.service';
 import { InjectSlack } from 'nestjs-slack-webhook';
 import { IncomingWebhook } from '@slack/webhook';
+import { HistoryService } from 'src/history/history.service';
 
 export interface MemberModel
   extends Model<MemberDocument>,
@@ -34,6 +35,7 @@ export class MembersService {
     @InjectConnection() private readonly connection: Connection,
     private readonly teamsService: TeamsService,
     @InjectSlack() private readonly slack: IncomingWebhook,
+    private readonly historyService: HistoryService,
   ) {
     const slackOffboardingWebhookUrl =
       process.env.SLACK_WEBHOOK_URL_OFFBOARDING;
@@ -285,7 +287,7 @@ export class MembersService {
     return productsToUpdate;
   }
 
-  async create(createMemberDto: CreateMemberDto) {
+  async create(createMemberDto: CreateMemberDto, userId: string) {
     const session = await this.connection.startSession();
     session.startTransaction();
 
@@ -311,6 +313,17 @@ export class MembersService {
 
       await session.commitTransaction();
       session.endSession();
+
+      await this.historyService.create({
+        actionType: 'create',
+        itemType: 'members',
+        userId: userId,
+        changes: {
+          oldData: null,
+          newData: createdMember,
+        },
+      });
+
       return createdMember;
     } catch (error) {
       await session.abortTransaction();
@@ -319,7 +332,7 @@ export class MembersService {
     }
   }
 
-  async bulkCreate(createMemberDtos: CreateMemberDto[]) {
+  async bulkCreate(createMemberDtos: CreateMemberDto[], userId: string) {
     const session = await this.connection.startSession();
     session.startTransaction();
 
@@ -409,6 +422,16 @@ export class MembersService {
         await member.save({ session });
       }
 
+      await this.historyService.create({
+        actionType: 'bulk-create',
+        itemType: 'members',
+        userId: userId,
+        changes: {
+          oldData: null,
+          newData: createdMembers,
+        },
+      });
+
       await session.commitTransaction();
       session.endSession();
 
@@ -462,15 +485,18 @@ export class MembersService {
     return await this.memberRepository.findOne({ email: email });
   }
 
-  async update(id: ObjectId, updateMemberDto: UpdateMemberDto) {
+  async update(id: ObjectId, updateMemberDto: UpdateMemberDto, userId: string) {
     const session = await this.connection.startSession();
     session.startTransaction();
 
     try {
       const member = await this.memberRepository.findById(id).session(session);
+
       if (!member) {
         throw new NotFoundException(`Member with id "${id}" not found`);
       }
+
+      const initialMember = JSON.parse(JSON.stringify(member));
 
       if (
         updateMemberDto.dni !== undefined &&
@@ -516,6 +542,16 @@ export class MembersService {
       await session.commitTransaction();
       session.endSession();
 
+      await this.historyService.create({
+        actionType: 'update',
+        itemType: 'members',
+        userId: userId,
+        changes: {
+          oldData: initialMember,
+          newData: member,
+        },
+      });
+
       return member;
     } catch (error) {
       await session.abortTransaction();
@@ -558,9 +594,7 @@ export class MembersService {
 
     await this.memberRepository.softDelete({ _id: id });
 
-    return {
-      message: `Member with id ${id} has been soft deleted`,
-    };
+    return member;
   }
 
   async findProductBySerialNumber(serialNumber: string) {

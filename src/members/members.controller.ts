@@ -9,6 +9,7 @@ import {
   UseGuards,
   UseInterceptors,
   Request,
+  Req,
 } from '@nestjs/common';
 import { MembersService } from './members.service';
 import { CreateMemberDto, UpdateMemberDto } from './dto';
@@ -18,6 +19,7 @@ import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { CreateMemberArrayDto } from './dto/create-member-array.dto';
 import { AddFullNameInterceptor } from './interceptors/add-full-name.interceptor';
 import { ProductsService } from 'src/products/products.service';
+import { HistoryService } from 'src/history/history.service';
 
 @Controller('members')
 @UseGuards(JwtGuard)
@@ -26,19 +28,23 @@ export class MembersController {
   constructor(
     private readonly membersService: MembersService,
     private readonly productService: ProductsService,
+    private readonly historyService: HistoryService,
   ) {}
 
   @Post()
-  create(@Body() createMemberDto: CreateMemberDto) {
-    return this.membersService.create(createMemberDto);
+  async create(@Body() createMemberDto: CreateMemberDto, @Req() req) {
+    const { userId } = req;
+    return await this.membersService.create(createMemberDto, userId);
   }
 
   @Post('/bulkcreate')
   async bulkcreate(
     @Body()
     createMemberDto: CreateMemberArrayDto,
+    @Req() req,
   ) {
-    return await this.membersService.bulkCreate(createMemberDto);
+    const { userId } = req;
+    return await this.membersService.bulkCreate(createMemberDto, userId);
   }
 
   @Post('/offboarding/:id')
@@ -48,6 +54,7 @@ export class MembersController {
     @Request() req: any,
   ) {
     const tenantName = req.user.tenantName;
+    const { userId } = req;
 
     const productsToUpdate: Array<{
       id: ObjectId;
@@ -105,6 +112,16 @@ export class MembersController {
 
     await this.membersService.notifyOffBoarding(offboardingMember, data);
 
+    await this.historyService.create({
+      actionType: 'offboarding',
+      itemType: 'members',
+      userId: userId,
+      changes: {
+        oldData: offboardingMember,
+        newData: null,
+      },
+    });
+
     return { message: 'Offboarding process completed successfully' };
   }
 
@@ -130,19 +147,37 @@ export class MembersController {
   update(
     @Param('id', ParseMongoIdPipe) id: ObjectId,
     @Body() updateMemberDto: UpdateMemberDto,
+    @Req() req,
   ) {
-    return this.membersService.update(id, updateMemberDto);
+    const { userId } = req;
+
+    return this.membersService.update(id, updateMemberDto, userId);
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.membersService.softDeleteMember(id);
+  async remove(@Param('id', ParseMongoIdPipe) id: ObjectId, @Req() req) {
+    const { userId } = req;
+
+    const memberDeleted = await this.membersService.softDeleteMember(id);
+
+    await this.historyService.create({
+      actionType: 'delete',
+      itemType: 'members',
+      userId: userId,
+      changes: {
+        oldData: memberDeleted,
+        newData: null,
+      },
+    });
+
+    return memberDeleted;
   }
 
   @Get('team/:teamId')
   async findMembersByTeam(@Param('teamId', ParseMongoIdPipe) teamId: ObjectId) {
     return await this.membersService.findMembersByTeam(teamId);
   }
+
   // already run this code, I leave it here for reference
   // @Get('update-dni-all-tenants')
   // async updateDniForAllTenants() {

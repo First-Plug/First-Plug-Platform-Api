@@ -129,9 +129,9 @@ export class TeamsService {
         color,
       });
 
-      this.historyService.create({
+      await this.historyService.create({
         actionType: 'create',
-        itemType: 'team',
+        itemType: 'teams',
         userId: userId,
         changes: {
           oldData: emptyTeam,
@@ -272,9 +272,9 @@ export class TeamsService {
         color: team?.color,
       };
 
-      this.historyService.create({
+      await this.historyService.create({
         actionType: 'update',
-        itemType: 'team',
+        itemType: 'teams',
         userId: userId,
         changes: {
           oldData: payloadOldData,
@@ -321,9 +321,9 @@ export class TeamsService {
         throw new BadRequestException('Team not found');
       }
 
-      this.historyService.create({
+      await this.historyService.create({
         actionType: 'delete',
-        itemType: 'team',
+        itemType: 'teams',
         userId: userId,
         changes: {
           oldData: flattenTeam(result),
@@ -378,7 +378,7 @@ export class TeamsService {
 
       await this.historyService.create({
         actionType: 'bulk-delete',
-        itemType: 'team',
+        itemType: 'teams',
         userId: userId,
         changes: historyData,
       });

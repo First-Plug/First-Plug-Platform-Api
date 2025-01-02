@@ -9,7 +9,7 @@ export class HistoryController {
   constructor(private readonly historyService: HistoryService) {}
 
   @Post()
-  create(@Body() createHistoryDto: CreateHistoryDto) {
-    return this.historyService.create(createHistoryDto);
+  async create(@Body() createHistoryDto: CreateHistoryDto) {
+    return await this.historyService.create(createHistoryDto);
   }
 }
