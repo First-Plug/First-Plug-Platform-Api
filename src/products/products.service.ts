@@ -261,125 +261,145 @@ export class ProductsService {
 
   async bulkCreate(createProductDtos: CreateProductDto[], tenantName: string) {
     const session = await this.connection.startSession();
-    session.startTransaction();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      session.startTransaction();
 
-    try {
-      const normalizedProducts = createProductDtos.map(
-        this.normalizeProductData,
-      );
+      try {
+        console.log(`Attempt ${attempt + 1} for bulk creation`);
+        console.log('Starting bulk creation');
+        // Normalizar los productos
+        const normalizedProducts = createProductDtos.map(
+          this.normalizeProductData,
+        );
+        console.log('Normalized products:', normalizedProducts);
+        // Recuperar la configuración de 'recoverable'
+        const recoverableConfig =
+          await this.getRecoverableConfigForTenant(tenantName);
+        console.log('Recoverable config:', recoverableConfig);
 
-      const recoverableConfig =
-        await this.getRecoverableConfigForTenant(tenantName);
+        // Validar números de serie existentes en un único query
+        const serialNumbersToValidate = normalizedProducts
+          .map((p) => p.serialNumber)
+          .filter((serialNumber) => !!serialNumber); // Filtrar solo los que tienen serialNumber
+        console.log('Serial numbers to validate:', serialNumbersToValidate);
 
-      const productsWithSerialNumbers = normalizedProducts.filter(
-        (product) => product.serialNumber,
-      );
-      const seenSerialNumbers = new Set<string>();
-      const duplicates = new Set<string>();
+        if (serialNumbersToValidate.length > 0) {
+          const existingSerialNumbers = new Set(
+            await this.productRepository
+              .find({ serialNumber: { $in: serialNumbersToValidate } })
+              .distinct('serialNumber'),
+          );
+          console.log('Existing serial numbers:', existingSerialNumbers);
 
-      productsWithSerialNumbers.forEach((product) => {
-        if (product.serialNumber) {
-          if (seenSerialNumbers.has(product.serialNumber)) {
-            duplicates.add(product.serialNumber);
-          } else {
-            seenSerialNumbers.add(product.serialNumber);
-          }
+          normalizedProducts.forEach((product) => {
+            if (existingSerialNumbers.has(product.serialNumber)) {
+              throw new BadRequestException(
+                `Serial Number ${product.serialNumber} already exists`,
+              );
+            }
+          });
         }
-      });
 
-      if (duplicates.size > 0) {
-        throw new BadRequestException(`Serial Number already exists`);
-      }
+        // Ajustar los valores de recoverable en cada producto
+        normalizedProducts.forEach((product) => {
+          const { category, recoverable } = product;
+          product.recoverable =
+            recoverable !== undefined
+              ? recoverable
+              : recoverableConfig.get(category) || false;
+        });
+        console.log('Products with recoverable set:', normalizedProducts);
 
-      for (const product of normalizedProducts) {
-        const { serialNumber, category, recoverable } = product;
+        // Preparar datos para crear productos
+        const createData = normalizedProducts.map((product) => {
+          const { serialNumber, ...rest } = product;
+          return serialNumber && serialNumber.trim() !== ''
+            ? { ...rest, serialNumber }
+            : rest;
+        });
+        console.log('Prepared create data:', createData);
 
-        const isRecoverable =
-          recoverable !== undefined
-            ? recoverable
-            : recoverableConfig.get(category) || false;
-
-        product.recoverable = isRecoverable;
-
-        if (serialNumber && serialNumber.trim() !== '') {
-          await this.validateSerialNumber(serialNumber);
-        }
-      }
-
-      const createData = normalizedProducts.map((product) => {
-        const { serialNumber, ...rest } = product;
-        return serialNumber && serialNumber.trim() !== ''
-          ? { ...rest, serialNumber }
-          : rest;
-      });
-
-      const productsWithIds = createData.map((product) => {
-        return {
+        const productsWithIds = createData.map((product) => ({
           ...product,
           _id: new Types.ObjectId(),
-        };
-      });
+        }));
 
-      const productsWithoutAssignedEmail = productsWithIds.filter(
-        (product) => !product.assignedEmail,
-      );
+        const productsWithoutAssignedEmail = productsWithIds.filter(
+          (product) => !product.assignedEmail,
+        );
 
-      const productsWithAssignedEmail = productsWithIds.filter(
-        (product) => product.assignedEmail,
-      );
+        const productsWithAssignedEmail = productsWithIds.filter(
+          (product) => product.assignedEmail,
+        );
 
-      const createdProducts: ProductDocument[] = [];
+        const createdProducts: ProductDocument[] = [];
 
-      const assignProductPromises = productsWithAssignedEmail.map(
-        async (product) => {
-          if (product.assignedEmail) {
-            const member = await this.memberService.findByEmailNotThrowError(
-              product.assignedEmail,
-            );
-
-            if (member) {
-              const productDocument = new this.productRepository(
-                product,
-              ) as ProductDocument;
-              productDocument.assignedMember = this.getFullName(member);
-              member.products.push(productDocument);
-              await member.save({ session });
-              await this.productRepository
-                .deleteOne({ _id: product._id })
-                .session(session);
-              createdProducts.push(productDocument);
-            } else {
-              const createdProduct = await this.productRepository.create(
-                [product],
-                { session },
+        // Procesar productos con assignedEmail
+        const assignProductPromises = productsWithAssignedEmail.map(
+          async (product) => {
+            if (product.assignedEmail) {
+              const member = await this.memberService.findByEmailNotThrowError(
+                product.assignedEmail,
               );
-              createdProducts.push(...createdProduct);
+
+              if (member) {
+                console.log(`Assigning product to member: ${member.email}`);
+                const productDocument = new this.productRepository(
+                  product,
+                ) as ProductDocument;
+                productDocument.assignedMember = this.getFullName(member);
+                member.products.push(productDocument);
+                await member.save({ session });
+                await this.productRepository
+                  .deleteOne({ _id: product._id })
+                  .session(session);
+                createdProducts.push(productDocument);
+              } else {
+                console.log('Creating product without a member');
+                const createdProduct = await this.productRepository.create(
+                  [product],
+                  { session },
+                );
+                createdProducts.push(...createdProduct);
+              }
             }
-          }
-        },
-      );
+          },
+        );
 
-      const insertManyPromise = this.productRepository.insertMany(
-        productsWithoutAssignedEmail,
-        { session },
-      );
+        // Insertar productos sin assignedEmail
+        const insertManyPromise = this.productRepository.insertMany(
+          productsWithoutAssignedEmail,
+          {
+            session,
+          },
+        );
 
-      const createdProductsWithoutAssignedEmail = await insertManyPromise;
-      createdProducts.push(...createdProductsWithoutAssignedEmail);
+        const createdProductsWithoutAssignedEmail = await insertManyPromise;
+        createdProducts.push(...createdProductsWithoutAssignedEmail);
 
-      await Promise.all(assignProductPromises);
+        await Promise.all(assignProductPromises);
 
-      await session.commitTransaction();
-      session.endSession();
+        await session.commitTransaction();
+        session.endSession();
+        console.log('Bulk creation completed successfully');
+        return createdProducts;
+      } catch (error) {
+        console.error('Error during bulk creation:', error);
+        await session.abortTransaction();
+        if (
+          error.codeName === 'WriteConflict' ||
+          error.errorLabels?.includes('TransientTransactionError')
+        ) {
+          console.log('Retrying transaction...');
+          continue;
+        }
 
-      return createdProducts;
-    } catch (error) {
-      await session.abortTransaction();
-      session.endSession();
-      if (error instanceof BadRequestException) {
-        throw new BadRequestException(`Serial Number already exists`);
-      } else {
-        throw new InternalServerErrorException();
+        session.endSession();
+        if (error instanceof BadRequestException) {
+          throw error;
+        } else {
+          throw new InternalServerErrorException();
+        }
       }
     }
   }
