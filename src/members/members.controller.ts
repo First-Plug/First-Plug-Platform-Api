@@ -76,7 +76,9 @@ export class MembersController {
           break;
 
         case 'FP warehouse':
+          product.lastAssigned = product.assignedEmail;
           product.assignedEmail = '';
+          product.assignedMember = '';
           product.location = 'FP warehouse';
           product.status = 'Available';
 
@@ -87,7 +89,9 @@ export class MembersController {
           break;
 
         case 'My office':
+          product.lastAssigned = product.assignedEmail;
           product.assignedEmail = '';
+          product.assignedMember = '';
           product.location = 'Our office';
           product.status = 'Available';
 
@@ -106,18 +110,31 @@ export class MembersController {
       );
     }
 
+    const updatedProducts = productsToUpdate.map((p) => p.product);
+
     const offboardingMember = await this.membersService.findById(id);
 
     await this.membersService.softDeleteMember(id);
 
     await this.membersService.notifyOffBoarding(offboardingMember, data);
 
+    const assignedEmail = offboardingMember.email;
+
     await this.historyService.create({
       actionType: 'offboarding',
       itemType: 'members',
       userId: userId,
       changes: {
-        oldData: offboardingMember,
+        oldData: {
+          ...offboardingMember,
+          products: [
+            ...offboardingMember.products.map((product) => ({
+              ...product,
+              lastAssigned: assignedEmail,
+            })),
+            ...updatedProducts,
+          ],
+        },
         newData: null,
       },
     });

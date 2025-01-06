@@ -3,6 +3,7 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 
 import { ClientSession, Model, ObjectId, Types } from 'mongoose';
@@ -242,34 +243,44 @@ export class TeamsService {
   async update(id: ObjectId, updateTeamDto: UpdateTeamDto, userId: string) {
     try {
       const normalizedTeamName = this.normalizeTeamName(updateTeamDto.name);
-      const existingTeam = await this.teamRepository.findOne({
+
+      const existingTeam = await this.teamRepository.findById(id);
+      if (!existingTeam) {
+        throw new NotFoundException('Team not found');
+      }
+
+      const teamWithSameName = await this.teamRepository.findOne({
         name: normalizedTeamName,
       });
-
-      if (existingTeam && existingTeam._id.toString() !== id.toString()) {
+      if (
+        teamWithSameName &&
+        teamWithSameName._id.toString() !== id.toString()
+      ) {
         throw new BadRequestException(
           'There is already another team with that name',
         );
       }
 
+      const payloadOldData = {
+        _id: existingTeam._id.toString(),
+        name: existingTeam.name,
+        color: existingTeam.color,
+      };
+
       const team = await this.teamRepository.findByIdAndUpdate(
         id,
         { ...updateTeamDto, name: normalizedTeamName },
-        {
-          new: true,
-        },
+        { new: true },
       );
 
-      const payloadOldData = {
-        _id: id,
-        name: updateTeamDto?.name,
-        color: team?.color,
-      };
+      if (!team) {
+        throw new NotFoundException('Failed to update team');
+      }
 
       const payloadTeam = {
-        _id: team?._id.toString(),
-        name: team?.name,
-        color: team?.color,
+        _id: team._id.toString(),
+        name: team.name,
+        color: team.color,
       };
 
       await this.historyService.create({
@@ -285,7 +296,6 @@ export class TeamsService {
       return team;
     } catch (error) {
       console.log(error);
-
       this.handleDBExceptions(error);
     }
   }
@@ -369,11 +379,7 @@ export class TeamsService {
           name: team.name,
           color: team.color,
         })),
-        newData: teams.map((team) => ({
-          id: team.id,
-          name: '',
-          color: '',
-        })),
+        newData: null,
       };
 
       await this.historyService.create({
