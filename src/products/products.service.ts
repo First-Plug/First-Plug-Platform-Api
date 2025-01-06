@@ -6,7 +6,11 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Model, ObjectId, Types } from 'mongoose';
-import { ProductDocument, ProductSchema } from './schemas/product.schema';
+import {
+  Product,
+  ProductDocument,
+  ProductSchema,
+} from './schemas/product.schema';
 import { CreateProductDto, UpdateProductDto } from './dto';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { BadRequestException } from '@nestjs/common';
@@ -21,6 +25,7 @@ import {
 } from 'src/members/schemas/member.schema';
 import { Response } from 'express';
 import { Parser } from 'json2csv';
+import { HistoryService } from 'src/history/history.service';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -34,6 +39,7 @@ export class ProductsService {
     private readonly productRepository: ProductModel,
     private readonly memberService: MembersService,
     private readonly tenantsService: TenantsService,
+    private readonly historyService: HistoryService,
     @InjectConnection() private readonly connection: Connection,
   ) {}
 
@@ -212,7 +218,11 @@ export class ProductsService {
     ]);
   }
 
-  async create(createProductDto: CreateProductDto, tenantName: string) {
+  async create(
+    createProductDto: CreateProductDto,
+    tenantName: string,
+    userId: string,
+  ) {
     const normalizedProduct = this.normalizeProductData(createProductDto);
     const { assignedEmail, serialNumber, price, ...rest } = normalizedProduct;
 
@@ -256,10 +266,24 @@ export class ProductsService {
       recoverable: isRecoverable,
     });
 
+    await this.historyService.create({
+      actionType: 'create',
+      itemType: 'assets',
+      userId: userId,
+      changes: {
+        oldData: null,
+        newData: newProduct,
+      },
+    });
+
     return newProduct;
   }
 
-  async bulkCreate(createProductDtos: CreateProductDto[], tenantName: string) {
+  async bulkCreate(
+    createProductDtos: CreateProductDto[],
+    tenantName: string,
+    userId: string,
+  ) {
     const session = await this.connection.startSession();
 
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -394,6 +418,16 @@ export class ProductsService {
 
         await session.commitTransaction();
         session.endSession();
+
+        await this.historyService.create({
+          actionType: 'bulk-create',
+          itemType: 'assets',
+          userId: userId,
+          changes: {
+            oldData: null,
+            newData: createdProducts,
+          },
+        });
 
         return createdProducts;
       } catch (error) {
@@ -1158,7 +1192,7 @@ export class ProductsService {
     }
   }
 
-  async softDelete(id: ObjectId) {
+  async softDelete(id: ObjectId, userId: string) {
     const session = await this.connection.startSession();
     let retries = 0;
     const maxRetries = 3;
@@ -1166,9 +1200,17 @@ export class ProductsService {
     while (retries < maxRetries) {
       try {
         session.startTransaction();
+
         const product = await this.productRepository
           .findById(id)
           .session(session);
+        const changes: {
+          oldData: Product | null;
+          newData: Product | null;
+        } = {
+          oldData: null,
+          newData: null,
+        };
 
         if (product) {
           product.status = 'Deprecated';
@@ -1176,52 +1218,60 @@ export class ProductsService {
           await product.save();
           await this.productRepository.softDelete({ _id: id }, { session });
 
-          await session.commitTransaction();
-          session.endSession();
+          changes.oldData = product;
+        } else {
+          const memberProduct =
+            await this.memberService.getProductByMembers(id);
 
-          return { message: `Product with id ${id} has been soft deleted` };
+          if (memberProduct && memberProduct.product) {
+            await this.productRepository.create(
+              [
+                {
+                  _id: memberProduct.product._id,
+                  name: memberProduct.product.name,
+                  attributes: memberProduct.product.attributes,
+                  category: memberProduct.product.category,
+                  assignedEmail: memberProduct.product.assignedEmail,
+                  assignedMember: memberProduct.product.assignedMember,
+                  acquisitionDate: memberProduct.product.acquisitionDate,
+                  deleteAt: memberProduct.product.deleteAt,
+                  isDeleted: true,
+                  location: memberProduct.product.location,
+                  recoverable: memberProduct.product.recoverable,
+                  serialNumber: memberProduct.product.serialNumber,
+                  lastAssigned: memberProduct.member.email,
+                  status: 'Deprecated',
+                },
+              ],
+              { session },
+            );
+
+            await this.productRepository.softDelete({ _id: id }, { session });
+
+            const memberId = memberProduct.member._id;
+            await this.memberService.deleteProductFromMember(
+              memberId,
+              id,
+              session,
+            );
+
+            changes.oldData = memberProduct.product;
+          } else {
+            throw new NotFoundException(`Product with id "${id}" not found`);
+          }
         }
 
-        const memberProduct = await this.memberService.getProductByMembers(id);
+        await this.historyService.create({
+          actionType: 'delete',
+          itemType: 'assets',
+          userId,
+          changes,
+        });
 
-        if (memberProduct && memberProduct.product) {
-          await this.productRepository.create(
-            [
-              {
-                _id: memberProduct.product._id,
-                name: memberProduct.product.name,
-                attributes: memberProduct.product.attributes,
-                category: memberProduct.product.category,
-                assignedEmail: memberProduct.product.assignedEmail,
-                assignedMember: memberProduct.product.assignedMember,
-                acquisitionDate: memberProduct.product.acquisitionDate,
-                deleteAt: memberProduct.product.deleteAt,
-                isDeleted: true,
-                location: memberProduct.product.location,
-                recoverable: memberProduct.product.recoverable,
-                serialNumber: memberProduct.product.serialNumber,
-                lastAssigned: memberProduct.member.email,
-                status: 'Deprecated',
-              },
-            ],
-            { session },
-          );
+        await session.commitTransaction();
+        session.endSession();
 
-          await this.productRepository.softDelete({ _id: id }, { session });
-
-          const memberId = memberProduct.member._id;
-          await this.memberService.deleteProductFromMember(
-            memberId,
-            id,
-            session,
-          );
-
-          await session.commitTransaction();
-          session.endSession();
-
-          return { message: `Product with id ${id} has been soft deleted` };
-        }
-        throw new NotFoundException(`Product with id "${id}" not found`);
+        return { message: `Product with id ${id} has been soft deleted` };
       } catch (error) {
         console.error(
           `Error en softDelete para el producto con id ${id}:`,
@@ -1240,6 +1290,7 @@ export class ProductsService {
         throw error;
       }
     }
+
     throw new InternalServerErrorException(
       `Failed to soft delete product after ${maxRetries} retries`,
     );

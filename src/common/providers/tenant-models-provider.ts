@@ -7,7 +7,7 @@ import {
   ShipmentSchema,
 } from '../../shipments/schemas/shipment.schema';
 import { Team, TeamSchema } from 'src/teams/schemas/team.schema';
-import { History, HistorySchema } from 'src/history/entities/history.schema';
+import { History, HistorySchema } from 'src/history/schemas/history.schema';
 
 export const tenantModels = {
   productModel: {

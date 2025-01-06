@@ -28,7 +28,8 @@ export class ProductsController {
   @Post()
   create(@Body() createProductDto: CreateProductDto, @Request() req: any) {
     const tenantName = req.user.tenantName;
-    return this.productsService.create(createProductDto, tenantName);
+    const { userId } = req;
+    return this.productsService.create(createProductDto, tenantName, userId);
   }
 
   @Post('/bulkcreate')
@@ -37,10 +38,12 @@ export class ProductsController {
     @Res() res: Response,
     @Request() req: any,
   ) {
+    const { userId } = req;
     const tenantName = req.user.tenantName;
     const products = await this.productsService.bulkCreate(
       createProductDto,
       tenantName,
+      userId,
     );
 
     res.status(HttpStatus.CREATED).json(products);
@@ -104,7 +107,11 @@ export class ProductsController {
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.productsService.softDelete(id);
+  async remove(
+    @Param('id', ParseMongoIdPipe) id: ObjectId,
+    @Request() req: any,
+  ) {
+    const { userId } = req;
+    return await this.productsService.softDelete(id, userId);
   }
 }
