@@ -190,12 +190,41 @@ export class TeamsService {
   async associateTeamToMember(
     TeamId: Types.ObjectId,
     memberId: Types.ObjectId,
+    userId: string,
   ) {
     try {
       const member = await this.memberRepository.findById(memberId);
       if (!member) {
         throw new BadRequestException('Member not found');
       }
+
+      const currentTeam = member.team
+        ? await this.teamRepository.findById(member.team)
+        : null;
+
+      const newTeam = await this.teamRepository.findById(TeamId);
+      if (!newTeam) {
+        throw new BadRequestException('New team not found');
+      }
+
+      const actionType = currentTeam ? 'reassign' : 'assign';
+
+      await this.historyService.create({
+        actionType: actionType,
+        itemType: 'teams',
+        userId: userId,
+        changes: {
+          oldData: {
+            ...member.toObject(),
+            team: currentTeam,
+          },
+          newData: {
+            ...member.toObject(),
+            team: newTeam,
+          },
+        },
+      });
+
       member.team = TeamId;
       await member.save();
       return member;
