@@ -65,10 +65,13 @@ export class TeamsController {
   async associateTeamToMember(
     @Param('teamId', ParseMongoIdPipe) teamId: Types.ObjectId,
     @Param('memberId', ParseMongoIdPipe) memberId: Types.ObjectId,
+    @Req() req,
   ) {
+    const { userId } = req;
     const member = await this.teamsService.associateTeamToMember(
       teamId,
       memberId,
+      userId,
     );
     return member;
   }

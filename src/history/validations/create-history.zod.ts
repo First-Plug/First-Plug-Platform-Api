@@ -8,6 +8,7 @@ export const CreateHistorySchema = z.object({
     'bulk-delete',
     'bulk-create',
     'offboarding',
+    'assign',
   ]),
   userId: z.string().min(1, 'User ID is required'),
   itemType: z.enum(['members', 'teams', 'assets']),
