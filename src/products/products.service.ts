@@ -26,6 +26,7 @@ import {
 import { Response } from 'express';
 import { Parser } from 'json2csv';
 import { HistoryService } from 'src/history/history.service';
+import { updateProductPrice } from './helpers/update-price.helper';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -989,6 +990,69 @@ export class ProductsService {
     }
   }
 
+  async updateEntity(
+    id: ObjectId,
+    updateProductDto: UpdateProductDto,
+    config: { tenantName: string; userId: string },
+  ) {
+    const { tenantName, userId } = config;
+
+    try {
+      const { member, product } = await this.findProductById(id);
+
+      const productCopy = JSON.parse(JSON.stringify(product));
+
+      await this.getRecoverableConfigForTenant(tenantName);
+
+      const isRecoverable =
+        updateProductDto.recoverable !== undefined
+          ? updateProductDto.recoverable
+          : product.recoverable;
+
+      product.price = updateProductPrice(product.price, updateProductDto.price);
+
+      const updatedFields = this.getUpdatedFields(product as ProductDocument, {
+        ...updateProductDto,
+        recoverable: isRecoverable,
+      });
+
+      const currentLocation = member ? 'members' : 'products';
+
+      let productUpdated;
+
+      if (currentLocation === 'products') {
+        productUpdated = await this.productRepository.findOneAndUpdate(
+          { _id: product._id },
+          { $set: updatedFields },
+          { runValidators: true, new: true, omitUndefined: true },
+        );
+      } else if (currentLocation === 'members' && member) {
+        const productIndex = member.products.findIndex(
+          (prod) => prod._id!.toString() === product._id!.toString(),
+        );
+        if (productIndex !== -1) {
+          Object.assign(member.products[productIndex], updatedFields);
+          await member.save();
+          productUpdated = member.products[productIndex];
+        }
+      }
+
+      await this.historyService.create({
+        actionType: 'create',
+        itemType: 'assets',
+        userId: userId,
+        changes: {
+          oldData: productCopy,
+          newData: productUpdated,
+        },
+      });
+
+      return { message: `Product with id "${id}" updated successfully` };
+    } catch (error) {
+      throw error;
+    }
+  }
+
   async update(
     id: ObjectId,
     updateProductDto: UpdateProductDto,
@@ -1383,5 +1447,25 @@ export class ProductsService {
     res.header('Content-Type', 'text/csv');
     res.attachment('products_report.csv');
     res.send(csvData);
+  }
+
+  async findProductById(id: ObjectId) {
+    try {
+      const product = await this.productRepository.findById(id);
+
+      if (!product) {
+        const member = await this.memberService.getProductByMembers(id);
+
+        if (!member) {
+          throw new NotFoundException(`Product with id "${id}" not found`);
+        }
+
+        return member;
+      }
+
+      return { member: null, product };
+    } catch (error) {
+      throw error;
+    }
   }
 }

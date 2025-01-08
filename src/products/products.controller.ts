@@ -106,6 +106,21 @@ export class ProductsController {
     return this.productsService.update(id, updateProductDto, tenantName);
   }
 
+  @Patch('/entity/:id')
+  updateEntity(
+    @Param('id', ParseMongoIdPipe) id: ObjectId,
+    @Body() updateProductDto: UpdateProductDto,
+    @Request() req: any,
+  ) {
+    const { userId } = req;
+    const tenantName = req.user.tenantName;
+
+    return this.productsService.updateEntity(id, updateProductDto, {
+      tenantName,
+      userId,
+    });
+  }
+
   @Delete(':id')
   async remove(
     @Param('id', ParseMongoIdPipe) id: ObjectId,
