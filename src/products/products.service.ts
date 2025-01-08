@@ -431,6 +431,8 @@ export class ProductsService {
 
         return createdProducts;
       } catch (error) {
+        console.log(error);
+
         await session.abortTransaction();
         if (
           error.codeName === 'WriteConflict' ||
