@@ -38,16 +38,23 @@ export class ProductsController {
     @Res() res: Response,
     @Request() req: any,
   ) {
-    const { userId } = req;
-    const tenantName = req.user.tenantName;
-    const products = await this.productsService.bulkCreate(
-      createProductDto,
-      tenantName,
-      userId,
-    );
+    try {
+      const tenantName = req.user.tenantName;
+      const products = await this.productsService.bulkCreate(
+        createProductDto,
+        tenantName,
+      );
 
-    res.status(HttpStatus.CREATED).json(products);
+      res.status(HttpStatus.CREATED).json(products);
+    } catch (error) {
+      console.error('Error en bulkcreate:', error);
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        message: 'Error al crear productos',
+        error: error.message,
+      });
+    }
   }
+
   @Get('/migrate-price')
   async migratePriceForAllTenant() {
     return await this.productsService.migratePriceForAllTenant();
