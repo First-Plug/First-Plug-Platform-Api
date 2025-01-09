@@ -279,175 +279,128 @@ export class ProductsService {
     return newProduct;
   }
 
-  async bulkCreate(
-    createProductDtos: CreateProductDto[],
-    tenantName: string,
-    userId: string,
-  ) {
+  async bulkCreate(createProductDtos: CreateProductDto[], tenantName: string) {
     const session = await this.connection.startSession();
+    session.startTransaction();
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-      session.startTransaction();
+    try {
+      const normalizedProducts = createProductDtos.map(
+        this.normalizeProductData,
+      );
 
-      try {
-        // Normalizar los productos
-        const normalizedProducts = createProductDtos.map(
-          this.normalizeProductData,
-        );
+      const recoverableConfig =
+        await this.getRecoverableConfigForTenant(tenantName);
 
-        // Recuperar la configuración de 'recoverable'
-        const recoverableConfig =
-          await this.getRecoverableConfigForTenant(tenantName);
+      const productsWithSerialNumbers = normalizedProducts.filter(
+        (product) => product.serialNumber,
+      );
+      const seenSerialNumbers = new Set<string>();
+      const duplicates = new Set<string>();
 
-        // Validar números de serie existentes en un único query
-        const serialNumbersToValidate = normalizedProducts
-          .map((p) => p.serialNumber)
-          .filter((serialNumber) => !!serialNumber); // Filtrar solo los que tienen serialNumber
-
-        if (serialNumbersToValidate.length > 0) {
-          const existingSerialNumbers = new Set(
-            await this.productRepository
-              .find({ serialNumber: { $in: serialNumbersToValidate } })
-              .distinct('serialNumber'),
-          );
-
-          normalizedProducts.forEach((product) => {
-            if (existingSerialNumbers.has(product.serialNumber)) {
-              throw new BadRequestException(
-                `Serial Number ${product.serialNumber} already exists`,
-              );
-            }
-          });
+      productsWithSerialNumbers.forEach((product) => {
+        if (product.serialNumber) {
+          if (seenSerialNumbers.has(product.serialNumber)) {
+            duplicates.add(product.serialNumber);
+          } else {
+            seenSerialNumbers.add(product.serialNumber);
+          }
         }
+      });
 
-        // Ajustar los valores de recoverable en cada producto
-        normalizedProducts.forEach((product) => {
-          const { category, recoverable } = product;
-          product.recoverable =
-            recoverable !== undefined
-              ? recoverable
-              : recoverableConfig.get(category) || false;
-        });
+      if (duplicates.size > 0) {
+        throw new BadRequestException(`Serial Number already exists`);
+      }
 
-        // Preparar datos para crear productos
-        const createData = normalizedProducts.map((product) => {
-          const { serialNumber, ...rest } = product;
-          return serialNumber && serialNumber.trim() !== ''
-            ? { ...rest, serialNumber }
-            : rest;
-        });
+      for (const product of normalizedProducts) {
+        const { serialNumber, category, recoverable } = product;
 
-        const productsWithIds = createData.map((product) => ({
+        const isRecoverable =
+          recoverable !== undefined
+            ? recoverable
+            : recoverableConfig.get(category) || false;
+
+        product.recoverable = isRecoverable;
+
+        if (serialNumber && serialNumber.trim() !== '') {
+          await this.validateSerialNumber(serialNumber);
+        }
+      }
+
+      const createData = normalizedProducts.map((product) => {
+        const { serialNumber, ...rest } = product;
+        return serialNumber && serialNumber.trim() !== ''
+          ? { ...rest, serialNumber }
+          : rest;
+      });
+
+      const productsWithIds = createData.map((product) => {
+        return {
           ...product,
           _id: new Types.ObjectId(),
-        }));
+        };
+      });
 
-        const productsWithoutAssignedEmail = productsWithIds.filter(
-          (product) => !product.assignedEmail,
-        );
+      const productsWithoutAssignedEmail = productsWithIds.filter(
+        (product) => !product.assignedEmail,
+      );
 
-        const productsWithAssignedEmail = productsWithIds.filter(
-          (product) => product.assignedEmail,
-        );
+      const productsWithAssignedEmail = productsWithIds.filter(
+        (product) => product.assignedEmail,
+      );
 
-        const createdProducts: ProductDocument[] = [];
+      const createdProducts: ProductDocument[] = [];
 
-        const existingProducts = await this.productRepository.find({
-          _id: { $in: productsWithIds.map((p) => p._id) },
-        });
+      const assignProductPromises = productsWithAssignedEmail.map(
+        async (product) => {
+          if (product.assignedEmail) {
+            const member = await this.memberService.findByEmailNotThrowError(
+              product.assignedEmail,
+            );
 
-        if (existingProducts.length > 0) {
-          throw new Error('Products already created in a previous attempt');
-        }
-
-        // Procesar productos con assignedEmail
-        const assignProductPromises = productsWithAssignedEmail.map(
-          async (product) => {
-            const existingProduct = await this.productRepository.findOne({
-              _id: product._id,
-            });
-
-            if (existingProduct) {
-              console.log('Product already exists, skipping:', product._id);
-              return;
-            }
-
-            if (product.assignedEmail) {
-              const member = await this.memberService.findByEmailNotThrowError(
-                product.assignedEmail,
+            if (member) {
+              const productDocument = new this.productRepository(
+                product,
+              ) as ProductDocument;
+              productDocument.assignedMember = this.getFullName(member);
+              member.products.push(productDocument);
+              await member.save({ session });
+              await this.productRepository
+                .deleteOne({ _id: product._id })
+                .session(session);
+              createdProducts.push(productDocument);
+            } else {
+              const createdProduct = await this.productRepository.create(
+                [product],
+                { session },
               );
-
-              if (member) {
-                console.log(`Assigning product to member: ${member.email}`);
-                const productDocument = new this.productRepository(
-                  product,
-                ) as ProductDocument;
-                productDocument.assignedMember = this.getFullName(member);
-                member.products.push(productDocument);
-                await member.save({ session });
-                await this.productRepository
-                  .deleteOne({ _id: product._id })
-                  .session(session);
-                createdProducts.push(productDocument);
-              } else {
-                console.log('Creating product without a member');
-                const createdProduct = await this.productRepository.create(
-                  [product],
-                  { session },
-                );
-                createdProducts.push(...createdProduct);
-              }
+              createdProducts.push(...createdProduct);
             }
-          },
-        );
+          }
+        },
+      );
 
-        // Insertar productos sin assignedEmail
+      const insertManyPromise = this.productRepository.insertMany(
+        productsWithoutAssignedEmail,
+        { session },
+      );
 
-        const insertManyPromise = this.productRepository.insertMany(
-          productsWithoutAssignedEmail,
-          {
-            session,
-          },
-        );
+      const createdProductsWithoutAssignedEmail = await insertManyPromise;
+      createdProducts.push(...createdProductsWithoutAssignedEmail);
 
-        const createdProductsWithoutAssignedEmail = await insertManyPromise;
+      await Promise.all(assignProductPromises);
 
-        createdProducts.push(...createdProductsWithoutAssignedEmail);
+      await session.commitTransaction();
+      session.endSession();
 
-        await Promise.all(assignProductPromises);
 
-        await session.commitTransaction();
-        session.endSession();
-
-        await this.historyService.create({
-          actionType: 'bulk-create',
-          itemType: 'assets',
-          userId: userId,
-          changes: {
-            oldData: null,
-            newData: createdProducts,
-          },
-        });
-
-        return createdProducts;
-      } catch (error) {
-        console.log(error);
-
-        await session.abortTransaction();
-        if (
-          error.codeName === 'WriteConflict' ||
-          error.errorLabels?.includes('TransientTransactionError')
-        ) {
-          console.log('Retrying transaction...');
-          continue;
-        }
-
-        session.endSession();
-        if (error instanceof BadRequestException) {
-          throw error;
-        } else {
-          throw new InternalServerErrorException();
-        }
+      return createdProducts;
+    } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
+      if (error instanceof BadRequestException) {
+        throw new BadRequestException(`Serial Number already exists`);
+      } else {
+        throw new InternalServerErrorException();
       }
     }
   }

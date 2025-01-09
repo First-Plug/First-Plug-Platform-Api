@@ -22,7 +22,6 @@ export class AuthService {
     await this.checkAndPropagateTenantConfig(user);
 
     const payload = this.createUserPayload(user);
-    console.log('Payload generado en login:', payload);
 
     return {
       user: payload,
@@ -101,7 +100,6 @@ export class AuthService {
 
     if (user) {
       const payload = this.createUserPayload(user);
-      console.log('Payload generado en getTokens:', payload);
 
       return {
         user: payload,
@@ -128,7 +126,6 @@ export class AuthService {
       throw new UnauthorizedException();
     }
     const payload = this.createUserPayload(updatedUser);
-    console.log('Payload generado en refreshToken:', payload);
 
     return {
       user: payload,
