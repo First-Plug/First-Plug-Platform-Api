@@ -392,6 +392,7 @@ export class ProductsService {
       await session.commitTransaction();
       session.endSession();
 
+
       return createdProducts;
     } catch (error) {
       await session.abortTransaction();
