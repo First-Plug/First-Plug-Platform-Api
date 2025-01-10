@@ -256,6 +256,17 @@ export class ProductsService {
 
       if (member) {
         assignedMember = this.getFullName(member);
+
+        await this.historyService.create({
+          actionType: 'create',
+          itemType: 'assets',
+          userId: userId,
+          changes: {
+            oldData: null,
+            newData: member.products.at(-1) as Product,
+          },
+        });
+
         return member.products.at(-1);
       }
     }
