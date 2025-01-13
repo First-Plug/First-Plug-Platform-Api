@@ -84,10 +84,12 @@ export class ProductsController {
     @Request() req: any,
   ) {
     const tenantName = req.user.tenantName;
+    const { userId } = req;
     return this.productsService.reassignProduct(
       id,
       updateProductDto,
       tenantName,
+      userId,
     );
   }
 
@@ -103,7 +105,13 @@ export class ProductsController {
     @Request() req: any,
   ) {
     const tenantName = req.user.tenantName;
-    return this.productsService.update(id, updateProductDto, tenantName);
+    const { userId } = req;
+    return this.productsService.update(
+      id,
+      updateProductDto,
+      tenantName,
+      userId,
+    );
   }
 
   @Patch('/entity/:id')

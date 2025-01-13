@@ -107,6 +107,7 @@ export class MembersController {
       await this.productService.updateMultipleProducts(
         productsToUpdate,
         tenantName,
+        userId,
       );
     }
 

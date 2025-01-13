@@ -36,6 +36,7 @@ const CURRENCY_CODES = [
 
 export const ProductSchemaZod = z
   .object({
+    actionType: z.enum(['return', 'relocate', 'assign', 'reassign']),
     name: z.string().optional(),
     category: z.enum(CATEGORIES),
     attributes: z
