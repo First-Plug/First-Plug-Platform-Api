@@ -404,7 +404,6 @@ export class ProductsService {
       await session.commitTransaction();
       session.endSession();
 
-
       return createdProducts;
     } catch (error) {
       await session.abortTransaction();
@@ -1208,18 +1207,20 @@ export class ProductsService {
               );
 
               // Registrar relocate
-              await this.historyService.create({
-                actionType: actionType,
-                itemType: 'assets',
-                userId: userId,
-                changes: {
-                  oldData: productCopy,
-                  newData: {
-                    ...memberProduct.product,
-                    assignedEmail: newMember.email,
+              if (actionType) {
+                await this.historyService.create({
+                  actionType: actionType,
+                  itemType: 'assets',
+                  userId: userId,
+                  changes: {
+                    oldData: productCopy,
+                    newData: {
+                      ...memberProduct.product,
+                      assignedEmail: newMember.email,
+                    },
                   },
-                },
-              });
+                });
+              }
             } else {
               throw new NotFoundException(
                 `Member with email "${updateProductDto.assignedEmail}" not found`,
@@ -1233,15 +1234,17 @@ export class ProductsService {
               member,
             );
             // Registrar return
-            await this.historyService.create({
-              actionType: actionType,
-              itemType: 'assets',
-              userId: userId,
-              changes: {
-                oldData: productCopy,
-                newData: updateProduct?.length ? updateProduct[0] : {},
-              },
-            });
+            if (actionType) {
+              await this.historyService.create({
+                actionType: actionType,
+                itemType: 'assets',
+                userId: userId,
+                changes: {
+                  oldData: productCopy,
+                  newData: updateProduct?.length ? updateProduct[0] : {},
+                },
+              });
+            }
           } else {
             await this.updateProductAttributes(
               session,
