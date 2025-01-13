@@ -8,6 +8,8 @@ export const CreateHistorySchema = z.object({
     'bulk-delete',
     'bulk-create',
     'offboarding',
+    'return',
+    'relocate',
     'assign',
     'reassign',
   ]),

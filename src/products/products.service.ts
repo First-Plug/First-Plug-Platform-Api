@@ -26,6 +26,7 @@ import {
 import { Response } from 'express';
 import { Parser } from 'json2csv';
 import { HistoryService } from 'src/history/history.service';
+import { updateProductPrice } from './helpers/update-price.helper';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -255,6 +256,17 @@ export class ProductsService {
 
       if (member) {
         assignedMember = this.getFullName(member);
+
+        await this.historyService.create({
+          actionType: 'create',
+          itemType: 'assets',
+          userId: userId,
+          changes: {
+            oldData: null,
+            newData: member.products.at(-1) as Product,
+          },
+        });
+
         return member.products.at(-1);
       }
     }
@@ -713,6 +725,7 @@ export class ProductsService {
   async updateMultipleProducts(
     productsToUpdate: { id: ObjectId; product: any }[],
     tenantName: string,
+    userId: string,
   ) {
     const session = await this.connection.startSession();
     session.startTransaction();
@@ -721,7 +734,7 @@ export class ProductsService {
       for (const { id, product } of productsToUpdate) {
         const updateProductDto = { ...product };
 
-        await this.update(id, { ...updateProductDto }, tenantName);
+        await this.update(id, { ...updateProductDto }, tenantName, userId);
       }
 
       await session.commitTransaction();
@@ -737,11 +750,12 @@ export class ProductsService {
     id: ObjectId,
     updateProductDto: UpdateProductDto,
     tenantName: string,
+    userId: string,
   ) {
     if (updateProductDto.assignedEmail === 'none') {
       updateProductDto.assignedEmail = '';
     }
-    return this.update(id, updateProductDto, tenantName);
+    return this.update(id, updateProductDto, tenantName, userId);
   }
 
   private getUpdatedFields(
@@ -905,7 +919,7 @@ export class ProductsService {
       location: updateProductDto.location || product.location,
       isDeleted: product.isDeleted,
     };
-    await this.productRepository.create([updateData], { session });
+    return await this.productRepository.create([updateData], { session });
   }
 
   // Método para actualizar los atributos del producto
@@ -944,13 +958,79 @@ export class ProductsService {
     }
   }
 
+  async updateEntity(
+    id: ObjectId,
+    updateProductDto: UpdateProductDto,
+    config: { tenantName: string; userId: string },
+  ) {
+    const { tenantName, userId } = config;
+
+    try {
+      const { member, product } = await this.findProductById(id);
+
+      const productCopy = JSON.parse(JSON.stringify(product));
+
+      await this.getRecoverableConfigForTenant(tenantName);
+
+      const isRecoverable =
+        updateProductDto.recoverable !== undefined
+          ? updateProductDto.recoverable
+          : product.recoverable;
+
+      product.price = updateProductPrice(product.price, updateProductDto.price);
+
+      const updatedFields = this.getUpdatedFields(product as ProductDocument, {
+        ...updateProductDto,
+        recoverable: isRecoverable,
+      });
+
+      const currentLocation = member ? 'members' : 'products';
+
+      let productUpdated;
+
+      if (currentLocation === 'products') {
+        productUpdated = await this.productRepository.findOneAndUpdate(
+          { _id: product._id },
+          { $set: updatedFields },
+          { runValidators: true, new: true, omitUndefined: true },
+        );
+      } else if (currentLocation === 'members' && member) {
+        const productIndex = member.products.findIndex(
+          (prod) => prod._id!.toString() === product._id!.toString(),
+        );
+        if (productIndex !== -1) {
+          Object.assign(member.products[productIndex], updatedFields);
+          await member.save();
+          productUpdated = member.products[productIndex];
+        }
+      }
+
+      await this.historyService.create({
+        actionType: 'create',
+        itemType: 'assets',
+        userId: userId,
+        changes: {
+          oldData: productCopy,
+          newData: productUpdated,
+        },
+      });
+
+      return { message: `Product with id "${id}" updated successfully` };
+    } catch (error) {
+      throw error;
+    }
+  }
+
   async update(
     id: ObjectId,
     updateProductDto: UpdateProductDto,
     tenantName: string,
+    userId: string, // Asegúrate de recibir `userId` como parámetro
   ) {
     const session = await this.connection.startSession();
     session.startTransaction();
+
+    const { actionType } = updateProductDto;
 
     try {
       const product = await this.productRepository
@@ -960,12 +1040,12 @@ export class ProductsService {
       if (product) {
         await this.getRecoverableConfigForTenant(tenantName);
 
-        // let isRecoverable: boolean;
-
         const isRecoverable =
           updateProductDto.recoverable !== undefined
             ? updateProductDto.recoverable
             : product.recoverable;
+
+        const productCopy = { ...product.toObject() };
 
         if (
           updateProductDto.price?.amount !== undefined &&
@@ -976,11 +1056,11 @@ export class ProductsService {
             currencyCode: updateProductDto.price.currencyCode,
           };
         } else if (product.price && !updateProductDto.price) {
+          // Mantener precio existente
         } else {
           product.price = undefined;
         }
 
-        // Caso en que el producto tiene un assignedEmail desconocido y se deben actualizar los atributos
         if (
           product.assignedEmail &&
           !(await this.memberService.findByEmailNotThrowError(
@@ -1012,7 +1092,6 @@ export class ProductsService {
             );
           }
         } else {
-          // Manejar la reasignación del producto
           if (
             updateProductDto.assignedEmail &&
             updateProductDto.assignedEmail !== 'none' &&
@@ -1029,6 +1108,22 @@ export class ProductsService {
                 { ...updateProductDto, recoverable: isRecoverable },
                 product.assignedEmail || '',
               );
+
+              // Registrar reassign
+              if (actionType) {
+                await this.historyService.create({
+                  actionType: actionType,
+                  itemType: 'assets',
+                  userId: userId,
+                  changes: {
+                    oldData: productCopy,
+                    newData: {
+                      ...product.toObject(),
+                      assignedEmail: newMember.email,
+                    },
+                  },
+                });
+              }
             } else {
               throw new NotFoundException(
                 `Member with email "${updateProductDto.assignedEmail}" not found`,
@@ -1043,6 +1138,30 @@ export class ProductsService {
               recoverable: isRecoverable,
             });
           } else {
+            if (
+              !product.assignedEmail &&
+              updateProductDto.assignedEmail &&
+              updateProductDto.assignedEmail !== 'none'
+            ) {
+              // Registrar assign
+              if (actionType) {
+                console.log('entro al assign');
+
+                await this.historyService.create({
+                  actionType: actionType,
+                  itemType: 'assets',
+                  userId: userId,
+                  changes: {
+                    oldData: productCopy,
+                    newData: {
+                      ...product.toObject(),
+                      assignedEmail: updateProductDto.assignedEmail,
+                    },
+                  },
+                });
+              }
+            }
+
             await this.updateProductAttributes(
               session,
               product,
@@ -1063,12 +1182,14 @@ export class ProductsService {
 
         if (memberProduct?.product) {
           const member = memberProduct.member;
-          // const recoverableConfig =
           await this.getRecoverableConfigForTenant(tenantName);
+
           const isRecoverable =
             updateProductDto.recoverable !== undefined
               ? updateProductDto.recoverable
               : memberProduct.product.recoverable;
+
+          const productCopy = { ...memberProduct.product };
 
           if (
             updateProductDto.assignedEmail &&
@@ -1085,18 +1206,42 @@ export class ProductsService {
                 { ...updateProductDto, recoverable: isRecoverable },
                 member.email,
               );
+
+              // Registrar relocate
+              await this.historyService.create({
+                actionType: actionType,
+                itemType: 'assets',
+                userId: userId,
+                changes: {
+                  oldData: productCopy,
+                  newData: {
+                    ...memberProduct.product,
+                    assignedEmail: newMember.email,
+                  },
+                },
+              });
             } else {
               throw new NotFoundException(
                 `Member with email "${updateProductDto.assignedEmail}" not found`,
               );
             }
           } else if (updateProductDto.assignedEmail === '') {
-            await this.handleProductUnassignment(
+            const updateProduct = await this.handleProductUnassignment(
               session,
               memberProduct.product as ProductDocument,
               { ...updateProductDto, recoverable: isRecoverable },
               member,
             );
+            // Registrar return
+            await this.historyService.create({
+              actionType: actionType,
+              itemType: 'assets',
+              userId: userId,
+              changes: {
+                oldData: productCopy,
+                newData: updateProduct?.length ? updateProduct[0] : {},
+              },
+            });
           } else {
             await this.updateProductAttributes(
               session,
@@ -1106,8 +1251,6 @@ export class ProductsService {
               member,
             );
           }
-          console.log('Datos recibidos para actualización:', updateProductDto);
-          console.log('Producto actual en la base de datos:', product);
 
           await session.commitTransaction();
           session.endSession();
@@ -1131,7 +1274,7 @@ export class ProductsService {
     currentMember?: MemberDocument,
   ) {
     if (currentMember) {
-      await this.moveToProductsCollection(
+      return await this.moveToProductsCollection(
         session,
         product,
         currentMember,
@@ -1338,5 +1481,25 @@ export class ProductsService {
     res.header('Content-Type', 'text/csv');
     res.attachment('products_report.csv');
     res.send(csvData);
+  }
+
+  async findProductById(id: ObjectId) {
+    try {
+      const product = await this.productRepository.findById(id);
+
+      if (!product) {
+        const member = await this.memberService.getProductByMembers(id);
+
+        if (!member) {
+          throw new NotFoundException(`Product with id "${id}" not found`);
+        }
+
+        return member;
+      }
+
+      return { member: null, product };
+    } catch (error) {
+      throw error;
+    }
   }
 }

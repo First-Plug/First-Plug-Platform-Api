@@ -91,10 +91,12 @@ export class ProductsController {
     @Request() req: any,
   ) {
     const tenantName = req.user.tenantName;
+    const { userId } = req;
     return this.productsService.reassignProduct(
       id,
       updateProductDto,
       tenantName,
+      userId,
     );
   }
 
@@ -110,7 +112,28 @@ export class ProductsController {
     @Request() req: any,
   ) {
     const tenantName = req.user.tenantName;
-    return this.productsService.update(id, updateProductDto, tenantName);
+    const { userId } = req;
+    return this.productsService.update(
+      id,
+      updateProductDto,
+      tenantName,
+      userId,
+    );
+  }
+
+  @Patch('/entity/:id')
+  updateEntity(
+    @Param('id', ParseMongoIdPipe) id: ObjectId,
+    @Body() updateProductDto: UpdateProductDto,
+    @Request() req: any,
+  ) {
+    const { userId } = req;
+    const tenantName = req.user.tenantName;
+
+    return this.productsService.updateEntity(id, updateProductDto, {
+      tenantName,
+      userId,
+    });
   }
 
   @Delete(':id')
