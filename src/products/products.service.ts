@@ -1099,7 +1099,10 @@ export class ProductsService {
             const newMember = await this.memberService.findByEmailNotThrowError(
               updateProductDto.assignedEmail,
             );
+
             if (newMember) {
+              const lastMember = product.assignedEmail;
+
               await this.moveToMemberCollection(
                 session,
                 product,
@@ -1108,7 +1111,7 @@ export class ProductsService {
                 product.assignedEmail || '',
               );
 
-              // Registrar reassign
+              // Registrar reassign & assign
               if (actionType) {
                 await this.historyService.create({
                   actionType: actionType,
@@ -1123,6 +1126,7 @@ export class ProductsService {
                         newMember.firstName + ' ' + newMember.lastName,
                       location: updateProductDto.location,
                       status: updateProductDto.status,
+                      lastAssigned: lastMember,
                     },
                   },
                 });
@@ -1178,6 +1182,8 @@ export class ProductsService {
               updateProductDto.assignedEmail,
             );
             if (newMember) {
+              const lastMember = member.email;
+
               await this.moveToMemberCollection(
                 session,
                 memberProduct.product as ProductDocument,
@@ -1199,6 +1205,7 @@ export class ProductsService {
                       assignedEmail: newMember.email,
                       assignedMember:
                         newMember.firstName + ' ' + newMember.lastName,
+                      lastAssigned: lastMember,
                     },
                   },
                 });
