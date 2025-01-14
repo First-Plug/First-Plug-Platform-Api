@@ -1005,7 +1005,7 @@ export class ProductsService {
       }
 
       await this.historyService.create({
-        actionType: 'create',
+        actionType: 'update',
         itemType: 'assets',
         userId: userId,
         changes: {
@@ -1119,6 +1119,10 @@ export class ProductsService {
                     newData: {
                       ...product.toObject(),
                       assignedEmail: newMember.email,
+                      assignedMember:
+                        newMember.firstName + ' ' + newMember.lastName,
+                      location: updateProductDto.location,
+                      status: updateProductDto.status,
                     },
                   },
                 });
@@ -1137,30 +1141,6 @@ export class ProductsService {
               recoverable: isRecoverable,
             });
           } else {
-            if (
-              !product.assignedEmail &&
-              updateProductDto.assignedEmail &&
-              updateProductDto.assignedEmail !== 'none'
-            ) {
-              // Registrar assign
-              if (actionType) {
-                console.log('entro al assign');
-
-                await this.historyService.create({
-                  actionType: actionType,
-                  itemType: 'assets',
-                  userId: userId,
-                  changes: {
-                    oldData: productCopy,
-                    newData: {
-                      ...product.toObject(),
-                      assignedEmail: updateProductDto.assignedEmail,
-                    },
-                  },
-                });
-              }
-            }
-
             await this.updateProductAttributes(
               session,
               product,
@@ -1217,6 +1197,8 @@ export class ProductsService {
                     newData: {
                       ...memberProduct.product,
                       assignedEmail: newMember.email,
+                      assignedMember:
+                        newMember.firstName + ' ' + newMember.lastName,
                     },
                   },
                 });
