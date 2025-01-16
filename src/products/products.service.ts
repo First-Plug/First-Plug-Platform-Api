@@ -989,7 +989,10 @@ export class ProductsService {
       }
 
       if (updateProductDto.serialNumber === '') {
-        updateProductDto.serialNumber = null;
+        await this.productRepository.updateOne(
+          { _id: product._id },
+          { $unset: { serialNumber: '' } },
+        );
       }
 
       const updatedFields = this.getUpdatedFields(product as ProductDocument, {
@@ -999,6 +1002,10 @@ export class ProductsService {
 
       if (updateProductDto.price === null) {
         delete updatedFields.price;
+      }
+
+      if (updateProductDto.serialNumber === '') {
+        delete updatedFields.serialNumber;
       }
 
       const currentLocation = member ? 'members' : 'products';
