@@ -976,15 +976,6 @@ export class ProductsService {
           ? updateProductDto.recoverable
           : product.recoverable;
 
-      if (updateProductDto.serialNumber === '') {
-        await this.productRepository.updateOne(
-          { _id: product._id },
-          { $unset: { serialNumber: '' } },
-        );
-
-        product.serialNumber = null;
-      }
-
       if (updateProductDto.price === null) {
         await this.productRepository.updateOne(
           { _id: product._id },
@@ -1007,10 +998,6 @@ export class ProductsService {
         delete updatedFields.price;
       }
 
-      if (updateProductDto.serialNumber === '') {
-        delete updatedFields.serialNumber;
-      }
-
       const currentLocation = member ? 'members' : 'products';
 
       let productUpdated;
@@ -1029,15 +1016,40 @@ export class ProductsService {
         if (productIndex !== -1) {
           Object.assign(member.products[productIndex], updatedFields);
 
-          if (updateProductDto.serialNumber === '') {
-            member.products[productIndex].serialNumber = null;
-          }
-
           if (updateProductDto.price === null) {
             member.products[productIndex].price = undefined;
           }
 
-          member.markModified(`products.${productIndex}`);
+          const serialNumber = member.products[productIndex].serialNumber;
+
+          if (serialNumber) {
+            const isDuplicateInMembers =
+              await this.memberService.validateSerialNumber(
+                serialNumber,
+                product._id as ObjectId,
+              );
+
+            const isDuplicateInMember = member.products.some(
+              (product) =>
+                product.serialNumber === serialNumber &&
+                product._id !== member.products[productIndex]._id,
+            );
+
+            const isDuplicateInProducts = await this.productRepository.exists({
+              serialNumber: serialNumber,
+              _id: { $ne: product._id },
+            });
+
+            if (
+              isDuplicateInMembers ||
+              isDuplicateInProducts ||
+              isDuplicateInMember
+            ) {
+              throw new Error(
+                `Duplicate serialNumber detected: ${serialNumber} already exists in another product.`,
+              );
+            }
+          }
 
           await member.save();
           productUpdated = member.products[productIndex];

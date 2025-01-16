@@ -104,6 +104,16 @@ export class MembersService {
   //   }
   // }
 
+  async validateSerialNumber(serialNumber: string, productId: ObjectId) {
+    // Validar en la colección completa de members
+    const isDuplicateInMembers = await this.memberRepository.exists({
+      'products.serialNumber': serialNumber,
+      'products._id': { $ne: productId },
+    });
+
+    return isDuplicateInMembers;
+  }
+
   async notifyOffBoarding(member: any, products: any) {
     const memberOffboardingMessage = {
       type: 'section',
