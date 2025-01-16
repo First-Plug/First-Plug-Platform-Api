@@ -976,12 +976,30 @@ export class ProductsService {
           ? updateProductDto.recoverable
           : product.recoverable;
 
-      product.price = updateProductPrice(product.price, updateProductDto.price);
+      if (updateProductDto.price === null) {
+        await this.productRepository.updateOne(
+          { _id: product._id },
+          { $unset: { price: '' } },
+        );
+      } else {
+        product.price = updateProductPrice(
+          product.price,
+          updateProductDto.price,
+        );
+      }
+
+      if (updateProductDto.serialNumber === '') {
+        updateProductDto.serialNumber = null;
+      }
 
       const updatedFields = this.getUpdatedFields(product as ProductDocument, {
         ...updateProductDto,
         recoverable: isRecoverable,
       });
+
+      if (updateProductDto.price === null) {
+        delete updatedFields.price;
+      }
 
       const currentLocation = member ? 'members' : 'products';
 

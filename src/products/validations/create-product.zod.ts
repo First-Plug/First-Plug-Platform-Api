@@ -58,7 +58,8 @@ export const ProductSchemaZod = z
     serialNumber: z
       .string()
       .transform((val) => val.toLowerCase())
-      .optional(),
+      .optional()
+      .nullable(),
     recoverable: z.boolean().optional(),
     assignedEmail: z.string().optional(),
     assignedMember: z.string().optional(),
@@ -86,7 +87,8 @@ export const ProductSchemaZod = z
           path: ['price'],
         },
       )
-      .optional(),
+      .optional()
+      .nullable(),
   })
   .superRefine((data, ctx) => {
     if (data.category === 'Merchandising' && !data.name) {
