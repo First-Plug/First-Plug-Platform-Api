@@ -967,6 +967,8 @@ export class ProductsService {
     try {
       const { member, product } = await this.findProductById(id);
 
+      const currentLocation = member ? 'members' : 'products';
+
       const productCopy = JSON.parse(JSON.stringify(product));
 
       await this.getRecoverableConfigForTenant(tenantName);
@@ -989,6 +991,14 @@ export class ProductsService {
         );
       }
 
+      if (updateProductDto.serialNumber === '' && !member) {
+        await this.productRepository.updateOne(
+          { _id: product._id },
+          { $unset: { serialNumber: '' } },
+        );
+        product.serialNumber = undefined;
+      }
+
       const updatedFields = this.getUpdatedFields(product as ProductDocument, {
         ...updateProductDto,
         recoverable: isRecoverable,
@@ -998,7 +1008,9 @@ export class ProductsService {
         delete updatedFields.price;
       }
 
-      const currentLocation = member ? 'members' : 'products';
+      if (updateProductDto.price === null && !member) {
+        delete updatedFields.serialNumber;
+      }
 
       let productUpdated;
 
