@@ -976,22 +976,25 @@ export class ProductsService {
           ? updateProductDto.recoverable
           : product.recoverable;
 
+      if (updateProductDto.serialNumber === '') {
+        await this.productRepository.updateOne(
+          { _id: product._id },
+          { $unset: { serialNumber: '' } },
+        );
+
+        product.serialNumber = null;
+      }
+
       if (updateProductDto.price === null) {
         await this.productRepository.updateOne(
           { _id: product._id },
           { $unset: { price: '' } },
         );
+        product.price = undefined;
       } else {
         product.price = updateProductPrice(
           product.price,
           updateProductDto.price,
-        );
-      }
-
-      if (updateProductDto.serialNumber === '') {
-        await this.productRepository.updateOne(
-          { _id: product._id },
-          { $unset: { serialNumber: '' } },
         );
       }
 
@@ -1022,8 +1025,20 @@ export class ProductsService {
         const productIndex = member.products.findIndex(
           (prod) => prod._id!.toString() === product._id!.toString(),
         );
+
         if (productIndex !== -1) {
           Object.assign(member.products[productIndex], updatedFields);
+
+          if (updateProductDto.serialNumber === '') {
+            member.products[productIndex].serialNumber = null;
+          }
+
+          if (updateProductDto.price === null) {
+            member.products[productIndex].price = undefined;
+          }
+
+          member.markModified(`products.${productIndex}`);
+
           await member.save();
           productUpdated = member.products[productIndex];
         }
@@ -1041,6 +1056,11 @@ export class ProductsService {
 
       return { message: `Product with id "${id}" updated successfully` };
     } catch (error) {
+      if (error.code === 11000) {
+        throw new Error(
+          `Duplicate serialNumber detected. Ensure the field is properly unset.`,
+        );
+      }
       throw error;
     }
   }
