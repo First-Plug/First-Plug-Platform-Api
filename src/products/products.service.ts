@@ -1057,9 +1057,7 @@ export class ProductsService {
               isDuplicateInProducts ||
               isDuplicateInMember
             ) {
-              throw new Error(
-                `Duplicate serialNumber detected: ${serialNumber} already exists in another product.`,
-              );
+              throw { code: 11000 };
             }
           }
 
@@ -1084,14 +1082,11 @@ export class ProductsService {
 
       return { message: `Product with id "${id}" updated successfully` };
     } catch (error) {
-      console.log(error);
-
-      if (error.code === 11000) {
-        throw new Error(
-          `Duplicate serialNumber detected. Ensure the field is properly unset.`,
-        );
+      if (error?.code === 11000) {
+        throw new BadRequestException('Serial Number already exists');
       }
-      throw error;
+
+      throw new InternalServerErrorException('Unexpected error occurred.');
     }
   }
 
