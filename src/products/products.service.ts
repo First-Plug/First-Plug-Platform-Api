@@ -241,8 +241,8 @@ export class ProductsService {
 
     const createData = {
       ...rest,
-      serialNumber: serialNumber?.trim() || undefined,
       recoverable: isRecoverable,
+      serialNumber: serialNumber?.trim() || undefined,
       ...(price?.amount !== undefined && price?.currencyCode ? { price } : {}),
     };
 
@@ -1061,6 +1061,10 @@ export class ProductsService {
                 `Duplicate serialNumber detected: ${serialNumber} already exists in another product.`,
               );
             }
+          }
+
+          if (updateProductDto.serialNumber === '') {
+            member.products[productIndex].serialNumber = undefined;
           }
 
           await member.save();
