@@ -392,7 +392,6 @@ export class ProductsService {
       await session.commitTransaction();
       session.endSession();
 
-
       return createdProducts;
     } catch (error) {
       await session.abortTransaction();
@@ -1249,6 +1248,31 @@ export class ProductsService {
     throw new InternalServerErrorException(
       `Failed to soft delete product after ${maxRetries} retries`,
     );
+  }
+
+  async softDeleteMany(ids: ObjectId[]): Promise<void> {
+    const session = await this.connection.startSession();
+    session.startTransaction();
+
+    try {
+      await this.productRepository.updateMany(
+        { _id: { $in: ids } },
+        {
+          $set: {
+            status: 'Deprecated',
+            isDeleted: true,
+          },
+        },
+      );
+
+      await session.commitTransaction();
+    } catch (error) {
+      await session.abortTransaction();
+      console.error('Error en softDeleteMany:', error);
+      throw new InternalServerErrorException('Failed to soft delete products');
+    } finally {
+      session.endSession();
+    }
   }
 
   private getAttributeValue(attributes: Attribute[], key: string): string {

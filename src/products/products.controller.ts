@@ -10,6 +10,7 @@ import {
   Res,
   UseGuards,
   Request,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -120,5 +121,16 @@ export class ProductsController {
   ) {
     const { userId } = req;
     return await this.productsService.softDelete(id, userId);
+  }
+
+  @Post('/soft-delete-many')
+  async softDeleteMany(@Body('ids') ids: ObjectId[]) {
+    try {
+      await this.productsService.softDeleteMany(ids);
+      return { message: 'Products soft-deleted successfully' };
+    } catch (error) {
+      console.error('Error in softDeleteMany:', error);
+      throw new InternalServerErrorException('Failed to soft delete products');
+    }
   }
 }

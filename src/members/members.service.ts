@@ -579,15 +579,16 @@ export class MembersService {
     const hasRecoverableProducts = member.products.some(
       (product) => product.recoverable,
     );
-    const hasNonRecoverableProducts = member.products.some(
-      (product) => !product.recoverable,
-    );
 
     if (hasRecoverableProducts) {
       throw new BadRequestException(
         'Cannot delete a member with recoverable products assigned. Please unassign the products first.',
       );
     }
+
+    const hasNonRecoverableProducts = member.products.some(
+      (product) => !product.recoverable,
+    );
 
     if (hasNonRecoverableProducts) {
       member.products.forEach((product) => {

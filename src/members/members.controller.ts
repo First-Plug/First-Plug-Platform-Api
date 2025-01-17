@@ -187,7 +187,10 @@ export class MembersController {
       },
     });
 
-    return memberDeleted;
+    return {
+      member: memberDeleted,
+      products: memberDeleted.products,
+    };
   }
 
   @Get('team/:teamId')
