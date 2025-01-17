@@ -1008,7 +1008,7 @@ export class ProductsService {
         delete updatedFields.price;
       }
 
-      if (updateProductDto.price === null && !member) {
+      if (updateProductDto.serialNumber === null && !member) {
         delete updatedFields.serialNumber;
       }
 
@@ -1080,6 +1080,8 @@ export class ProductsService {
 
       return { message: `Product with id "${id}" updated successfully` };
     } catch (error) {
+      console.log(error);
+
       if (error.code === 11000) {
         throw new Error(
           `Duplicate serialNumber detected. Ensure the field is properly unset.`,
