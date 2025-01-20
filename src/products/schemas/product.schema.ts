@@ -10,6 +10,8 @@ import {
   Category,
   STATES,
   Status,
+  Condition,
+  CONDITION,
 } from '../interfaces/product.interface';
 import { softDeletePlugin } from 'soft-delete-plugin-mongoose';
 
@@ -95,6 +97,15 @@ export class Product {
     amount: number;
     currencyCode: string;
   };
+
+  @Prop({ type: String })
+  additionalInfo?: string;
+
+  @Prop({
+    enum: CONDITION,
+    required: true,
+  })
+  productCondition: Condition;
 
   isDeleted?: boolean;
 
