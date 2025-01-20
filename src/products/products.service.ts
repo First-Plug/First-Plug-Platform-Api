@@ -291,7 +291,11 @@ export class ProductsService {
     return newProduct;
   }
 
-  async bulkCreate(createProductDtos: CreateProductDto[], tenantName: string) {
+  async bulkCreate(
+    createProductDtos: CreateProductDto[],
+    tenantName: string,
+    userId: string,
+  ) {
     const session = await this.connection.startSession();
     session.startTransaction();
 
@@ -403,6 +407,16 @@ export class ProductsService {
 
       await session.commitTransaction();
       session.endSession();
+
+      await this.historyService.create({
+        actionType: 'bulk-create',
+        itemType: 'assets',
+        userId: userId,
+        changes: {
+          oldData: null,
+          newData: createdProducts,
+        },
+      });
 
       return createdProducts;
     } catch (error) {
