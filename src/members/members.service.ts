@@ -114,7 +114,7 @@ export class MembersService {
     return isDuplicateInMembers;
   }
 
-  async notifyOffBoarding(member: any, products: any) {
+  async notifyOffBoarding(member: any, products: any, tenantName: string) {
     const memberOffboardingMessage = {
       type: 'section',
       text: {
@@ -200,7 +200,7 @@ export class MembersService {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: '*Offboarding:*',
+              text: `Offboarding: ${tenantName}*`,
             },
           },
           memberOffboardingMessage,
