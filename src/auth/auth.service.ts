@@ -21,37 +21,7 @@ export class AuthService {
 
     await this.checkAndPropagateTenantConfig(user);
 
-    const {
-      _id,
-      email,
-      name,
-      image,
-      tenantName,
-      address,
-      apartment,
-      city,
-      country,
-      state,
-      zipCode,
-      phone,
-      accountProvider,
-    } = user;
-
-    const payload = {
-      _id,
-      email,
-      name,
-      image,
-      tenantName,
-      address,
-      apartment,
-      city,
-      country,
-      state,
-      zipCode,
-      phone,
-      accountProvider,
-    };
+    const payload = this.createUserPayload(user);
 
     return {
       user: payload,
@@ -129,16 +99,7 @@ export class AuthService {
     );
 
     if (user) {
-      const { _id, email, name, image, tenantName, accountProvider } = user;
-
-      const payload = {
-        _id,
-        email,
-        name,
-        image,
-        tenantName,
-        accountProvider,
-      };
+      const payload = this.createUserPayload(user);
 
       return {
         user: payload,
@@ -156,6 +117,7 @@ export class AuthService {
         },
       };
     }
+    throw new UnauthorizedException('User not found');
   }
 
   async refreshToken(user: any) {
@@ -163,37 +125,7 @@ export class AuthService {
     if (!updatedUser) {
       throw new UnauthorizedException();
     }
-    const {
-      _id,
-      email,
-      name,
-      image,
-      tenantName,
-      address,
-      apartment,
-      city,
-      country,
-      state,
-      zipCode,
-      phone,
-      accountProvider,
-    } = updatedUser;
-
-    const payload = {
-      _id,
-      email,
-      name,
-      image,
-      tenantName,
-      address,
-      apartment,
-      city,
-      country,
-      state,
-      zipCode,
-      phone,
-      accountProvider,
-    };
+    const payload = this.createUserPayload(updatedUser);
 
     return {
       user: payload,
@@ -245,5 +177,25 @@ export class AuthService {
     }
 
     return user.password === hashedPassword;
+  }
+
+  private createUserPayload(user: any) {
+    return {
+      _id: user._id,
+      email: user.email,
+      name: user.name,
+      image: user.image,
+      tenantName: user.tenantName,
+      address: user.address || '',
+      apartment: user.apartment || '',
+      city: user.city || '',
+      state: user.state || '',
+      country: user.country || '',
+      zipCode: user.zipCode || '',
+      phone: user.phone || '',
+      accountProvider: user.accountProvider,
+      isRecoverableConfig: user.isRecoverableConfig,
+      computerExpiration: user.computerExpiration,
+    };
   }
 }

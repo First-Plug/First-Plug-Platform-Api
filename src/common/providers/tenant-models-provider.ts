@@ -7,6 +7,7 @@ import {
   ShipmentSchema,
 } from '../../shipments/schemas/shipment.schema';
 import { Team, TeamSchema } from 'src/teams/schemas/team.schema';
+import { History, HistorySchema } from 'src/history/schemas/history.schema';
 
 export const tenantModels = {
   productModel: {
@@ -27,6 +28,13 @@ export const tenantModels = {
     provide: 'TEAM_MODEL',
     useFactory: async (tenantConnection: Connection) => {
       return tenantConnection.model(Team.name, TeamSchema);
+    },
+    inject: ['TENANT_CONNECTION'],
+  },
+  historyModel: {
+    provide: 'HISTORY_MODEL',
+    useFactory: async (tenantConnection: Connection) => {
+      return tenantConnection.model(History.name, HistorySchema);
     },
     inject: ['TENANT_CONNECTION'],
   },

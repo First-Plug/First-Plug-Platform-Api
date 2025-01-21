@@ -34,6 +34,7 @@ export class TenantsMiddleware implements NestMiddleware {
       }
 
       req['tenantName'] = tenantName;
+      req['userId'] = payload._id;
       next();
     } catch (error) {
       throw new UnauthorizedException();

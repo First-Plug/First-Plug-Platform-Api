@@ -6,7 +6,11 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Model, ObjectId, Types } from 'mongoose';
-import { ProductDocument, ProductSchema } from './schemas/product.schema';
+import {
+  Product,
+  ProductDocument,
+  ProductSchema,
+} from './schemas/product.schema';
 import { CreateProductDto, UpdateProductDto } from './dto';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { BadRequestException } from '@nestjs/common';
@@ -21,6 +25,8 @@ import {
 } from 'src/members/schemas/member.schema';
 import { Response } from 'express';
 import { Parser } from 'json2csv';
+import { HistoryService } from 'src/history/history.service';
+import { updateProductPrice } from './helpers/update-price.helper';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -34,6 +40,7 @@ export class ProductsService {
     private readonly productRepository: ProductModel,
     private readonly memberService: MembersService,
     private readonly tenantsService: TenantsService,
+    private readonly historyService: HistoryService,
     @InjectConnection() private readonly connection: Connection,
   ) {}
 
@@ -212,7 +219,11 @@ export class ProductsService {
     ]);
   }
 
-  async create(createProductDto: CreateProductDto, tenantName: string) {
+  async create(
+    createProductDto: CreateProductDto,
+    tenantName: string,
+    userId: string,
+  ) {
     const normalizedProduct = this.normalizeProductData(createProductDto);
     const { assignedEmail, serialNumber, price, ...rest } = normalizedProduct;
 
@@ -230,8 +241,8 @@ export class ProductsService {
 
     const createData = {
       ...rest,
-      serialNumber: serialNumber?.trim() || undefined,
       recoverable: isRecoverable,
+      serialNumber: serialNumber?.trim() || undefined,
       ...(price?.amount !== undefined && price?.currencyCode ? { price } : {}),
     };
 
@@ -245,6 +256,17 @@ export class ProductsService {
 
       if (member) {
         assignedMember = this.getFullName(member);
+
+        await this.historyService.create({
+          actionType: 'create',
+          itemType: 'assets',
+          userId: userId,
+          changes: {
+            oldData: null,
+            newData: member.products.at(-1) as Product,
+          },
+        });
+
         return member.products.at(-1);
       }
     }
@@ -256,10 +278,24 @@ export class ProductsService {
       recoverable: isRecoverable,
     });
 
+    await this.historyService.create({
+      actionType: 'create',
+      itemType: 'assets',
+      userId: userId,
+      changes: {
+        oldData: null,
+        newData: newProduct,
+      },
+    });
+
     return newProduct;
   }
 
-  async bulkCreate(createProductDtos: CreateProductDto[], tenantName: string) {
+  async bulkCreate(
+    createProductDtos: CreateProductDto[],
+    tenantName: string,
+    userId: string,
+  ) {
     const session = await this.connection.startSession();
     session.startTransaction();
 
@@ -371,6 +407,16 @@ export class ProductsService {
 
       await session.commitTransaction();
       session.endSession();
+
+      await this.historyService.create({
+        actionType: 'bulk-create',
+        itemType: 'assets',
+        userId: userId,
+        changes: {
+          oldData: null,
+          newData: createdProducts,
+        },
+      });
 
       return createdProducts;
     } catch (error) {
@@ -692,6 +738,7 @@ export class ProductsService {
   async updateMultipleProducts(
     productsToUpdate: { id: ObjectId; product: any }[],
     tenantName: string,
+    userId: string,
   ) {
     const session = await this.connection.startSession();
     session.startTransaction();
@@ -700,7 +747,7 @@ export class ProductsService {
       for (const { id, product } of productsToUpdate) {
         const updateProductDto = { ...product };
 
-        await this.update(id, { ...updateProductDto }, tenantName);
+        await this.update(id, { ...updateProductDto }, tenantName, userId);
       }
 
       await session.commitTransaction();
@@ -716,11 +763,12 @@ export class ProductsService {
     id: ObjectId,
     updateProductDto: UpdateProductDto,
     tenantName: string,
+    userId: string,
   ) {
     if (updateProductDto.assignedEmail === 'none') {
       updateProductDto.assignedEmail = '';
     }
-    return this.update(id, updateProductDto, tenantName);
+    return this.update(id, updateProductDto, tenantName, userId);
   }
 
   private getUpdatedFields(
@@ -884,7 +932,7 @@ export class ProductsService {
       location: updateProductDto.location || product.location,
       isDeleted: product.isDeleted,
     };
-    await this.productRepository.create([updateData], { session });
+    return await this.productRepository.create([updateData], { session });
   }
 
   // Método para actualizar los atributos del producto
@@ -923,13 +971,149 @@ export class ProductsService {
     }
   }
 
+  async updateEntity(
+    id: ObjectId,
+    updateProductDto: UpdateProductDto,
+    config: { tenantName: string; userId: string },
+  ) {
+    const { tenantName, userId } = config;
+
+    try {
+      const { member, product } = await this.findProductById(id);
+
+      const currentLocation = member ? 'members' : 'products';
+
+      const productCopy = JSON.parse(JSON.stringify(product));
+
+      await this.getRecoverableConfigForTenant(tenantName);
+
+      const isRecoverable =
+        updateProductDto.recoverable !== undefined
+          ? updateProductDto.recoverable
+          : product.recoverable;
+
+      if (updateProductDto.price === null) {
+        await this.productRepository.updateOne(
+          { _id: product._id },
+          { $unset: { price: '' } },
+        );
+        product.price = undefined;
+      } else {
+        product.price = updateProductPrice(
+          product.price,
+          updateProductDto.price,
+        );
+      }
+
+      if (updateProductDto.serialNumber === '' && !member) {
+        await this.productRepository.updateOne(
+          { _id: product._id },
+          { $unset: { serialNumber: '' } },
+        );
+        product.serialNumber = undefined;
+      }
+
+      const updatedFields = this.getUpdatedFields(product as ProductDocument, {
+        ...updateProductDto,
+        recoverable: isRecoverable,
+      });
+
+      if (updateProductDto.price === null) {
+        delete updatedFields.price;
+      }
+
+      if (updateProductDto.serialNumber === null && !member) {
+        delete updatedFields.serialNumber;
+      }
+
+      let productUpdated;
+
+      if (currentLocation === 'products') {
+        productUpdated = await this.productRepository.findOneAndUpdate(
+          { _id: product._id },
+          { $set: updatedFields },
+          { runValidators: true, new: true, omitUndefined: true },
+        );
+      } else if (currentLocation === 'members' && member) {
+        const productIndex = member.products.findIndex(
+          (prod) => prod._id!.toString() === product._id!.toString(),
+        );
+
+        if (productIndex !== -1) {
+          Object.assign(member.products[productIndex], updatedFields);
+
+          if (updateProductDto.price === null) {
+            member.products[productIndex].price = undefined;
+          }
+
+          const serialNumber = member.products[productIndex].serialNumber;
+
+          if (serialNumber) {
+            const isDuplicateInMembers =
+              await this.memberService.validateSerialNumber(
+                serialNumber,
+                product._id as ObjectId,
+              );
+
+            const isDuplicateInMember = member.products.some(
+              (product) =>
+                product.serialNumber === serialNumber &&
+                product._id !== member.products[productIndex]._id,
+            );
+
+            const isDuplicateInProducts = await this.productRepository.exists({
+              serialNumber: serialNumber,
+              _id: { $ne: product._id },
+            });
+
+            if (
+              isDuplicateInMembers ||
+              isDuplicateInProducts ||
+              isDuplicateInMember
+            ) {
+              throw { code: 11000 };
+            }
+          }
+
+          if (updateProductDto.serialNumber === '') {
+            member.products[productIndex].serialNumber = undefined;
+          }
+
+          await member.save();
+          productUpdated = member.products[productIndex];
+        }
+      }
+
+      await this.historyService.create({
+        actionType: 'update',
+        itemType: 'assets',
+        userId: userId,
+        changes: {
+          oldData: productCopy,
+          newData: productUpdated,
+        },
+      });
+
+      return { message: `Product with id "${id}" updated successfully` };
+    } catch (error) {
+      if (error?.code === 11000) {
+        throw new BadRequestException('Serial Number already exists');
+      }
+
+      throw new InternalServerErrorException('Unexpected error occurred.');
+    }
+  }
+
   async update(
     id: ObjectId,
     updateProductDto: UpdateProductDto,
     tenantName: string,
+    userId: string, // Asegúrate de recibir `userId` como parámetro
   ) {
     const session = await this.connection.startSession();
     session.startTransaction();
+
+    const { actionType } = updateProductDto;
 
     try {
       const product = await this.productRepository
@@ -939,12 +1123,12 @@ export class ProductsService {
       if (product) {
         await this.getRecoverableConfigForTenant(tenantName);
 
-        // let isRecoverable: boolean;
-
         const isRecoverable =
           updateProductDto.recoverable !== undefined
             ? updateProductDto.recoverable
             : product.recoverable;
+
+        const productCopy = { ...product.toObject() };
 
         if (
           updateProductDto.price?.amount !== undefined &&
@@ -955,11 +1139,11 @@ export class ProductsService {
             currencyCode: updateProductDto.price.currencyCode,
           };
         } else if (product.price && !updateProductDto.price) {
+          // Mantener precio existente
         } else {
           product.price = undefined;
         }
 
-        // Caso en que el producto tiene un assignedEmail desconocido y se deben actualizar los atributos
         if (
           product.assignedEmail &&
           !(await this.memberService.findByEmailNotThrowError(
@@ -991,7 +1175,6 @@ export class ProductsService {
             );
           }
         } else {
-          // Manejar la reasignación del producto
           if (
             updateProductDto.assignedEmail &&
             updateProductDto.assignedEmail !== 'none' &&
@@ -1000,7 +1183,10 @@ export class ProductsService {
             const newMember = await this.memberService.findByEmailNotThrowError(
               updateProductDto.assignedEmail,
             );
+
             if (newMember) {
+              const lastMember = product.assignedEmail;
+
               await this.moveToMemberCollection(
                 session,
                 product,
@@ -1008,6 +1194,27 @@ export class ProductsService {
                 { ...updateProductDto, recoverable: isRecoverable },
                 product.assignedEmail || '',
               );
+
+              // Registrar reassign & assign
+              if (actionType) {
+                await this.historyService.create({
+                  actionType: actionType,
+                  itemType: 'assets',
+                  userId: userId,
+                  changes: {
+                    oldData: productCopy,
+                    newData: {
+                      ...product.toObject(),
+                      assignedEmail: newMember.email,
+                      assignedMember:
+                        newMember.firstName + ' ' + newMember.lastName,
+                      location: updateProductDto.location,
+                      status: updateProductDto.status,
+                      lastAssigned: lastMember,
+                    },
+                  },
+                });
+              }
             } else {
               throw new NotFoundException(
                 `Member with email "${updateProductDto.assignedEmail}" not found`,
@@ -1042,12 +1249,14 @@ export class ProductsService {
 
         if (memberProduct?.product) {
           const member = memberProduct.member;
-          // const recoverableConfig =
           await this.getRecoverableConfigForTenant(tenantName);
+
           const isRecoverable =
             updateProductDto.recoverable !== undefined
               ? updateProductDto.recoverable
               : memberProduct.product.recoverable;
+
+          const productCopy = { ...memberProduct.product };
 
           if (
             updateProductDto.assignedEmail &&
@@ -1057,6 +1266,8 @@ export class ProductsService {
               updateProductDto.assignedEmail,
             );
             if (newMember) {
+              const lastMember = member.email;
+
               await this.moveToMemberCollection(
                 session,
                 memberProduct.product as ProductDocument,
@@ -1064,18 +1275,49 @@ export class ProductsService {
                 { ...updateProductDto, recoverable: isRecoverable },
                 member.email,
               );
+
+              // Registrar relocate
+              if (actionType) {
+                await this.historyService.create({
+                  actionType: actionType,
+                  itemType: 'assets',
+                  userId: userId,
+                  changes: {
+                    oldData: productCopy,
+                    newData: {
+                      ...memberProduct.product,
+                      assignedEmail: newMember.email,
+                      assignedMember:
+                        newMember.firstName + ' ' + newMember.lastName,
+                      lastAssigned: lastMember,
+                    },
+                  },
+                });
+              }
             } else {
               throw new NotFoundException(
                 `Member with email "${updateProductDto.assignedEmail}" not found`,
               );
             }
           } else if (updateProductDto.assignedEmail === '') {
-            await this.handleProductUnassignment(
+            const updateProduct = await this.handleProductUnassignment(
               session,
               memberProduct.product as ProductDocument,
               { ...updateProductDto, recoverable: isRecoverable },
               member,
             );
+            // Registrar return
+            if (actionType) {
+              await this.historyService.create({
+                actionType: actionType,
+                itemType: 'assets',
+                userId: userId,
+                changes: {
+                  oldData: productCopy,
+                  newData: updateProduct?.length ? updateProduct[0] : {},
+                },
+              });
+            }
           } else {
             await this.updateProductAttributes(
               session,
@@ -1108,7 +1350,7 @@ export class ProductsService {
     currentMember?: MemberDocument,
   ) {
     if (currentMember) {
-      await this.moveToProductsCollection(
+      return await this.moveToProductsCollection(
         session,
         product,
         currentMember,
@@ -1124,7 +1366,7 @@ export class ProductsService {
     }
   }
 
-  async softDelete(id: ObjectId) {
+  async softDelete(id: ObjectId, userId: string) {
     const session = await this.connection.startSession();
     let retries = 0;
     const maxRetries = 3;
@@ -1132,9 +1374,17 @@ export class ProductsService {
     while (retries < maxRetries) {
       try {
         session.startTransaction();
+
         const product = await this.productRepository
           .findById(id)
           .session(session);
+        const changes: {
+          oldData: Product | null;
+          newData: Product | null;
+        } = {
+          oldData: null,
+          newData: null,
+        };
 
         if (product) {
           product.status = 'Deprecated';
@@ -1142,52 +1392,60 @@ export class ProductsService {
           await product.save();
           await this.productRepository.softDelete({ _id: id }, { session });
 
-          await session.commitTransaction();
-          session.endSession();
+          changes.oldData = product;
+        } else {
+          const memberProduct =
+            await this.memberService.getProductByMembers(id);
 
-          return { message: `Product with id ${id} has been soft deleted` };
+          if (memberProduct && memberProduct.product) {
+            await this.productRepository.create(
+              [
+                {
+                  _id: memberProduct.product._id,
+                  name: memberProduct.product.name,
+                  attributes: memberProduct.product.attributes,
+                  category: memberProduct.product.category,
+                  assignedEmail: memberProduct.product.assignedEmail,
+                  assignedMember: memberProduct.product.assignedMember,
+                  acquisitionDate: memberProduct.product.acquisitionDate,
+                  deleteAt: memberProduct.product.deleteAt,
+                  isDeleted: true,
+                  location: memberProduct.product.location,
+                  recoverable: memberProduct.product.recoverable,
+                  serialNumber: memberProduct.product.serialNumber,
+                  lastAssigned: memberProduct.member.email,
+                  status: 'Deprecated',
+                },
+              ],
+              { session },
+            );
+
+            await this.productRepository.softDelete({ _id: id }, { session });
+
+            const memberId = memberProduct.member._id;
+            await this.memberService.deleteProductFromMember(
+              memberId,
+              id,
+              session,
+            );
+
+            changes.oldData = memberProduct.product;
+          } else {
+            throw new NotFoundException(`Product with id "${id}" not found`);
+          }
         }
 
-        const memberProduct = await this.memberService.getProductByMembers(id);
+        await this.historyService.create({
+          actionType: 'delete',
+          itemType: 'assets',
+          userId,
+          changes,
+        });
 
-        if (memberProduct && memberProduct.product) {
-          await this.productRepository.create(
-            [
-              {
-                _id: memberProduct.product._id,
-                name: memberProduct.product.name,
-                attributes: memberProduct.product.attributes,
-                category: memberProduct.product.category,
-                assignedEmail: memberProduct.product.assignedEmail,
-                assignedMember: memberProduct.product.assignedMember,
-                acquisitionDate: memberProduct.product.acquisitionDate,
-                deleteAt: memberProduct.product.deleteAt,
-                isDeleted: true,
-                location: memberProduct.product.location,
-                recoverable: memberProduct.product.recoverable,
-                serialNumber: memberProduct.product.serialNumber,
-                lastAssigned: memberProduct.member.email,
-                status: 'Deprecated',
-              },
-            ],
-            { session },
-          );
+        await session.commitTransaction();
+        session.endSession();
 
-          await this.productRepository.softDelete({ _id: id }, { session });
-
-          const memberId = memberProduct.member._id;
-          await this.memberService.deleteProductFromMember(
-            memberId,
-            id,
-            session,
-          );
-
-          await session.commitTransaction();
-          session.endSession();
-
-          return { message: `Product with id ${id} has been soft deleted` };
-        }
-        throw new NotFoundException(`Product with id "${id}" not found`);
+        return { message: `Product with id ${id} has been soft deleted` };
       } catch (error) {
         console.error(
           `Error en softDelete para el producto con id ${id}:`,
@@ -1206,6 +1464,7 @@ export class ProductsService {
         throw error;
       }
     }
+
     throw new InternalServerErrorException(
       `Failed to soft delete product after ${maxRetries} retries`,
     );
@@ -1298,5 +1557,25 @@ export class ProductsService {
     res.header('Content-Type', 'text/csv');
     res.attachment('products_report.csv');
     res.send(csvData);
+  }
+
+  async findProductById(id: ObjectId) {
+    try {
+      const product = await this.productRepository.findById(id);
+
+      if (!product) {
+        const member = await this.memberService.getProductByMembers(id);
+
+        if (!member) {
+          throw new NotFoundException(`Product with id "${id}" not found`);
+        }
+
+        return member;
+      }
+
+      return { member: null, product };
+    } catch (error) {
+      throw error;
+    }
   }
 }

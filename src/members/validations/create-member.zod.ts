@@ -15,7 +15,13 @@ export const MemberSchemaZod = z.object({
     .min(1, { message: 'Email is required' }),
   picture: z.string().optional(),
   position: z.string().trim().optional(),
-  personalEmail: z.string().email().trim().toLowerCase().optional(),
+  personalEmail: z
+    .string()
+    .email({ message: 'Invalid email address' })
+    .trim()
+    .toLowerCase()
+    .optional()
+    .or(z.literal('').or(z.null())),
   phone: z
     .string()
     .trim()

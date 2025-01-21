@@ -28,7 +28,8 @@ export class ProductsController {
   @Post()
   create(@Body() createProductDto: CreateProductDto, @Request() req: any) {
     const tenantName = req.user.tenantName;
-    return this.productsService.create(createProductDto, tenantName);
+    const { userId } = req;
+    return this.productsService.create(createProductDto, tenantName, userId);
   }
 
   @Post('/bulkcreate')
@@ -37,14 +38,25 @@ export class ProductsController {
     @Res() res: Response,
     @Request() req: any,
   ) {
-    const tenantName = req.user.tenantName;
-    const products = await this.productsService.bulkCreate(
-      createProductDto,
-      tenantName,
-    );
+    try {
+      const tenantName = req.user.tenantName;
+      const { userId } = req;
+      const products = await this.productsService.bulkCreate(
+        createProductDto,
+        tenantName,
+        userId,
+      );
 
-    res.status(HttpStatus.CREATED).json(products);
+      res.status(HttpStatus.CREATED).json(products);
+    } catch (error) {
+      console.error('Error en bulkcreate:', error);
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        message: 'Error al crear productos',
+        error: error.message,
+      });
+    }
   }
+
   @Get('/migrate-price')
   async migratePriceForAllTenant() {
     return await this.productsService.migratePriceForAllTenant();
@@ -81,10 +93,12 @@ export class ProductsController {
     @Request() req: any,
   ) {
     const tenantName = req.user.tenantName;
+    const { userId } = req;
     return this.productsService.reassignProduct(
       id,
       updateProductDto,
       tenantName,
+      userId,
     );
   }
 
@@ -100,11 +114,36 @@ export class ProductsController {
     @Request() req: any,
   ) {
     const tenantName = req.user.tenantName;
-    return this.productsService.update(id, updateProductDto, tenantName);
+    const { userId } = req;
+    return this.productsService.update(
+      id,
+      updateProductDto,
+      tenantName,
+      userId,
+    );
+  }
+
+  @Patch('/entity/:id')
+  updateEntity(
+    @Param('id', ParseMongoIdPipe) id: ObjectId,
+    @Body() updateProductDto: UpdateProductDto,
+    @Request() req: any,
+  ) {
+    const { userId } = req;
+    const tenantName = req.user.tenantName;
+
+    return this.productsService.updateEntity(id, updateProductDto, {
+      tenantName,
+      userId,
+    });
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.productsService.softDelete(id);
+  async remove(
+    @Param('id', ParseMongoIdPipe) id: ObjectId,
+    @Request() req: any,
+  ) {
+    const { userId } = req;
+    return await this.productsService.softDelete(id, userId);
   }
 }

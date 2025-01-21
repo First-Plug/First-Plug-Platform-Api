@@ -3,6 +3,7 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 
 import { ClientSession, Model, ObjectId, Types } from 'mongoose';
@@ -10,12 +11,16 @@ import { Team } from './schemas/team.schema';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
 import { Member } from '../members/schemas/member.schema';
+import { HistoryService } from 'src/history/history.service';
+import { emptyTeam } from './utils/empty-team';
+import { flattenTeam } from './utils/flatten-team';
 
 @Injectable()
 export class TeamsService {
   constructor(
     @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
     @Inject('MEMBER_MODEL') private memberRepository: Model<Member>,
+    private readonly historyService: HistoryService,
   ) {}
 
   private normalizeTeamName(name: string): string {
@@ -87,6 +92,7 @@ export class TeamsService {
   async unassignMemberFromTeam(
     memberId: Types.ObjectId,
     teamId: Types.ObjectId,
+    userId: string,
   ) {
     try {
       const member = await this.memberRepository.findById(memberId);
@@ -98,6 +104,17 @@ export class TeamsService {
           'Member is not assigned to the provided team',
         );
       }
+
+      await this.historyService.create({
+        actionType: 'unassign',
+        itemType: 'teams',
+        userId: userId,
+        changes: {
+          oldData: member,
+          newData: { ...member, team: undefined },
+        },
+      });
+
       member.team = undefined;
       await member.save();
       return member;
@@ -106,7 +123,7 @@ export class TeamsService {
     }
   }
 
-  async create(createTeamDto: CreateTeamDto) {
+  async create(createTeamDto: CreateTeamDto, userId: string) {
     try {
       const normalizedTeamName = this.normalizeTeamName(createTeamDto.name);
       let team = await this.teamRepository.findOne({
@@ -124,6 +141,17 @@ export class TeamsService {
         name: normalizedTeamName,
         color,
       });
+
+      await this.historyService.create({
+        actionType: 'create',
+        itemType: 'teams',
+        userId: userId,
+        changes: {
+          oldData: emptyTeam,
+          newData: { _id: team.id, name: team.name, color: team.color },
+        },
+      });
+
       return await team.save();
     } catch (error) {
       this.handleDBExceptions(error);
@@ -174,12 +202,41 @@ export class TeamsService {
   async associateTeamToMember(
     TeamId: Types.ObjectId,
     memberId: Types.ObjectId,
+    userId: string,
   ) {
     try {
       const member = await this.memberRepository.findById(memberId);
       if (!member) {
         throw new BadRequestException('Member not found');
       }
+
+      const currentTeam = member.team
+        ? await this.teamRepository.findById(member.team)
+        : null;
+
+      const newTeam = await this.teamRepository.findById(TeamId);
+      if (!newTeam) {
+        throw new BadRequestException('New team not found');
+      }
+
+      const actionType = currentTeam ? 'reassign' : 'assign';
+
+      await this.historyService.create({
+        actionType: actionType,
+        itemType: 'teams',
+        userId: userId,
+        changes: {
+          oldData: {
+            ...member.toObject(),
+            team: currentTeam,
+          },
+          newData: {
+            ...member.toObject(),
+            team: newTeam,
+          },
+        },
+      });
+
       member.team = TeamId;
       await member.save();
       return member;
@@ -224,29 +281,62 @@ export class TeamsService {
     }
   }
 
-  async update(id: ObjectId, updateTeamDto: UpdateTeamDto) {
+  async update(id: ObjectId, updateTeamDto: UpdateTeamDto, userId: string) {
     try {
       const normalizedTeamName = this.normalizeTeamName(updateTeamDto.name);
-      const existingTeam = await this.teamRepository.findOne({
+
+      const existingTeam = await this.teamRepository.findById(id);
+      if (!existingTeam) {
+        throw new NotFoundException('Team not found');
+      }
+
+      const teamWithSameName = await this.teamRepository.findOne({
         name: normalizedTeamName,
       });
-
-      if (existingTeam && existingTeam._id.toString() !== id.toString()) {
+      if (
+        teamWithSameName &&
+        teamWithSameName._id.toString() !== id.toString()
+      ) {
         throw new BadRequestException(
           'There is already another team with that name',
         );
       }
 
+      const payloadOldData = {
+        _id: existingTeam._id.toString(),
+        name: existingTeam.name,
+        color: existingTeam.color,
+      };
+
       const team = await this.teamRepository.findByIdAndUpdate(
         id,
         { ...updateTeamDto, name: normalizedTeamName },
-        {
-          new: true,
-        },
+        { new: true },
       );
+
+      if (!team) {
+        throw new NotFoundException('Failed to update team');
+      }
+
+      const payloadTeam = {
+        _id: team._id.toString(),
+        name: team.name,
+        color: team.color,
+      };
+
+      await this.historyService.create({
+        actionType: 'update',
+        itemType: 'teams',
+        userId: userId,
+        changes: {
+          oldData: payloadOldData,
+          newData: payloadTeam,
+        },
+      });
 
       return team;
     } catch (error) {
+      console.log(error);
       this.handleDBExceptions(error);
     }
   }
@@ -269,7 +359,7 @@ export class TeamsService {
     return team;
   }
 
-  async delete(id: Types.ObjectId) {
+  async delete(id: Types.ObjectId, userId: string) {
     try {
       const members = await this.memberRepository.find({ team: id });
       if (members.length > 0) {
@@ -281,6 +371,17 @@ export class TeamsService {
       if (!result) {
         throw new BadRequestException('Team not found');
       }
+
+      await this.historyService.create({
+        actionType: 'delete',
+        itemType: 'teams',
+        userId: userId,
+        changes: {
+          oldData: flattenTeam(result),
+          newData: emptyTeam,
+        },
+      });
+
       return result;
     } catch (error) {
       this.handleDBExceptions(error);
@@ -304,12 +405,31 @@ export class TeamsService {
     }
   }
 
-  async bulkDelete(ids: Types.ObjectId[]) {
+  async bulkDelete(ids: Types.ObjectId[], userId: string) {
     try {
+      const teams = await this.teamRepository.find({ _id: { $in: ids } });
+
       await this.unassignTeamsFromMembers(ids);
       const result = await this.teamRepository.deleteMany({
         _id: { $in: ids.map((id) => new Types.ObjectId(id)) },
       });
+
+      const historyData = {
+        oldData: teams.map((team) => ({
+          id: team.id,
+          name: team.name,
+          color: team.color,
+        })),
+        newData: null,
+      };
+
+      await this.historyService.create({
+        actionType: 'bulk-delete',
+        itemType: 'teams',
+        userId: userId,
+        changes: historyData,
+      });
+
       return result;
     } catch (error) {
       this.handleDBExceptions(error);

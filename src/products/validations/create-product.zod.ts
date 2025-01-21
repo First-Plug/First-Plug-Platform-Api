@@ -36,6 +36,7 @@ const CURRENCY_CODES = [
 
 export const ProductSchemaZod = z
   .object({
+    actionType: z.enum(['return', 'relocate', 'assign', 'reassign']).optional(),
     name: z.string().optional(),
     category: z.enum(CATEGORIES),
     attributes: z
@@ -57,7 +58,8 @@ export const ProductSchemaZod = z
     serialNumber: z
       .string()
       .transform((val) => val.toLowerCase())
-      .optional(),
+      .optional()
+      .nullable(),
     recoverable: z.boolean().optional(),
     assignedEmail: z.string().optional(),
     assignedMember: z.string().optional(),
@@ -85,7 +87,8 @@ export const ProductSchemaZod = z
           path: ['price'],
         },
       )
-      .optional(),
+      .optional()
+      .nullable(),
   })
   .superRefine((data, ctx) => {
     if (data.category === 'Merchandising' && !data.name) {
