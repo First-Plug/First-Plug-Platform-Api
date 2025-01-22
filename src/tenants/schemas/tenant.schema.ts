@@ -1,11 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { genSalt, hash } from 'bcrypt';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
 export const PROVIDERS = ['credentials', 'google', 'azure-ad'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 @Schema({ timestamps: true })
 export class Tenant extends Document {
+  _id: Types.ObjectId;
+
   @Prop({ type: String, default: '' })
   tenantName: string;
 
