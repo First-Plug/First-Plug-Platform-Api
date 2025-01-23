@@ -11,6 +11,7 @@ import {
   ATTRIBUTES,
   STATES,
   LOCATIONS,
+  CONDITION,
 } from '../interfaces/product.interface';
 
 const CURRENCY_CODES = [
@@ -66,6 +67,8 @@ export const ProductSchemaZod = z
     acquisitionDate: z.string().optional(),
     location: z.enum(LOCATIONS),
     status: z.enum(STATES),
+    additionalInfo: z.string().trim().optional(),
+    productCondition: z.enum(CONDITION),
     price: z
       .object({
         amount: z
@@ -98,11 +101,7 @@ export const ProductSchemaZod = z
         path: ['name'],
       });
     }
-    // if (data.category === 'Merchandising') {
-    //   data.recoverable = false;
-    // } else {
-    //   data.recoverable = true;
-    // }
+
     if (data.category !== 'Merchandising') {
       const attributeKeys = data.attributes.map((attr) => attr.key);
       if (!attributeKeys.includes('brand')) {
@@ -117,6 +116,53 @@ export const ProductSchemaZod = z
           code: z.ZodIssueCode.custom,
           message: 'Model is required for this category.',
           path: ['attributes'],
+        });
+      }
+    }
+    if (data.productCondition === 'Unusable') {
+      if (data.status !== 'Unavailable') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'When product condition is Unusable, status must be Unavailable.',
+          path: ['status'],
+        });
+      }
+    } else {
+      // Validaciones para productos no "Unusable"
+      if (data.assignedMember) {
+        if (data.location !== 'Employee' || data.status !== 'Delivered') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              'When assigned to a member, location must be Employee and status must be Delivered.',
+            path: ['status'],
+          });
+        }
+      } else if (data.assignedEmail === 'none') {
+        if (
+          !['FP warehouse', 'Our office'].includes(data.location) ||
+          data.status !== 'Available'
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              'When unassigned, location must be FP warehouse or Our office, and status must be Available.',
+            path: ['status'],
+          });
+        }
+      }
+
+      // Validación de condiciones de producto para ubicaciones específicas
+      if (
+        ['Employee', 'FP warehouse', 'Our office'].includes(data.location) &&
+        !['Optimal', 'Defective'].includes(data.productCondition)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'Product condition must be Optimal or Defective for the selected location.',
+          path: ['productCondition'],
         });
       }
     }

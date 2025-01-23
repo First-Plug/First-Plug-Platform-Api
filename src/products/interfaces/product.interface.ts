@@ -33,9 +33,18 @@ export const CATEGORIES = [
 
 export type Category = (typeof CATEGORIES)[number];
 
-export const STATES = ['Available', 'Delivered', 'Deprecated'] as const;
+export const STATES = [
+  'Available',
+  'Delivered',
+  'Deprecated',
+  'Unavailable',
+] as const;
 
 export type Status = (typeof STATES)[number];
+
+export const CONDITION = ['Optimal', 'Defective', 'Unusable'] as const;
+
+export type Condition = (typeof CONDITION)[number];
 
 export const ATTRIBUTES = [
   'brand',

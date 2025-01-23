@@ -225,7 +225,8 @@ export class ProductsService {
     userId: string,
   ) {
     const normalizedProduct = this.normalizeProductData(createProductDto);
-    const { assignedEmail, serialNumber, price, ...rest } = normalizedProduct;
+    const { assignedEmail, serialNumber, price, productCondition, ...rest } =
+      normalizedProduct;
 
     const recoverableConfig =
       await this.getRecoverableConfigForTenant(tenantName);
@@ -239,15 +240,33 @@ export class ProductsService {
       await this.validateSerialNumber(serialNumber);
     }
 
+    let location = rest.location || createProductDto.location;
+    let status = rest.status || 'Available';
+
+    if (productCondition === 'Unusable') {
+      status = 'Unavailable';
+    } else {
+      if (assignedEmail && assignedEmail !== 'none') {
+        location = 'Employee';
+        status = 'Delivered';
+      } else if (['FP warehouse', 'Our office'].includes(location)) {
+        status = 'Available';
+      }
+    }
+
     const createData = {
       ...rest,
       recoverable: isRecoverable,
       serialNumber: serialNumber?.trim() || undefined,
+      productCondition: productCondition || 'Optimal',
+      additionalInfo: createProductDto.additionalInfo?.trim() || undefined,
+      location,
+      status,
       ...(price?.amount !== undefined && price?.currencyCode ? { price } : {}),
     };
 
     let assignedMember = '';
-
+    console.log('createData before assigning:', createData);
     if (assignedEmail) {
       const member = await this.memberService.assignProduct(
         assignedEmail,
@@ -276,8 +295,9 @@ export class ProductsService {
       assignedEmail,
       assignedMember: assignedMember || this.getFullName(createProductDto),
       recoverable: isRecoverable,
+      productCondition: createData.productCondition,
     });
-
+    console.log('newProduct', newProduct);
     await this.historyService.create({
       actionType: 'create',
       itemType: 'assets',
@@ -329,6 +349,8 @@ export class ProductsService {
 
       for (const product of normalizedProducts) {
         const { serialNumber, category, recoverable } = product;
+
+        product.productCondition = 'Optimal';
 
         const isRecoverable =
           recoverable !== undefined
@@ -457,6 +479,8 @@ export class ProductsService {
         recoverable,
         serialNumber,
         price,
+        productCondition,
+        additionalInfo,
       } = product;
       const filteredAttributes = attributes.filter(
         (attribute: Attribute) =>
@@ -480,6 +504,8 @@ export class ProductsService {
         serialNumber,
         filteredAttributes,
         price,
+        productCondition,
+        additionalInfo,
       };
     });
 
@@ -884,6 +910,11 @@ export class ProductsService {
       acquisitionDate:
         updateProductDto.acquisitionDate || product.acquisitionDate,
       location: updateProductDto.location || product.location,
+      additionalInfo: updateProductDto.additionalInfo || product.additionalInfo,
+      productCondition:
+        updateProductDto.productCondition !== undefined
+          ? updateProductDto.productCondition
+          : product.productCondition,
       isDeleted: product.isDeleted,
       lastAssigned: lastAssigned,
     };
@@ -930,6 +961,10 @@ export class ProductsService {
       acquisitionDate:
         updateProductDto.acquisitionDate || product.acquisitionDate,
       location: updateProductDto.location || product.location,
+      productCondition:
+        updateProductDto.productCondition !== undefined
+          ? updateProductDto.productCondition
+          : product.productCondition,
       isDeleted: product.isDeleted,
     };
     return await this.productRepository.create([updateData], { session });
@@ -1108,7 +1143,7 @@ export class ProductsService {
     id: ObjectId,
     updateProductDto: UpdateProductDto,
     tenantName: string,
-    userId: string, // Asegúrate de recibir `userId` como parámetro
+    userId: string,
   ) {
     const session = await this.connection.startSession();
     session.startTransaction();
@@ -1130,6 +1165,25 @@ export class ProductsService {
 
         const productCopy = { ...product.toObject() };
 
+        if (updateProductDto.productCondition === 'Unusable') {
+          updateProductDto.status = 'Unavailable';
+        } else if (
+          updateProductDto.assignedEmail &&
+          updateProductDto.assignedEmail !== 'none'
+        ) {
+          updateProductDto.location = 'Employee';
+          updateProductDto.status = 'Delivered';
+        } else if (updateProductDto.assignedEmail === 'none') {
+          if (
+            !['FP warehouse', 'Our office'].includes(updateProductDto.location)
+          ) {
+            throw new BadRequestException(
+              'When unassigned, location must be FP warehouse or Our office.',
+            );
+          }
+          updateProductDto.status = 'Available';
+        }
+
         if (
           updateProductDto.price?.amount !== undefined &&
           updateProductDto.price?.currencyCode !== undefined
@@ -1139,7 +1193,6 @@ export class ProductsService {
             currencyCode: updateProductDto.price.currencyCode,
           };
         } else if (product.price && !updateProductDto.price) {
-          // Mantener precio existente
         } else {
           product.price = undefined;
         }
@@ -1257,6 +1310,27 @@ export class ProductsService {
               : memberProduct.product.recoverable;
 
           const productCopy = { ...memberProduct.product };
+
+          if (updateProductDto.productCondition === 'Unusable') {
+            updateProductDto.status = 'Unavailable';
+          } else if (
+            updateProductDto.assignedEmail &&
+            updateProductDto.assignedEmail !== 'none'
+          ) {
+            updateProductDto.location = 'Employee';
+            updateProductDto.status = 'Delivered';
+          } else if (updateProductDto.assignedEmail === 'none') {
+            if (
+              !['FP warehouse', 'Our office'].includes(
+                updateProductDto.location,
+              )
+            ) {
+              throw new BadRequestException(
+                'When unassigned, location must be FP warehouse or Our office.',
+              );
+            }
+            updateProductDto.status = 'Available';
+          }
 
           if (
             updateProductDto.assignedEmail &&
