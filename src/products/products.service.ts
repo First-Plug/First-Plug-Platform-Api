@@ -258,7 +258,7 @@ export class ProductsService {
       ...rest,
       recoverable: isRecoverable,
       serialNumber: serialNumber?.trim() || undefined,
-      productCondition,
+      productCondition: productCondition || 'Optimal',
       additionalInfo: createProductDto.additionalInfo?.trim() || undefined,
       location,
       status,
@@ -266,7 +266,7 @@ export class ProductsService {
     };
 
     let assignedMember = '';
-
+    console.log('createData before assigning:', createData);
     if (assignedEmail) {
       const member = await this.memberService.assignProduct(
         assignedEmail,
@@ -295,8 +295,9 @@ export class ProductsService {
       assignedEmail,
       assignedMember: assignedMember || this.getFullName(createProductDto),
       recoverable: isRecoverable,
+      productCondition: createData.productCondition,
     });
-
+    console.log('newProduct', newProduct);
     await this.historyService.create({
       actionType: 'create',
       itemType: 'assets',
@@ -897,7 +898,9 @@ export class ProductsService {
       location: updateProductDto.location || product.location,
       additionalInfo: updateProductDto.additionalInfo || product.additionalInfo,
       productCondition:
-        updateProductDto.productCondition || product.productCondition,
+        updateProductDto.productCondition !== undefined
+          ? updateProductDto.productCondition
+          : product.productCondition,
       isDeleted: product.isDeleted,
       lastAssigned: lastAssigned,
     };
@@ -944,6 +947,10 @@ export class ProductsService {
       acquisitionDate:
         updateProductDto.acquisitionDate || product.acquisitionDate,
       location: updateProductDto.location || product.location,
+      productCondition:
+        updateProductDto.productCondition !== undefined
+          ? updateProductDto.productCondition
+          : product.productCondition,
       isDeleted: product.isDeleted,
     };
     return await this.productRepository.create([updateData], { session });

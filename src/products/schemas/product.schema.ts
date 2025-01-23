@@ -103,7 +103,7 @@ export class Product {
 
   @Prop({
     enum: CONDITION,
-    required: true,
+    required: false,
   })
   productCondition: Condition;
 
