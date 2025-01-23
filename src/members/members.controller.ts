@@ -117,7 +117,11 @@ export class MembersController {
 
     await this.membersService.softDeleteMember(id);
 
-    await this.membersService.notifyOffBoarding(offboardingMember, data);
+    await this.membersService.notifyOffBoarding(
+      offboardingMember,
+      data,
+      tenantName,
+    );
 
     const assignedEmail = offboardingMember.email;
 

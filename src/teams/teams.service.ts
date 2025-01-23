@@ -92,6 +92,7 @@ export class TeamsService {
   async unassignMemberFromTeam(
     memberId: Types.ObjectId,
     teamId: Types.ObjectId,
+    userId: string,
   ) {
     try {
       const member = await this.memberRepository.findById(memberId);
@@ -103,6 +104,17 @@ export class TeamsService {
           'Member is not assigned to the provided team',
         );
       }
+
+      await this.historyService.create({
+        actionType: 'unassign',
+        itemType: 'teams',
+        userId: userId,
+        changes: {
+          oldData: member,
+          newData: { ...member, team: undefined },
+        },
+      });
+
       member.team = undefined;
       await member.save();
       return member;

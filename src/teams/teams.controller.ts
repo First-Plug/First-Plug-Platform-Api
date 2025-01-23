@@ -111,10 +111,13 @@ export class TeamsController {
   async unassignMemberFromTeam(
     @Param('memberId', ParseMongoIdPipe) memberId: Types.ObjectId,
     @Body('teamId') teamId: Types.ObjectId,
+    @Req() req,
   ) {
+    const { userId } = req;
     const member = await this.teamsService.unassignMemberFromTeam(
       memberId,
       teamId,
+      userId,
     );
     return member;
   }

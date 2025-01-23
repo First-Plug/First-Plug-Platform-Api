@@ -40,9 +40,11 @@ export class ProductsController {
   ) {
     try {
       const tenantName = req.user.tenantName;
+      const { userId } = req;
       const products = await this.productsService.bulkCreate(
         createProductDto,
         tenantName,
+        userId,
       );
 
       res.status(HttpStatus.CREATED).json(products);
