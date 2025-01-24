@@ -75,7 +75,7 @@ export class TenantsService {
 
     const message =
       `*Cliente:* ${tenantName} (${email})\n` +
-      `*Producto:* ${category} ${brand} ${model}\n` +
+      `*Producto:* *${category} ${brand} ${model}*\n` +
       `*Serial:* ${serialNumber}\n` +
       `${isFinite(parseFloat(acquisitionDate)) ? `*Fecha de adquisición:* ${parseFloat(acquisitionDate).toFixed(1)} years\n` : ''}` +
       `*Estado:* ${status}\n` +
