@@ -636,11 +636,13 @@ export class MembersService {
     const member = await this.findByEmailNotThrowError(email);
 
     if (member) {
-      const { serialNumber, price, ...rest } = createProductDto;
+      const { serialNumber, price, productCondition, ...rest } =
+        createProductDto;
 
       const productData = {
         ...rest,
         ...(serialNumber && serialNumber.trim() !== '' ? { serialNumber } : {}),
+        productCondition: productCondition || 'Optimal',
         assignedMember: `${member.firstName} ${member.lastName}`,
         assignedEmail: email,
         ...(price?.amount !== undefined && price?.currencyCode
