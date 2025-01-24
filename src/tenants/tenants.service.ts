@@ -70,15 +70,15 @@ export class TenantsService {
 
     const locationMessage =
       location === 'Employee' && assignedMember
-        ? `*Assigned to:* *${assignedMember}*`
-        : `*Ubicación:* *${location}*`;
+        ? `*Assigned to:* ${assignedMember}`
+        : `*Ubicación:* ${location}`;
 
     const message =
-      `*Cliente:* *${tenantName}* (*${email}*)\n` +
-      `*Producto:* *${category}* *${brand}* *${model}*\n` +
-      `*Serial:* *${serialNumber}*\n` +
-      `*Fecha de adquisición:* *${parseFloat(acquisitionDate).toFixed(1)} years*\n` +
-      `*Estado:* *${status}*\n` +
+      `*Cliente:* ${tenantName} (${email})\n` +
+      `*Producto:* ${category} ${brand} ${model}\n` +
+      `*Serial:* ${serialNumber}\n` +
+      `*Fecha de adquisición:* ${parseFloat(acquisitionDate).toFixed(1)} years\n` +
+      `*Estado:* ${status}\n` +
       `${locationMessage}`;
     try {
       await this.slackComputerUpgradeWebhook.send(message);
