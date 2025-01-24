@@ -77,7 +77,7 @@ export class TenantsService {
       `*Cliente:* ${tenantName} (${email})\n` +
       `*Producto:* ${category} ${brand} ${model}\n` +
       `*Serial:* ${serialNumber}\n` +
-      `*Fecha de adquisición:* ${parseFloat(acquisitionDate).toFixed(1)} years\n` +
+      `${isFinite(parseFloat(acquisitionDate)) ? `*Fecha de adquisición:* ${parseFloat(acquisitionDate).toFixed(1)} years\n` : ''}` +
       `*Estado:* ${status}\n` +
       `${locationMessage}`;
     try {
