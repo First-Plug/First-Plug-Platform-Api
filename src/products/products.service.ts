@@ -1599,6 +1599,9 @@ export class ProductsService {
       { label: 'Assigned Email', value: 'assignedEmail' },
       { label: 'Location', value: 'location' },
       { label: 'Status', value: 'status' },
+      { label: 'Price', value: 'price' },
+      { label: 'Product Condition', value: 'productCondition' },
+      { label: 'Additional Info', value: 'additionalInfo' },
     ];
 
     const productsFormatted = products.map((product) => ({
@@ -1623,6 +1626,11 @@ export class ProductsService {
       assignedEmail: product.assignedEmail,
       location: product.location,
       status: product.status,
+      price: product.price
+        ? `${product.price.amount} ${product.price.currencyCode}`
+        : '',
+      productCondition: product.productCondition,
+      additionalInfo: product.additionalInfo,
     }));
 
     const csvParser = new Parser({ fields: csvFields });
