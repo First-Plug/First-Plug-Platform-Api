@@ -7,16 +7,12 @@ import { TenantSchema } from 'src/tenants/schemas/tenant.schema';
 
 @Injectable()
 export class HistoryService {
-  private tenantConnection: mongoose.Connection;
+  private tenantConnection: mongoose.Connection | null;
 
   constructor(
     @Inject('HISTORY_MODEL')
     private readonly historyRepository: Model<History>,
-  ) {
-    this.tenantConnection = mongoose.createConnection(
-      EnvConfiguration().database.connectionString!,
-    );
-  }
+  ) {}
 
   async create(createHistoryDto: CreateHistoryDto) {
     return this.historyRepository.create(createHistoryDto);
@@ -56,8 +52,23 @@ export class HistoryService {
   }
 
   async getTenantsByUserIds(userIds: string[]) {
-    const TenantModel = this.tenantConnection.model('Tenant', TenantSchema);
-    const tenants = await TenantModel.find({ _id: { $in: userIds } }).exec();
-    return tenants;
+    try {
+      this.tenantConnection = mongoose.createConnection(
+        EnvConfiguration().database.connectionString!,
+      );
+      const TenantModel = this.tenantConnection.model('Tenant', TenantSchema);
+      const tenants = await TenantModel.find({ _id: { $in: userIds } }).exec();
+
+      await this.tenantConnection.close();
+
+      return tenants;
+    } catch (error) {
+      console.error('Error al obtener los tenants:', error);
+      throw new Error('Error al obtener los tenants');
+    } finally {
+      if (this.tenantConnection!.readyState !== 0) {
+        await this.tenantConnection!.close();
+      }
+    }
   }
 }

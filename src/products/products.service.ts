@@ -17,8 +17,6 @@ import { BadRequestException } from '@nestjs/common';
 import { MembersService } from 'src/members/members.service';
 import { TenantsService } from 'src/tenants/tenants.service';
 import { Attribute } from './interfaces/product.interface';
-import { InjectConnection } from '@nestjs/mongoose';
-import { Connection } from 'mongoose';
 import {
   MemberDocument,
   MemberSchema,
@@ -27,6 +25,7 @@ import { Response } from 'express';
 import { Parser } from 'json2csv';
 import { HistoryService } from 'src/history/history.service';
 import { updateProductPrice } from './helpers/update-price.helper';
+import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -41,7 +40,7 @@ export class ProductsService {
     private readonly memberService: MembersService,
     private readonly tenantsService: TenantsService,
     private readonly historyService: HistoryService,
-    @InjectConnection() private readonly connection: Connection,
+    private readonly connectionService: TenantConnectionService,
   ) {}
 
   private normalizeProductData(product: CreateProductDto) {
@@ -83,7 +82,8 @@ export class ProductsService {
   async migratePriceForTenant(tenantName: string) {
     try {
       const tenantDbName = `tenant_${tenantName}`;
-      const connection = this.connection.useDb(tenantDbName);
+      const connection =
+        await this.connectionService.getTenantConnection(tenantName);
 
       // Definir modelos
       const ProductModel = connection.model<ProductDocument>(
@@ -149,7 +149,9 @@ export class ProductsService {
 
       for (const tenant of tenants) {
         const tenantDbName = `tenant_${tenant.tenantName}`;
-        const connection = this.connection.useDb(tenantDbName);
+        const connection = await this.connectionService.getTenantConnection(
+          tenant.tenantName,
+        );
 
         const ProductModel = connection.model<ProductDocument>(
           'Product',
@@ -296,7 +298,9 @@ export class ProductsService {
     tenantName: string,
     userId: string,
   ) {
-    const session = await this.connection.startSession();
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const session = await connection.startSession();
     session.startTransaction();
 
     try {
@@ -406,8 +410,8 @@ export class ProductsService {
       await Promise.all(assignProductPromises);
 
       await session.commitTransaction();
-      session.endSession();
 
+      // Registrar el historial
       await this.historyService.create({
         actionType: 'bulk-create',
         itemType: 'assets',
@@ -418,15 +422,26 @@ export class ProductsService {
         },
       });
 
+      session.endSession();
+
       return createdProducts;
     } catch (error) {
+      console.log(error);
+
       await session.abortTransaction();
+
       session.endSession();
+
       if (error instanceof BadRequestException) {
         throw new BadRequestException(`Serial Number already exists`);
       } else {
         throw new InternalServerErrorException();
       }
+    } finally {
+      if (session.inTransaction()) {
+        await session.abortTransaction();
+      }
+      session.endSession();
     }
   }
 
@@ -740,7 +755,9 @@ export class ProductsService {
     tenantName: string,
     userId: string,
   ) {
-    const session = await this.connection.startSession();
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const session = await connection.startSession();
     session.startTransaction();
 
     try {
@@ -1110,7 +1127,9 @@ export class ProductsService {
     tenantName: string,
     userId: string, // Asegúrate de recibir `userId` como parámetro
   ) {
-    const session = await this.connection.startSession();
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const session = await connection.startSession();
     session.startTransaction();
 
     const { actionType } = updateProductDto;
@@ -1366,8 +1385,10 @@ export class ProductsService {
     }
   }
 
-  async softDelete(id: ObjectId, userId: string) {
-    const session = await this.connection.startSession();
+  async softDelete(id: ObjectId, userId: string, tenantName: string) {
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const session = await connection.startSession();
     let retries = 0;
     const maxRetries = 3;
 
