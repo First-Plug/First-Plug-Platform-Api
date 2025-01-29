@@ -16,7 +16,7 @@ import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { BadRequestException } from '@nestjs/common';
 import { MembersService } from 'src/members/members.service';
 import { TenantsService } from 'src/tenants/tenants.service';
-import { Attribute } from './interfaces/product.interface';
+import { Attribute, Condition } from './interfaces/product.interface';
 import {
   MemberDocument,
   MemberSchema,
@@ -1192,7 +1192,10 @@ export class ProductsService {
         ) {
           updateProductDto.location = 'Employee';
           updateProductDto.status = 'Delivered';
-        } else if (updateProductDto.assignedEmail === 'none') {
+        } else if (
+          updateProductDto.assignedEmail === 'none' &&
+          (updateProductDto.productCondition as Condition) !== 'Unusable'
+        ) {
           if (
             !['FP warehouse', 'Our office'].includes(updateProductDto.location)
           ) {
@@ -1338,7 +1341,10 @@ export class ProductsService {
           ) {
             updateProductDto.location = 'Employee';
             updateProductDto.status = 'Delivered';
-          } else if (updateProductDto.assignedEmail === 'none') {
+          } else if (
+            updateProductDto.assignedEmail === 'none' &&
+            (updateProductDto.productCondition as Condition) !== 'Unusable'
+          ) {
             if (
               !['FP warehouse', 'Our office'].includes(
                 updateProductDto.location,
