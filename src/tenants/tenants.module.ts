@@ -5,6 +5,7 @@ import { Tenant, TenantSchema } from './schemas/tenant.schema';
 import { tenantConnectionProvider } from 'src/common/providers/tenant-connection.provider';
 import { TenantsController } from './tenants.controller';
 import { JwtService } from '@nestjs/jwt';
+import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
 
 @Module({
   imports: [
@@ -16,7 +17,12 @@ import { JwtService } from '@nestjs/jwt';
     ]),
   ],
   controllers: [TenantsController],
-  providers: [TenantsService, tenantConnectionProvider, JwtService],
-  exports: [TenantsService, tenantConnectionProvider],
+  providers: [
+    TenantsService,
+    TenantConnectionService,
+    tenantConnectionProvider,
+    JwtService,
+  ],
+  exports: [TenantsService, TenantConnectionService, tenantConnectionProvider],
 })
 export class TenantsModule {}

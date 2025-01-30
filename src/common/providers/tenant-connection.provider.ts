@@ -1,14 +1,21 @@
 import { REQUEST } from '@nestjs/core';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
+import { TenantConnectionService } from './tenant-connection.service';
 
 export const tenantConnectionProvider = {
   provide: 'TENANT_CONNECTION',
-  useFactory: async (request, connection: Connection) => {
-    if (!request.tenantName) {
-      return connection.useDb(`invited`);
+  useFactory: async (
+    request: any,
+    connection: Connection,
+    tenantConnectionService: TenantConnectionService,
+  ) => {
+    const tenantId = request.tenantName;
+    if (!tenantId) {
+      return connection.useDb('invited');
     }
-    return connection.useDb(`tenant_${request.tenantName}`);
+
+    return tenantConnectionService.getTenantConnection(tenantId);
   },
-  inject: [REQUEST, getConnectionToken()],
+  inject: [REQUEST, getConnectionToken(), TenantConnectionService],
 };

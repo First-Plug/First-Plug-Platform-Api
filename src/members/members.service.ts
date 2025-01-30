@@ -8,17 +8,17 @@ import {
 } from '@nestjs/common';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
-import { ClientSession, Connection, Model, ObjectId, Schema } from 'mongoose';
+import { ClientSession, Model, ObjectId, Schema } from 'mongoose';
 import { MemberDocument } from './schemas/member.schema';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { CreateProductDto } from 'src/products/dto';
 import { Team } from 'src/teams/schemas/team.schema';
 import { ProductModel } from 'src/products/products.service';
-import { InjectConnection } from '@nestjs/mongoose';
 import { TeamsService } from 'src/teams/teams.service';
 import { InjectSlack } from 'nestjs-slack-webhook';
 import { IncomingWebhook } from '@slack/webhook';
 import { HistoryService } from 'src/history/history.service';
+import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
 
 export interface MemberModel
   extends Model<MemberDocument>,
@@ -32,10 +32,10 @@ export class MembersService {
     @Inject('MEMBER_MODEL') private memberRepository: MemberModel,
     @Inject('PRODUCT_MODEL') private productRepository: ProductModel,
     @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
-    @InjectConnection() private readonly connection: Connection,
     private readonly teamsService: TeamsService,
     @InjectSlack() private readonly slack: IncomingWebhook,
     private readonly historyService: HistoryService,
+    private readonly connectionService: TenantConnectionService,
   ) {
     const slackOffboardingWebhookUrl =
       process.env.SLACK_WEBHOOK_URL_OFFBOARDING;
@@ -48,61 +48,6 @@ export class MembersService {
       slackOffboardingWebhookUrl,
     );
   }
-
-  // already run this methods to create a new property in all existing members.
-  // I´ll leave it here for future reference or future new properties
-  // async updateDniForTenant(tenantName: string) {
-  //   try {
-  //     const tenantDbName = `tenant_${tenantName}`;
-  //     const connection = this.connection.useDb(tenantDbName);
-  //     const MemberModel = connection.model<MemberDocument>(
-  //       'Member',
-  //       MemberSchema,
-  //     );
-
-  //     const members = await MemberModel.find();
-
-  //     for (const member of members) {
-  //       if (typeof member.dni === 'undefined') {
-  //         member.dni = 0;
-  //         await member.save();
-  //         this.logger.log(
-  //           `Updated member ${member._id} with DNI: ${member.dni}`,
-  //         );
-  //       }
-  //     }
-  //   } catch (error) {
-  //     this.logger.error('Failed to update member DNI', error);
-  //   }
-  // }
-
-  // async updateDniForAllTenants() {
-  //   try {
-  //     const tenantDbNames = await this.connection.db.admin().listDatabases();
-  //     for (const tenant of tenantDbNames.databases) {
-  //       if (tenant.name.startsWith('tenant_')) {
-  //         const connection = this.connection.useDb(tenant.name);
-  //         const MemberModel = connection.model<MemberDocument>(
-  //           'Member',
-  //           MemberSchema,
-  //         );
-
-  //         const members = await MemberModel.find();
-  //         for (const member of members) {
-  //           if (typeof member.dni === 'undefined') {
-  //             member.dni = 0; // Asignar 0 como valor por defecto
-  //             await member.save();
-  //             this.logger.log(
-  //               `Updated member ${member._id} in ${tenant.name} with DNI: ${member.dni}`,
-  //             );
-  //           }
-  //         }
-  //       }
-  //     }
-  //   } catch (error) {
-  //     this.logger.error('Failed to update member DNI for all tenants', error);
-  //   }
-  // }
 
   async validateSerialNumber(serialNumber: string, productId: ObjectId) {
     // Validar en la colección completa de members
@@ -297,8 +242,14 @@ export class MembersService {
     return productsToUpdate;
   }
 
-  async create(createMemberDto: CreateMemberDto, userId: string) {
-    const session = await this.connection.startSession();
+  async create(
+    createMemberDto: CreateMemberDto,
+    userId: string,
+    tenantName: string,
+  ) {
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const session = await connection.startSession();
     session.startTransaction();
 
     try {
@@ -342,8 +293,14 @@ export class MembersService {
     }
   }
 
-  async bulkCreate(createMemberDtos: CreateMemberDto[], userId: string) {
-    const session = await this.connection.startSession();
+  async bulkCreate(
+    createMemberDtos: CreateMemberDto[],
+    userId: string,
+    tenantName: string,
+  ) {
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const session = await connection.startSession();
     session.startTransaction();
 
     try {
@@ -495,8 +452,15 @@ export class MembersService {
     return await this.memberRepository.findOne({ email: email });
   }
 
-  async update(id: ObjectId, updateMemberDto: UpdateMemberDto, userId: string) {
-    const session = await this.connection.startSession();
+  async update(
+    id: ObjectId,
+    updateMemberDto: UpdateMemberDto,
+    userId: string,
+    tenantName,
+  ) {
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const session = await connection.startSession();
     session.startTransaction();
 
     try {

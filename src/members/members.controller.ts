@@ -33,8 +33,13 @@ export class MembersController {
 
   @Post()
   async create(@Body() createMemberDto: CreateMemberDto, @Req() req) {
-    const { userId } = req;
-    return await this.membersService.create(createMemberDto, userId);
+    const { userId, tenantName } = req;
+
+    return await this.membersService.create(
+      createMemberDto,
+      userId,
+      tenantName,
+    );
   }
 
   @Post('/bulkcreate')
@@ -43,8 +48,12 @@ export class MembersController {
     createMemberDto: CreateMemberArrayDto,
     @Req() req,
   ) {
-    const { userId } = req;
-    return await this.membersService.bulkCreate(createMemberDto, userId);
+    const { userId, tenantName } = req;
+    return await this.membersService.bulkCreate(
+      createMemberDto,
+      userId,
+      tenantName,
+    );
   }
 
   @Post('/offboarding/:id')
@@ -171,9 +180,9 @@ export class MembersController {
     @Body() updateMemberDto: UpdateMemberDto,
     @Req() req,
   ) {
-    const { userId } = req;
+    const { userId, tenantName } = req;
 
-    return this.membersService.update(id, updateMemberDto, userId);
+    return this.membersService.update(id, updateMemberDto, userId, tenantName);
   }
 
   @Delete(':id')

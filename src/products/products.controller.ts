@@ -143,7 +143,7 @@ export class ProductsController {
     @Param('id', ParseMongoIdPipe) id: ObjectId,
     @Request() req: any,
   ) {
-    const { userId } = req;
-    return await this.productsService.softDelete(id, userId);
+    const { userId, tenantName } = req;
+    return await this.productsService.softDelete(id, userId, tenantName);
   }
 }

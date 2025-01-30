@@ -24,6 +24,8 @@ import { HistoryModule } from './history/history.module';
       imports: [ConfigModule],
       useFactory: async (config) => ({
         uri: config.get('database.connectionString'),
+        maxPoolSize: 10,
+        minPoolSize: 1,
       }),
       inject: [ConfigService],
     }),
