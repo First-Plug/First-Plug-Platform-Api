@@ -12,11 +12,16 @@ export class HistoryController {
   async paginatedHistory(
     @Query('page') page: string = '1',
     @Query('size') size: string = '10',
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
   ) {
     const pageNumber = parseInt(page, 10) || 1;
     const pageSize = parseInt(size, 10) || 10;
 
-    return this.historyService.findAll(pageNumber, pageSize);
+    const start = startDate ? new Date(startDate) : undefined;
+    const end = endDate ? new Date(endDate) : undefined;
+
+    return this.historyService.findAll(pageNumber, pageSize, start, end);
   }
 
   @Post()

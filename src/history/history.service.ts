@@ -18,16 +18,26 @@ export class HistoryService {
     return this.historyRepository.create(createHistoryDto);
   }
 
-  async findAll(page: number, size: number) {
+  async findAll(page: number, size: number, startDate?: Date, endDate?: Date) {
     const skip = (page - 1) * size;
+
+    const dateFilter: any = {};
+    if (startDate && endDate) {
+      dateFilter.createdAt = { $gte: startDate, $lte: endDate };
+    } else if (startDate) {
+      dateFilter.createdAt = { $gte: startDate };
+    } else if (endDate) {
+      dateFilter.createdAt = { $lte: endDate };
+    }
+
     const [data, totalCount] = await Promise.all([
       this.historyRepository
-        .find()
+        .find(dateFilter)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(size)
         .exec(),
-      this.historyRepository.countDocuments().exec(),
+      this.historyRepository.countDocuments(dateFilter).exec(),
     ]);
 
     const userIds = data.map((record) => record.userId);
