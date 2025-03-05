@@ -4,128 +4,156 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CreateShipmentDto } from './dto/create-shipment.dto';
-import { UpdateShipmentDto } from './dto/update-shipment.dto';
-import { Model, ObjectId } from 'mongoose';
+import mongoose, { Model } from 'mongoose';
 import { Shipment } from './schemas/shipment.schema';
+import { ShipmentMetadata } from 'src/shipments/schemas/shipment-metadata.schema';
 import { Member } from 'src/members/schemas/member.schema';
+import { Product } from 'src/products/schemas/product.schema';
 
 @Injectable()
 export class ShipmentsService {
   constructor(
     @Inject('SHIPMENT_MODEL') private shipmentRepository: Model<Shipment>,
+    @Inject('SHIPMENT_METADATA_MODEL')
+    private shipmentMetadataRepository: Model<ShipmentMetadata>,
+    @Inject('PRODUCT_MODEL') private productRepository: Model<Product>,
     @Inject('MEMBER_MODEL') private memberRepository: Model<Member>,
   ) {}
 
-  async create(createShipmentDto: CreateShipmentDto) {
-    const { member } = createShipmentDto;
+  // private getLocationCode(location: string): string {
+  //   const locationMap: Record<string, string> = {
+  //     'FP warehouse': 'FP',
+  //     'Our office': 'OO',
+  //     Employee: 'EM',
+  //   };
 
-    const [firstName, lastName] = member.split(' ');
+  //   return locationMap[location] || 'XX';
+  // }
 
-    const memberRecord = await this.memberRepository.findOne({
-      firstName: firstName,
-      lastName: lastName,
-    });
+  private async getNextOrderNumber(): Promise<number> {
+    const metadata = await this.shipmentMetadataRepository.findOne({});
 
-    const memberObject = memberRecord ? memberRecord : null;
-
-    const validOrder = memberObject
-      ? { ...createShipmentDto, member: memberObject }
-      : null;
-
-    if (!validOrder) {
-      throw new BadRequestException('Invalid member.');
+    if (!metadata) {
+      return 1;
     }
 
-    const insertedOrder = await this.shipmentRepository.create(validOrder);
-
-    return insertedOrder ? 1 : 0;
+    return metadata.lastOrderNumber + 1;
   }
 
-  async bulkCreate(createShipmentDto: CreateShipmentDto[]) {
-    const memberNames = createShipmentDto.map((order) => order.member);
-    const uniqueMemberNames = [...new Set(memberNames)];
-
-    const members = await this.memberRepository.find({
-      $or: uniqueMemberNames.map((fullName) => {
-        const [firstName, lastName] = fullName.split(' ');
-        return {
-          firstName: firstName,
-          lastName: lastName,
-        };
-      }),
-    });
-
-    const memberMap = new Map();
-    members.forEach((member) => {
-      memberMap.set(member.firstName + ' ' + member.lastName, member);
-    });
-
-    const ordersWithMembers = createShipmentDto.map((order) => {
-      const member = memberMap.get(order.member);
-      return { ...order, member: member || null };
-    });
-
-    const validOrders = ordersWithMembers.filter((order) => !!order.member);
-
-    const insertedOrders =
-      await this.shipmentRepository.insertMany(validOrders);
-
-    return insertedOrders.length;
+  async generateOrderId(
+    orderOrigin: string,
+    orderDestination: string,
+    orderNumber: number,
+  ): Promise<string> {
+    const orderNumberFormatted = String(orderNumber).padStart(4, '0');
+    return `${orderOrigin}${orderDestination}${orderNumberFormatted}`;
   }
 
-  async findAll() {
-    return await this.shipmentRepository.find();
+  private isCreatingAction(actionType?: string): boolean {
+    return actionType === 'create' || actionType === 'bulkCreate';
   }
 
-  async findById(id: ObjectId) {
-    const shipment = await this.shipmentRepository.findById(id);
+  async findOrCreateShipment(
+    productId: string,
+    origin: string,
+    destination: string,
+    orderOrigin: string,
+    orderDestination: string,
+    actionType: string,
+  ): Promise<Shipment> {
+    if (!destination) {
+      throw new BadRequestException('Destination is required');
+    }
 
-    if (!shipment)
-      throw new NotFoundException(`Shipment with id "${id}" not found`);
+    if (orderOrigin === 'XX' && !this.isCreatingAction(actionType)) {
+      throw new BadRequestException('Origin cannot be XX outside of creation');
+    }
 
-    return shipment;
-  }
+    if (!origin || origin === '') {
+      origin = 'XX';
+    }
 
-  async update(id: ObjectId, updateShipmentDto: UpdateShipmentDto) {
-    const { member, ...rest } = updateShipmentDto;
+    let product: Product | null =
+      await this.productRepository.findById(productId);
 
-    if (member) {
-      const [firstName, lastName] = member.split(' ');
-      const memberDocument = await this.memberRepository.findOne({
-        firstName,
-        lastName,
+    //  Si el producto no está en `products`, buscarlo en `members.products`
+    if (!product) {
+      const memberWithProduct = await this.memberRepository.findOne({
+        'products._id': productId,
       });
 
-      if (!memberDocument) {
-        throw new NotFoundException(`The member ${member} does not exist.`);
+      if (memberWithProduct) {
+        const foundProduct = memberWithProduct.products.find(
+          (p) => p._id?.toString() === productId,
+        );
+
+        if (foundProduct) {
+          product = this.productRepository.hydrate(foundProduct);
+        }
       }
-
-      const updatedOrder = await this.shipmentRepository.findByIdAndUpdate(
-        id,
-        { member: memberDocument, ...rest },
-        { new: true },
-      );
-
-      return updatedOrder;
-    } else {
-      const updatedOrder = await this.shipmentRepository.findByIdAndUpdate(
-        id,
-        { ...rest },
-        { new: true },
-      );
-
-      return updatedOrder;
     }
-  }
 
-  async remove(id: ObjectId) {
-    const { deletedCount } = await this.shipmentRepository.deleteOne({
-      _id: id,
+    // Si el producto no existe en ninguna colección, lanzar error
+    if (!product || !product._id) {
+      throw new NotFoundException(
+        `Product with ID ${productId} not found in any collection`,
+      );
+    }
+
+    // Asegurar que `product._id` es un ObjectId válido
+    const productObjectId =
+      product._id instanceof mongoose.Types.ObjectId
+        ? product._id
+        : new mongoose.Types.ObjectId(product._id.toString());
+
+    // Buscar si existe una orden en estado "In Preparation"
+    const existingShipment = await this.shipmentRepository.findOne({
+      origin,
+      destination,
+      shipment_status: 'In Preparation',
     });
 
-    if (deletedCount === 0) {
-      throw new NotFoundException(`Order with id "${id}" not found`);
+    // Si existe, consolida
+    if (existingShipment) {
+      if (
+        !existingShipment.products.some(
+          (p) => p.toString() === productObjectId.toString(),
+        )
+      ) {
+        existingShipment.products.push(productObjectId);
+        existingShipment.quantity_products = existingShipment.products.length;
+        await existingShipment.save();
+      }
+      return existingShipment;
     }
+
+    const orderNumber = await this.getNextOrderNumber();
+
+    // Si no existe, crear una nueva orden de envío
+    const newShipment = await this.shipmentRepository.create({
+      order_id: await this.generateOrderId(
+        orderOrigin,
+        orderDestination,
+        orderNumber,
+      ),
+      quantity_products: 1,
+      order_date: new Date(),
+      shipment_type: 'TBC',
+      trackingURL: '',
+      shipment_status: 'In Preparation',
+      price: { amount: null, currencyCode: 'TBC' },
+      origin,
+      destination,
+      type: 'shipments',
+      products: [productObjectId],
+    });
+
+    await this.shipmentMetadataRepository.findOneAndUpdate(
+      {},
+      { $set: { lastOrderNumber: orderNumber } },
+      { upsert: true },
+    );
+
+    return newShipment;
   }
 }

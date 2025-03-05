@@ -8,6 +8,10 @@ import {
 } from '../../shipments/schemas/shipment.schema';
 import { Team, TeamSchema } from 'src/teams/schemas/team.schema';
 import { History, HistorySchema } from 'src/history/schemas/history.schema';
+import {
+  ShipmentMetadata,
+  ShipmentMetadataSchema,
+} from 'src/shipments/schemas/shipment-metadata.schema';
 
 export const tenantModels = {
   productModel: {
@@ -49,6 +53,16 @@ export const tenantModels = {
     provide: 'SHIPMENT_MODEL',
     useFactory: async (tenantConnection: Connection) => {
       return tenantConnection.model(Shipment.name, ShipmentSchema);
+    },
+    inject: ['TENANT_CONNECTION'],
+  },
+  shipmentMetadataModel: {
+    provide: 'SHIPMENT_METADATA_MODEL',
+    useFactory: async (tenantConnection: Connection) => {
+      return tenantConnection.model(
+        ShipmentMetadata.name,
+        ShipmentMetadataSchema,
+      );
     },
     inject: ['TENANT_CONNECTION'],
   },

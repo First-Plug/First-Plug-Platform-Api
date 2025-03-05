@@ -38,6 +38,8 @@ export const STATES = [
   'Delivered',
   'Deprecated',
   'Unavailable',
+  'In Transit',
+  'In Transit - Missing Data',
 ] as const;
 
 export type Status = (typeof STATES)[number];

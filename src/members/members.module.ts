@@ -10,12 +10,14 @@ import { ProductsModule } from 'src/products/products.module';
 import { TeamsService } from 'src/teams/teams.service';
 import { ProductsService } from 'src/products/products.service';
 import { HistoryModule } from 'src/history/history.module';
+import { ShipmentsModule } from 'src/shipments/shipments.module';
 
 @Module({
   imports: [
     TenantsModule,
     forwardRef(() => TeamsModule),
     forwardRef(() => ProductsModule),
+    forwardRef(() => ShipmentsModule),
     HistoryModule,
   ],
   controllers: [MembersController],

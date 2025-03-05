@@ -14,6 +14,7 @@ import {
   CONDITION,
 } from '../interfaces/product.interface';
 import { softDeletePlugin } from 'soft-delete-plugin-mongoose';
+import { boolean } from 'zod';
 
 export type ProductDocument = Product & Document & SchemaTimestampsConfig;
 
@@ -106,6 +107,9 @@ export class Product {
     required: false,
   })
   productCondition: Condition;
+
+  @Prop({ type: boolean })
+  fp_shipment: boolean;
 
   isDeleted?: boolean;
 

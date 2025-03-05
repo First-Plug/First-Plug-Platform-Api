@@ -19,6 +19,7 @@ import { InjectSlack } from 'nestjs-slack-webhook';
 import { IncomingWebhook } from '@slack/webhook';
 import { HistoryService } from 'src/history/history.service';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
+import { Status } from 'src/products/interfaces/product.interface';
 
 export interface MemberModel
   extends Model<MemberDocument>,
@@ -599,26 +600,47 @@ export class MembersService {
   ) {
     const member = await this.findByEmailNotThrowError(email);
 
-    if (member) {
-      const { serialNumber, price, productCondition, ...rest } =
-        createProductDto;
+    if (!member) return null;
 
-      const productData = {
-        ...rest,
-        ...(serialNumber && serialNumber.trim() !== '' ? { serialNumber } : {}),
-        productCondition: productCondition || 'Optimal',
-        assignedMember: `${member.firstName} ${member.lastName}`,
-        assignedEmail: email,
-        ...(price?.amount !== undefined && price?.currencyCode
-          ? {
-              price: { amount: price.amount, currencyCode: price.currencyCode },
-            }
-          : {}),
-      };
+    const { serialNumber, price, productCondition, fp_shipment, ...rest } =
+      createProductDto;
 
-      member.products.push(productData);
-      await member.save({ session });
+    // 📌 Definir la ubicación como Employee
+    const location = 'Employee';
+
+    // 📌 Determinar el estado del producto
+    let status: Status = 'Delivered'; // Default para Employee
+
+    if (fp_shipment) {
+      const isComplete = !!(
+        member.country &&
+        member.city &&
+        member.zipCode &&
+        member.address &&
+        member.personalEmail &&
+        member.phone &&
+        member.dni
+      );
+
+      status = isComplete ? 'In Transit' : 'In Transit - Missing Data';
     }
+
+    const productData = {
+      ...rest,
+      serialNumber: serialNumber?.trim() || undefined,
+      productCondition: productCondition || 'Optimal',
+      assignedMember: `${member.firstName} ${member.lastName}`,
+      assignedEmail: email,
+      location,
+      status,
+      ...(price?.amount !== undefined && price?.currencyCode
+        ? { price: { amount: price.amount, currencyCode: price.currencyCode } }
+        : {}),
+      fp_shipment: !!fp_shipment,
+    };
+
+    member.products.push(productData);
+    await member.save({ session });
 
     return member;
   }

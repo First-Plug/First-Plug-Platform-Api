@@ -1,4 +1,12 @@
-import { IsEnum, IsString, MinLength } from 'class-validator';
+import {
+  IsEnum,
+  IsString,
+  IsOptional,
+  IsNumber,
+  MinLength,
+  IsDate,
+  IsObject,
+} from 'class-validator';
 import {
   SHIPMENT_STATUS,
   SHIPMENT_TYPE,
@@ -9,27 +17,36 @@ import {
 export class CreateShipmentDto {
   @IsString()
   @MinLength(1)
-  member: string;
+  order_id: string;
 
-  @IsString()
-  @MinLength(1)
-  date: string;
+  @IsNumber()
+  quantity_products: number;
+
+  @IsDate()
+  order_date: Date;
 
   @IsEnum(SHIPMENT_TYPE)
-  type: ShipmentType;
+  shipment_type: ShipmentType;
 
+  @IsOptional()
   @IsString()
-  @MinLength(1)
-  trackingNumber: string;
-
-  @IsString()
-  @MinLength(1)
-  trackingURL: string;
-
-  @IsString()
-  @MinLength(1)
-  price: string;
+  trackingURL?: string;
 
   @IsEnum(SHIPMENT_STATUS)
-  status: ShipmentStatus;
+  shipment_status: ShipmentStatus;
+
+  @IsObject()
+  @IsOptional()
+  price?: {
+    amount: number;
+    currencyCode: string;
+  };
+
+  @IsString()
+  @MinLength(1)
+  origin: string;
+
+  @IsString()
+  @MinLength(1)
+  destination: string;
 }
