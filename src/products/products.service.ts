@@ -575,48 +575,29 @@ export class ProductsService {
     }
 
     let location = rest.location || createProductDto.location;
-    let status: Status | undefined;
+    let status: Status;
 
-    // 📌 Si el `status` viene del front, validamos pero lo corregimos si es incorrecto
     if (inputStatus) {
-      if (productCondition === 'Unusable') {
-        status = 'Unavailable'; // Siempre debe ser 'Unavailable' si es Unusable
-      } else if (fp_shipment) {
-        status = await this.determineProductStatus(
-          { fp_shipment, location, productCondition },
-          tenantName,
-        ); // Se usa 'In Transit' o 'In Transit - Missing Data'
-      } else {
-        if (assignedEmail && assignedEmail !== 'none') {
-          location = 'Employee';
-          status = 'Delivered';
-        } else if (['FP warehouse', 'Our office'].includes(location)) {
-          status = 'Available';
-        } else {
-          status = 'Unavailable';
-        }
-      }
-    } else {
-      // 📌 Si el `status` NO viene del front, lo calculamos igual que antes
-      if (productCondition === 'Unusable') {
-        status = 'Unavailable';
-      } else if (fp_shipment) {
-        status = await this.determineProductStatus(
-          { fp_shipment, location, productCondition },
-          tenantName,
-        );
-      } else {
-        if (assignedEmail && assignedEmail !== 'none') {
-          location = 'Employee';
-          status = 'Delivered';
-        } else if (['FP warehouse', 'Our office'].includes(location)) {
-          status = 'Available';
-        }
-      }
+      status = inputStatus;
     }
 
-    if (!status) {
-      status = 'Unavailable'; // 🔹 Esto evita errores si no se asignó en ninguna condición
+    // Validar y corregir el status basado en las reglas de negocio
+    if (productCondition === 'Unusable') {
+      status = 'Unavailable';
+    } else if (fp_shipment) {
+      status = await this.determineProductStatus(
+        { fp_shipment, location, productCondition },
+        tenantName,
+      ); // 'In Transit' o 'In Transit - Missing Data'
+    } else {
+      if (assignedEmail && assignedEmail !== 'none') {
+        location = 'Employee';
+        status = 'Delivered';
+      } else if (['FP warehouse', 'Our office'].includes(location)) {
+        status = 'Available';
+      } else {
+        throw new BadRequestException('Invalid location or status');
+      }
     }
 
     const createData = {
@@ -651,11 +632,13 @@ export class ProductsService {
             newData: member.products.at(-1) as Product,
           },
         });
-
-        return member.products.at(-1);
+        console.log(
+          `📌 Producto asignado a ${assignedEmail}, pero continuamos con la ejecución.`,
+        );
+        // return member.products.at(-1);
       }
     }
-
+    console.log('✅ Verificando createData antes de guardarlo:', createData);
     const newProduct = await this.productRepository.create({
       ...createData,
       assignedEmail,
@@ -663,20 +646,36 @@ export class ProductsService {
       recoverable: isRecoverable,
       productCondition: createData.productCondition,
     });
-    console.log('newProduct', newProduct);
-
+    console.log('🔍 Verificando newProduct después de guardarlo:', newProduct);
+    console.log(`📦 Verificando si fp_shipment es true:`, fp_shipment);
+    console.log(
+      '✅ Producto guardado, verificando si se debe crear una orden de envío...',
+    );
     // Si FirstPlug maneja la logística, creamos la orden de envío automáticamente
     if (fp_shipment) {
+      console.log(
+        `🚀 Generando orden de envío para el producto: ${newProduct._id}`,
+      );
       const { origin, destination, orderOrigin, orderDestination } =
         await this.getProductLocationData(newProduct._id.toString(), 'create');
-
-      await this.shipmentsService.findOrCreateShipment(
+      console.log(`📦 Datos de shipment:`, {
+        origin,
+        destination,
+        orderOrigin,
+        orderDestination,
+      });
+      const shipment = await this.shipmentsService.findOrCreateShipment(
         newProduct._id.toString(),
         origin,
         destination,
         orderOrigin,
         orderDestination,
         'create',
+      );
+      console.log(`✅ Orden de envío creada:`, shipment);
+    } else {
+      console.log(
+        '⚠️ fp_shipment es falso o undefined, no se generará una orden de envío.',
       );
     }
 
