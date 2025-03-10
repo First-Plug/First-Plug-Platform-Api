@@ -4,6 +4,7 @@ import { CreateHistoryDto } from './dto/create-history.dto';
 import { History } from './schemas/history.schema';
 import { EnvConfiguration } from 'src/config';
 import { TenantSchema } from 'src/tenants/schemas/tenant.schema';
+import { Team } from 'src/teams/schemas/team.schema';
 
 @Injectable()
 export class HistoryService {
@@ -12,6 +13,7 @@ export class HistoryService {
   constructor(
     @Inject('HISTORY_MODEL')
     private readonly historyRepository: Model<History>,
+    @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
   ) {}
 
   async create(createHistoryDto: CreateHistoryDto) {
@@ -44,15 +46,51 @@ export class HistoryService {
 
     const tenants = await this.getTenantsByUserIds(userIds);
 
-    const updatedData = data.map((record) => {
-      const tenant = tenants.find(
-        (tenant) => tenant._id.toString() === record.userId.toString(),
-      );
-      if (tenant) {
-        record.userId = tenant.email;
-      }
-      return record;
-    });
+    const updatedData = await Promise.all(
+      data.map(async (record) => {
+        const tenant = tenants.find(
+          (tenant) => tenant._id.toString() === record.userId.toString(),
+        );
+        if (tenant) {
+          record.userId = tenant.email;
+        }
+
+        if (
+          (record.itemType === 'members' && record.actionType === 'update') ||
+          (record.itemType === 'teams' &&
+            (record.actionType === 'reassign' ||
+              record.actionType === 'assign' ||
+              record.actionType === 'unassign' ||
+              record.actionType === 'reassign'))
+        ) {
+          if (
+            record.changes?.oldData?.team &&
+            typeof record.changes.oldData.team === 'string'
+          ) {
+            const oldTeam = await this.teamRepository
+              .findById(record.changes.oldData.team)
+              .exec();
+            if (oldTeam) {
+              record.changes.oldData.team = oldTeam;
+            }
+          }
+
+          if (
+            record.changes?.newData?.team &&
+            typeof record.changes.newData.team === 'string'
+          ) {
+            const newTeam = await this.teamRepository
+              .findById(record.changes.newData.team)
+              .exec();
+            if (newTeam) {
+              record.changes.newData.team = newTeam;
+            }
+          }
+        }
+
+        return record;
+      }),
+    );
 
     return {
       data: updatedData,
