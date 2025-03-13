@@ -54,36 +54,53 @@ export class HistoryService {
         if (tenant) {
           record.userId = tenant.email;
         }
-
         if (
-          (record.itemType === 'members' && record.actionType === 'update') ||
+          (record.itemType === 'members' &&
+            ['update', 'create', 'delete', 'bulk-create'].includes(
+              record.actionType,
+            )) ||
           (record.itemType === 'teams' &&
-            (record.actionType === 'reassign' ||
-              record.actionType === 'assign' ||
-              record.actionType === 'unassign' ||
-              record.actionType === 'reassign'))
+            ['reassign', 'assign', 'unassign'].includes(record.actionType))
         ) {
           if (
-            record.changes?.oldData?.team &&
-            typeof record.changes.oldData.team === 'string'
+            record.itemType === 'members' &&
+            record.actionType === 'bulk-create'
           ) {
-            const oldTeam = await this.teamRepository
-              .findById(record.changes.oldData.team)
-              .exec();
-            if (oldTeam) {
-              record.changes.oldData.team = oldTeam;
+            if (Array.isArray(record.changes?.newData)) {
+              for (const member of record.changes.newData) {
+                if (member.team && typeof member.team === 'string') {
+                  const newTeam = await this.teamRepository
+                    .findById(member.team)
+                    .exec();
+                  if (newTeam) {
+                    member.team = newTeam;
+                  }
+                }
+              }
             }
-          }
+          } else {
+            if (
+              record.changes?.oldData?.team &&
+              typeof record.changes.oldData.team === 'string'
+            ) {
+              const oldTeam = await this.teamRepository
+                .findById(record.changes.oldData.team)
+                .exec();
+              if (oldTeam) {
+                record.changes.oldData.team = oldTeam;
+              }
+            }
 
-          if (
-            record.changes?.newData?.team &&
-            typeof record.changes.newData.team === 'string'
-          ) {
-            const newTeam = await this.teamRepository
-              .findById(record.changes.newData.team)
-              .exec();
-            if (newTeam) {
-              record.changes.newData.team = newTeam;
+            if (
+              record.changes?.newData?.team &&
+              typeof record.changes.newData.team === 'string'
+            ) {
+              const newTeam = await this.teamRepository
+                .findById(record.changes.newData.team)
+                .exec();
+              if (newTeam) {
+                record.changes.newData.team = newTeam;
+              }
             }
           }
         }
