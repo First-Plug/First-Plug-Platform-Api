@@ -70,6 +70,21 @@ export class MembersController {
       product: any;
     }> = [];
 
+    type ProductOffboardingData = {
+      productId: ObjectId;
+      newLocation: string;
+      assignedEmail: string;
+      assignedMember: string;
+    };
+
+    type NewOffboardingData = {
+      products: ProductOffboardingData[];
+    };
+
+    const newData: NewOffboardingData = {
+      products: [],
+    };
+
     data.forEach((element) => {
       const product = element.product;
 
@@ -81,6 +96,14 @@ export class MembersController {
           productsToUpdate.push({
             id: product._id,
             product,
+          });
+
+          // Agregar al newData
+          newData.products.push({
+            productId: product._id,
+            newLocation: 'New employee',
+            assignedEmail: product.assignedEmail,
+            assignedMember: product.assignedMember,
           });
           break;
 
@@ -95,6 +118,14 @@ export class MembersController {
             id: product._id,
             product,
           });
+
+          // Agregar al newData
+          newData.products.push({
+            productId: product._id,
+            newLocation: 'FP warehouse',
+            assignedEmail: '',
+            assignedMember: '',
+          });
           break;
 
         case 'My office':
@@ -107,6 +138,14 @@ export class MembersController {
           productsToUpdate.push({
             id: product._id,
             product,
+          });
+
+          // Agregar al newData
+          newData.products.push({
+            productId: product._id,
+            newLocation: 'Our office',
+            assignedEmail: '',
+            assignedMember: '',
           });
           break;
       }
@@ -149,7 +188,7 @@ export class MembersController {
             ...updatedProducts,
           ],
         },
-        newData: null,
+        newData: newData,
       },
     });
 
