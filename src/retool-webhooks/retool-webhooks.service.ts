@@ -4,13 +4,13 @@ import { TenantConnectionService } from 'src/common/providers/tenant-connection.
 import { ProductSchema } from 'src/products/schemas/product.schema';
 // import { ShipmentStatus } from 'src/shipments/interfaces/shipment.interface';
 import { ShipmentSchema } from 'src/shipments/schemas/shipment.schema';
-import { ShipmentsService } from 'src/shipments/shipments.service';
+// import { ShipmentsService } from 'src/shipments/shipments.service';
 
 @Injectable()
 export class RetoolWebhooksService {
   constructor(
     private tenantConnectionService: TenantConnectionService,
-    private readonly shipmentsService: ShipmentsService,
+    // private readonly shipmentsService: ShipmentsService,
   ) {}
 
   async updateShipmentStatusWebhook(body: {
@@ -38,17 +38,9 @@ export class RetoolWebhooksService {
       connection.models.Product ||
       connection.model('Product', ProductSchema, 'products');
 
-    console.log('📦 ID recibido:', shipmentId);
-    console.log('📦 Nuevo estado:', newStatus);
-    console.log('📦 Modelos disponibles:', Object.keys(connection.models));
-    console.log('📦 ShipmentID es tipo:', typeof shipmentId);
-    console.log('📦 ShipmentID recibido:', shipmentId);
-
     const objectId = new mongoose.Types.ObjectId(shipmentId);
-    console.log('📦 ObjectId generado manualmente:', objectId);
 
     const shipment = await ShipmentModel.findOne({ _id: objectId });
-    console.log('📦 Shipment encontrado:', shipment);
 
     if (!shipment) {
       throw new NotFoundException('Shipment no encontrado');

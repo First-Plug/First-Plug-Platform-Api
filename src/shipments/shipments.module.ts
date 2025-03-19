@@ -9,11 +9,11 @@ import { MembersModule } from 'src/members/members.module';
 import { tenantModels } from 'src/common/providers/tenant-models-provider';
 import { TeamsModule } from 'src/teams/teams.module';
 import { HistoryModule } from 'src/history/history.module';
-import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
+// import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
 
 @Module({
   imports: [
-    forwardRef(() => TenantsModule),
+    TenantsModule,
     forwardRef(() => ProductsModule),
     forwardRef(() => MembersModule),
     forwardRef(() => HistoryModule),
@@ -24,13 +24,13 @@ import { TenantConnectionService } from 'src/common/providers/tenant-connection.
     ShipmentsService,
     tenantModels.shipmentModel,
     tenantModels.shipmentMetadataModel,
-    TenantConnectionService,
+    // TenantConnectionService,
     JwtService,
   ],
   exports: [
     ShipmentsService,
-    // tenantModels.shipmentModel,
-    // tenantModels.shipmentMetadataModel,
+    tenantModels.shipmentModel,
+    tenantModels.shipmentMetadataModel,
   ],
 })
 export class ShipmentsModule {

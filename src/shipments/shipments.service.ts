@@ -46,7 +46,32 @@ export class ShipmentsService {
     private readonly productsService: ProductsService,
 
     private readonly membersService: MembersService,
-  ) {}
+  ) {
+    console.log(
+      '📡 connectionService en constructor:',
+      !!this.connectionService,
+    );
+    console.log(
+      '📡 Métodos disponibles en connectionService:',
+      Object.getOwnPropertyNames(Object.getPrototypeOf(this.connectionService)),
+    );
+    console.log(
+      '🔎 cancelShipmentAndUpdateProductStatus typeof:',
+      typeof this.cancelShipmentAndUpdateProductStatus,
+    );
+    console.log(
+      '🔎 cancelShipmentAndUpdateProductStatus === prototype:',
+      this.cancelShipmentAndUpdateProductStatus ===
+        ShipmentsService.prototype.cancelShipmentAndUpdateProductStatus,
+    );
+    console.log('🧪 ShipmentService created');
+    console.log('🧪 this.connectionService:', this.connectionService);
+    if (!this.connectionService?.getTenantConnection) {
+      throw new Error(
+        '🚨 El método getTenantConnection NO existe en TenantConnectionService',
+      );
+    }
+  }
 
   public getCountryCode(countryName: string): string {
     return countryCodes[countryName] || 'XX';
@@ -518,21 +543,38 @@ export class ShipmentsService {
     shipmentId: string,
     tenantName: string,
   ): Promise<Shipment> {
-    console.log('🔥 connectionService en el método:', this.connectionService);
+    console.log('🔍 Entró al método cancelShipmentAndUpdateProductStatus');
     console.log(
-      '🔥 typeof getTenantConnection:',
+      '🧠 Dentro del método, this.connectionService:',
+      this.connectionService,
+    );
+    console.log(
+      '🧠 typeof this.connectionService:',
+      typeof this.connectionService,
+    );
+    console.log(
+      '🧠 typeof this.connectionService.getTenantConnection:',
       typeof this.connectionService?.getTenantConnection,
     );
+    console.log('🧠 ShipmentService this:', this);
+    console.log(
+      '🧠 ShipmentService this.constructor.name:',
+      this.constructor.name,
+    );
+
+    console.log(
+      '🔍 this instanceof ShipmentsService:',
+      this instanceof ShipmentsService,
+    );
+
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
 
-    if (!connection.models[Shipment.name]) {
-      connection.model(Shipment.name, ShipmentSchema);
-    }
+    const ShipmentModel =
+      connection.models[Shipment.name] ??
+      connection.model<ShipmentDocument>(Shipment.name, ShipmentSchema);
 
-    const shipmentModel = connection.model<Shipment>(Shipment.name);
-
-    const shipment = await shipmentModel.findById(shipmentId);
+    const shipment = await ShipmentModel.findById(shipmentId);
     if (!shipment) {
       throw new NotFoundException(`Shipment with ID ${shipmentId} not found`);
     }
@@ -548,7 +590,7 @@ export class ShipmentsService {
 
     shipment.shipment_status = 'Cancelled';
     await shipment.save();
-    console.log('🧠 método this:', this);
+
     await this.updateProductsAfterShipmentEnd(shipment.products, tenantName);
 
     return shipment;
