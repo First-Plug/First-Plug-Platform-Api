@@ -11,6 +11,7 @@ import { AuthModule } from './auth/auth.module';
 import { TeamsModule } from './teams/teams.module';
 import { SlackModule } from 'nestjs-slack-webhook';
 import { HistoryModule } from './history/history.module';
+import { RetoolWebhooksModule } from 'src/retool-webhooks/retool-webhooks.module';
 
 @Module({
   imports: [
@@ -40,10 +41,11 @@ import { HistoryModule } from './history/history.module';
     ProductsModule,
     forwardRef(() => MembersModule),
     OrdersModule,
-    ShipmentsModule,
+    forwardRef(() => ShipmentsModule),
     AuthModule,
     forwardRef(() => TeamsModule),
     HistoryModule,
+    RetoolWebhooksModule,
   ],
   controllers: [],
   providers: [],

@@ -6,32 +6,31 @@ import { TenantsMiddleware } from 'src/common/middlewares/tenants.middleware';
 import { JwtService } from '@nestjs/jwt';
 import { ProductsModule } from 'src/products/products.module';
 import { MembersModule } from 'src/members/members.module';
-import { ShipmentMetadataSchema } from 'src/shipments/schemas/shipment-metadata.schema';
-import { ShipmentSchema } from 'src/shipments/schemas/shipment.schema';
-import { MongooseModule } from '@nestjs/mongoose';
 import { tenantModels } from 'src/common/providers/tenant-models-provider';
+import { TeamsModule } from 'src/teams/teams.module';
+import { HistoryModule } from 'src/history/history.module';
+import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
 
 @Module({
   imports: [
-    TenantsModule,
-    MongooseModule.forFeature([
-      { name: 'SHIPMENT_MODEL', schema: ShipmentSchema },
-      { name: 'SHIPMENT_METADATA_MODEL', schema: ShipmentMetadataSchema },
-    ]),
+    forwardRef(() => TenantsModule),
     forwardRef(() => ProductsModule),
     forwardRef(() => MembersModule),
+    forwardRef(() => HistoryModule),
+    forwardRef(() => TeamsModule),
   ],
   controllers: [ShipmentsController],
   providers: [
     ShipmentsService,
     tenantModels.shipmentModel,
     tenantModels.shipmentMetadataModel,
+    TenantConnectionService,
     JwtService,
   ],
   exports: [
     ShipmentsService,
-    tenantModels.shipmentModel,
-    tenantModels.shipmentMetadataModel,
+    // tenantModels.shipmentModel,
+    // tenantModels.shipmentMetadataModel,
   ],
 })
 export class ShipmentsModule {

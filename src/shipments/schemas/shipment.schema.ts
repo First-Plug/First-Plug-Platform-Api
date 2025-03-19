@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import mongoose, { Document } from 'mongoose';
+import mongoose, { Document, Schema as MongooseSchema } from 'mongoose';
 import { softDeletePlugin } from 'soft-delete-plugin-mongoose';
 import {
   SHIPMENT_STATUS,
@@ -7,6 +7,8 @@ import {
   ShipmentStatus,
   ShipmentType,
 } from '../interfaces/shipment.interface';
+
+export type ShipmentDocument = Shipment & Document;
 
 @Schema({ timestamps: true })
 export class Shipment extends Document {
@@ -77,8 +79,42 @@ export class Shipment extends Document {
   @Prop({ type: String, required: true })
   origin: string;
 
+  @Prop({
+    type: {
+      address: String,
+      city: String,
+      state: String,
+      country: String,
+      zipCode: String,
+      apartment: String,
+      phone: String,
+      personalEmail: String,
+      dni: String,
+      desirableDate: String,
+    },
+    required: false,
+  })
+  originDetails?: Record<string, string>;
+
   @Prop({ type: String, required: true })
   destination: string;
+
+  @Prop({
+    type: {
+      address: String,
+      city: String,
+      state: String,
+      country: String,
+      zipCode: String,
+      apartment: String,
+      phone: String,
+      personalEmail: String,
+      dni: String,
+      desirableDate: String,
+    },
+    required: false,
+  })
+  destinationDetails?: Record<string, string>;
 
   @Prop({ type: String, required: true, default: 'shipments' })
   type: string;
@@ -88,6 +124,48 @@ export class Shipment extends Document {
     default: [],
   })
   products: mongoose.Types.ObjectId[];
+
+  @Prop({
+    type: [
+      {
+        _id: MongooseSchema.Types.ObjectId,
+        name: String,
+        category: String,
+        attributes: [{ key: String, value: MongooseSchema.Types.Mixed }],
+        status: String,
+        recoverable: Boolean,
+        serialNumber: String,
+        assignedEmail: String,
+        assignedMember: String,
+        lastAssigned: String,
+        acquisitionDate: String,
+        location: String,
+        price: { amount: Number, currencyCode: String },
+        additionalInfo: String,
+        productCondition: String,
+        fp_shipment: Boolean,
+      },
+    ],
+    required: false,
+  })
+  snapshots?: Array<{
+    _id: mongoose.Schema.Types.ObjectId;
+    name?: string;
+    category: string;
+    attributes: { key: string; value: any }[];
+    status: string;
+    recoverable?: boolean;
+    serialNumber?: string;
+    assignedEmail?: string;
+    assignedMember?: string;
+    lastAssigned?: string;
+    acquisitionDate?: string;
+    location?: string;
+    price?: { amount: number; currencyCode: string };
+    additionalInfo?: string;
+    productCondition: string;
+    fp_shipment: boolean;
+  }>;
 }
 
 export const ShipmentSchema =

@@ -1,6 +1,7 @@
 export const SHIPMENT_STATUS = [
+  'On Hold - Missing Data',
   'In Preparation',
-  'On the Way',
+  'On The Way',
   'Received',
   'Cancelled',
 ] as const;

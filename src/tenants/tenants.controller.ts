@@ -127,4 +127,9 @@ export class TenantsController {
       message: `Configuración de computerExpiration actualizada para tenant: ${tenantName}`,
     };
   }
+
+  @Get('find-all-tenants')
+  async findAllTenants() {
+    return await this.tenantService.findAllTenants();
+  }
 }
