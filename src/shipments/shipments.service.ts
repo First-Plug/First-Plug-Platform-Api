@@ -73,6 +73,18 @@ export class ShipmentsService {
     }
   }
 
+  testTenantServiceConnection() {
+    console.log('🧪 testTenantServiceConnection() ejecutado');
+    console.log('🧪 connectionService:', this.connectionService);
+    console.log(
+      '🧪 typeof getTenantConnection:',
+      typeof this.connectionService?.getTenantConnection,
+    );
+    const conn = this.connectionService?.getTenantConnection?.('test');
+    console.log('🔌 Resultado llamada directa:', conn);
+    return 'OK';
+  }
+
   public getCountryCode(countryName: string): string {
     return countryCodes[countryName] || 'XX';
   }
@@ -543,30 +555,14 @@ export class ShipmentsService {
     shipmentId: string,
     tenantName: string,
   ): Promise<Shipment> {
-    console.log('🔍 Entró al método cancelShipmentAndUpdateProductStatus');
     console.log(
-      '🧠 Dentro del método, this.connectionService:',
-      this.connectionService,
+      '🔍 Clase cargada (hash):',
+      ShipmentsService.toString().substring(0, 50),
     );
     console.log(
-      '🧠 typeof this.connectionService:',
-      typeof this.connectionService,
+      '🔍 ¿Same class ref que prototype?',
+      Object.getPrototypeOf(this).constructor === ShipmentsService,
     );
-    console.log(
-      '🧠 typeof this.connectionService.getTenantConnection:',
-      typeof this.connectionService?.getTenantConnection,
-    );
-    console.log('🧠 ShipmentService this:', this);
-    console.log(
-      '🧠 ShipmentService this.constructor.name:',
-      this.constructor.name,
-    );
-
-    console.log(
-      '🔍 this instanceof ShipmentsService:',
-      this instanceof ShipmentsService,
-    );
-
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
 

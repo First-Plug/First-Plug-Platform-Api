@@ -1,4 +1,11 @@
-import { Controller, Param, Patch, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Param,
+  Patch,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ShipmentsService } from './shipments.service';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 
@@ -7,27 +14,22 @@ import { JwtGuard } from 'src/auth/guard/jwt.guard';
 export class ShipmentsController {
   constructor(private readonly shipmentsService: ShipmentsService) {}
 
-  @Patch(':id/cancel')
-  async cancelShipment(
-    @Param('id') id: string,
-    @Query('tenant') tenantName: string,
+  @Patch('test-connection')
+  async testConnection() {
+    return this.shipmentsService.testTenantServiceConnection();
+  }
+
+  @Patch('cancel-shipment')
+  async cancelShipmentByBody(
+    @Body() body: { shipmentId: string; tenantName: string },
   ) {
-    console.log(
-      '📢 Método cancelShipmentAndUpdateProductStatus del servicio:',
-      this.shipmentsService.cancelShipmentAndUpdateProductStatus,
+    console.log('📢 cancelShipmentByBody body:', body);
+    console.log('📢 Controller this.shipmentsService:', this.shipmentsService);
+
+    return await this.shipmentsService.cancelShipmentAndUpdateProductStatus(
+      body.shipmentId,
+      body.tenantName,
     );
-    console.log(
-      '📢 Tipo:',
-      typeof this.shipmentsService.cancelShipmentAndUpdateProductStatus,
-    );
-    console.log(
-      '📢 ¿Está en el prototipo?',
-      this.shipmentsService.cancelShipmentAndUpdateProductStatus ===
-        ShipmentsService.prototype.cancelShipmentAndUpdateProductStatus,
-    );
-    return await this.shipmentsService.cancelShipmentAndUpdateProductStatus.bind(
-      this.shipmentsService,
-    )(id, tenantName);
   }
 
   @Patch(':id/received')

@@ -41,6 +41,10 @@ export class MembersController {
       tenantName,
     );
   }
+  @Post('test')
+  async createTest(@Body() body) {
+    return await this.membersService.create(body, 'testUser123', 'cache');
+  }
 
   @Post('/bulkcreate')
   async bulkcreate(
