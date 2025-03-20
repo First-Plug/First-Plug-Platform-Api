@@ -1,14 +1,13 @@
 export const SHIPMENT_STATUS = [
-  'Missing Data',
-  'Delivered',
-  'Preparing',
-  'Available',
-  'Shipped',
-  'Complete',
+  'On Hold - Missing Data',
+  'In Preparation',
+  'On The Way',
+  'Received',
+  'Cancelled',
 ] as const;
 
 export type ShipmentStatus = (typeof SHIPMENT_STATUS)[number];
 
-export const SHIPMENT_TYPE = ['Courrier', 'Internal'] as const;
+export const SHIPMENT_TYPE = ['Courrier', 'Internal', 'TBC'] as const;
 
 export type ShipmentType = (typeof SHIPMENT_TYPE)[number];

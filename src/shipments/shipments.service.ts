@@ -1,131 +1,26 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { CreateShipmentDto } from './dto/create-shipment.dto';
-import { UpdateShipmentDto } from './dto/update-shipment.dto';
-import { Model, ObjectId } from 'mongoose';
-import { Shipment } from './schemas/shipment.schema';
-import { Member } from 'src/members/schemas/member.schema';
+import { Injectable } from '@nestjs/common';
+import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
+// import { Connection } from 'mongoose';
 
 @Injectable()
 export class ShipmentsService {
-  constructor(
-    @Inject('SHIPMENT_MODEL') private shipmentRepository: Model<Shipment>,
-    @Inject('MEMBER_MODEL') private memberRepository: Model<Member>,
-  ) {}
-
-  async create(createShipmentDto: CreateShipmentDto) {
-    const { member } = createShipmentDto;
-
-    const [firstName, lastName] = member.split(' ');
-
-    const memberRecord = await this.memberRepository.findOne({
-      firstName: firstName,
-      lastName: lastName,
-    });
-
-    const memberObject = memberRecord ? memberRecord : null;
-
-    const validOrder = memberObject
-      ? { ...createShipmentDto, member: memberObject }
-      : null;
-
-    if (!validOrder) {
-      throw new BadRequestException('Invalid member.');
-    }
-
-    const insertedOrder = await this.shipmentRepository.create(validOrder);
-
-    return insertedOrder ? 1 : 0;
+  constructor(private readonly connectionService: TenantConnectionService) {
+    console.log('📡 this.connectionService:', this.connectionService);
+    console.log(
+      '📡 typeof getTenantConnection:',
+      typeof this.connectionService?.getTenantConnection,
+    );
   }
 
-  async bulkCreate(createShipmentDto: CreateShipmentDto[]) {
-    const memberNames = createShipmentDto.map((order) => order.member);
-    const uniqueMemberNames = [...new Set(memberNames)];
+  async testTenantConnection(tenantName: string): Promise<string[]> {
+    console.log('🔍 Obteniendo conexión para tenant:', tenantName);
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
 
-    const members = await this.memberRepository.find({
-      $or: uniqueMemberNames.map((fullName) => {
-        const [firstName, lastName] = fullName.split(' ');
-        return {
-          firstName: firstName,
-          lastName: lastName,
-        };
-      }),
-    });
+    await connection.asPromise(); // ⚠️ fuerza a esperar a que la conexión se establezca
 
-    const memberMap = new Map();
-    members.forEach((member) => {
-      memberMap.set(member.firstName + ' ' + member.lastName, member);
-    });
-
-    const ordersWithMembers = createShipmentDto.map((order) => {
-      const member = memberMap.get(order.member);
-      return { ...order, member: member || null };
-    });
-
-    const validOrders = ordersWithMembers.filter((order) => !!order.member);
-
-    const insertedOrders =
-      await this.shipmentRepository.insertMany(validOrders);
-
-    return insertedOrders.length;
-  }
-
-  async findAll() {
-    return await this.shipmentRepository.find();
-  }
-
-  async findById(id: ObjectId) {
-    const shipment = await this.shipmentRepository.findById(id);
-
-    if (!shipment)
-      throw new NotFoundException(`Shipment with id "${id}" not found`);
-
-    return shipment;
-  }
-
-  async update(id: ObjectId, updateShipmentDto: UpdateShipmentDto) {
-    const { member, ...rest } = updateShipmentDto;
-
-    if (member) {
-      const [firstName, lastName] = member.split(' ');
-      const memberDocument = await this.memberRepository.findOne({
-        firstName,
-        lastName,
-      });
-
-      if (!memberDocument) {
-        throw new NotFoundException(`The member ${member} does not exist.`);
-      }
-
-      const updatedOrder = await this.shipmentRepository.findByIdAndUpdate(
-        id,
-        { member: memberDocument, ...rest },
-        { new: true },
-      );
-
-      return updatedOrder;
-    } else {
-      const updatedOrder = await this.shipmentRepository.findByIdAndUpdate(
-        id,
-        { ...rest },
-        { new: true },
-      );
-
-      return updatedOrder;
-    }
-  }
-
-  async remove(id: ObjectId) {
-    const { deletedCount } = await this.shipmentRepository.deleteOne({
-      _id: id,
-    });
-
-    if (deletedCount === 0) {
-      throw new NotFoundException(`Order with id "${id}" not found`);
-    }
+    console.log('✅ Conexión obtenida:', connection.name);
+    const collections = await connection.db.listCollections().toArray();
+    return collections.map((col) => col.name);
   }
 }
