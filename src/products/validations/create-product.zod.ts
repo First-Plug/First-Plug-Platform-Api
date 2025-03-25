@@ -92,6 +92,7 @@ export const ProductSchemaZod = z
       )
       .optional()
       .nullable(),
+    fp_shipment: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.category === 'Merchandising' && !data.name) {

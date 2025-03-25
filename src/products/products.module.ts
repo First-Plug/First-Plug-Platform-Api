@@ -7,12 +7,14 @@ import { TenantsModule } from '../tenants/tenants.module';
 import { JwtService } from '@nestjs/jwt';
 import { MembersModule } from 'src/members/members.module';
 import { HistoryModule } from 'src/history/history.module';
+import { ShipmentsModule } from '../shipments/shipments.module';
 
 @Module({
   imports: [
     TenantsModule,
     MembersModule,
     forwardRef(() => MembersModule),
+    forwardRef(() => ShipmentsModule),
     HistoryModule,
   ],
   controllers: [ProductsController],

@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
   Logger,
+  forwardRef,
 } from '@nestjs/common';
 import { Model, ObjectId, Types } from 'mongoose';
 import {
@@ -16,7 +17,7 @@ import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { BadRequestException } from '@nestjs/common';
 import { MembersService } from 'src/members/members.service';
 import { TenantsService } from 'src/tenants/tenants.service';
-import { Attribute, Condition } from './interfaces/product.interface';
+import { Attribute, Condition, Status } from './interfaces/product.interface';
 import {
   MemberDocument,
   MemberSchema,
@@ -26,6 +27,7 @@ import { Parser } from 'json2csv';
 import { HistoryService } from 'src/history/history.service';
 import { updateProductPrice } from './helpers/update-price.helper';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
+import { ShipmentsService } from 'src/shipments/shipments.service';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -41,6 +43,9 @@ export class ProductsService {
     private readonly tenantsService: TenantsService,
     private readonly historyService: HistoryService,
     private readonly connectionService: TenantConnectionService,
+
+    @Inject(forwardRef(() => ShipmentsService))
+    private readonly shipmentsService: ShipmentsService,
   ) {}
 
   private normalizeProductData(product: CreateProductDto) {
@@ -221,14 +226,106 @@ export class ProductsService {
     ]);
   }
 
+  isCreatingAction(actionType?: string): boolean {
+    return actionType === 'create' || actionType === 'bulkCreate';
+  }
+
+  public async isAddressComplete(
+    product: Partial<Product>,
+    tenantName: string,
+  ): Promise<boolean> {
+    if (product.location === 'FP warehouse') {
+      return true;
+    }
+
+    if (product.location === 'Employee') {
+      const member = await this.memberService.findByEmailNotThrowError(
+        product.assignedEmail!,
+      );
+      if (!member) return false;
+
+      return !!(
+        member.country &&
+        member.city &&
+        member.zipCode &&
+        member.address &&
+        member.apartment &&
+        member.personalEmail &&
+        member.phone &&
+        member.dni
+      );
+    }
+
+    if (product.location === 'Our office') {
+      //  Obtener datos del tenant
+      const tenant = await this.tenantsService.getByTenantName(tenantName);
+
+      if (!tenant) return false;
+
+      return !!(
+        tenant.country &&
+        tenant.city &&
+        tenant.state &&
+        tenant.zipCode &&
+        tenant.address &&
+        tenant.apartment &&
+        tenant.phone
+      );
+    }
+
+    return false;
+  }
+
+  public async determineProductStatus(
+    product: Partial<Product>,
+    tenantName: string,
+    actionType?: string,
+    origin?: string,
+  ): Promise<Status> {
+    if (!product.fp_shipment) {
+      return product.status!;
+    }
+    const isCreating = this.isCreatingAction(actionType);
+
+    const destinationIsComplete = await this.isAddressComplete(
+      { ...product, location: product.location },
+      tenantName,
+    );
+
+    const originIsComplete = isCreating
+      ? true
+      : await this.isAddressComplete(
+          { ...product, location: origin },
+          tenantName,
+        );
+    console.log(
+      '🔍 isCreating detectado:',
+      isCreating,
+      'para actionType:',
+      actionType,
+    );
+    console.log('✅ destinationIsComplete:', destinationIsComplete);
+    console.log('✅ originIsComplete:', originIsComplete);
+    return destinationIsComplete && originIsComplete
+      ? 'In Transit'
+      : 'In Transit - Missing Data';
+  }
+
   async create(
     createProductDto: CreateProductDto,
     tenantName: string,
     userId: string,
   ) {
     const normalizedProduct = this.normalizeProductData(createProductDto);
-    const { assignedEmail, serialNumber, price, productCondition, ...rest } =
-      normalizedProduct;
+    const {
+      assignedEmail,
+      serialNumber,
+      price,
+      productCondition,
+      fp_shipment,
+      status: inputStatus,
+      ...rest
+    } = normalizedProduct;
 
     const recoverableConfig =
       await this.getRecoverableConfigForTenant(tenantName);
@@ -243,16 +340,30 @@ export class ProductsService {
     }
 
     let location = rest.location || createProductDto.location;
-    let status = rest.status || 'Available';
+    let status: Status;
 
+    if (inputStatus) {
+      status = inputStatus;
+    }
+
+    // Validar y corregir el status basado en las reglas de negocio
     if (productCondition === 'Unusable') {
       status = 'Unavailable';
+    } else if (fp_shipment) {
+      status = await this.determineProductStatus(
+        { fp_shipment, location, assignedEmail, productCondition },
+        tenantName,
+        'create',
+        undefined,
+      ); // 'In Transit' o 'In Transit - Missing Data'
     } else {
       if (assignedEmail && assignedEmail !== 'none') {
         location = 'Employee';
         status = 'Delivered';
       } else if (['FP warehouse', 'Our office'].includes(location)) {
         status = 'Available';
+      } else {
+        throw new BadRequestException('Invalid location or status');
       }
     }
 
@@ -264,6 +375,7 @@ export class ProductsService {
       additionalInfo: createProductDto.additionalInfo?.trim() || undefined,
       location,
       status,
+      fp_shipment,
       ...(price?.amount !== undefined && price?.currencyCode ? { price } : {}),
     };
 
@@ -287,11 +399,13 @@ export class ProductsService {
             newData: member.products.at(-1) as Product,
           },
         });
-
-        return member.products.at(-1);
+        console.log(
+          `📌 Producto asignado a ${assignedEmail}, pero continuamos con la ejecución.`,
+        );
+        // return member.products.at(-1);
       }
     }
-
+    console.log('✅ Verificando createData antes de guardarlo:', createData);
     const newProduct = await this.productRepository.create({
       ...createData,
       assignedEmail,
@@ -299,18 +413,45 @@ export class ProductsService {
       recoverable: isRecoverable,
       productCondition: createData.productCondition,
     });
-    console.log('newProduct', newProduct);
-    await this.historyService.create({
-      actionType: 'create',
-      itemType: 'assets',
-      userId: userId,
-      changes: {
-        oldData: null,
-        newData: newProduct,
-      },
-    });
-
-    return newProduct;
+    console.log('🔍 Verificando newProduct después de guardarlo:', newProduct);
+    console.log(`📦 Verificando si fp_shipment es true:`, fp_shipment);
+    console.log(
+      '✅ Producto guardado, verificando si se debe crear una orden de envío...',
+    );
+    // Si FirstPlug maneja la logística, creamos la orden de envío automáticamente
+    if (fp_shipment) {
+      console.log(
+        `🚀 Generando orden de envío para el producto: ${newProduct._id}`,
+      );
+      const {
+        origin,
+        destination,
+        orderOrigin,
+        orderDestination,
+        assignedEmail: emailForShipment,
+      } = await this.shipmentsService.getProductLocationData(
+        newProduct._id.toString(),
+        tenantName,
+        'create',
+      );
+      console.log(`📦 Datos de shipment:`, {
+        origin,
+        destination,
+        orderOrigin,
+        orderDestination,
+        assignedEmail: emailForShipment,
+      });
+      const shipment = await this.shipmentsService.findOrCreateShipment(
+        newProduct._id.toString(),
+        'create',
+        tenantName,
+      );
+      console.log(`✅ Orden de envío creada:`, shipment);
+    } else {
+      console.log(
+        '⚠️ fp_shipment es falso o undefined, no se generará una orden de envío.',
+      );
+    }
   }
 
   async bulkCreate(
@@ -932,6 +1073,7 @@ export class ProductsService {
         updateProductDto.productCondition !== undefined
           ? updateProductDto.productCondition
           : product.productCondition,
+      fp_shipment: product.fp_shipment,
       isDeleted: product.isDeleted,
       lastAssigned: lastAssigned,
     };
