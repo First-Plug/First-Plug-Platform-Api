@@ -10,7 +10,11 @@ import { MembersModule } from 'src/members/members.module';
 import { ProductsModule } from 'src/products/products.module';
 
 @Module({
-  imports: [TenantsModule, MembersModule, forwardRef(() => ProductsModule)],
+  imports: [
+    TenantsModule,
+    forwardRef(() => MembersModule),
+    forwardRef(() => ProductsModule),
+  ],
   controllers: [ShipmentsController],
   providers: [
     ShipmentsService,

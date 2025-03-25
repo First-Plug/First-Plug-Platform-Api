@@ -433,6 +433,8 @@ export class ProductsService {
         newProduct._id.toString(),
         tenantName,
         'create',
+        undefined,
+        createProductDto.desirableDate,
       );
       console.log(`📦 Datos de shipment:`, {
         origin,

@@ -56,6 +56,7 @@ export class ShipmentsService {
     tenantId: string,
     assignedEmail?: string,
     assignedMember?: string,
+    desirableDate?: string,
   ): Promise<{
     name: string;
     code: string;
@@ -80,6 +81,7 @@ export class ShipmentsService {
           country: tenant.country || '',
           zipCode: tenant.zipCode || '',
           phone: tenant.phone || '',
+          desirableDate: desirableDate || '',
         },
       };
     }
@@ -103,6 +105,7 @@ export class ShipmentsService {
           phone: member.phone || '',
           personalEmail: member.personalEmail || '',
           dni: `${member.dni || ''}`,
+          desirableDate: desirableDate || '',
         },
       };
     }
@@ -125,6 +128,8 @@ export class ShipmentsService {
     productId: Product | string,
     tenantId: string,
     actionType?: string,
+    desirableOriginDate?: string,
+    desirableDestinationDate?: string,
   ): Promise<{
     product: Product;
     origin: string;
@@ -157,6 +162,7 @@ export class ShipmentsService {
           tenantId,
           assignedEmail,
           assignedMember,
+          desirableOriginDate,
         );
 
     const destinationInfo = await this.getLocationInfo(
@@ -164,6 +170,7 @@ export class ShipmentsService {
       tenantId,
       assignedEmail,
       assignedMember,
+      desirableDestinationDate,
     );
 
     return {
