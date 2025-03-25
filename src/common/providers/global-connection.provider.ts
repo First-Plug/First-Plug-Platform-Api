@@ -11,7 +11,7 @@ export class GlobalConnectionProvider implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     this.globalConnection = createConnection(
       this.configService.get('database.connectionString')!,
-      { dbName: 'admin', maxPoolSize: 5, minPoolSize: 1 },
+      { dbName: 'metadata', maxPoolSize: 5, minPoolSize: 1 },
     );
   }
 

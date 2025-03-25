@@ -113,15 +113,25 @@ export class ShipmentsService {
     return { name: assignedMember || 'Unknown', code: 'XX' };
   }
 
-  private async getNextOrderNumber(tenantName: string): Promise<number> {
+  private async getNextOrderNumber(): Promise<number> {
     const ShipmentMetadata = this.getShipmentGlobalMetadataModel();
-    const metadata = await ShipmentMetadata.findOneAndUpdate(
-      { _id: `orderNumber_${tenantName}` },
-      { $inc: { currentValue: 1 } },
-      { upsert: true, new: true },
-    ).exec();
+    const docId = 'globalOrderCounter';
 
-    return metadata.currentValue;
+    const updated = await ShipmentMetadata.findOneAndUpdate(
+      { _id: docId },
+      { $inc: { currentValue: 1 } },
+      { new: true },
+    );
+
+    if (!updated) {
+      const created = await ShipmentMetadata.create({
+        _id: docId,
+        currentValue: 1,
+      });
+      return created.currentValue;
+    }
+
+    return updated.currentValue;
   }
 
   async getProductLocationData(
@@ -137,6 +147,8 @@ export class ShipmentsService {
     orderOrigin: string;
     orderDestination: string;
     assignedEmail: string;
+    originLocation: string;
+    destinationLocation: string;
   }> {
     const productIdStr =
       typeof productId === 'string' ? productId : productId._id?.toString();
@@ -180,6 +192,8 @@ export class ShipmentsService {
       orderOrigin: originInfo.code,
       orderDestination: destinationInfo.code,
       assignedEmail: assignedEmail || '',
+      originLocation: isCreating ? 'XX' : product.location || '',
+      destinationLocation: product.location || '',
     };
   }
 
@@ -213,6 +227,7 @@ export class ShipmentsService {
     actionType: string,
     tenantId: string,
     session: mongoose.ClientSession | null = null,
+    desirableDestinationDate?: string,
   ): Promise<ShipmentDocument> {
     const found = await this.productsService.findProductById(
       new Types.ObjectId(productId) as unknown as Schema.Types.ObjectId,
@@ -223,18 +238,37 @@ export class ShipmentsService {
     const product = found.product;
     const assignedEmail = product.assignedEmail || found.member?.email || '';
 
-    const { origin, destination, orderOrigin, orderDestination } =
-      await this.getProductLocationData(productId, actionType);
+    const {
+      origin,
+      destination,
+      orderOrigin,
+      orderDestination,
+      originLocation,
+      destinationLocation,
+    } = await this.getProductLocationData(
+      productId,
+      tenantId,
+      actionType,
+      undefined,
+      desirableDestinationDate,
+    );
 
     const originDetails = ['create', 'bulkCreate'].includes(actionType)
       ? undefined
-      : await this.getLocationInfo(origin, tenantId, assignedEmail).then(
-          (res) => res.details,
-        );
+      : await this.getLocationInfo(
+          originLocation,
+          tenantId,
+          assignedEmail,
+          product.assignedMember,
+          undefined,
+        ).then((res) => res.details);
+
     const destinationDetails = await this.getLocationInfo(
-      destination,
+      destinationLocation,
       tenantId,
       assignedEmail,
+      product.assignedMember,
+      desirableDestinationDate,
     ).then((res) => res.details);
 
     const connection =
@@ -262,13 +296,13 @@ export class ShipmentsService {
     }
 
     const destinationComplete = await this.productsService.isAddressComplete(
-      { ...product, location: destination, assignedEmail },
+      { ...product, location: destinationLocation, assignedEmail },
       tenantId,
     );
     const originComplete = ['create', 'bulkCreate'].includes(actionType)
       ? true
       : await this.productsService.isAddressComplete(
-          { ...product, location: origin, assignedEmail },
+          { ...product, location: originLocation, assignedEmail },
           tenantId,
         );
 
@@ -277,7 +311,7 @@ export class ShipmentsService {
         ? 'In Preparation'
         : 'On Hold - Missing Data';
 
-    const orderNumber = await this.getNextOrderNumber(tenantId);
+    const orderNumber = await this.getNextOrderNumber();
     const order_id = this.generateOrderId(
       orderOrigin,
       orderDestination,
@@ -301,6 +335,34 @@ export class ShipmentsService {
     });
 
     return newShipment;
+  }
+
+  async cancelShipment(
+    shipmentId: string,
+    tenantId: string,
+  ): Promise<ShipmentDocument> {
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantId);
+    const ShipmentModel = this.getShipmentModel(connection);
+
+    const shipment = await ShipmentModel.findById(shipmentId);
+    if (!shipment) {
+      throw new NotFoundException(`Shipment ${shipmentId} not found`);
+    }
+
+    if (
+      shipment.shipment_status !== 'In Preparation' &&
+      shipment.shipment_status !== 'On Hold - Missing Data'
+    ) {
+      throw new BadRequestException(
+        `Shipment cannot be cancelled from status: ${shipment.shipment_status}`,
+      );
+    }
+
+    shipment.shipment_status = 'Cancelled';
+    await shipment.save();
+
+    return shipment;
   }
 
   async createShipment(
@@ -342,7 +404,7 @@ export class ShipmentsService {
       newAssignedEmail,
     );
 
-    const orderNumber = await this.getNextOrderNumber(tenantName);
+    const orderNumber = await this.getNextOrderNumber();
     const orderId = this.generateOrderId(
       originInfo.code,
       destinationInfo.code,

@@ -4,7 +4,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
   Logger,
-  forwardRef,
+  // forwardRef,
 } from '@nestjs/common';
 import { Model, ObjectId, Types } from 'mongoose';
 import {
@@ -44,7 +44,7 @@ export class ProductsService {
     private readonly historyService: HistoryService,
     private readonly connectionService: TenantConnectionService,
 
-    @Inject(forwardRef(() => ShipmentsService))
+    // @Inject(forwardRef(() => ShipmentsService))
     private readonly shipmentsService: ShipmentsService,
   ) {}
 
@@ -298,14 +298,7 @@ export class ProductsService {
           { ...product, location: origin },
           tenantName,
         );
-    console.log(
-      '🔍 isCreating detectado:',
-      isCreating,
-      'para actionType:',
-      actionType,
-    );
-    console.log('✅ destinationIsComplete:', destinationIsComplete);
-    console.log('✅ originIsComplete:', originIsComplete);
+
     return destinationIsComplete && originIsComplete
       ? 'In Transit'
       : 'In Transit - Missing Data';
@@ -413,11 +406,7 @@ export class ProductsService {
       recoverable: isRecoverable,
       productCondition: createData.productCondition,
     });
-    console.log('🔍 Verificando newProduct después de guardarlo:', newProduct);
-    console.log(`📦 Verificando si fp_shipment es true:`, fp_shipment);
-    console.log(
-      '✅ Producto guardado, verificando si se debe crear una orden de envío...',
-    );
+
     // Si FirstPlug maneja la logística, creamos la orden de envío automáticamente
     if (fp_shipment) {
       console.log(
@@ -447,6 +436,8 @@ export class ProductsService {
         newProduct._id.toString(),
         'create',
         tenantName,
+        null,
+        createProductDto.desirableDate,
       );
       console.log(`✅ Orden de envío creada:`, shipment);
     } else {
