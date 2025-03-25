@@ -146,6 +146,7 @@ export const COMPUTER_BRANDS = [
   'HP',
   'Lenovo',
   'MSI',
+  'Microsoft',
   'Other',
 ] as const;
 
@@ -154,6 +155,7 @@ export const PERIPHERALS_BRANDS = [
   'Satechi',
   'Sony',
   'Logitech',
+  'Microsoft',
   'Other',
 ] as const;
 
@@ -161,11 +163,18 @@ export const AUDIO_BRANDS = [
   'Apple',
   'Sony',
   'Logitech',
+  'Microsoft',
   'JBL',
   'Other',
 ] as const;
 
-export const MONITOR_BRANDS = ['Samsung', 'LG', 'Dell', 'Other'] as const;
+export const MONITOR_BRANDS = [
+  'Samsung',
+  'LG',
+  'Dell',
+  'Microsoft',
+  'Other',
+] as const;
 
 export const OTHER_BRANDS = [
   'Acer',
