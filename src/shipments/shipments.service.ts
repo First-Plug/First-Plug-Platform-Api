@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import mongoose, { Model, Schema, Types } from 'mongoose';
+import mongoose, { Connection, Model, Schema, Types } from 'mongoose';
 import { ShipmentDocument, ShipmentSchema } from './schema/shipment.schema';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
 import { MembersService } from 'src/members/members.service';
@@ -14,19 +14,28 @@ import { ProductsService } from 'src/products/products.service';
 import { countryCodes } from 'src/shipments/helpers/countryCodes';
 import { GlobalConnectionProvider } from 'src/common/providers/global-connection.provider';
 import { ShipmentGlobalMetadataSchema } from 'src/common/schema/shipment-global-metadata.schema';
-import { Product } from 'src/products/schemas/product.schema';
+import {
+  Product,
+  ProductDocument,
+  ProductSchema,
+} from 'src/products/schemas/product.schema';
 
 @Injectable()
 export class ShipmentsService {
   constructor(
-    private globalConnectionProvider: GlobalConnectionProvider,
-    private tenantConnectionService: TenantConnectionService,
-    private membersService: MembersService,
+    private readonly globalConnectionProvider: GlobalConnectionProvider,
+    private readonly tenantConnectionService: TenantConnectionService,
+    private readonly membersService: MembersService,
 
-    private tenantsService: TenantsService,
+    private readonly tenantsService: TenantsService,
     @Inject(forwardRef(() => ProductsService))
-    private productsService: ProductsService,
-  ) {}
+    private readonly productsService: ProductsService,
+  ) {
+    console.log(
+      '🚚 ShipmentsService cargado - tenantConnectionService:',
+      !!tenantConnectionService,
+    );
+  }
 
   private getShipmentModel(tenantConnection): Model<ShipmentDocument> {
     if (tenantConnection.models.Shipment) {
@@ -337,13 +346,26 @@ export class ShipmentsService {
     return newShipment;
   }
 
-  async cancelShipment(
+  private getProductModel(connection: Connection): Model<ProductDocument> {
+    if (connection.models.Product) {
+      return connection.models.Product;
+    }
+
+    return connection.model<ProductDocument>('Product', ProductSchema);
+  }
+
+  async cancelShipmentAndUpdateProducts(
     shipmentId: string,
     tenantId: string,
   ): Promise<ShipmentDocument> {
+    console.log(
+      '🧪 tenantConnectionService dentro del método:',
+      this.tenantConnectionService,
+    );
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantId);
     const ShipmentModel = this.getShipmentModel(connection);
+    const ProductModel = this.getProductModel(connection);
 
     const shipment = await ShipmentModel.findById(shipmentId);
     if (!shipment) {
@@ -355,12 +377,31 @@ export class ShipmentsService {
       shipment.shipment_status !== 'On Hold - Missing Data'
     ) {
       throw new BadRequestException(
-        `Shipment cannot be cancelled from status: ${shipment.shipment_status}`,
+        `Cannot cancel shipment with status: ${shipment.shipment_status}`,
       );
     }
 
+    // 1. Cancelar el shipment
     shipment.shipment_status = 'Cancelled';
     await shipment.save();
+
+    // 2. Actualizar cada producto
+    for (const productId of shipment.products) {
+      const product = await ProductModel.findById(productId);
+      if (!product) continue;
+
+      product.fp_shipment = false;
+
+      const newStatus = await this.productsService.determineProductStatus(
+        product.toObject(),
+        tenantId,
+        undefined, // no es 'create'
+        shipment.origin,
+      );
+
+      product.status = newStatus;
+      await product.save();
+    }
 
     return shipment;
   }
