@@ -373,7 +373,8 @@ export class ProductsService {
     };
 
     let assignedMember = '';
-    console.log('createData before assigning:', createData);
+    let newProduct: ProductDocument | undefined;
+
     if (assignedEmail) {
       const member = await this.memberService.assignProduct(
         assignedEmail,
@@ -382,6 +383,7 @@ export class ProductsService {
 
       if (member) {
         assignedMember = this.getFullName(member);
+        newProduct = member.products.at(-1) as ProductDocument;
 
         await this.historyService.create({
           actionType: 'create',
@@ -389,29 +391,36 @@ export class ProductsService {
           userId: userId,
           changes: {
             oldData: null,
-            newData: member.products.at(-1) as Product,
+            newData: newProduct,
           },
         });
+
         console.log(
           `📌 Producto asignado a ${assignedEmail}, pero continuamos con la ejecución.`,
         );
-        // return member.products.at(-1);
       }
     }
-    console.log('✅ Verificando createData antes de guardarlo:', createData);
-    const newProduct = await this.productRepository.create({
-      ...createData,
-      assignedEmail,
-      assignedMember: assignedMember || this.getFullName(createProductDto),
-      recoverable: isRecoverable,
-      productCondition: createData.productCondition,
-    });
 
+    // Si no se asignó, creamos el producto normalmente
+    if (!newProduct) {
+      newProduct = await this.productRepository.create({
+        ...createData,
+        assignedEmail,
+        assignedMember: assignedMember || this.getFullName(createProductDto),
+        recoverable: isRecoverable,
+        productCondition: createData.productCondition,
+      });
+    }
     // Si FirstPlug maneja la logística, creamos la orden de envío automáticamente
     if (fp_shipment) {
       console.log(
         `🚀 Generando orden de envío para el producto: ${newProduct._id}`,
       );
+
+      if (!newProduct?._id) {
+        throw new Error('Product could not be created correctly');
+      }
+
       const {
         origin,
         destination,

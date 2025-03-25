@@ -362,6 +362,8 @@ export class ShipmentsService {
       '🧪 tenantConnectionService dentro del método:',
       this.tenantConnectionService,
     );
+
+    await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantId);
     const ShipmentModel = this.getShipmentModel(connection);
