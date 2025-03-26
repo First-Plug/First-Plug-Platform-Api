@@ -111,6 +111,9 @@ export class Product {
   @Prop({ type: boolean })
   fp_shipment: boolean;
 
+  @Prop({ type: Boolean, default: false })
+  activeShipment?: boolean;
+
   isDeleted?: boolean;
 
   deleteAt?: string | null;

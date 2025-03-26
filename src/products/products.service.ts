@@ -282,9 +282,29 @@ export class ProductsService {
     actionType?: string,
     origin?: string,
   ): Promise<Status> {
-    if (!product.fp_shipment) {
-      return product.status!;
+    console.log('🧪 Status evaluation:', {
+      fp_shipment: product.fp_shipment,
+      assignedEmail: product.assignedEmail,
+      location: product.location,
+      productCondition: product.productCondition,
+    });
+    if (product.productCondition === 'Unusable') {
+      return 'Unavailable';
     }
+
+    // ✅ Luego, si NO participa en shipment
+    if (!product.fp_shipment) {
+      if (product.assignedEmail && product.location === 'Employee') {
+        return 'Delivered';
+      } else if (
+        ['FP warehouse', 'Our office'].includes(product.location ?? '')
+      ) {
+        return 'Available';
+      } else {
+        return 'Unavailable'; // Datos incompletos o inválidos
+      }
+    }
+
     const isCreating = this.isCreatingAction(actionType);
 
     const destinationIsComplete = await this.isAddressComplete(

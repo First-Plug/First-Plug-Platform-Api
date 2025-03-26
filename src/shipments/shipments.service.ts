@@ -6,7 +6,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import mongoose, { Connection, Model, Schema, Types } from 'mongoose';
-import { ShipmentDocument, ShipmentSchema } from './schema/shipment.schema';
+import {
+  Shipment,
+  ShipmentDocument,
+  ShipmentSchema,
+} from './schema/shipment.schema';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
 import { MembersService } from 'src/members/members.service';
 import { TenantsService } from 'src/tenants/tenants.service';
@@ -19,6 +23,11 @@ import {
   ProductDocument,
   ProductSchema,
 } from 'src/products/schemas/product.schema';
+import {
+  MemberDocument,
+  MemberSchema,
+} from 'src/members/schemas/member.schema';
+import { Status } from 'src/products/interfaces/product.interface';
 
 @Injectable()
 export class ShipmentsService {
@@ -343,6 +352,16 @@ export class ShipmentsService {
       price: { amount: null, currencyCode: 'TBC' },
     });
 
+    if (['In Preparation', 'On The Way'].includes(shipmentStatus)) {
+      await this.markActiveShipmentTargets(
+        productId,
+        tenantId,
+        origin,
+        destination,
+        assignedEmail,
+      );
+    }
+
     return newShipment;
   }
 
@@ -358,10 +377,7 @@ export class ShipmentsService {
     shipmentId: string,
     tenantId: string,
   ): Promise<ShipmentDocument> {
-    console.log(
-      '🧪 tenantConnectionService dentro del método:',
-      this.tenantConnectionService,
-    );
+    console.log('🚨 [CANCEL SHIPMENT] Start for', shipmentId);
 
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
@@ -378,34 +394,207 @@ export class ShipmentsService {
       shipment.shipment_status !== 'In Preparation' &&
       shipment.shipment_status !== 'On Hold - Missing Data'
     ) {
+      console.log(
+        '❌ Shipment status invalid for cancellation:',
+        shipment.shipment_status,
+      );
       throw new BadRequestException(
         `Cannot cancel shipment with status: ${shipment.shipment_status}`,
       );
     }
 
-    // 1. Cancelar el shipment
     shipment.shipment_status = 'Cancelled';
     await shipment.save();
+    console.log('✅ Shipment cancelled');
 
-    // 2. Actualizar cada producto
     for (const productId of shipment.products) {
+      console.log('📦 Processing product:', productId.toString());
+
       const product = await ProductModel.findById(productId);
-      if (!product) continue;
 
-      product.fp_shipment = false;
+      let newStatus: Status;
+      let embeddedProduct: Product | undefined;
+      if (product) {
+        product.fp_shipment = false;
 
-      const newStatus = await this.productsService.determineProductStatus(
-        product.toObject(),
+        newStatus = await this.productsService.determineProductStatus(
+          {
+            ...product.toObject(),
+            fp_shipment: false,
+          },
+          tenantId,
+          undefined,
+          shipment.origin,
+        );
+
+        product.status = newStatus;
+        product.activeShipment = false;
+        await product.save();
+
+        console.log(`✅ Product updated from Product collection:`, {
+          id: product._id,
+          status: newStatus,
+        });
+      } else {
+        console.log(
+          '⚠️ Product not found in Product collection, trying in Member',
+        );
+
+        const MemberModel = connection.model<MemberDocument>('Member');
+        const memberWithProduct = await MemberModel.findOne({
+          'products._id': productId,
+        });
+
+        const embeddedProduct = memberWithProduct?.products.find(
+          (p) => p._id?.toString() === productId.toString(),
+        );
+
+        if (embeddedProduct) {
+          newStatus = await this.productsService.determineProductStatus(
+            {
+              fp_shipment: false,
+              location: embeddedProduct.location,
+              status: embeddedProduct.status,
+              assignedEmail: embeddedProduct.assignedEmail,
+              productCondition: embeddedProduct.productCondition,
+            },
+            tenantId,
+            undefined,
+            shipment.origin,
+          );
+
+          await MemberModel.updateOne(
+            { 'products._id': productId },
+            {
+              $set: {
+                'products.$.fp_shipment': false,
+                'products.$.status': newStatus,
+                'products.$.activeShipment': false,
+              },
+            },
+          );
+
+          console.log(`✅ Product updated from Member collection:`, {
+            id: embeddedProduct._id,
+            status: newStatus,
+          });
+        } else {
+          console.log('❌ Product not found in Member collection either');
+        }
+      }
+
+      await this.clearActiveShipmentFlagsIfNoOtherShipments(
+        productId.toString(),
         tenantId,
-        undefined, // no es 'create'
-        shipment.origin,
+        product?.assignedEmail || embeddedProduct?.assignedEmail,
       );
+    }
+    return shipment;
+  }
 
-      product.status = newStatus;
-      await product.save();
+  private async markActiveShipmentTargets(
+    productId: string,
+    tenantName: string,
+    origin: string,
+    destination: string,
+    memberEmail?: string,
+  ) {
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+
+    const ProductModel = connection.model<ProductDocument>(
+      'Product',
+      ProductSchema,
+    );
+    const MemberModel = connection.model<MemberDocument>(
+      'Member',
+      MemberSchema,
+    );
+
+    const updatedProduct = await ProductModel.findByIdAndUpdate(productId, {
+      activeShipment: true,
+    });
+
+    if (!updatedProduct) {
+      await MemberModel.updateOne(
+        { 'products._id': productId },
+        { $set: { 'products.$.activeShipment': true } },
+      );
     }
 
-    return shipment;
+    if (!['Our office', 'FP warehouse'].includes(origin) && memberEmail) {
+      await MemberModel.updateOne(
+        { email: memberEmail },
+        { activeShipment: true },
+      );
+    }
+
+    if (!['Our office', 'FP warehouse'].includes(destination) && memberEmail) {
+      await MemberModel.updateOne(
+        { email: memberEmail },
+        { activeShipment: true },
+      );
+    }
+  }
+
+  private async clearActiveShipmentFlagsIfNoOtherShipments(
+    productId: string,
+    tenantName: string,
+    memberEmail?: string,
+  ) {
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+
+    const ProductModel = connection.model<ProductDocument>('Product');
+    const MemberModel = connection.model<MemberDocument>('Member');
+    const ShipmentModel = connection.model<Shipment>('Shipment');
+
+    const activeShipmentsForProduct = await ShipmentModel.countDocuments({
+      products: new Types.ObjectId(productId),
+      shipment_status: { $in: ['In Preparation', 'On The Way'] },
+    });
+    console.log(
+      `🔎 Active shipments for product ${productId}:`,
+      activeShipmentsForProduct,
+    );
+
+    if (activeShipmentsForProduct === 0) {
+      const updatedProduct = await ProductModel.findByIdAndUpdate(productId, {
+        activeShipment: false,
+      });
+
+      if (updatedProduct) {
+        console.log(
+          `✅ Product ${productId} - activeShipment set to false in Products collection`,
+        );
+      } else {
+        const updateRes = await MemberModel.updateOne(
+          { 'products._id': new Types.ObjectId(productId) },
+          { $set: { 'products.$.activeShipment': false } },
+        );
+        console.log(
+          `🔁 Product ${productId} - activeShipment set to false in Member`,
+          updateRes,
+        );
+      }
+    }
+
+    if (memberEmail) {
+      const activeShipmentsForMember = await ShipmentModel.countDocuments({
+        $or: [
+          { 'originDetails.email': memberEmail },
+          { 'destinationDetails.email': memberEmail },
+        ],
+        shipment_status: { $in: ['In Preparation', 'On The Way'] },
+      });
+      console.log('🔍 Checking active shipments for member:', memberEmail);
+      if (activeShipmentsForMember === 0) {
+        await MemberModel.updateOne(
+          { email: memberEmail },
+          { activeShipment: false },
+        );
+      }
+    }
   }
 
   async createShipment(
