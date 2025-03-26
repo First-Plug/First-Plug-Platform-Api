@@ -579,6 +579,18 @@ export class ShipmentsService {
       }
     }
 
+    console.log('📬 memberEmail recibido:', memberEmail);
+
+    if (!memberEmail) {
+      const member = await MemberModel.findOne({
+        'products._id': new Types.ObjectId(productId),
+      });
+      if (member) {
+        memberEmail = member.email;
+      }
+    }
+
+    // ✅ Si lo conseguimos, verificamos si tiene otros shipments activos
     if (memberEmail) {
       const activeShipmentsForMember = await ShipmentModel.countDocuments({
         $or: [
@@ -587,13 +599,25 @@ export class ShipmentsService {
         ],
         shipment_status: { $in: ['In Preparation', 'On The Way'] },
       });
-      console.log('🔍 Checking active shipments for member:', memberEmail);
+
+      console.log(
+        `🔎 Active shipments for member ${memberEmail}: ${activeShipmentsForMember}`,
+      );
+
       if (activeShipmentsForMember === 0) {
-        await MemberModel.updateOne(
+        console.log(
+          `✅ Setting activeShipment: false for member ${memberEmail}`,
+        );
+        const result = await MemberModel.updateOne(
           { email: memberEmail },
           { activeShipment: false },
         );
+        console.log('🧾 Member update result:', result);
       }
+    } else {
+      console.log(
+        '🚫 No se pudo determinar el memberEmail. No se actualizó el activeShipment del member.',
+      );
     }
   }
 
