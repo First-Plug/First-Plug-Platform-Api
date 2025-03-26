@@ -546,7 +546,7 @@ export const OTHER_MODELS = [
   'Summit',
   'Surface',
   'Swift',
-  'Thinkbook',
+  'ThinkBook',
   'ThinkBook Serie P',
   'ThinkBook Serie Plus',
   'ThinkBook Serie S',
