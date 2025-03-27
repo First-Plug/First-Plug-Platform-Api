@@ -12,6 +12,7 @@ import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { UpdateTenantInformationSchemaDto } from './dto/update-information.dto';
 import { TenantsService } from './tenants.service';
 import { Request } from 'express';
+import { UpdateDashboardSchemaDto } from './dto/update-dashboard.dto';
 
 @UseGuards(JwtGuard)
 @Controller('user')
@@ -125,6 +126,17 @@ export class TenantsController {
     );
     return {
       message: `Configuración de computerExpiration actualizada para tenant: ${tenantName}`,
+    };
+  }
+
+  @Patch('update-dashboard')
+  async updateDashboard(
+    @Req() request: Request,
+    @Body() updateDashboardSchemaDto: UpdateDashboardSchemaDto,
+  ) {
+    await this.tenantService.update(request.user, updateDashboardSchemaDto);
+    return {
+      message: `Dashboard Actualizado`,
     };
   }
 }
