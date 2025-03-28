@@ -12,6 +12,7 @@ import { SlackModule } from 'nestjs-slack-webhook';
 import { HistoryModule } from './history/history.module';
 import { ShipmentsModule } from 'src/shipments/shipments.module';
 import { CommonModule } from 'src/common/common.module';
+import { RetoolWebhooksModule } from 'src/retool-webhooks/retool-webhooks.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { CommonModule } from 'src/common/common.module';
     forwardRef(() => TeamsModule),
     HistoryModule,
     ShipmentsModule,
+    RetoolWebhooksModule,
     CommonModule,
   ],
   controllers: [],

@@ -440,7 +440,9 @@ export class ShipmentsService {
           '⚠️ Product not found in Product collection, trying in Member',
         );
 
-        const MemberModel = connection.model<MemberDocument>('Member');
+        const MemberModel =
+          connection.models.Member ||
+          connection.model<MemberDocument>('Member', MemberSchema, 'members');
         const memberWithProduct = await MemberModel.findOne({
           'products._id': productId,
         });
@@ -592,32 +594,32 @@ export class ShipmentsService {
 
     // ✅ Si lo conseguimos, verificamos si tiene otros shipments activos
     if (memberEmail) {
+      const member = await MemberModel.findOne({ email: memberEmail });
+
+      if (!member) {
+        console.log(`❌ No se encontró el member con email ${memberEmail}`);
+        return;
+      }
+
+      const fullName = `${member.firstName} ${member.lastName}`;
+
       const activeShipmentsForMember = await ShipmentModel.countDocuments({
-        $or: [
-          { 'originDetails.email': memberEmail },
-          { 'destinationDetails.email': memberEmail },
-        ],
         shipment_status: { $in: ['In Preparation', 'On The Way'] },
+        $or: [{ origin: fullName }, { destination: fullName }],
       });
 
       console.log(
-        `🔎 Active shipments for member ${memberEmail}: ${activeShipmentsForMember}`,
+        `🔎 Active shipments for member ${fullName}: ${activeShipmentsForMember}`,
       );
 
       if (activeShipmentsForMember === 0) {
-        console.log(
-          `✅ Setting activeShipment: false for member ${memberEmail}`,
-        );
+        console.log(`✅ Setting activeShipment: false for member ${fullName}`);
         const result = await MemberModel.updateOne(
           { email: memberEmail },
           { activeShipment: false },
         );
         console.log('🧾 Member update result:', result);
       }
-    } else {
-      console.log(
-        '🚫 No se pudo determinar el memberEmail. No se actualizó el activeShipment del member.',
-      );
     }
   }
 
