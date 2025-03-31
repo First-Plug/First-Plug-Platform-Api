@@ -20,6 +20,14 @@ export class HistoryService {
     return this.historyRepository.create(createHistoryDto);
   }
 
+  async findLatest() {
+    return this.historyRepository
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .exec();
+  }
+
   async findAll(page: number, size: number, startDate?: Date, endDate?: Date) {
     const skip = (page - 1) * size;
 
