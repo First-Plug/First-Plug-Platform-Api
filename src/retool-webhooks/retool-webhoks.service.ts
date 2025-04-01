@@ -9,12 +9,13 @@ import { MemberSchema } from 'src/members/schemas/member.schema';
 import { ProductSchema } from 'src/products/schemas/product.schema';
 import { SHIPMENT_STATUS } from 'src/shipments/interface/shipment.interface';
 import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
+import { ShipmentsService } from 'src/shipments/shipments.service';
 
 @Injectable()
 export class RetoolWebhooksService {
   constructor(
     private tenantConnectionService: TenantConnectionService,
-    // private readonly shipmentsService: ShipmentsService,
+    private readonly shipmentsService: ShipmentsService,
   ) {}
 
   async updateShipmentStatusWebhook(body: {
@@ -23,6 +24,15 @@ export class RetoolWebhooksService {
     newStatus: string;
   }) {
     const { tenantName, shipmentId, newStatus } = body;
+
+    if (newStatus === 'Cancelled') {
+      console.log('🚨 Ejecutando cancelShipmentAndUpdateProducts...');
+      return this.shipmentsService.cancelShipmentAndUpdateProducts(
+        shipmentId,
+        tenantName,
+      );
+    }
+
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
 
@@ -136,5 +146,74 @@ export class RetoolWebhooksService {
       productCondition: product.productCondition,
       fp_shipment: product.fp_shipment,
     }));
+  }
+
+  async updateShipmentFromRetool(body: {
+    tenantName: string;
+    shipmentId: string;
+    newStatus?: string;
+    price?: { amount: number; currencyCode: string };
+    shipment_type?: string;
+    trackingURL?: string;
+  }) {
+    console.log('📥 Datos recibidos desde Retool:', body);
+    const {
+      tenantName,
+      shipmentId,
+      newStatus,
+      price,
+      shipment_type,
+      trackingURL,
+    } = body;
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+
+    const ShipmentModel =
+      connection.models.Shipment ||
+      connection.model('Shipment', ShipmentSchema, 'shipments');
+
+    const shipment = await ShipmentModel.findById(shipmentId);
+    if (!shipment) throw new NotFoundException('Shipment no encontrado');
+
+    if (newStatus) {
+      await this.updateShipmentStatusWebhook({
+        tenantName,
+        shipmentId,
+        newStatus,
+      });
+    }
+
+    const fieldsUpdated: string[] = [];
+
+    if (
+      price ||
+      (body['price.amount'] !== undefined &&
+        body['price.currencyCode'] !== undefined)
+    ) {
+      shipment.price = price || {
+        amount: body['price.amount'],
+        currencyCode: body['price.currencyCode'],
+      };
+      fieldsUpdated.push('price');
+    }
+
+    if (shipment_type) {
+      shipment.shipment_type = shipment_type;
+      fieldsUpdated.push('shipment_type');
+    }
+
+    if (trackingURL) {
+      shipment.trackingURL = trackingURL;
+      fieldsUpdated.push('trackingURL');
+    }
+
+    if (fieldsUpdated.length > 0) {
+      await shipment.save();
+    }
+
+    return {
+      message: `Shipment actualizado correctamente: ${fieldsUpdated.join(', ')}`,
+      shipment,
+    };
   }
 }
