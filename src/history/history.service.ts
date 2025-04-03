@@ -24,7 +24,7 @@ export class HistoryService {
     const data = await this.historyRepository
       .find()
       .sort({ createdAt: -1 })
-      .limit(5)
+      .limit(3)
       .exec();
 
     const userIds = data.map((record) => record.userId);

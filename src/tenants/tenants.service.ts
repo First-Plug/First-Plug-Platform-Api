@@ -335,7 +335,9 @@ export class TenantsService {
     userId: ObjectId,
     updateTenantDto: UpdateTenantDto | UpdateDashboardSchemaDto,
   ) {
-    return this.tenantRepository.findByIdAndUpdate(userId, updateTenantDto);
+    return this.tenantRepository.findByIdAndUpdate(userId, updateTenantDto, {
+      new: true,
+    });
   }
 
   async updateInformation(

@@ -134,9 +134,11 @@ export class TenantsController {
     @Req() request: Request,
     @Body() updateDashboardSchemaDto: UpdateDashboardSchemaDto,
   ) {
-    await this.tenantService.update(request.user, updateDashboardSchemaDto);
-    return {
-      message: `Dashboard Actualizado`,
-    };
+    const user = await this.tenantService.update(
+      request.user,
+      updateDashboardSchemaDto,
+    );
+
+    return user?.widgets || [];
   }
 }
