@@ -28,12 +28,24 @@ export class RetoolWebhooksController {
       tenantName: string;
       shipmentId: string;
       newStatus?: ShipmentStatus;
-      price?: { amount: number; currencyCode: string };
       shipment_type?: ShipmentType;
       trackingURL?: string;
     },
   ) {
     console.log('📩 Llamada PATCH recibida con body:', body);
     return this.retoolService.updateShipmentFromRetool(body);
+  }
+
+  @Patch('update-shipment-price')
+  async updateShipmentPriceFromRetool(
+    @Body()
+    body: {
+      tenantName: string;
+      shipmentId: string;
+      price: { amount: number; currencyCode: string };
+    },
+  ) {
+    console.log('📩 Llamada PATCH recibida con body:', body);
+    return this.retoolService.updateShipmentPriceWebhook(body);
   }
 }

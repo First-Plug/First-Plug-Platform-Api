@@ -623,101 +623,163 @@ export class ShipmentsService {
     }
   }
 
-  async createShipment(
+  async updateProductOnShipmentReceived(
+    productId: string,
     tenantName: string,
-    shipmentData: any,
-    actionType: string,
-    newDestinationLocation: string,
-    newAssignedEmail?: string,
-  ): Promise<ShipmentDocument> {
+    origin: string,
+  ) {
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
-    const ShipmentModel = this.getShipmentModel(connection);
+    const ProductModel = this.getProductModel(connection);
+    const MemberModel = connection.model<MemberDocument>('Member');
 
-    const found = await this.productsService.findProductById(
-      shipmentData.productId,
-    );
-    if (!found || !found.product)
-      throw new NotFoundException(
-        `Product ${shipmentData.productId} not found`,
+    const product = await ProductModel.findById(productId);
+
+    if (product) {
+      product.fp_shipment = false;
+      product.activeShipment = false;
+      product.status = await this.productsService.determineProductStatus(
+        {
+          ...product.toObject(),
+          fp_shipment: false,
+        },
+        tenantName,
+        undefined,
+        origin,
       );
+      await product.save();
+      console.log(`✅ Product updated (Products collection): ${product._id}`);
+      return;
+    }
 
-    const product = found.product;
+    const memberWithProduct = await MemberModel.findOne({
+      'products._id': productId,
+    });
 
-    const assignedEmail = product.assignedEmail || found.member?.email;
-
-    const isCreating = ['create', 'bulkCreate'].includes(actionType);
-
-    const originInfo = isCreating
-      ? { name: 'XX', code: 'XX' }
-      : await this.getLocationInfo(
-          product.location || '',
+    if (memberWithProduct) {
+      const embeddedProduct = memberWithProduct.products.find(
+        (p) => p._id?.toString() === productId,
+      );
+      if (embeddedProduct) {
+        const newStatus = await this.productsService.determineProductStatus(
+          {
+            ...embeddedProduct,
+            fp_shipment: false,
+          },
           tenantName,
-          assignedEmail,
+          undefined,
+          origin,
         );
-
-    const destinationInfo = await this.getLocationInfo(
-      newDestinationLocation,
-      tenantName,
-      newAssignedEmail,
-    );
-
-    const orderNumber = await this.getNextOrderNumber();
-    const orderId = this.generateOrderId(
-      originInfo.code,
-      destinationInfo.code,
-      orderNumber,
-    );
-
-    const shipmentToCreate = {
-      ...shipmentData,
-      order_id: orderId,
-      tenant: tenantName,
-      origin: originInfo.name,
-      destination: destinationInfo.name,
-      originDetails: originInfo.details,
-      destinationDetails: destinationInfo.details,
-      shipment_status: 'In Preparation',
-    };
-
-    return ShipmentModel.create(shipmentToCreate);
+        await MemberModel.updateOne(
+          { 'products._id': productId },
+          {
+            $set: {
+              'products.$.fp_shipment': false,
+              'products.$.status': newStatus,
+              'products.$.activeShipment': false,
+            },
+          },
+        );
+        console.log(`✅ Product updated (Member collection): ${productId}`);
+      }
+    }
   }
 
-  async getShipmentById(
-    tenantName: string,
-    shipmentId: string,
-  ): Promise<ShipmentDocument> {
-    const tenantConnection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const Shipment = tenantConnection.model('Shipment');
+  // async createShipment(
+  //   tenantName: string,
+  //   shipmentData: any,
+  //   actionType: string,
+  //   newDestinationLocation: string,
+  //   newAssignedEmail?: string,
+  // ): Promise<ShipmentDocument> {
+  //   const connection =
+  //     await this.tenantConnectionService.getTenantConnection(tenantName);
+  //   const ShipmentModel = this.getShipmentModel(connection);
 
-    return Shipment.findById(shipmentId).exec();
-  }
+  //   const found = await this.productsService.findProductById(
+  //     shipmentData.productId,
+  //   );
+  //   if (!found || !found.product)
+  //     throw new NotFoundException(
+  //       `Product ${shipmentData.productId} not found`,
+  //     );
 
-  async updateShipmentStatus(
-    tenantName: string,
-    shipmentId: string,
-    newStatus: string,
-  ): Promise<ShipmentDocument> {
-    const tenantConnection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const Shipment = tenantConnection.model('Shipment');
+  //   const product = found.product;
 
-    return Shipment.findByIdAndUpdate(
-      shipmentId,
-      { shipment_status: newStatus },
-      { new: true },
-    ).exec();
-  }
+  //   const assignedEmail = product.assignedEmail || found.member?.email;
 
-  async deleteShipment(
-    tenantName: string,
-    shipmentId: string,
-  ): Promise<ShipmentDocument> {
-    const tenantConnection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const Shipment = tenantConnection.model('Shipment');
+  //   const isCreating = ['create', 'bulkCreate'].includes(actionType);
 
-    return Shipment.findByIdAndDelete(shipmentId).exec();
-  }
+  //   const originInfo = isCreating
+  //     ? { name: 'XX', code: 'XX' }
+  //     : await this.getLocationInfo(
+  //         product.location || '',
+  //         tenantName,
+  //         assignedEmail,
+  //       );
+
+  //   const destinationInfo = await this.getLocationInfo(
+  //     newDestinationLocation,
+  //     tenantName,
+  //     newAssignedEmail,
+  //   );
+
+  //   const orderNumber = await this.getNextOrderNumber();
+  //   const orderId = this.generateOrderId(
+  //     originInfo.code,
+  //     destinationInfo.code,
+  //     orderNumber,
+  //   );
+
+  //   const shipmentToCreate = {
+  //     ...shipmentData,
+  //     order_id: orderId,
+  //     tenant: tenantName,
+  //     origin: originInfo.name,
+  //     destination: destinationInfo.name,
+  //     originDetails: originInfo.details,
+  //     destinationDetails: destinationInfo.details,
+  //     shipment_status: 'In Preparation',
+  //   };
+
+  //   return ShipmentModel.create(shipmentToCreate);
+  // }
+
+  // async getShipmentById(
+  //   tenantName: string,
+  //   shipmentId: string,
+  // ): Promise<ShipmentDocument> {
+  //   const tenantConnection =
+  //     await this.tenantConnectionService.getTenantConnection(tenantName);
+  //   const Shipment = tenantConnection.model('Shipment');
+
+  //   return Shipment.findById(shipmentId).exec();
+  // }
+
+  // async updateShipmentStatus(
+  //   tenantName: string,
+  //   shipmentId: string,
+  //   newStatus: string,
+  // ): Promise<ShipmentDocument> {
+  //   const tenantConnection =
+  //     await this.tenantConnectionService.getTenantConnection(tenantName);
+  //   const Shipment = tenantConnection.model('Shipment');
+
+  //   return Shipment.findByIdAndUpdate(
+  //     shipmentId,
+  //     { shipment_status: newStatus },
+  //     { new: true },
+  //   ).exec();
+  // }
+
+  // async deleteShipment(
+  //   tenantName: string,
+  //   shipmentId: string,
+  // ): Promise<ShipmentDocument> {
+  //   const tenantConnection =
+  //     await this.tenantConnectionService.getTenantConnection(tenantName);
+  //   const Shipment = tenantConnection.model('Shipment');
+
+  //   return Shipment.findByIdAndDelete(shipmentId).exec();
+  // }
 }

@@ -53,6 +53,26 @@ export class RetoolWebhooksService {
       await this.createSnapshots(shipment, connection);
     }
 
+    if (statusChanged && newStatus === 'Received') {
+      if (
+        shipment.shipment_status !== 'On The Way' &&
+        shipment.shipment_status !== 'In Preparation'
+      ) {
+        throw new BadRequestException(
+          'Solo se puede marcar como Received un shipment que estaba In Preparation o On The Way',
+        );
+      }
+
+      console.log('📥 Procesando productos para status Received...');
+      for (const productId of shipment.products) {
+        await this.shipmentsService.updateProductOnShipmentReceived(
+          productId.toString(),
+          tenantName,
+          shipment.origin,
+        );
+      }
+    }
+
     await shipment.save();
 
     return {
@@ -152,19 +172,12 @@ export class RetoolWebhooksService {
     tenantName: string;
     shipmentId: string;
     newStatus?: string;
-    price?: { amount: number; currencyCode: string };
     shipment_type?: string;
     trackingURL?: string;
   }) {
     console.log('📥 Datos recibidos desde Retool:', body);
-    const {
-      tenantName,
-      shipmentId,
-      newStatus,
-      price,
-      shipment_type,
-      trackingURL,
-    } = body;
+    const { tenantName, shipmentId, newStatus, shipment_type, trackingURL } =
+      body;
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
 
@@ -185,18 +198,6 @@ export class RetoolWebhooksService {
 
     const fieldsUpdated: string[] = [];
 
-    if (
-      price ||
-      (body['price.amount'] !== undefined &&
-        body['price.currencyCode'] !== undefined)
-    ) {
-      shipment.price = price || {
-        amount: body['price.amount'],
-        currencyCode: body['price.currencyCode'],
-      };
-      fieldsUpdated.push('price');
-    }
-
     if (shipment_type) {
       shipment.shipment_type = shipment_type;
       fieldsUpdated.push('shipment_type');
@@ -213,6 +214,33 @@ export class RetoolWebhooksService {
 
     return {
       message: `Shipment actualizado correctamente: ${fieldsUpdated.join(', ')}`,
+      shipment,
+    };
+  }
+
+  async updateShipmentPriceWebhook(body: {
+    tenantName: string;
+    shipmentId: string;
+    price: { amount: number; currencyCode: string };
+  }) {
+    const { tenantName, shipmentId, price } = body;
+    console.log('📥 Datos recibidos para price desde Retool:', body);
+
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+
+    const ShipmentModel =
+      connection.models.Shipment ||
+      connection.model('Shipment', ShipmentSchema, 'shipments');
+
+    const shipment = await ShipmentModel.findById(shipmentId);
+    if (!shipment) throw new NotFoundException('Shipment no encontrado');
+
+    shipment.price = price;
+    await shipment.save();
+
+    return {
+      message: `Shipment actualizado correctamente: price`,
       shipment,
     };
   }
