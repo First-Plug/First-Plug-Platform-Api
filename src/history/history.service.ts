@@ -20,6 +20,30 @@ export class HistoryService {
     return this.historyRepository.create(createHistoryDto);
   }
 
+  async findLatest() {
+    const data = await this.historyRepository
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(3)
+      .exec();
+
+    const userIds = data.map((record) => record.userId);
+
+    const tenants = await this.getTenantsByUserIds(userIds);
+
+    return await Promise.all(
+      data.map(async (record) => {
+        const tenant = tenants.find(
+          (tenant) => tenant._id.toString() === record.userId.toString(),
+        );
+        if (tenant) {
+          record.userId = tenant.email;
+        }
+        return record;
+      }),
+    );
+  }
+
   async findAll(page: number, size: number, startDate?: Date, endDate?: Date) {
     const skip = (page - 1) * size;
 

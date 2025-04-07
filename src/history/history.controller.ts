@@ -24,6 +24,11 @@ export class HistoryController {
     return this.historyService.findAll(pageNumber, pageSize, start, end);
   }
 
+  @Get('latest')
+  async findLatest() {
+    return await this.historyService.findLatest();
+  }
+
   @Post()
   async create(@Body() createHistoryDto: CreateHistoryDto) {
     return await this.historyService.create(createHistoryDto);

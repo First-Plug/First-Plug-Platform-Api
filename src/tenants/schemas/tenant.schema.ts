@@ -79,6 +79,7 @@ export class Tenant extends Document {
       { id: 'computer-updates', order: 1 },
       { id: 'upcoming-birthdays', order: 2 },
       { id: 'members-by-country', order: 3 },
+      { id: 'latest-activity', order: 4 },
     ],
   })
   widgets: { id: string; order: number }[];
