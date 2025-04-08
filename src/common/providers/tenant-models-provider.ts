@@ -4,6 +4,10 @@ import { Product, ProductSchema } from '../../products/schemas/product.schema';
 import { Order, OrderSchema } from '../../orders/schemas/order.schema';
 import { Team, TeamSchema } from 'src/teams/schemas/team.schema';
 import { History, HistorySchema } from 'src/history/schemas/history.schema';
+import {
+  ShipmentMetadata,
+  ShipmentMetadataSchema,
+} from 'src/shipments/schema/shipment-metadata.schema';
 
 export const tenantModels = {
   productModel: {
@@ -38,6 +42,17 @@ export const tenantModels = {
     provide: 'ORDER_MODEL',
     useFactory: async (tenantConnection: Connection) => {
       return tenantConnection.model(Order.name, OrderSchema);
+    },
+    inject: ['TENANT_CONNECTION'],
+  },
+  shipmentMetadataModel: {
+    provide: 'SHIPMENT_METADATA_MODEL',
+    useFactory: async (tenantConnection: Connection) => {
+      return tenantConnection.model(
+        ShipmentMetadata.name,
+        ShipmentMetadataSchema,
+        'shipmentmetadata',
+      );
     },
     inject: ['TENANT_CONNECTION'],
   },

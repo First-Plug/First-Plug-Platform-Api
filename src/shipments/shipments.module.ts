@@ -28,7 +28,8 @@ import { ProductsModule } from 'src/products/products.module';
       inject: ['TENANT_CONNECTION'],
     },
     ...Object.values(tenantModels),
+    tenantModels.shipmentMetadataModel,
   ],
-  exports: [ShipmentsService],
+  exports: [ShipmentsService, tenantModels.shipmentMetadataModel],
 })
 export class ShipmentsModule {}

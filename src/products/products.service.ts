@@ -594,6 +594,15 @@ export class ProductsService {
 
       await Promise.all(assignProductPromises);
 
+      const productsWithShipment = createdProducts.filter((p) => p.fp_shipment);
+      if (productsWithShipment.length > 0) {
+        await this.shipmentsService.findOrCreateShipmentsForBulk(
+          productsWithShipment,
+          tenantName,
+          session,
+        );
+      }
+
       await session.commitTransaction();
 
       // Registrar el historial

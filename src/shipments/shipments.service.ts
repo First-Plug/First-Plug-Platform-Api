@@ -17,7 +17,6 @@ import { TenantsService } from 'src/tenants/tenants.service';
 import { ProductsService } from 'src/products/products.service';
 import { countryCodes } from 'src/shipments/helpers/countryCodes';
 import { GlobalConnectionProvider } from 'src/common/providers/global-connection.provider';
-import { ShipmentGlobalMetadataSchema } from 'src/common/schema/shipment-global-metadata.schema';
 import {
   Product,
   ProductDocument,
@@ -28,6 +27,10 @@ import {
   MemberSchema,
 } from 'src/members/schemas/member.schema';
 import { Status } from 'src/products/interfaces/product.interface';
+import {
+  ShipmentMetadata,
+  ShipmentMetadataSchema,
+} from 'src/shipments/schema/shipment-metadata.schema';
 
 @Injectable()
 export class ShipmentsService {
@@ -39,6 +42,8 @@ export class ShipmentsService {
     private readonly tenantsService: TenantsService,
     @Inject(forwardRef(() => ProductsService))
     private readonly productsService: ProductsService,
+    @Inject('SHIPMENT_METADATA_MODEL')
+    private readonly shipmentMetadataRepository: Model<ShipmentMetadata>,
   ) {
     console.log(
       '🚚 ShipmentsService cargado - tenantConnectionService:',
@@ -54,16 +59,16 @@ export class ShipmentsService {
     return tenantConnection.model('Shipment', ShipmentSchema);
   }
 
-  private getShipmentGlobalMetadataModel(): Model<any> {
-    const globalConnection = this.globalConnectionProvider.getConnection();
-    return (
-      globalConnection.models.ShipmentGlobalMetadata ||
-      globalConnection.model(
-        'ShipmentGlobalMetadata',
-        ShipmentGlobalMetadataSchema,
-      )
-    );
-  }
+  // private getShipmentGlobalMetadataModel(): Model<any> {
+  //   const globalConnection = this.globalConnectionProvider.getConnection();
+  //   return (
+  //     globalConnection.models.ShipmentGlobalMetadata ||
+  //     globalConnection.model(
+  //       'ShipmentGlobalMetadata',
+  //       ShipmentGlobalMetadataSchema,
+  //     )
+  //   );
+  // }
 
   private getCountryCode(countryName: string): string {
     return countryCodes[countryName] || 'XX';
@@ -131,25 +136,31 @@ export class ShipmentsService {
     return { name: assignedMember || 'Unknown', code: 'XX' };
   }
 
-  private async getNextOrderNumber(): Promise<number> {
-    const ShipmentMetadata = this.getShipmentGlobalMetadataModel();
-    const docId = 'globalOrderCounter';
+  async getNextOrderNumber(
+    connection: Connection,
+    session?: mongoose.ClientSession,
+  ): Promise<number> {
+    const ShipmentMetadataModel =
+      connection.models.ShipmentMetadata ||
+      connection.model(
+        'ShipmentMetadata',
+        ShipmentMetadataSchema,
+        'shipmentmetadata',
+      );
 
-    const updated = await ShipmentMetadata.findOneAndUpdate(
+    const docId = 'orderCounter';
+
+    const updated = await ShipmentMetadataModel.findOneAndUpdate(
       { _id: docId },
-      { $inc: { currentValue: 1 } },
-      { new: true },
+      { $inc: { lastOrderNumber: 1 } },
+      { new: true, upsert: true, session },
     );
 
-    if (!updated) {
-      const created = await ShipmentMetadata.create({
-        _id: docId,
-        currentValue: 1,
-      });
-      return created.currentValue;
+    if (!updated || updated.lastOrderNumber === undefined) {
+      throw new Error('Failed to generate next order number');
     }
 
-    return updated.currentValue;
+    return updated.lastOrderNumber;
   }
 
   async getProductLocationData(
@@ -220,6 +231,9 @@ export class ShipmentsService {
     orderDestination: string,
     orderNumber: number,
   ): string {
+    if (!orderOrigin || !orderDestination || orderNumber === undefined) {
+      throw new Error('❌ Parámetros inválidos para generar el Order ID');
+    }
     const orderNumberFormatted = orderNumber.toString().padStart(4, '0');
     return `${orderOrigin}${orderDestination}${orderNumberFormatted}`;
   }
@@ -329,7 +343,20 @@ export class ShipmentsService {
         ? 'In Preparation'
         : 'On Hold - Missing Data';
 
-    const orderNumber = await this.getNextOrderNumber();
+    // if (!session) {
+    //   throw new Error('Session is required to get next order number.');
+    // }
+    const orderNumber = session
+      ? await this.getNextOrderNumber(connection, session)
+      : await this.getNextOrderNumber(connection);
+
+    console.log('🧾 Generando Order ID con:', {
+      orderOrigin,
+      orderDestination,
+      orderNumber,
+    });
+
+    // const orderNumber = await this.getNextOrderNumber(connection, session);
     const order_id = this.generateOrderId(
       orderOrigin,
       orderDestination,
@@ -685,101 +712,129 @@ export class ShipmentsService {
     }
   }
 
-  // async createShipment(
-  //   tenantName: string,
-  //   shipmentData: any,
-  //   actionType: string,
-  //   newDestinationLocation: string,
-  //   newAssignedEmail?: string,
-  // ): Promise<ShipmentDocument> {
-  //   const connection =
-  //     await this.tenantConnectionService.getTenantConnection(tenantName);
-  //   const ShipmentModel = this.getShipmentModel(connection);
+  async findOrCreateShipmentsForBulk(
+    products: ProductDocument[],
+    tenantId: string,
+    session: mongoose.ClientSession,
+  ): Promise<ShipmentDocument[]> {
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantId);
+    const ShipmentModel = this.getShipmentModel(connection);
 
-  //   const found = await this.productsService.findProductById(
-  //     shipmentData.productId,
-  //   );
-  //   if (!found || !found.product)
-  //     throw new NotFoundException(
-  //       `Product ${shipmentData.productId} not found`,
-  //     );
+    const createdOrUpdatedShipments: ShipmentDocument[] = [];
+    const shipmentCache = new Map<string, ShipmentDocument>();
 
-  //   const product = found.product;
+    for (const product of products) {
+      if (!product._id) continue;
 
-  //   const assignedEmail = product.assignedEmail || found.member?.email;
+      const assignedEmail = product.assignedEmail || '';
+      const assignedMember = product.assignedMember || '';
 
-  //   const isCreating = ['create', 'bulkCreate'].includes(actionType);
+      const destinationInfo = await this.getLocationInfo(
+        product.location || '',
+        tenantId,
+        assignedEmail,
+        assignedMember,
+        undefined,
+      );
 
-  //   const originInfo = isCreating
-  //     ? { name: 'XX', code: 'XX' }
-  //     : await this.getLocationInfo(
-  //         product.location || '',
-  //         tenantName,
-  //         assignedEmail,
-  //       );
+      const desirableDate = destinationInfo.details?.desirableDate || '';
+      const destinationName = destinationInfo.name;
+      const destinationDetails = destinationInfo.details;
 
-  //   const destinationInfo = await this.getLocationInfo(
-  //     newDestinationLocation,
-  //     tenantName,
-  //     newAssignedEmail,
-  //   );
+      const shipmentKey = `XX-${destinationName}-${desirableDate}`;
 
-  //   const orderNumber = await this.getNextOrderNumber();
-  //   const orderId = this.generateOrderId(
-  //     originInfo.code,
-  //     destinationInfo.code,
-  //     orderNumber,
-  //   );
+      let shipment: ShipmentDocument | null | undefined =
+        shipmentCache.get(shipmentKey);
 
-  //   const shipmentToCreate = {
-  //     ...shipmentData,
-  //     order_id: orderId,
-  //     tenant: tenantName,
-  //     origin: originInfo.name,
-  //     destination: destinationInfo.name,
-  //     originDetails: originInfo.details,
-  //     destinationDetails: destinationInfo.details,
-  //     shipment_status: 'In Preparation',
-  //   };
+      if (!shipment) {
+        shipment = await ShipmentModel.findOne({
+          origin: 'XX',
+          destination: destinationName,
+          shipment_status: {
+            $in: ['In Preparation', 'On Hold - Missing Data'],
+          },
+          'destinationDetails.desirableDate': desirableDate,
+        }).session(session);
 
-  //   return ShipmentModel.create(shipmentToCreate);
-  // }
+        if (!shipment) {
+          const destinationComplete =
+            await this.productsService.isAddressComplete(
+              {
+                ...product.toObject(),
+                location: product.location,
+                assignedEmail,
+              },
+              tenantId,
+            );
 
-  // async getShipmentById(
-  //   tenantName: string,
-  //   shipmentId: string,
-  // ): Promise<ShipmentDocument> {
-  //   const tenantConnection =
-  //     await this.tenantConnectionService.getTenantConnection(tenantName);
-  //   const Shipment = tenantConnection.model('Shipment');
+          const shipmentStatus = destinationComplete
+            ? 'In Preparation'
+            : 'On Hold - Missing Data';
 
-  //   return Shipment.findById(shipmentId).exec();
-  // }
+          const orderNumber = await this.getNextOrderNumber(
+            connection,
+            session,
+          );
+          const orderId = this.generateOrderId(
+            'XX',
+            destinationInfo.code,
+            orderNumber,
+          );
 
-  // async updateShipmentStatus(
-  //   tenantName: string,
-  //   shipmentId: string,
-  //   newStatus: string,
-  // ): Promise<ShipmentDocument> {
-  //   const tenantConnection =
-  //     await this.tenantConnectionService.getTenantConnection(tenantName);
-  //   const Shipment = tenantConnection.model('Shipment');
+          shipment = (
+            await ShipmentModel.create(
+              [
+                {
+                  order_id: orderId,
+                  tenant: tenantId,
+                  quantity_products: 0,
+                  shipment_status: shipmentStatus,
+                  shipment_type: 'TBC',
+                  origin: 'XX',
+                  destination: destinationName,
+                  destinationDetails,
+                  products: [],
+                  type: 'shipments',
+                  order_date: new Date(),
+                  price: { amount: null, currencyCode: 'TBC' },
+                },
+              ],
+              { session },
+            )
+          )[0];
+        }
 
-  //   return Shipment.findByIdAndUpdate(
-  //     shipmentId,
-  //     { shipment_status: newStatus },
-  //     { new: true },
-  //   ).exec();
-  // }
+        shipmentCache.set(shipmentKey, shipment);
+      }
 
-  // async deleteShipment(
-  //   tenantName: string,
-  //   shipmentId: string,
-  // ): Promise<ShipmentDocument> {
-  //   const tenantConnection =
-  //     await this.tenantConnectionService.getTenantConnection(tenantName);
-  //   const Shipment = tenantConnection.model('Shipment');
+      if (!(product._id instanceof Types.ObjectId)) {
+        throw new Error(`Invalid ObjectId: ${product._id}`);
+      }
 
-  //   return Shipment.findByIdAndDelete(shipmentId).exec();
-  // }
+      const productObjectId = product._id as Types.ObjectId;
+
+      if (
+        !shipment.products.some((p: Types.ObjectId) =>
+          p.equals(productObjectId),
+        )
+      ) {
+        shipment.products.push(productObjectId);
+        shipment.quantity_products = shipment.products.length;
+        await shipment.save({ session });
+      }
+
+      createdOrUpdatedShipments.push(shipment);
+
+      await this.markActiveShipmentTargets(
+        product._id.toString(),
+        tenantId,
+        'XX',
+        destinationName,
+        assignedEmail,
+      );
+    }
+
+    return createdOrUpdatedShipments;
+  }
 }
