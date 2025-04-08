@@ -5,7 +5,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import mongoose, { Connection, Model, Schema, Types } from 'mongoose';
+import mongoose, {
+  ClientSession,
+  Connection,
+  Model,
+  Schema,
+  Types,
+} from 'mongoose';
 import {
   Shipment,
   ShipmentDocument,
@@ -31,6 +37,7 @@ import {
   ShipmentMetadata,
   ShipmentMetadataSchema,
 } from 'src/shipments/schema/shipment-metadata.schema';
+import { OrderNumberGenerator } from 'src/shipments/helpers/order-number.util';
 
 @Injectable()
 export class ShipmentsService {
@@ -136,10 +143,10 @@ export class ShipmentsService {
     return { name: assignedMember || 'Unknown', code: 'XX' };
   }
 
-  async getNextOrderNumber(
+  async initializeOrderNumberGenerator(
     connection: Connection,
-    session?: mongoose.ClientSession,
-  ): Promise<number> {
+    session?: ClientSession | null,
+  ): Promise<OrderNumberGenerator> {
     const ShipmentMetadataModel =
       connection.models.ShipmentMetadata ||
       connection.model(
@@ -149,19 +156,59 @@ export class ShipmentsService {
       );
 
     const docId = 'orderCounter';
-
-    const updated = await ShipmentMetadataModel.findOneAndUpdate(
-      { _id: docId },
-      { $inc: { lastOrderNumber: 1 } },
-      { new: true, upsert: true, session },
+    const existing = await ShipmentMetadataModel.findById(docId).session(
+      session ?? null,
     );
-
-    if (!updated || updated.lastOrderNumber === undefined) {
-      throw new Error('Failed to generate next order number');
-    }
-
-    return updated.lastOrderNumber;
+    const initial = existing?.lastOrderNumber || 0;
+    return new OrderNumberGenerator(initial);
   }
+
+  async finalizeOrderNumber(
+    connection: Connection,
+    finalNumber: number,
+    session?: ClientSession,
+  ): Promise<void> {
+    const ShipmentMetadataModel =
+      connection.models.ShipmentMetadata ||
+      connection.model(
+        'ShipmentMetadata',
+        ShipmentMetadataSchema,
+        'shipmentmetadata',
+      );
+
+    await ShipmentMetadataModel.findOneAndUpdate(
+      { _id: 'orderCounter' },
+      { $set: { lastOrderNumber: finalNumber } },
+      { upsert: true, session },
+    );
+  }
+
+  // async getNextOrderNumber(
+  //   connection: Connection,
+  //   session?: mongoose.ClientSession,
+  // ): Promise<number> {
+  //   const ShipmentMetadataModel =
+  //     connection.models.ShipmentMetadata ||
+  //     connection.model(
+  //       'ShipmentMetadata',
+  //       ShipmentMetadataSchema,
+  //       'shipmentmetadata',
+  //     );
+
+  //   const docId = 'orderCounter';
+
+  //   const updated = await ShipmentMetadataModel.findOneAndUpdate(
+  //     { _id: docId },
+  //     { $inc: { lastOrderNumber: 1 } },
+  //     { new: true, upsert: true, session },
+  //   );
+
+  //   if (!updated || updated.lastOrderNumber === undefined) {
+  //     throw new Error('Failed to generate next order number');
+  //   }
+
+  //   return updated.lastOrderNumber;
+  // }
 
   async getProductLocationData(
     productId: Product | string,
@@ -346,21 +393,15 @@ export class ShipmentsService {
     // if (!session) {
     //   throw new Error('Session is required to get next order number.');
     // }
-    const orderNumber = session
-      ? await this.getNextOrderNumber(connection, session)
-      : await this.getNextOrderNumber(connection);
-
-    console.log('🧾 Generando Order ID con:', {
-      orderOrigin,
-      orderDestination,
-      orderNumber,
-    });
-
-    // const orderNumber = await this.getNextOrderNumber(connection, session);
+    const orderNumberGenerator = await this.initializeOrderNumberGenerator(
+      connection,
+      session,
+    );
+    const nextNumber = orderNumberGenerator.getNext();
     const order_id = this.generateOrderId(
       orderOrigin,
       orderDestination,
-      orderNumber,
+      nextNumber,
     );
 
     const newShipment = await ShipmentModel.create({
@@ -388,6 +429,11 @@ export class ShipmentsService {
         assignedEmail,
       );
     }
+    await this.finalizeOrderNumber(
+      connection,
+      orderNumberGenerator.getCurrent(),
+      session ?? undefined,
+    );
 
     return newShipment;
   }
@@ -724,6 +770,13 @@ export class ShipmentsService {
     const createdOrUpdatedShipments: ShipmentDocument[] = [];
     const shipmentCache = new Map<string, ShipmentDocument>();
 
+    const shipmentsToSave: ShipmentDocument[] = [];
+
+    const orderNumberGenerator = await this.initializeOrderNumberGenerator(
+      connection,
+      session,
+    );
+
     for (const product of products) {
       if (!product._id) continue;
 
@@ -772,37 +825,28 @@ export class ShipmentsService {
             ? 'In Preparation'
             : 'On Hold - Missing Data';
 
-          const orderNumber = await this.getNextOrderNumber(
-            connection,
-            session,
-          );
           const orderId = this.generateOrderId(
             'XX',
             destinationInfo.code,
-            orderNumber,
+            orderNumberGenerator.getNext(),
           );
 
-          shipment = (
-            await ShipmentModel.create(
-              [
-                {
-                  order_id: orderId,
-                  tenant: tenantId,
-                  quantity_products: 0,
-                  shipment_status: shipmentStatus,
-                  shipment_type: 'TBC',
-                  origin: 'XX',
-                  destination: destinationName,
-                  destinationDetails,
-                  products: [],
-                  type: 'shipments',
-                  order_date: new Date(),
-                  price: { amount: null, currencyCode: 'TBC' },
-                },
-              ],
-              { session },
-            )
-          )[0];
+          shipment = new ShipmentModel({
+            order_id: orderId,
+            tenant: tenantId,
+            quantity_products: 0,
+            shipment_status: shipmentStatus,
+            shipment_type: 'TBC',
+            origin: 'XX',
+            destination: destinationName,
+            destinationDetails,
+            products: [],
+            type: 'shipments',
+            order_date: new Date(),
+            price: { amount: null, currencyCode: 'TBC' },
+          });
+
+          shipmentsToSave.push(shipment);
         }
 
         shipmentCache.set(shipmentKey, shipment);
@@ -821,7 +865,10 @@ export class ShipmentsService {
       ) {
         shipment.products.push(productObjectId);
         shipment.quantity_products = shipment.products.length;
-        await shipment.save({ session });
+        // await shipment.save({ session });
+        if (!shipmentsToSave.includes(shipment)) {
+          shipmentsToSave.push(shipment);
+        }
       }
 
       createdOrUpdatedShipments.push(shipment);
@@ -834,6 +881,14 @@ export class ShipmentsService {
         assignedEmail,
       );
     }
+    for (const shipment of shipmentsToSave) {
+      await shipment.save({ session });
+    }
+    await this.finalizeOrderNumber(
+      connection,
+      orderNumberGenerator.getCurrent(),
+      session,
+    );
 
     return createdOrUpdatedShipments;
   }
