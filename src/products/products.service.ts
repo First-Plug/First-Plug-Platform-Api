@@ -4,9 +4,10 @@ import {
   InternalServerErrorException,
   NotFoundException,
   Logger,
+  forwardRef,
   // forwardRef,
 } from '@nestjs/common';
-import { Model, ObjectId, Types } from 'mongoose';
+import { ClientSession, Model, ObjectId, Schema, Types } from 'mongoose';
 import {
   Product,
   ProductDocument,
@@ -28,6 +29,7 @@ import { HistoryService } from 'src/history/history.service';
 import { updateProductPrice } from './helpers/update-price.helper';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
 import { ShipmentsService } from 'src/shipments/shipments.service';
+import { ModuleRef } from '@nestjs/core';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -40,14 +42,19 @@ export class ProductsService {
     @Inject('PRODUCT_MODEL')
     private readonly productRepository: ProductModel,
     private readonly memberService: MembersService,
-    private readonly tenantsService: TenantsService,
+    private tenantsService: TenantsService,
     private readonly historyService: HistoryService,
     private readonly connectionService: TenantConnectionService,
 
-    // @Inject(forwardRef(() => ShipmentsService))
+    @Inject(forwardRef(() => ShipmentsService))
     private readonly shipmentsService: ShipmentsService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
+  onModuleInit() {
+    this.tenantsService = this.moduleRef.get(TenantsService, { strict: false });
+    console.log('🧩 TenantsService loaded manually:', !!this.tenantsService);
+  }
   private normalizeProductData(product: CreateProductDto) {
     return {
       ...product,
@@ -208,6 +215,7 @@ export class ProductsService {
   private async getRecoverableConfigForTenant(
     tenantName: string,
   ): Promise<Map<string, boolean>> {
+    await new Promise((resolve) => process.nextTick(resolve));
     const user = await this.tenantsService.getByTenantName(tenantName);
 
     if (user && user.isRecoverableConfig) {
@@ -330,15 +338,8 @@ export class ProductsService {
     userId: string,
   ) {
     const normalizedProduct = this.normalizeProductData(createProductDto);
-    const {
-      assignedEmail,
-      serialNumber,
-      price,
-      productCondition,
-      fp_shipment,
-      status: inputStatus,
-      ...rest
-    } = normalizedProduct;
+    const { assignedEmail, serialNumber, price, productCondition, ...rest } =
+      normalizedProduct;
 
     const recoverableConfig =
       await this.getRecoverableConfigForTenant(tenantName);
@@ -353,30 +354,16 @@ export class ProductsService {
     }
 
     let location = rest.location || createProductDto.location;
-    let status: Status;
+    let status = rest.status || 'Available';
 
-    if (inputStatus) {
-      status = inputStatus;
-    }
-
-    // Validar y corregir el status basado en las reglas de negocio
     if (productCondition === 'Unusable') {
       status = 'Unavailable';
-    } else if (fp_shipment) {
-      status = await this.determineProductStatus(
-        { fp_shipment, location, assignedEmail, productCondition },
-        tenantName,
-        'create',
-        undefined,
-      ); // 'In Transit' o 'In Transit - Missing Data'
     } else {
       if (assignedEmail && assignedEmail !== 'none') {
         location = 'Employee';
         status = 'Delivered';
       } else if (['FP warehouse', 'Our office'].includes(location)) {
         status = 'Available';
-      } else {
-        throw new BadRequestException('Invalid location or status');
       }
     }
 
@@ -388,13 +375,11 @@ export class ProductsService {
       additionalInfo: createProductDto.additionalInfo?.trim() || undefined,
       location,
       status,
-      fp_shipment,
       ...(price?.amount !== undefined && price?.currencyCode ? { price } : {}),
     };
 
     let assignedMember = '';
-    let newProduct: ProductDocument | undefined;
-
+    console.log('createData before assigning:', createData);
     if (assignedEmail) {
       const member = await this.memberService.assignProduct(
         assignedEmail,
@@ -403,7 +388,6 @@ export class ProductsService {
 
       if (member) {
         assignedMember = this.getFullName(member);
-        newProduct = member.products.at(-1) as ProductDocument;
 
         await this.historyService.create({
           actionType: 'create',
@@ -411,69 +395,33 @@ export class ProductsService {
           userId: userId,
           changes: {
             oldData: null,
-            newData: newProduct,
+            newData: member.products.at(-1) as Product,
           },
         });
 
-        console.log(
-          `📌 Producto asignado a ${assignedEmail}, pero continuamos con la ejecución.`,
-        );
+        return member.products.at(-1);
       }
     }
 
-    // Si no se asignó, creamos el producto normalmente
-    if (!newProduct) {
-      newProduct = await this.productRepository.create({
-        ...createData,
-        assignedEmail,
-        assignedMember: assignedMember || this.getFullName(createProductDto),
-        recoverable: isRecoverable,
-        productCondition: createData.productCondition,
-      });
-    }
-    // Si FirstPlug maneja la logística, creamos la orden de envío automáticamente
-    if (fp_shipment) {
-      console.log(
-        `🚀 Generando orden de envío para el producto: ${newProduct._id}`,
-      );
+    const newProduct = await this.productRepository.create({
+      ...createData,
+      assignedEmail,
+      assignedMember: assignedMember || this.getFullName(createProductDto),
+      recoverable: isRecoverable,
+      productCondition: createData.productCondition,
+    });
+    console.log('newProduct', newProduct);
+    await this.historyService.create({
+      actionType: 'create',
+      itemType: 'assets',
+      userId: userId,
+      changes: {
+        oldData: null,
+        newData: newProduct,
+      },
+    });
 
-      if (!newProduct?._id) {
-        throw new Error('Product could not be created correctly');
-      }
-
-      const {
-        origin,
-        destination,
-        orderOrigin,
-        orderDestination,
-        assignedEmail: emailForShipment,
-      } = await this.shipmentsService.getProductLocationData(
-        newProduct._id.toString(),
-        tenantName,
-        'create',
-        undefined,
-        createProductDto.desirableDate,
-      );
-      console.log(`📦 Datos de shipment:`, {
-        origin,
-        destination,
-        orderOrigin,
-        orderDestination,
-        assignedEmail: emailForShipment,
-      });
-      const shipment = await this.shipmentsService.findOrCreateShipment(
-        newProduct._id.toString(),
-        'create',
-        tenantName,
-        null,
-        createProductDto.desirableDate,
-      );
-      console.log(`✅ Orden de envío creada:`, shipment);
-    } else {
-      console.log(
-        '⚠️ fp_shipment es falso o undefined, no se generará una orden de envío.',
-      );
-    }
+    return newProduct;
   }
 
   async bulkCreate(
@@ -593,15 +541,6 @@ export class ProductsService {
       createdProducts.push(...createdProductsWithoutAssignedEmail);
 
       await Promise.all(assignProductPromises);
-
-      const productsWithShipment = createdProducts.filter((p) => p.fp_shipment);
-      if (productsWithShipment.length > 0) {
-        await this.shipmentsService.findOrCreateShipmentsForBulk(
-          productsWithShipment,
-          tenantName,
-          session,
-        );
-      }
 
       await session.commitTransaction();
 
@@ -1104,11 +1043,17 @@ export class ProductsService {
         updateProductDto.productCondition !== undefined
           ? updateProductDto.productCondition
           : product.productCondition,
-      fp_shipment: product.fp_shipment,
+      fp_shipment: updateProductDto.fp_shipment ?? product.fp_shipment,
+      activeShipment: updateProductDto.fp_shipment
+        ? true
+        : product.activeShipment,
       isDeleted: product.isDeleted,
       lastAssigned: lastAssigned,
     };
     newMember.products.push(updateData);
+    if (updateProductDto.fp_shipment) {
+      newMember.activeShipment = true;
+    }
     await newMember.save({ session });
 
     await this.productRepository
@@ -1155,6 +1100,10 @@ export class ProductsService {
         updateProductDto.productCondition !== undefined
           ? updateProductDto.productCondition
           : product.productCondition,
+      fp_shipment: updateProductDto.fp_shipment ?? product.fp_shipment,
+      activeShipment: updateProductDto.fp_shipment
+        ? true
+        : product.activeShipment,
       isDeleted: product.isDeleted,
     };
     return await this.productRepository.create([updateData], { session });
@@ -1177,6 +1126,12 @@ export class ProductsService {
       ))
     ) {
       updatedFields.lastAssigned = product.assignedEmail;
+    }
+    updatedFields.fp_shipment =
+      updateProductDto.fp_shipment ?? product.fp_shipment;
+
+    if (updateProductDto.fp_shipment) {
+      updatedFields.activeShipment = true;
     }
 
     if (currentLocation === 'products') {
@@ -1329,12 +1284,54 @@ export class ProductsService {
     }
   }
 
+  async validateProductAvailability(productId: string) {
+    const id = new Types.ObjectId(
+      productId,
+    ) as unknown as Schema.Types.ObjectId;
+    const found = await this.findProductById(id);
+
+    const product =
+      found.product ||
+      found.member?.products.find(
+        (p) => p._id?.toString() === productId.toString(),
+      );
+
+    if (!product) throw new NotFoundException('Product not found');
+
+    if (product.activeShipment) {
+      throw new BadRequestException(
+        'This product is part of an active shipment and cannot be moved or modified.',
+      );
+    }
+  }
+
+  private async handleProductUpdateByActionType(
+    session: ClientSession,
+    product: ProductDocument,
+    updateDto: UpdateProductDto,
+    tenantName: string,
+    userId: string,
+    actionType?: string,
+  ) {
+    switch (actionType) {
+      case 'assign':
+      case 'reassign':
+      case 'relocate':
+      case 'return':
+      case 'offboarding':
+        if (!product._id) throw new BadRequestException('Product ID missing');
+        await this.validateProductAvailability(product._id.toString());
+        break;
+    }
+  }
+
   async update(
     id: ObjectId,
     updateProductDto: UpdateProductDto,
     tenantName: string,
     userId: string,
   ) {
+    await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     const session = await connection.startSession();
@@ -1348,6 +1345,19 @@ export class ProductsService {
         .session(session);
 
       if (product) {
+        if (product.activeShipment) {
+          throw new BadRequestException(
+            'This product is currently part of an active shipment and cannot be modified.',
+          );
+        }
+        await this.handleProductUpdateByActionType(
+          session,
+          product,
+          updateProductDto,
+          tenantName,
+          userId,
+          actionType,
+        );
         await this.getRecoverableConfigForTenant(tenantName);
 
         const isRecoverable =
@@ -1485,6 +1495,29 @@ export class ProductsService {
             );
           }
         }
+        let desirableDateOrigin = '';
+        let desirableDateDestination = '';
+
+        if (typeof updateProductDto.desirableDate === 'string') {
+          desirableDateDestination = updateProductDto.desirableDate;
+        } else if (updateProductDto.desirableDate) {
+          desirableDateOrigin = updateProductDto.desirableDate.origin || '';
+          desirableDateDestination =
+            updateProductDto.desirableDate.destination || '';
+        }
+
+        if (updateProductDto.fp_shipment) {
+          if (actionType) {
+            await this.shipmentsService.findOrCreateShipment(
+              product._id.toString(),
+              actionType,
+              tenantName,
+              session,
+              desirableDateDestination,
+              desirableDateOrigin,
+            );
+          }
+        }
 
         await session.commitTransaction();
         session.endSession();
@@ -1598,6 +1631,31 @@ export class ProductsService {
               'members',
               member,
             );
+            let desirableDateOrigin = '';
+            let desirableDateDestination = '';
+
+            if (typeof updateProductDto.desirableDate === 'string') {
+              desirableDateDestination = updateProductDto.desirableDate;
+            } else if (updateProductDto.desirableDate) {
+              desirableDateOrigin = updateProductDto.desirableDate.origin || '';
+              desirableDateDestination =
+                updateProductDto.desirableDate.destination || '';
+            }
+            if (updateProductDto.fp_shipment) {
+              if (!actionType) {
+                throw new BadRequestException(
+                  'Missing actionType when creating shipment.',
+                );
+              }
+              await this.shipmentsService.findOrCreateShipment(
+                memberProduct.product._id!.toString(),
+                actionType,
+                tenantName,
+                session,
+                desirableDateDestination,
+                desirableDateOrigin,
+              );
+            }
           }
 
           await session.commitTransaction();
@@ -1841,7 +1899,7 @@ export class ProductsService {
     res.send(csvData);
   }
 
-  async findProductById(id: ObjectId) {
+  async findProductById(id: Schema.Types.ObjectId) {
     try {
       const product = await this.productRepository.findById(id);
 

@@ -44,8 +44,8 @@ export class ShipmentsService {
   constructor(
     private readonly globalConnectionProvider: GlobalConnectionProvider,
     private readonly tenantConnectionService: TenantConnectionService,
+    @Inject(forwardRef(() => MembersService))
     private readonly membersService: MembersService,
-
     private readonly tenantsService: TenantsService,
     @Inject(forwardRef(() => ProductsService))
     private readonly productsService: ProductsService,
@@ -65,17 +65,6 @@ export class ShipmentsService {
 
     return tenantConnection.model('Shipment', ShipmentSchema);
   }
-
-  // private getShipmentGlobalMetadataModel(): Model<any> {
-  //   const globalConnection = this.globalConnectionProvider.getConnection();
-  //   return (
-  //     globalConnection.models.ShipmentGlobalMetadata ||
-  //     globalConnection.model(
-  //       'ShipmentGlobalMetadata',
-  //       ShipmentGlobalMetadataSchema,
-  //     )
-  //   );
-  // }
 
   private getCountryCode(countryName: string): string {
     return countryCodes[countryName] || 'XX';
@@ -97,7 +86,7 @@ export class ShipmentsService {
     }
 
     if (location === 'Our office') {
-      const tenant = await this.tenantsService.getTenantById(tenantId);
+      const tenant = await this.tenantsService.getByTenantName(tenantId);
       if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
 
       return {
@@ -214,6 +203,7 @@ export class ShipmentsService {
     productId: Product | string,
     tenantId: string,
     actionType?: string,
+    overrideAssignedEmail?: string,
     desirableOriginDate?: string,
     desirableDestinationDate?: string,
   ): Promise<{
@@ -307,6 +297,7 @@ export class ShipmentsService {
     tenantId: string,
     session: mongoose.ClientSession | null = null,
     desirableDestinationDate?: string,
+    desirableOriginDate?: string,
   ): Promise<ShipmentDocument> {
     const found = await this.productsService.findProductById(
       new Types.ObjectId(productId) as unknown as Schema.Types.ObjectId,
@@ -339,7 +330,7 @@ export class ShipmentsService {
           tenantId,
           assignedEmail,
           product.assignedMember,
-          undefined,
+          desirableOriginDate,
         ).then((res) => res.details);
 
     const destinationDetails = await this.getLocationInfo(
@@ -891,5 +882,24 @@ export class ShipmentsService {
     );
 
     return createdOrUpdatedShipments;
+  }
+
+  async getShipmentsByMember(memberEmail: string, tenantName: string) {
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+
+    const member =
+      await this.membersService.findByEmailNotThrowError(memberEmail);
+    if (!member) return [];
+
+    const fullName = `${member.firstName} ${member.lastName}`;
+
+    return ShipmentModel.find({
+      shipment_status: {
+        $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
+      },
+      $or: [{ origin: fullName }, { destination: fullName }],
+    });
   }
 }

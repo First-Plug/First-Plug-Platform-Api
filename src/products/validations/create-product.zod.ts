@@ -93,7 +93,15 @@ export const ProductSchemaZod = z
       .optional()
       .nullable(),
     fp_shipment: z.boolean().optional(),
-    desirableDate: z.string().optional(),
+    desirableDate: z
+      .union([
+        z.string(),
+        z.object({
+          origin: z.string().optional(),
+          destination: z.string().optional(),
+        }),
+      ])
+      .optional(),
   })
   .superRefine((data, ctx) => {
     if (data.category === 'Merchandising' && !data.name) {
