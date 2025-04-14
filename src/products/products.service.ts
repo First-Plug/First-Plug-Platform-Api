@@ -965,6 +965,8 @@ export class ProductsService {
       updateProductDto,
       product.assignedEmail || '',
     );
+
+    return newMember;
   }
 
   // Método específico para manejar actualizaciones de emails desconocidos
@@ -984,6 +986,8 @@ export class ProductsService {
       { $set: updatedFields },
       { session, runValidators: true, new: true, omitUndefined: true },
     );
+
+    return updatedFields;
   }
 
   // Método para eliminar un producto de un miembro
@@ -1413,18 +1417,59 @@ export class ProductsService {
             !updateProductDto.assignedEmail ||
             updateProductDto.assignedEmail === product.assignedEmail
           ) {
-            await this.handleUnknownEmailUpdate(session, product, {
-              ...updateProductDto,
-              recoverable: isRecoverable,
-            });
+            const updateProduct = await this.handleUnknownEmailUpdate(
+              session,
+              product,
+              {
+                ...updateProductDto,
+                recoverable: isRecoverable,
+              },
+            );
+
+            if (actionType) {
+              await this.historyService.create({
+                actionType: actionType,
+                itemType: 'assets',
+                userId: userId,
+                changes: {
+                  oldData: {
+                    ...product,
+                  },
+                  newData: {
+                    ...updateProduct,
+                  },
+                },
+              });
+            }
           } else if (
             updateProductDto.assignedEmail &&
             updateProductDto.assignedEmail !== 'none'
           ) {
-            await this.handleUnknownEmailToMemberUpdate(session, product, {
-              ...updateProductDto,
-              recoverable: isRecoverable,
-            });
+            const newMember = await this.handleUnknownEmailToMemberUpdate(
+              session,
+              product,
+              {
+                ...updateProductDto,
+                recoverable: isRecoverable,
+              },
+            );
+
+            if (actionType) {
+              await this.historyService.create({
+                actionType: actionType,
+                itemType: 'assets',
+                userId: userId,
+                changes: {
+                  oldData: {
+                    ...product,
+                  },
+                  newData: {
+                    assignedEmail: newMember.email,
+                    assignedMember: `${newMember.firstName} ${newMember.lastName}`,
+                  },
+                },
+              });
+            }
           } else {
             await this.updateProductAttributes(
               session,

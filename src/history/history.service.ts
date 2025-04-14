@@ -4,6 +4,7 @@ import { CreateHistoryDto } from './dto/create-history.dto';
 import { History } from './schemas/history.schema';
 import { EnvConfiguration } from 'src/config';
 import { TenantSchema } from 'src/tenants/schemas/tenant.schema';
+import { Team } from 'src/teams/schemas/team.schema';
 
 @Injectable()
 export class HistoryService {
@@ -12,10 +13,35 @@ export class HistoryService {
   constructor(
     @Inject('HISTORY_MODEL')
     private readonly historyRepository: Model<History>,
+    @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
   ) {}
 
   async create(createHistoryDto: CreateHistoryDto) {
     return this.historyRepository.create(createHistoryDto);
+  }
+
+  async findLatest() {
+    const data = await this.historyRepository
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(3)
+      .exec();
+
+    const userIds = data.map((record) => record.userId);
+
+    const tenants = await this.getTenantsByUserIds(userIds);
+
+    return await Promise.all(
+      data.map(async (record) => {
+        const tenant = tenants.find(
+          (tenant) => tenant._id.toString() === record.userId.toString(),
+        );
+        if (tenant) {
+          record.userId = tenant.email;
+        }
+        return record;
+      }),
+    );
   }
 
   async findAll(page: number, size: number, startDate?: Date, endDate?: Date) {
@@ -44,15 +70,68 @@ export class HistoryService {
 
     const tenants = await this.getTenantsByUserIds(userIds);
 
-    const updatedData = data.map((record) => {
-      const tenant = tenants.find(
-        (tenant) => tenant._id.toString() === record.userId.toString(),
-      );
-      if (tenant) {
-        record.userId = tenant.email;
-      }
-      return record;
-    });
+    const updatedData = await Promise.all(
+      data.map(async (record) => {
+        const tenant = tenants.find(
+          (tenant) => tenant._id.toString() === record.userId.toString(),
+        );
+        if (tenant) {
+          record.userId = tenant.email;
+        }
+        if (
+          (record.itemType === 'members' &&
+            ['update', 'create', 'delete', 'bulk-create'].includes(
+              record.actionType,
+            )) ||
+          (record.itemType === 'teams' &&
+            ['reassign', 'assign', 'unassign'].includes(record.actionType))
+        ) {
+          if (
+            record.itemType === 'members' &&
+            record.actionType === 'bulk-create'
+          ) {
+            if (Array.isArray(record.changes?.newData)) {
+              for (const member of record.changes.newData) {
+                if (member.team && typeof member.team === 'string') {
+                  const newTeam = await this.teamRepository
+                    .findById(member.team)
+                    .exec();
+                  if (newTeam) {
+                    member.team = newTeam;
+                  }
+                }
+              }
+            }
+          } else {
+            if (
+              record.changes?.oldData?.team &&
+              typeof record.changes.oldData.team === 'string'
+            ) {
+              const oldTeam = await this.teamRepository
+                .findById(record.changes.oldData.team)
+                .exec();
+              if (oldTeam) {
+                record.changes.oldData.team = oldTeam;
+              }
+            }
+
+            if (
+              record.changes?.newData?.team &&
+              typeof record.changes.newData.team === 'string'
+            ) {
+              const newTeam = await this.teamRepository
+                .findById(record.changes.newData.team)
+                .exec();
+              if (newTeam) {
+                record.changes.newData.team = newTeam;
+              }
+            }
+          }
+        }
+
+        return record;
+      }),
+    );
 
     return {
       data: updatedData,

@@ -8,6 +8,7 @@ import { InjectSlack } from 'nestjs-slack-webhook';
 import { IncomingWebhook } from '@slack/webhook';
 import { UpdateTenantInformationSchemaDto } from './dto/update-information.dto';
 import { UserJWT } from 'src/auth/interfaces/auth.interface';
+import { UpdateDashboardSchemaDto } from './dto/update-dashboard.dto';
 
 @Injectable()
 export class TenantsService {
@@ -322,6 +323,7 @@ export class TenantsService {
       accountProvider: user?.accountProvider,
       isRecoverableConfig: user?.isRecoverableConfig,
       computerExpiration: user?.computerExpiration,
+      widgets: user?.widgets,
     };
   }
 
@@ -329,8 +331,13 @@ export class TenantsService {
     return await this.tenantRepository.findOne({ email });
   }
 
-  async update(userId: ObjectId, updateTenantDto: UpdateTenantDto) {
-    return this.tenantRepository.findByIdAndUpdate(userId, updateTenantDto);
+  async update(
+    userId: ObjectId,
+    updateTenantDto: UpdateTenantDto | UpdateDashboardSchemaDto,
+  ) {
+    return this.tenantRepository.findByIdAndUpdate(userId, updateTenantDto, {
+      new: true,
+    });
   }
 
   async updateInformation(

@@ -9,7 +9,12 @@ import { TenantsMiddleware } from 'src/common/middlewares/tenants.middleware';
 @Module({
   imports: [TenantsModule],
   controllers: [HistoryController],
-  providers: [HistoryService, tenantModels.historyModel, JwtService],
+  providers: [
+    HistoryService,
+    tenantModels.historyModel,
+    JwtService,
+    tenantModels.teamModel,
+  ],
   exports: [HistoryService, tenantModels.historyModel],
 })
 export class HistoryModule {

@@ -66,6 +66,23 @@ export class Tenant extends Document {
     ]),
   })
   isRecoverableConfig: Map<string, boolean>;
+
+  @Prop({
+    type: [
+      {
+        id: { type: String, required: true },
+        order: { type: Number, required: true },
+      },
+    ],
+    default: [
+      { id: 'my-assets', order: 0 },
+      { id: 'computer-updates', order: 1 },
+      { id: 'upcoming-birthdays', order: 2 },
+      { id: 'members-by-country', order: 3 },
+      { id: 'latest-activity', order: 4 },
+    ],
+  })
+  widgets: { id: string; order: number }[];
 }
 
 export const TenantSchema = SchemaFactory.createForClass(Tenant);
