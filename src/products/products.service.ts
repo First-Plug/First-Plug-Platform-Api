@@ -579,6 +579,7 @@ export class ProductsService {
   }
 
   async tableGrouping() {
+    await new Promise((resolve) => process.nextTick(resolve));
     const productsFromRepository = await this.productRepository.find({
       isDeleted: false,
     });
@@ -1505,6 +1506,18 @@ export class ProductsService {
           desirableDateDestination =
             updateProductDto.desirableDate.destination || '';
         }
+        if (updateProductDto.fp_shipment) {
+          updateProductDto.status = await this.determineProductStatus(
+            {
+              fp_shipment: updateProductDto.fp_shipment,
+              location: updateProductDto.location,
+              assignedEmail: updateProductDto.assignedEmail,
+              productCondition: updateProductDto.productCondition,
+            },
+            tenantName,
+            actionType,
+          );
+        }
 
         if (updateProductDto.fp_shipment) {
           if (actionType) {
@@ -1546,7 +1559,9 @@ export class ProductsService {
             updateProductDto.assignedEmail !== 'none'
           ) {
             updateProductDto.location = 'Employee';
-            updateProductDto.status = 'Delivered';
+            if (!updateProductDto.fp_shipment) {
+              updateProductDto.status = 'Delivered';
+            }
           } else if (
             updateProductDto.assignedEmail === 'none' &&
             (updateProductDto.productCondition as Condition) !== 'Unusable'

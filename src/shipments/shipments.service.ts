@@ -70,7 +70,7 @@ export class ShipmentsService {
     return countryCodes[countryName] || 'XX';
   }
 
-  private async getLocationInfo(
+  public async getLocationInfo(
     location: string,
     tenantId: string,
     assignedEmail?: string,
@@ -228,8 +228,10 @@ export class ShipmentsService {
     }
 
     const product = found.product;
-    const assignedEmail = product.assignedEmail || found.member?.email || '';
-    const assignedMember = product.assignedMember || '';
+    const assignedEmail = found.member?.email || product.assignedEmail || '';
+    const assignedMember = found.member
+      ? `${found.member.firstName} ${found.member.lastName}`
+      : product.assignedMember || '';
 
     const isCreating = this.isCreatingAction(actionType);
 
@@ -244,7 +246,7 @@ export class ShipmentsService {
         );
 
     const destinationInfo = await this.getLocationInfo(
-      product.location || '',
+      assignedMember ? 'Employee' : product.location || '',
       tenantId,
       assignedEmail,
       assignedMember,
@@ -259,7 +261,7 @@ export class ShipmentsService {
       orderDestination: destinationInfo.code,
       assignedEmail: assignedEmail || '',
       originLocation: isCreating ? 'XX' : product.location || '',
-      destinationLocation: product.location || '',
+      destinationLocation: assignedMember ? 'Employee' : product.location || '',
     };
   }
 
@@ -299,6 +301,11 @@ export class ShipmentsService {
     desirableDestinationDate?: string,
     desirableOriginDate?: string,
   ): Promise<ShipmentDocument> {
+    console.log('🚚 [INIT] findOrCreateShipment llamado', {
+      productId,
+      actionType,
+      tenantId,
+    });
     const found = await this.productsService.findProductById(
       new Types.ObjectId(productId) as unknown as Schema.Types.ObjectId,
     );
@@ -306,7 +313,8 @@ export class ShipmentsService {
       throw new NotFoundException(`Product ${productId} not found.`);
     }
     const product = found.product;
-    const assignedEmail = product.assignedEmail || found.member?.email || '';
+    const assignedEmail = found.member?.email || product.assignedEmail || '';
+    console.log('📦 Producto encontrado:', { assignedEmail });
 
     const {
       origin,
@@ -319,9 +327,16 @@ export class ShipmentsService {
       productId,
       tenantId,
       actionType,
-      undefined,
+      assignedEmail,
+      desirableOriginDate,
       desirableDestinationDate,
     );
+    console.log('📍 Ubicaciones obtenidas:', {
+      origin,
+      destination,
+      originLocation,
+      destinationLocation,
+    });
 
     const originDetails = ['create', 'bulkCreate'].includes(actionType)
       ? undefined
@@ -333,6 +348,8 @@ export class ShipmentsService {
           desirableOriginDate,
         ).then((res) => res.details);
 
+    console.log('📄 originDetails:', originDetails);
+
     const destinationDetails = await this.getLocationInfo(
       destinationLocation,
       tenantId,
@@ -341,10 +358,12 @@ export class ShipmentsService {
       desirableDestinationDate,
     ).then((res) => res.details);
 
+    console.log('📄 destinationDetails:', destinationDetails);
+
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantId);
     const ShipmentModel = this.getShipmentModel(connection);
-
+    console.log('🔎 Buscando shipment existente...');
     const existingShipment = await ShipmentModel.findOne({
       origin,
       destination,
@@ -357,14 +376,17 @@ export class ShipmentsService {
     const productObjectId = new mongoose.Types.ObjectId(productId);
 
     if (existingShipment) {
+      console.log('✅ Shipment existente encontrado');
       if (!existingShipment.products.includes(productObjectId)) {
+        console.log('➕ Agregando producto al shipment existente...');
         existingShipment.products.push(productObjectId);
         existingShipment.quantity_products = existingShipment.products.length;
         await existingShipment.save({ session });
+        console.log('💾 Shipment existente actualizado');
       }
       return existingShipment;
     }
-
+    console.log('🆕 Creando nuevo shipment...');
     const destinationComplete = await this.productsService.isAddressComplete(
       { ...product, location: destinationLocation, assignedEmail },
       tenantId,
@@ -395,6 +417,11 @@ export class ShipmentsService {
       nextNumber,
     );
 
+    console.log('📦 Datos del nuevo shipment:', {
+      order_id,
+      shipmentStatus,
+    });
+
     const newShipment = await ShipmentModel.create({
       order_id,
       tenant: tenantId,
@@ -411,6 +438,8 @@ export class ShipmentsService {
       price: { amount: null, currencyCode: 'TBC' },
     });
 
+    console.log('✅ Shipment creado');
+
     if (['In Preparation', 'On The Way'].includes(shipmentStatus)) {
       await this.markActiveShipmentTargets(
         productId,
@@ -425,7 +454,7 @@ export class ShipmentsService {
       orderNumberGenerator.getCurrent(),
       session ?? undefined,
     );
-
+    console.log('✅ Orden finalizada correctamente');
     return newShipment;
   }
 
