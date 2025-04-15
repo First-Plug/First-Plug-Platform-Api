@@ -1798,6 +1798,57 @@ export class ProductsService {
               { ...updateProductDto, recoverable: isRecoverable },
               member,
             );
+
+            if (updateProductDto.fp_shipment) {
+              const newStatus = await this.determineProductStatus(
+                {
+                  fp_shipment: updateProductDto.fp_shipment,
+                  location: updateProductDto.location,
+                  assignedEmail: updateProductDto.assignedEmail,
+                  productCondition: updateProductDto.productCondition,
+                },
+                tenantName,
+                actionType,
+              );
+              updateProductDto.status = newStatus;
+            }
+
+            const oldData = {
+              location: 'Employee',
+              assignedEmail: member.email,
+              assignedMember: `${member.firstName} ${member.lastName}`,
+            };
+
+            const newData = {
+              location: updateProductDto.location || 'FP warehouse',
+              assignedEmail: '',
+              assignedMember: '',
+            };
+
+            let desirableDateOrigin = '';
+            let desirableDateDestination = '';
+
+            if (typeof updateProductDto.desirableDate === 'string') {
+              desirableDateDestination = updateProductDto.desirableDate;
+            } else if (updateProductDto.desirableDate) {
+              desirableDateOrigin = updateProductDto.desirableDate.origin || '';
+              desirableDateDestination =
+                updateProductDto.desirableDate.destination || '';
+            }
+
+            if (updateProductDto.fp_shipment && actionType) {
+              await this.shipmentsService.findOrCreateShipment(
+                memberProduct.product._id!.toString(),
+                actionType,
+                tenantName,
+                session,
+                desirableDateDestination,
+                desirableDateOrigin,
+                oldData,
+                newData,
+              );
+            }
+
             // Registrar return
             if (actionType) {
               await this.historyService.create({
