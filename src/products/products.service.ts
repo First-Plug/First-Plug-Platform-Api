@@ -1025,13 +1025,17 @@ export class ProductsService {
         product.assignedEmail,
       );
     }
+    console.log(
+      '🧪 Status seteado en moveToMemberCollection:',
+      updateProductDto.status,
+    );
 
     const updateData = {
       _id: product._id,
       name: updateProductDto.name || product.name,
       category: product.category,
       attributes: updateProductDto.attributes || product.attributes,
-      status: updateProductDto.status || product.status,
+      status: updateProductDto.status,
       // recoverable: product.recoverable,
       recoverable:
         updateProductDto.recoverable !== undefined
@@ -1082,13 +1086,16 @@ export class ProductsService {
     } else {
       throw new Error('Product not found in member collection');
     }
-
+    console.log(
+      '🧪 Status seteado en moveToMemberCollection:',
+      updateProductDto.status,
+    );
     const updateData = {
       _id: product._id,
       name: updateProductDto.name || product.name,
       category: product.category,
       attributes: updateProductDto.attributes || product.attributes,
-      status: updateProductDto.status || product.status,
+      status: updateProductDto.status,
       // recoverable: product.recoverable,
       recoverable:
         updateProductDto.recoverable !== undefined
@@ -1123,6 +1130,7 @@ export class ProductsService {
     member?: MemberDocument,
   ) {
     const updatedFields = this.getUpdatedFields(product, updateProductDto);
+    updatedFields.status = updateProductDto.status ?? product.status;
 
     if (
       product.assignedEmail &&
@@ -1153,6 +1161,7 @@ export class ProductsService {
         Object.assign(member.products[productIndex], updatedFields);
         await member.save({ session });
       }
+      console.log('🧪 Campos actualizados en producto:', updatedFields);
     }
   }
 
@@ -1491,6 +1500,20 @@ export class ProductsService {
             if (newMember) {
               const lastMember = product.assignedEmail;
 
+              if (updateProductDto.fp_shipment) {
+                const newStatus = await this.determineProductStatus(
+                  {
+                    fp_shipment: updateProductDto.fp_shipment,
+                    location: updateProductDto.location,
+                    assignedEmail: updateProductDto.assignedEmail,
+                    productCondition: updateProductDto.productCondition,
+                  },
+                  tenantName,
+                  actionType,
+                );
+                updateProductDto.status = newStatus;
+              }
+
               await this.moveToMemberCollection(
                 session,
                 product,
@@ -1498,6 +1521,42 @@ export class ProductsService {
                 { ...updateProductDto, recoverable: isRecoverable },
                 product.assignedEmail || '',
               );
+
+              if (updateProductDto.fp_shipment && actionType) {
+                const desirableDateOrigin =
+                  typeof updateProductDto.desirableDate === 'object'
+                    ? updateProductDto.desirableDate.origin || ''
+                    : '';
+                const desirableDateDestination =
+                  typeof updateProductDto.desirableDate === 'string'
+                    ? updateProductDto.desirableDate
+                    : updateProductDto.desirableDate?.destination || '';
+
+                const oldData = {
+                  location: product.location,
+                  assignedEmail: product.assignedEmail,
+                  assignedMember: product.assignedMember,
+                };
+
+                const newData = {
+                  location: updateProductDto.location ?? oldData.location,
+                  assignedEmail:
+                    updateProductDto.assignedEmail ?? oldData.assignedEmail,
+                  assignedMember:
+                    updateProductDto.assignedMember ?? oldData.assignedMember,
+                };
+
+                await this.shipmentsService.findOrCreateShipment(
+                  product._id.toString(),
+                  actionType,
+                  tenantName,
+                  session,
+                  desirableDateDestination,
+                  desirableDateOrigin,
+                  oldData,
+                  newData,
+                );
+              }
 
               // Registrar reassign & assign
               if (actionType) {
@@ -1552,7 +1611,7 @@ export class ProductsService {
             updateProductDto.desirableDate.destination || '';
         }
         if (updateProductDto.fp_shipment) {
-          updateProductDto.status = await this.determineProductStatus(
+          const newStatus = await this.determineProductStatus(
             {
               fp_shipment: updateProductDto.fp_shipment,
               location: updateProductDto.location,
@@ -1562,9 +1621,25 @@ export class ProductsService {
             tenantName,
             actionType,
           );
+
+          updateProductDto.status = newStatus;
+          product.status = newStatus;
         }
 
         if (updateProductDto.fp_shipment) {
+          const oldData = {
+            location: product.location,
+            assignedEmail: product.assignedEmail,
+            assignedMember: product.assignedMember,
+          };
+
+          const newData = {
+            location: updateProductDto.location ?? product.location,
+            assignedEmail:
+              updateProductDto.assignedEmail ?? product.assignedEmail,
+            assignedMember:
+              updateProductDto.assignedMember ?? product.assignedMember,
+          };
           if (actionType) {
             await this.shipmentsService.findOrCreateShipment(
               product._id.toString(),
@@ -1573,6 +1648,8 @@ export class ProductsService {
               session,
               desirableDateDestination,
               desirableDateOrigin,
+              oldData,
+              newData,
             );
           }
         }
@@ -1633,6 +1710,20 @@ export class ProductsService {
             if (newMember) {
               const lastMember = member.email;
 
+              if (updateProductDto.fp_shipment) {
+                const newStatus = await this.determineProductStatus(
+                  {
+                    fp_shipment: updateProductDto.fp_shipment,
+                    location: updateProductDto.location,
+                    assignedEmail: updateProductDto.assignedEmail,
+                    productCondition: updateProductDto.productCondition,
+                  },
+                  tenantName,
+                  actionType,
+                );
+                updateProductDto.status = newStatus;
+              }
+
               await this.moveToMemberCollection(
                 session,
                 memberProduct.product as ProductDocument,
@@ -1640,6 +1731,42 @@ export class ProductsService {
                 { ...updateProductDto, recoverable: isRecoverable },
                 member.email,
               );
+
+              if (updateProductDto.fp_shipment && actionType) {
+                const desirableDateOrigin =
+                  typeof updateProductDto.desirableDate === 'object'
+                    ? updateProductDto.desirableDate.origin || ''
+                    : '';
+                const desirableDateDestination =
+                  typeof updateProductDto.desirableDate === 'string'
+                    ? updateProductDto.desirableDate
+                    : updateProductDto.desirableDate?.destination || '';
+
+                const oldData = {
+                  location: memberProduct.product.location,
+                  assignedEmail: memberProduct.product.assignedEmail,
+                  assignedMember: memberProduct.product.assignedMember,
+                };
+
+                const newData = {
+                  location: updateProductDto.location ?? oldData.location,
+                  assignedEmail:
+                    updateProductDto.assignedEmail ?? oldData.assignedEmail,
+                  assignedMember:
+                    updateProductDto.assignedMember ?? oldData.assignedMember,
+                };
+
+                await this.shipmentsService.findOrCreateShipment(
+                  memberProduct.product._id!.toString(),
+                  actionType,
+                  tenantName,
+                  session,
+                  desirableDateDestination,
+                  desirableDateOrigin,
+                  oldData,
+                  newData,
+                );
+              }
 
               // Registrar relocate
               if (actionType) {
@@ -1684,6 +1811,19 @@ export class ProductsService {
               });
             }
           } else {
+            if (updateProductDto.fp_shipment) {
+              const newStatus = await this.determineProductStatus(
+                {
+                  fp_shipment: updateProductDto.fp_shipment,
+                  location: updateProductDto.location,
+                  assignedEmail: updateProductDto.assignedEmail,
+                  productCondition: updateProductDto.productCondition,
+                },
+                tenantName,
+                actionType,
+              );
+              updateProductDto.status = newStatus;
+            }
             await this.updateProductAttributes(
               session,
               memberProduct.product as ProductDocument,
@@ -1707,6 +1847,21 @@ export class ProductsService {
                   'Missing actionType when creating shipment.',
                 );
               }
+
+              const oldData = {
+                location: memberProduct.product.location,
+                assignedEmail: memberProduct.product.assignedEmail,
+                assignedMember: memberProduct.product.assignedMember,
+              };
+
+              const newData = {
+                location: updateProductDto.location ?? oldData.location,
+                assignedEmail:
+                  updateProductDto.assignedEmail ?? oldData.assignedEmail,
+                assignedMember:
+                  updateProductDto.assignedMember ?? oldData.assignedMember,
+              };
+
               await this.shipmentsService.findOrCreateShipment(
                 memberProduct.product._id!.toString(),
                 actionType,
@@ -1714,6 +1869,8 @@ export class ProductsService {
                 session,
                 desirableDateDestination,
                 desirableDateOrigin,
+                oldData,
+                newData,
               );
             }
           }

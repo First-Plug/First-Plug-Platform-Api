@@ -172,33 +172,6 @@ export class ShipmentsService {
     );
   }
 
-  // async getNextOrderNumber(
-  //   connection: Connection,
-  //   session?: mongoose.ClientSession,
-  // ): Promise<number> {
-  //   const ShipmentMetadataModel =
-  //     connection.models.ShipmentMetadata ||
-  //     connection.model(
-  //       'ShipmentMetadata',
-  //       ShipmentMetadataSchema,
-  //       'shipmentmetadata',
-  //     );
-
-  //   const docId = 'orderCounter';
-
-  //   const updated = await ShipmentMetadataModel.findOneAndUpdate(
-  //     { _id: docId },
-  //     { $inc: { lastOrderNumber: 1 } },
-  //     { new: true, upsert: true, session },
-  //   );
-
-  //   if (!updated || updated.lastOrderNumber === undefined) {
-  //     throw new Error('Failed to generate next order number');
-  //   }
-
-  //   return updated.lastOrderNumber;
-  // }
-
   async getProductLocationData(
     productId: Product | string,
     tenantId: string,
@@ -293,6 +266,53 @@ export class ShipmentsService {
     return ShipmentModel.findById(shipmentId).exec();
   }
 
+  async getProductLocationDataFromSnapshots(
+    productId: string,
+    tenantId: string,
+    actionType: string,
+    originSnapshot?: {
+      location?: string;
+      assignedEmail?: string;
+      assignedMember?: string;
+    },
+    destinationSnapshot?: {
+      location?: string;
+      assignedEmail?: string;
+      assignedMember?: string;
+    },
+    desirableOriginDate?: string,
+    desirableDestinationDate?: string,
+  ) {
+    const isCreating = this.isCreatingAction(actionType);
+
+    const originInfo = isCreating
+      ? { name: 'XX', code: 'XX' }
+      : await this.getLocationInfo(
+          originSnapshot?.location || '',
+          tenantId,
+          originSnapshot?.assignedEmail || '',
+          originSnapshot?.assignedMember || '',
+          desirableOriginDate,
+        );
+
+    const destinationInfo = await this.getLocationInfo(
+      destinationSnapshot?.location || '',
+      tenantId,
+      destinationSnapshot?.assignedEmail || '',
+      destinationSnapshot?.assignedMember || '',
+      desirableDestinationDate,
+    );
+
+    return {
+      origin: originInfo.name,
+      destination: destinationInfo.name,
+      orderOrigin: originInfo.code,
+      orderDestination: destinationInfo.code,
+      originLocation: originSnapshot?.location || '',
+      destinationLocation: destinationSnapshot?.location || '',
+    };
+  }
+
   async findOrCreateShipment(
     productId: string,
     actionType: string,
@@ -300,6 +320,16 @@ export class ShipmentsService {
     session: mongoose.ClientSession | null = null,
     desirableDestinationDate?: string,
     desirableOriginDate?: string,
+    oldData?: {
+      location?: string;
+      assignedEmail?: string;
+      assignedMember?: string;
+    },
+    newData?: {
+      location?: string;
+      assignedEmail?: string;
+      assignedMember?: string;
+    },
   ): Promise<ShipmentDocument> {
     console.log('🚚 [INIT] findOrCreateShipment llamado', {
       productId,
@@ -313,7 +343,12 @@ export class ShipmentsService {
       throw new NotFoundException(`Product ${productId} not found.`);
     }
     const product = found.product;
-    const assignedEmail = found.member?.email || product.assignedEmail || '';
+    const assignedEmail =
+      newData?.assignedEmail ||
+      found.member?.email ||
+      product.assignedEmail ||
+      '';
+
     console.log('📦 Producto encontrado:', { assignedEmail });
 
     const {
@@ -323,11 +358,12 @@ export class ShipmentsService {
       orderDestination,
       originLocation,
       destinationLocation,
-    } = await this.getProductLocationData(
+    } = await this.getProductLocationDataFromSnapshots(
       productId,
       tenantId,
       actionType,
-      assignedEmail,
+      oldData,
+      newData,
       desirableOriginDate,
       desirableDestinationDate,
     );
@@ -343,8 +379,8 @@ export class ShipmentsService {
       : await this.getLocationInfo(
           originLocation,
           tenantId,
-          assignedEmail,
-          product.assignedMember,
+          oldData?.assignedEmail || '',
+          oldData?.assignedMember || '',
           desirableOriginDate,
         ).then((res) => res.details);
 
@@ -353,8 +389,8 @@ export class ShipmentsService {
     const destinationDetails = await this.getLocationInfo(
       destinationLocation,
       tenantId,
-      assignedEmail,
-      product.assignedMember,
+      newData?.assignedEmail || '',
+      newData?.assignedMember || '',
       desirableDestinationDate,
     ).then((res) => res.details);
 
