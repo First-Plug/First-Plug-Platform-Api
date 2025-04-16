@@ -6,11 +6,13 @@ import { EnvConfiguration, ZodEnvironmentsSchema } from './config';
 import { ProductsModule } from './products/products.module';
 import { MembersModule } from './members/members.module';
 import { OrdersModule } from './orders/orders.module';
-import { ShipmentsModule } from './shipments/shipments.module';
 import { AuthModule } from './auth/auth.module';
 import { TeamsModule } from './teams/teams.module';
 import { SlackModule } from 'nestjs-slack-webhook';
 import { HistoryModule } from './history/history.module';
+import { ShipmentsModule } from 'src/shipments/shipments.module';
+import { CommonModule } from 'src/common/common.module';
+import { RetoolWebhooksModule } from 'src/retool-webhooks/retool-webhooks.module';
 
 @Module({
   imports: [
@@ -40,10 +42,12 @@ import { HistoryModule } from './history/history.module';
     ProductsModule,
     forwardRef(() => MembersModule),
     OrdersModule,
-    ShipmentsModule,
     AuthModule,
     forwardRef(() => TeamsModule),
     HistoryModule,
+    ShipmentsModule,
+    RetoolWebhooksModule,
+    CommonModule,
   ],
   controllers: [],
   providers: [],

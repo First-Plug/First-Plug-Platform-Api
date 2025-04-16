@@ -92,6 +92,16 @@ export const ProductSchemaZod = z
       )
       .optional()
       .nullable(),
+    fp_shipment: z.boolean().optional(),
+    desirableDate: z
+      .union([
+        z.string(),
+        z.object({
+          origin: z.string().optional(),
+          destination: z.string().optional(),
+        }),
+      ])
+      .optional(),
   })
   .superRefine((data, ctx) => {
     if (data.category === 'Merchandising' && !data.name) {
@@ -129,27 +139,41 @@ export const ProductSchemaZod = z
         });
       }
     } else {
-      // Validaciones para productos no "Unusable"
-      if (data.assignedMember) {
-        if (data.location !== 'Employee' || data.status !== 'Delivered') {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message:
-              'When assigned to a member, location must be Employee and status must be Delivered.',
-            path: ['status'],
-          });
-        }
-      } else if (data.assignedEmail === 'none') {
+      if (data.fp_shipment) {
         if (
-          !['FP warehouse', 'Our office'].includes(data.location) ||
-          data.status !== 'Available'
+          typeof data.status !== 'string' ||
+          !['In Transit', 'In Transit - Missing Data'].includes(data.status)
         ) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message:
-              'When unassigned, location must be FP warehouse or Our office, and status must be Available.',
+              "When FP handles the shipment, status must be 'In Transit' or 'In Transit - Missing Data'.",
             path: ['status'],
           });
+        }
+      } else {
+        // Validaciones para productos no "Unusable"
+        if (data.assignedMember) {
+          if (data.location !== 'Employee' || data.status !== 'Delivered') {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                'When assigned to a member, location must be Employee and status must be Delivered.',
+              path: ['status'],
+            });
+          }
+        } else if (data.assignedEmail === 'none') {
+          if (
+            !['FP warehouse', 'Our office'].includes(data.location) ||
+            data.status !== 'Available'
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                'When unassigned, location must be FP warehouse or Our office, and status must be Available.',
+              path: ['status'],
+            });
+          }
         }
       }
 

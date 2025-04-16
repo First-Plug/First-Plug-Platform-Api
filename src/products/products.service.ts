@@ -4,8 +4,10 @@ import {
   InternalServerErrorException,
   NotFoundException,
   Logger,
+  forwardRef,
+  // forwardRef,
 } from '@nestjs/common';
-import { Model, ObjectId, Types } from 'mongoose';
+import { ClientSession, Model, ObjectId, Schema, Types } from 'mongoose';
 import {
   Product,
   ProductDocument,
@@ -16,7 +18,7 @@ import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { BadRequestException } from '@nestjs/common';
 import { MembersService } from 'src/members/members.service';
 import { TenantsService } from 'src/tenants/tenants.service';
-import { Attribute, Condition } from './interfaces/product.interface';
+import { Attribute, Condition, Status } from './interfaces/product.interface';
 import {
   MemberDocument,
   MemberSchema,
@@ -26,6 +28,8 @@ import { Parser } from 'json2csv';
 import { HistoryService } from 'src/history/history.service';
 import { updateProductPrice } from './helpers/update-price.helper';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
+import { ShipmentsService } from 'src/shipments/shipments.service';
+import { ModuleRef } from '@nestjs/core';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -38,11 +42,19 @@ export class ProductsService {
     @Inject('PRODUCT_MODEL')
     private readonly productRepository: ProductModel,
     private readonly memberService: MembersService,
-    private readonly tenantsService: TenantsService,
+    private tenantsService: TenantsService,
     private readonly historyService: HistoryService,
     private readonly connectionService: TenantConnectionService,
+
+    @Inject(forwardRef(() => ShipmentsService))
+    private readonly shipmentsService: ShipmentsService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
+  onModuleInit() {
+    this.tenantsService = this.moduleRef.get(TenantsService, { strict: false });
+    console.log('🧩 TenantsService loaded manually:', !!this.tenantsService);
+  }
   private normalizeProductData(product: CreateProductDto) {
     return {
       ...product,
@@ -203,6 +215,7 @@ export class ProductsService {
   private async getRecoverableConfigForTenant(
     tenantName: string,
   ): Promise<Map<string, boolean>> {
+    await new Promise((resolve) => process.nextTick(resolve));
     const user = await this.tenantsService.getByTenantName(tenantName);
 
     if (user && user.isRecoverableConfig) {
@@ -219,6 +232,104 @@ export class ProductsService {
       ['Peripherals', true],
       ['Other', true],
     ]);
+  }
+
+  isCreatingAction(actionType?: string): boolean {
+    return actionType === 'create' || actionType === 'bulkCreate';
+  }
+
+  public async isAddressComplete(
+    product: Partial<Product>,
+    tenantName: string,
+  ): Promise<boolean> {
+    if (product.location === 'FP warehouse') {
+      return true;
+    }
+
+    if (product.location === 'Employee') {
+      const member = await this.memberService.findByEmailNotThrowError(
+        product.assignedEmail!,
+      );
+      if (!member) return false;
+
+      return !!(
+        member.country &&
+        member.city &&
+        member.zipCode &&
+        member.address &&
+        member.apartment &&
+        member.personalEmail &&
+        member.phone &&
+        member.dni
+      );
+    }
+
+    if (product.location === 'Our office') {
+      //  Obtener datos del tenant
+      const tenant = await this.tenantsService.getByTenantName(tenantName);
+
+      if (!tenant) return false;
+
+      return !!(
+        tenant.country &&
+        tenant.city &&
+        tenant.state &&
+        tenant.zipCode &&
+        tenant.address &&
+        tenant.apartment &&
+        tenant.phone
+      );
+    }
+
+    return false;
+  }
+
+  public async determineProductStatus(
+    product: Partial<Product>,
+    tenantName: string,
+    actionType?: string,
+    origin?: string,
+  ): Promise<Status> {
+    console.log('🧪 Status evaluation:', {
+      fp_shipment: product.fp_shipment,
+      assignedEmail: product.assignedEmail,
+      location: product.location,
+      productCondition: product.productCondition,
+    });
+    if (product.productCondition === 'Unusable') {
+      return 'Unavailable';
+    }
+
+    // ✅ Luego, si NO participa en shipment
+    if (!product.fp_shipment) {
+      if (product.assignedEmail && product.location === 'Employee') {
+        return 'Delivered';
+      } else if (
+        ['FP warehouse', 'Our office'].includes(product.location ?? '')
+      ) {
+        return 'Available';
+      } else {
+        return 'Unavailable'; // Datos incompletos o inválidos
+      }
+    }
+
+    const isCreating = this.isCreatingAction(actionType);
+
+    const destinationIsComplete = await this.isAddressComplete(
+      { ...product, location: product.location },
+      tenantName,
+    );
+
+    const originIsComplete = isCreating
+      ? true
+      : await this.isAddressComplete(
+          { ...product, location: origin },
+          tenantName,
+        );
+
+    return destinationIsComplete && originIsComplete
+      ? 'In Transit'
+      : 'In Transit - Missing Data';
   }
 
   async create(
@@ -468,6 +579,7 @@ export class ProductsService {
   }
 
   async tableGrouping() {
+    await new Promise((resolve) => process.nextTick(resolve));
     const productsFromRepository = await this.productRepository.find({
       isDeleted: false,
     });
@@ -913,13 +1025,17 @@ export class ProductsService {
         product.assignedEmail,
       );
     }
+    console.log(
+      '🧪 Status seteado en moveToMemberCollection:',
+      updateProductDto.status,
+    );
 
     const updateData = {
       _id: product._id,
       name: updateProductDto.name || product.name,
       category: product.category,
       attributes: updateProductDto.attributes || product.attributes,
-      status: updateProductDto.status || product.status,
+      status: updateProductDto.status,
       // recoverable: product.recoverable,
       recoverable:
         updateProductDto.recoverable !== undefined
@@ -936,10 +1052,17 @@ export class ProductsService {
         updateProductDto.productCondition !== undefined
           ? updateProductDto.productCondition
           : product.productCondition,
+      fp_shipment: updateProductDto.fp_shipment ?? product.fp_shipment,
+      activeShipment: updateProductDto.fp_shipment
+        ? true
+        : product.activeShipment,
       isDeleted: product.isDeleted,
       lastAssigned: lastAssigned,
     };
     newMember.products.push(updateData);
+    if (updateProductDto.fp_shipment) {
+      newMember.activeShipment = true;
+    }
     await newMember.save({ session });
 
     await this.productRepository
@@ -963,13 +1086,16 @@ export class ProductsService {
     } else {
       throw new Error('Product not found in member collection');
     }
-
+    console.log(
+      '🧪 Status seteado en moveToMemberCollection:',
+      updateProductDto.status,
+    );
     const updateData = {
       _id: product._id,
       name: updateProductDto.name || product.name,
       category: product.category,
       attributes: updateProductDto.attributes || product.attributes,
-      status: updateProductDto.status || product.status,
+      status: updateProductDto.status,
       // recoverable: product.recoverable,
       recoverable:
         updateProductDto.recoverable !== undefined
@@ -986,6 +1112,10 @@ export class ProductsService {
         updateProductDto.productCondition !== undefined
           ? updateProductDto.productCondition
           : product.productCondition,
+      fp_shipment: updateProductDto.fp_shipment ?? product.fp_shipment,
+      activeShipment: updateProductDto.fp_shipment
+        ? true
+        : product.activeShipment,
       isDeleted: product.isDeleted,
     };
     return await this.productRepository.create([updateData], { session });
@@ -1000,6 +1130,7 @@ export class ProductsService {
     member?: MemberDocument,
   ) {
     const updatedFields = this.getUpdatedFields(product, updateProductDto);
+    updatedFields.status = updateProductDto.status ?? product.status;
 
     if (
       product.assignedEmail &&
@@ -1008,6 +1139,12 @@ export class ProductsService {
       ))
     ) {
       updatedFields.lastAssigned = product.assignedEmail;
+    }
+    updatedFields.fp_shipment =
+      updateProductDto.fp_shipment ?? product.fp_shipment;
+
+    if (updateProductDto.fp_shipment) {
+      updatedFields.activeShipment = true;
     }
 
     if (currentLocation === 'products') {
@@ -1024,6 +1161,7 @@ export class ProductsService {
         Object.assign(member.products[productIndex], updatedFields);
         await member.save({ session });
       }
+      console.log('🧪 Campos actualizados en producto:', updatedFields);
     }
   }
 
@@ -1160,12 +1298,106 @@ export class ProductsService {
     }
   }
 
+  async validateProductAvailability(productId: string) {
+    const id = new Types.ObjectId(
+      productId,
+    ) as unknown as Schema.Types.ObjectId;
+    const found = await this.findProductById(id);
+
+    const product =
+      found.product ||
+      found.member?.products.find(
+        (p) => p._id?.toString() === productId.toString(),
+      );
+
+    if (!product) throw new NotFoundException('Product not found');
+
+    if (product.activeShipment) {
+      throw new BadRequestException(
+        'This product is part of an active shipment and cannot be moved or modified.',
+      );
+    }
+  }
+
+  private async handleProductUpdateByActionType(
+    session: ClientSession,
+    product: ProductDocument,
+    updateDto: UpdateProductDto,
+    tenantName: string,
+    userId: string,
+    actionType?: string,
+  ) {
+    switch (actionType) {
+      case 'assign':
+      case 'reassign':
+      case 'relocate':
+      case 'return':
+      case 'offboarding':
+        if (!product._id) throw new BadRequestException('Product ID missing');
+        await this.validateProductAvailability(product._id.toString());
+        break;
+    }
+  }
+
+  private async maybeCreateShipmentAndUpdateStatus(
+    product: ProductDocument,
+    updateDto: UpdateProductDto,
+    tenantName: string,
+    actionType: string,
+    session: ClientSession,
+    oldData: {
+      location?: string;
+      assignedEmail?: string;
+      assignedMember?: string;
+    },
+    newData: {
+      location?: string;
+      assignedEmail?: string;
+      assignedMember?: string;
+    },
+  ) {
+    if (!updateDto.fp_shipment || !actionType) return;
+
+    const newStatus = await this.determineProductStatus(
+      {
+        fp_shipment: updateDto.fp_shipment,
+        location: updateDto.location,
+        assignedEmail: updateDto.assignedEmail,
+        productCondition: updateDto.productCondition,
+      },
+      tenantName,
+      actionType,
+    );
+    updateDto.status = newStatus;
+
+    const desirableDateOrigin =
+      typeof updateDto.desirableDate === 'object'
+        ? updateDto.desirableDate.origin || ''
+        : '';
+    const desirableDateDestination =
+      typeof updateDto.desirableDate === 'string'
+        ? updateDto.desirableDate
+        : updateDto.desirableDate?.destination || '';
+
+    await this.shipmentsService.findOrCreateShipment(
+      product._id!.toString(),
+      actionType,
+      tenantName,
+      session,
+      desirableDateDestination,
+      desirableDateOrigin,
+      oldData,
+      newData,
+    );
+  }
+
   async update(
     id: ObjectId,
     updateProductDto: UpdateProductDto,
     tenantName: string,
     userId: string,
   ) {
+    await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     const session = await connection.startSession();
@@ -1179,6 +1411,19 @@ export class ProductsService {
         .session(session);
 
       if (product) {
+        if (product.activeShipment) {
+          throw new BadRequestException(
+            'This product is currently part of an active shipment and cannot be modified.',
+          );
+        }
+        await this.handleProductUpdateByActionType(
+          session,
+          product,
+          updateProductDto,
+          tenantName,
+          userId,
+          actionType,
+        );
         await this.getRecoverableConfigForTenant(tenantName);
 
         const isRecoverable =
@@ -1315,6 +1560,24 @@ export class ProductsService {
                 product.assignedEmail || '',
               );
 
+              await this.maybeCreateShipmentAndUpdateStatus(
+                product,
+                updateProductDto,
+                tenantName,
+                actionType!,
+                session,
+                {
+                  location: product.location,
+                  assignedEmail: product.assignedEmail,
+                  assignedMember: product.assignedMember,
+                },
+                {
+                  location: updateProductDto.location,
+                  assignedEmail: updateProductDto.assignedEmail,
+                  assignedMember: updateProductDto.assignedMember,
+                },
+              );
+
               // Registrar reassign & assign
               if (actionType) {
                 await this.historyService.create({
@@ -1358,6 +1621,26 @@ export class ProductsService {
           }
         }
 
+        await this.maybeCreateShipmentAndUpdateStatus(
+          product,
+          updateProductDto,
+          tenantName,
+          actionType!,
+          session,
+          {
+            location: product.location,
+            assignedEmail: product.assignedEmail,
+            assignedMember: product.assignedMember,
+          },
+          {
+            location: updateProductDto.location ?? product.location,
+            assignedEmail:
+              updateProductDto.assignedEmail ?? product.assignedEmail,
+            assignedMember:
+              updateProductDto.assignedMember ?? product.assignedMember,
+          },
+        );
+
         await session.commitTransaction();
         session.endSession();
         return { message: `Product with id "${id}" updated successfully` };
@@ -1385,7 +1668,9 @@ export class ProductsService {
             updateProductDto.assignedEmail !== 'none'
           ) {
             updateProductDto.location = 'Employee';
-            updateProductDto.status = 'Delivered';
+            if (!updateProductDto.fp_shipment) {
+              updateProductDto.status = 'Delivered';
+            }
           } else if (
             updateProductDto.assignedEmail === 'none' &&
             (updateProductDto.productCondition as Condition) !== 'Unusable'
@@ -1420,6 +1705,29 @@ export class ProductsService {
                 member.email,
               );
 
+              await this.maybeCreateShipmentAndUpdateStatus(
+                memberProduct.product as ProductDocument,
+                updateProductDto,
+                tenantName,
+                actionType!,
+                session,
+                {
+                  location: memberProduct.product.location,
+                  assignedEmail: memberProduct.product.assignedEmail,
+                  assignedMember: memberProduct.product.assignedMember,
+                },
+                {
+                  location:
+                    updateProductDto.location ?? memberProduct.product.location,
+                  assignedEmail:
+                    updateProductDto.assignedEmail ??
+                    memberProduct.product.assignedEmail,
+                  assignedMember:
+                    updateProductDto.assignedMember ??
+                    memberProduct.product.assignedMember,
+                },
+              );
+
               // Registrar relocate
               if (actionType) {
                 await this.historyService.create({
@@ -1450,6 +1758,25 @@ export class ProductsService {
               { ...updateProductDto, recoverable: isRecoverable },
               member,
             );
+
+            await this.maybeCreateShipmentAndUpdateStatus(
+              memberProduct.product as ProductDocument,
+              updateProductDto,
+              tenantName,
+              actionType!,
+              session,
+              {
+                location: 'Employee',
+                assignedEmail: member.email,
+                assignedMember: `${member.firstName} ${member.lastName}`,
+              },
+              {
+                location: updateProductDto.location || 'FP warehouse',
+                assignedEmail: '',
+                assignedMember: '',
+              },
+            );
+
             // Registrar return
             if (actionType) {
               await this.historyService.create({
@@ -1469,6 +1796,29 @@ export class ProductsService {
               { ...updateProductDto, recoverable: isRecoverable },
               'members',
               member,
+            );
+
+            await this.maybeCreateShipmentAndUpdateStatus(
+              memberProduct.product as ProductDocument,
+              updateProductDto,
+              tenantName,
+              actionType!,
+              session,
+              {
+                location: memberProduct.product.location,
+                assignedEmail: memberProduct.product.assignedEmail,
+                assignedMember: memberProduct.product.assignedMember,
+              },
+              {
+                location:
+                  updateProductDto.location ?? memberProduct.product.location,
+                assignedEmail:
+                  updateProductDto.assignedEmail ??
+                  memberProduct.product.assignedEmail,
+                assignedMember:
+                  updateProductDto.assignedMember ??
+                  memberProduct.product.assignedMember,
+              },
             );
           }
 
@@ -1713,7 +2063,7 @@ export class ProductsService {
     res.send(csvData);
   }
 
-  async findProductById(id: ObjectId) {
+  async findProductById(id: Schema.Types.ObjectId) {
     try {
       const product = await this.productRepository.findById(id);
 

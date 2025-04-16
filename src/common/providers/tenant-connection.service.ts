@@ -89,6 +89,7 @@ export class TenantConnectionService
 
     for (const [
       tenantId,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       { connection, lastUsed },
     ] of this.connections.entries()) {
       if (now - lastUsed > this.maxIdleTime) {

@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
   Logger,
+  forwardRef,
 } from '@nestjs/common';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
@@ -19,6 +20,8 @@ import { InjectSlack } from 'nestjs-slack-webhook';
 import { IncomingWebhook } from '@slack/webhook';
 import { HistoryService } from 'src/history/history.service';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
+import { Status } from 'src/products/interfaces/product.interface';
+import { ShipmentsService } from 'src/shipments/shipments.service';
 
 export interface MemberModel
   extends Model<MemberDocument>,
@@ -36,6 +39,8 @@ export class MembersService {
     @InjectSlack() private readonly slack: IncomingWebhook,
     private readonly historyService: HistoryService,
     private readonly connectionService: TenantConnectionService,
+    @Inject(forwardRef(() => ShipmentsService))
+    private readonly shipmentsService: ShipmentsService,
   ) {
     const slackOffboardingWebhookUrl =
       process.env.SLACK_WEBHOOK_URL_OFFBOARDING;
@@ -452,6 +457,42 @@ export class MembersService {
     return await this.memberRepository.findOne({ email: email });
   }
 
+  async validateIfMemberCanBeModified(memberEmail: string, tenantName: string) {
+    const shipments = await this.shipmentsService.getShipmentsByMember(
+      memberEmail,
+      tenantName,
+    );
+    const hasRestrictedStatus = shipments.some(
+      (s) => s.shipment_status === 'On The Way',
+    );
+    if (hasRestrictedStatus) {
+      throw new BadRequestException(
+        'This member is part of a shipment On The Way and cannot be modified.',
+      );
+    }
+  }
+
+  private isPersonalDataBeingModified(
+    original: MemberDocument,
+    updateDto: Partial<UpdateMemberDto>,
+  ): boolean {
+    const sensitiveFields = [
+      'address',
+      'apartment',
+      'city',
+      // 'state',
+      'zipCode',
+      'country',
+      'dni',
+      'phone',
+      'email',
+    ];
+    return sensitiveFields.some(
+      (field) =>
+        updateDto[field] !== undefined && updateDto[field] !== original[field],
+    );
+  }
+
   async update(
     id: ObjectId,
     updateMemberDto: UpdateMemberDto,
@@ -477,6 +518,10 @@ export class MembersService {
         updateMemberDto.dni !== member.dni
       ) {
         await this.validateDni(updateMemberDto.dni);
+      }
+
+      if (this.isPersonalDataBeingModified(member, updateMemberDto)) {
+        await this.validateIfMemberCanBeModified(member.email, tenantName);
       }
 
       const oldEmail = member.email.trim().toLowerCase();
@@ -599,26 +644,47 @@ export class MembersService {
   ) {
     const member = await this.findByEmailNotThrowError(email);
 
-    if (member) {
-      const { serialNumber, price, productCondition, ...rest } =
-        createProductDto;
+    if (!member) return null;
 
-      const productData = {
-        ...rest,
-        ...(serialNumber && serialNumber.trim() !== '' ? { serialNumber } : {}),
-        productCondition: productCondition || 'Optimal',
-        assignedMember: `${member.firstName} ${member.lastName}`,
-        assignedEmail: email,
-        ...(price?.amount !== undefined && price?.currencyCode
-          ? {
-              price: { amount: price.amount, currencyCode: price.currencyCode },
-            }
-          : {}),
-      };
+    const { serialNumber, price, productCondition, fp_shipment, ...rest } =
+      createProductDto;
 
-      member.products.push(productData);
-      await member.save({ session });
+    // 📌 Definir la ubicación como Employee
+    const location = 'Employee';
+
+    // 📌 Determinar el estado del producto
+    let status: Status = 'Delivered'; // Default para Employee
+
+    if (fp_shipment) {
+      const isComplete = !!(
+        member.country &&
+        member.city &&
+        member.zipCode &&
+        member.address &&
+        member.personalEmail &&
+        member.phone &&
+        member.dni
+      );
+
+      status = isComplete ? 'In Transit' : 'In Transit - Missing Data';
     }
+
+    const productData = {
+      ...rest,
+      serialNumber: serialNumber?.trim() || undefined,
+      productCondition: productCondition || 'Optimal',
+      assignedMember: `${member.firstName} ${member.lastName}`,
+      assignedEmail: email,
+      location,
+      status,
+      ...(price?.amount !== undefined && price?.currencyCode
+        ? { price: { amount: price.amount, currencyCode: price.currencyCode } }
+        : {}),
+      fp_shipment: !!fp_shipment,
+    };
+
+    member.products.push(productData);
+    await member.save({ session });
 
     return member;
   }

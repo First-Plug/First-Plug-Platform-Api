@@ -2,12 +2,12 @@ import { Connection } from 'mongoose';
 import { Member, MemberSchema } from '../../members/schemas/member.schema';
 import { Product, ProductSchema } from '../../products/schemas/product.schema';
 import { Order, OrderSchema } from '../../orders/schemas/order.schema';
-import {
-  Shipment,
-  ShipmentSchema,
-} from '../../shipments/schemas/shipment.schema';
 import { Team, TeamSchema } from 'src/teams/schemas/team.schema';
 import { History, HistorySchema } from 'src/history/schemas/history.schema';
+import {
+  ShipmentMetadata,
+  ShipmentMetadataSchema,
+} from 'src/shipments/schema/shipment-metadata.schema';
 
 export const tenantModels = {
   productModel: {
@@ -45,10 +45,14 @@ export const tenantModels = {
     },
     inject: ['TENANT_CONNECTION'],
   },
-  shipmentModel: {
-    provide: 'SHIPMENT_MODEL',
+  shipmentMetadataModel: {
+    provide: 'SHIPMENT_METADATA_MODEL',
     useFactory: async (tenantConnection: Connection) => {
-      return tenantConnection.model(Shipment.name, ShipmentSchema);
+      return tenantConnection.model(
+        ShipmentMetadata.name,
+        ShipmentMetadataSchema,
+        'shipmentmetadata',
+      );
     },
     inject: ['TENANT_CONNECTION'],
   },
