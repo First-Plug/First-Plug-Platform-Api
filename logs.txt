@@ -1,0 +1,97 @@
+
+> api@1.0.0 start
+> nest start
+
+[32m✔[0m [33mConsole Ninja[0m extension is connected to [33mNest.js[0m, see [36mhttps://tinyurl.com/2vt8jxzw[0m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:32 [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:32 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +19ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:32 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mMongooseModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:32 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mSlackModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:32 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigHostModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:32 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:32 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:32 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mRetoolWebhooksModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:32 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mCommonModule dependencies initialized[39m[38;5;3m +10ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:32 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mSlackCoreModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mMongooseCoreModule dependencies initialized[39m[38;5;3m +666ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mMongooseModule dependencies initialized[39m[38;5;3m +6ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mTenantsModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mHistoryModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mOrdersModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mShipmentsModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mTeamsModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAuthModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mProductsModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mMembersModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mTenantsController {/api/user}:[39m[38;5;3m +9ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/user/migrate/:tenantName, GET} route[39m[38;5;3m +2ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/user/recoverable-config/:tenantName, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/user/notify-birthday-gift, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/user/notify-shop, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/user/notify-computer-upgrade, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/user, PATCH} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/user/update-recoverable, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/user/migrate-expiration/:tenantName, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/user/migrate-expiration, PATCH} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/user/update-computer-expiration/:tenantName, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/user/update-dashboard, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mProductsController {/api/products}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/bulkcreate, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/migrate-price, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/migrate-price/:tenantName, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/table, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/assign/:id, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/reassign/:id, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/export-csv, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/reassign/:id, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/:id, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/:id, PATCH} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/entity/:id, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/:id, DELETE} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mMembersController {/api/members}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/members, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/members/bulkcreate, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/members/offboarding/:id, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/members, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/members/:id, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/members/:id, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/members/:id, DELETE} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/members/team/:teamId, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mTeamsController {/api/teams}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/teams/bulk-delete, DELETE} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/teams, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/teams/:id, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/teams, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/teams/:id, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/teams/:teamId/members/:memberId, PUT} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/teams/:memberId/change-member/:teamId, PUT} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/teams/change-members/:teamId, PUT} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/teams/:memberId/unassign-member, PUT} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/teams/:id, DELETE} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mShipmentsController {/api/shipments}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/shipments/:id/cancel, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mHistoryController {/api/history}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/history, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/history/latest, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/history, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mOrdersController {/api/orders}:[39m[38;5;3m +1ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/orders, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/orders/bulkcreate, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/orders, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/orders/:id, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/orders/:id, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/orders/:id, DELETE} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAuthController {/api/auth}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/user, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/register, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/register-providers, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/login, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/get-tokens, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/refresh, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/change-password, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mRetoolWebhooksController {/api/retool-webhooks}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/retool-webhooks/update-shipment-status, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/retool-webhooks/update-shipment-details, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/retool-webhooks/update-shipment-price, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 44592  - [39m15/04/2025, 14:19:33 [32m    LOG[39m [38;5;3m[NestApplication] [39m[32mNest application successfully started[39m[38;5;3m +4ms[39m

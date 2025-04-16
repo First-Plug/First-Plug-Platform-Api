@@ -814,20 +814,19 @@ export class ShipmentsService {
     }
   }
 
-  async findOrCreateShipmentsForBulk(
+  async findOrCreateShipmentsForOffboarding(
     products: ProductDocument[],
     tenantId: string,
     session: mongoose.ClientSession,
+    originMember: MemberDocument,
+    desirableOriginDate: string,
   ): Promise<ShipmentDocument[]> {
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantId);
     const ShipmentModel = this.getShipmentModel(connection);
-
-    const createdOrUpdatedShipments: ShipmentDocument[] = [];
     const shipmentCache = new Map<string, ShipmentDocument>();
-
     const shipmentsToSave: ShipmentDocument[] = [];
-
+    const createdOrUpdatedShipments: ShipmentDocument[] = [];
     const orderNumberGenerator = await this.initializeOrderNumberGenerator(
       connection,
       session,
@@ -838,7 +837,6 @@ export class ShipmentsService {
 
       const assignedEmail = product.assignedEmail || '';
       const assignedMember = product.assignedMember || '';
-
       const destinationInfo = await this.getLocationInfo(
         product.location || '',
         tenantId,
@@ -847,96 +845,97 @@ export class ShipmentsService {
         undefined,
       );
 
-      const desirableDate = destinationInfo.details?.desirableDate || '';
-      const destinationName = destinationInfo.name;
-      const destinationDetails = destinationInfo.details;
+      const originInfo = await this.getLocationInfo(
+        'Employee',
+        tenantId,
+        originMember.email,
+        `${originMember.firstName} ${originMember.lastName}`,
+        desirableOriginDate,
+      );
 
-      const shipmentKey = `XX-${destinationName}-${desirableDate}`;
-
-      let shipment: ShipmentDocument | null | undefined =
+      const shipmentKey = `${originInfo.name}|${destinationInfo.name}|${desirableOriginDate}`;
+      let shipment: ShipmentDocument | undefined =
         shipmentCache.get(shipmentKey);
 
       if (!shipment) {
-        shipment = await ShipmentModel.findOne({
-          origin: 'XX',
-          destination: destinationName,
-          shipment_status: {
-            $in: ['In Preparation', 'On Hold - Missing Data'],
-          },
-          'destinationDetails.desirableDate': desirableDate,
-        }).session(session);
+        shipment =
+          (await ShipmentModel.findOne({
+            origin: originInfo.name,
+            destination: destinationInfo.name,
+            shipment_status: {
+              $in: ['In Preparation', 'On Hold - Missing Data'],
+            },
+            'originDetails.desirableDate': desirableOriginDate,
+            'destinationDetails.desirableDate':
+              destinationInfo.details?.desirableDate || '',
+          }).session(session)) || undefined;
 
         if (!shipment) {
           const destinationComplete =
             await this.productsService.isAddressComplete(
-              {
-                ...product.toObject(),
-                location: product.location,
-                assignedEmail,
-              },
+              product.toObject(),
               tenantId,
             );
 
-          const shipmentStatus = destinationComplete
-            ? 'In Preparation'
-            : 'On Hold - Missing Data';
-
-          const orderId = this.generateOrderId(
-            'XX',
-            destinationInfo.code,
-            orderNumberGenerator.getNext(),
+          const originComplete = await this.productsService.isAddressComplete(
+            {
+              ...product.toObject(),
+              location: 'Employee',
+              assignedEmail: originMember.email,
+            },
+            tenantId,
           );
 
+          const shipmentStatus =
+            destinationComplete && originComplete
+              ? 'In Preparation'
+              : 'On Hold - Missing Data';
+
           shipment = new ShipmentModel({
-            order_id: orderId,
+            order_id: this.generateOrderId(
+              originInfo.code,
+              destinationInfo.code,
+              orderNumberGenerator.getNext(),
+            ),
             tenant: tenantId,
             quantity_products: 0,
             shipment_status: shipmentStatus,
             shipment_type: 'TBC',
-            origin: 'XX',
-            destination: destinationName,
-            destinationDetails,
+            origin: originInfo.name,
+            originDetails: originInfo.details,
+            destination: destinationInfo.name,
+            destinationDetails: destinationInfo.details,
             products: [],
             type: 'shipments',
             order_date: new Date(),
             price: { amount: null, currencyCode: 'TBC' },
           });
-
           shipmentsToSave.push(shipment);
         }
-
         shipmentCache.set(shipmentKey, shipment);
       }
 
-      if (!(product._id instanceof Types.ObjectId)) {
-        throw new Error(`Invalid ObjectId: ${product._id}`);
-      }
-
-      const productObjectId = product._id as Types.ObjectId;
-
-      if (
-        !shipment.products.some((p: Types.ObjectId) =>
-          p.equals(productObjectId),
-        )
-      ) {
+      const productObjectId = new mongoose.Types.ObjectId(
+        product._id.toString(),
+      );
+      if (!shipment.products.some((p) => p.equals(productObjectId))) {
         shipment.products.push(productObjectId);
         shipment.quantity_products = shipment.products.length;
-        // await shipment.save({ session });
         if (!shipmentsToSave.includes(shipment)) {
           shipmentsToSave.push(shipment);
         }
       }
 
       createdOrUpdatedShipments.push(shipment);
-
       await this.markActiveShipmentTargets(
         product._id.toString(),
         tenantId,
-        'XX',
-        destinationName,
+        originInfo.name,
+        destinationInfo.name,
         assignedEmail,
       );
     }
+
     for (const shipment of shipmentsToSave) {
       await shipment.save({ session });
     }

@@ -899,10 +899,64 @@ export class ProductsService {
     session.startTransaction();
 
     try {
+      const updatedProducts: ProductDocument[] = [];
+
       for (const { id, product } of productsToUpdate) {
-        const updateProductDto = { ...product };
+        const updateProductDto = { ...product, actionType: 'offboarding' };
+
+        if (product.fp_shipment) {
+          const newStatus = await this.determineProductStatus(
+            {
+              fp_shipment: product.fp_shipment,
+              location: product.location,
+              assignedEmail: product.assignedEmail,
+              productCondition: product.productCondition,
+            },
+            tenantName,
+            'offboarding',
+          );
+          updateProductDto.status = newStatus;
+        }
 
         await this.update(id, { ...updateProductDto }, tenantName, userId);
+
+        // Recuperar el producto actualizado
+        const updatedProduct = await this.productRepository
+          .findById(id)
+          .session(session);
+
+        if (updatedProduct) {
+          updatedProducts.push(updatedProduct);
+        }
+      }
+
+      if (updatedProducts.length > 0) {
+        const originEmail = updatedProducts[0].lastAssigned;
+        if (!originEmail) {
+          throw new BadRequestException(
+            'Missing lastAssigned email in one of the updated products.',
+          );
+        }
+
+        const originMember =
+          await this.memberService.findByEmailNotThrowError(originEmail);
+
+        if (!originMember) {
+          throw new NotFoundException(
+            `Member with email "${originEmail}" not found`,
+          );
+        }
+
+        const desirableDateOrigin =
+          productsToUpdate[0].product?.desirableDate?.origin || '';
+
+        await this.shipmentsService.findOrCreateShipmentsForOffboarding(
+          updatedProducts,
+          tenantName,
+          session,
+          originMember,
+          desirableDateOrigin,
+        );
       }
 
       await session.commitTransaction();
