@@ -793,6 +793,7 @@ export class ProductsService {
   }
 
   async findById(id: ObjectId) {
+    await new Promise((resolve) => process.nextTick(resolve));
     const product = await this.productRepository.findById(id);
 
     if (product) {
