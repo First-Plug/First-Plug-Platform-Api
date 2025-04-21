@@ -39,6 +39,10 @@ import {
 } from 'src/shipments/schema/shipment-metadata.schema';
 import { OrderNumberGenerator } from 'src/shipments/helpers/order-number.util';
 
+interface SoftDeleteModel<T> extends Model<T> {
+  softDelete(filter: any, options?: any): Promise<any>;
+}
+
 @Injectable()
 export class ShipmentsService {
   constructor(
@@ -58,12 +62,18 @@ export class ShipmentsService {
     );
   }
 
-  private getShipmentModel(tenantConnection): Model<ShipmentDocument> {
+  private getShipmentModel(
+    tenantConnection,
+  ): SoftDeleteModel<ShipmentDocument> {
     if (tenantConnection.models.Shipment) {
-      return tenantConnection.models.Shipment;
+      return tenantConnection.models
+        .Shipment as SoftDeleteModel<ShipmentDocument>;
     }
 
-    return tenantConnection.model('Shipment', ShipmentSchema);
+    return tenantConnection.model(
+      'Shipment',
+      ShipmentSchema,
+    ) as SoftDeleteModel<ShipmentDocument>;
   }
 
   private getCountryCode(countryName: string): string {
@@ -965,5 +975,45 @@ export class ShipmentsService {
       },
       $or: [{ origin: fullName }, { destination: fullName }],
     });
+  }
+
+  async getShipments(tenantName: string) {
+    await new Promise((resolve) => process.nextTick(resolve));
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+
+    return ShipmentModel.find({ isDeleted: false }).sort({ createdAt: -1 });
+  }
+
+  async getShipmentById(id: Types.ObjectId, tenantName: string) {
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+
+    const shipment = await ShipmentModel.findOne({ _id: id, isDeleted: false });
+
+    if (!shipment) {
+      throw new NotFoundException(`Shipment with id "${id}" not found`);
+    }
+
+    return shipment;
+  }
+
+  async softDeleteShipment(id: Types.ObjectId, tenantName: string) {
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+
+    const shipment = await ShipmentModel.findById(id);
+    if (!shipment) {
+      throw new NotFoundException(`Shipment with id "${id}" not found`);
+    }
+
+    await ShipmentModel.softDelete({ _id: id });
+
+    return {
+      message: `Shipment with id "${id}" was soft deleted successfully`,
+    };
   }
 }
