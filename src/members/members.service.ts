@@ -51,6 +51,7 @@ export class MembersService {
     @InjectSlack()
     private readonly slack: IncomingWebhook,
   ) {
+    console.log('✅ MembersService constructor: created');
     const slackOffboardingWebhookUrl =
       process.env.SLACK_WEBHOOK_URL_OFFBOARDING;
 
