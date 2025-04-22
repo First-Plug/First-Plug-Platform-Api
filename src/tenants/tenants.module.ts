@@ -4,7 +4,6 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Tenant, TenantSchema } from './schemas/tenant.schema';
 import { tenantConnectionProvider } from 'src/common/providers/tenant-connection.provider';
 import { TenantsController } from './tenants.controller';
-import { JwtService } from '@nestjs/jwt';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
 
 @Module({
@@ -21,7 +20,6 @@ import { TenantConnectionService } from 'src/common/providers/tenant-connection.
     TenantsService,
     TenantConnectionService,
     tenantConnectionProvider,
-    JwtService,
   ],
   exports: [TenantsService, TenantConnectionService, tenantConnectionProvider],
 })

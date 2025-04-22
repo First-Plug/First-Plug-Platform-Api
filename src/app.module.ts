@@ -1,18 +1,14 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TenantsModule } from './tenants/tenants.module';
 import { EnvConfiguration, ZodEnvironmentsSchema } from './config';
-import { ProductsModule } from './products/products.module';
-import { MembersModule } from './members/members.module';
-import { OrdersModule } from './orders/orders.module';
 import { AuthModule } from './auth/auth.module';
-import { TeamsModule } from './teams/teams.module';
 import { SlackModule } from 'nestjs-slack-webhook';
-import { HistoryModule } from './history/history.module';
-import { ShipmentsModule } from 'src/shipments/shipments.module';
 import { CommonModule } from 'src/common/common.module';
-import { RetoolWebhooksModule } from 'src/retool-webhooks/retool-webhooks.module';
+import { TenantsMiddleware } from 'src/common/middlewares/tenants.middleware';
+import { FeatureModule } from './feature/feature.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
   imports: [
@@ -22,6 +18,8 @@ import { RetoolWebhooksModule } from 'src/retool-webhooks/retool-webhooks.module
       load: [EnvConfiguration],
       validate: (env) => ZodEnvironmentsSchema.parse(env),
     }),
+    EventEmitterModule.forRoot(),
+    CommonModule,
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (config) => ({
@@ -38,18 +36,22 @@ import { RetoolWebhooksModule } from 'src/retool-webhooks/retool-webhooks.module
       }),
       inject: [ConfigService],
     }),
-    TenantsModule,
-    ProductsModule,
-    forwardRef(() => MembersModule),
-    OrdersModule,
+
     AuthModule,
-    forwardRef(() => TeamsModule),
-    HistoryModule,
-    ShipmentsModule,
-    RetoolWebhooksModule,
-    CommonModule,
+    TenantsModule,
+    FeatureModule,
   ],
   controllers: [],
   providers: [],
 })
-export class AppModule {}
+export class AppModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(TenantsMiddleware)
+      .forRoutes(
+        { path: '/dashboard', method: RequestMethod.ALL },
+        { path: '/settings', method: RequestMethod.ALL },
+        { path: '/home/(.*)', method: RequestMethod.ALL },
+      );
+  }
+}

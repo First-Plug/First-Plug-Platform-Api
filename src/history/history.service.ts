@@ -4,7 +4,8 @@ import { CreateHistoryDto } from './dto/create-history.dto';
 import { History } from './schemas/history.schema';
 import { EnvConfiguration } from 'src/config';
 import { TenantSchema } from 'src/tenants/schemas/tenant.schema';
-import { Team } from 'src/teams/schemas/team.schema';
+import { SERVICES } from 'src/common/constants/services-tokens';
+import { ITeamsService } from 'src/teams/interfaces/teams-service.interface';
 
 @Injectable()
 export class HistoryService {
@@ -13,7 +14,10 @@ export class HistoryService {
   constructor(
     @Inject('HISTORY_MODEL')
     private readonly historyRepository: Model<History>,
-    @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
+    @Inject('TEAM_MODEL')
+    private readonly teamRepository: Model<any>,
+    @Inject(SERVICES.TEAMS)
+    private readonly teamsService: ITeamsService,
   ) {}
 
   async create(createHistoryDto: CreateHistoryDto) {

@@ -5,42 +5,51 @@ import {
   InternalServerErrorException,
   NotFoundException,
   Logger,
-  forwardRef,
 } from '@nestjs/common';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
-import { ClientSession, Model, ObjectId, Schema } from 'mongoose';
+import { ClientSession, ObjectId, Schema, Types } from 'mongoose';
 import { MemberDocument } from './schemas/member.schema';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { CreateProductDto } from 'src/products/dto';
-import { Team } from 'src/teams/schemas/team.schema';
-import { ProductModel } from 'src/products/products.service';
-import { TeamsService } from 'src/teams/teams.service';
 import { InjectSlack } from 'nestjs-slack-webhook';
 import { IncomingWebhook } from '@slack/webhook';
-import { HistoryService } from 'src/history/history.service';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
 import { Status } from 'src/products/interfaces/product.interface';
-import { ShipmentsService } from 'src/shipments/shipments.service';
+import { SERVICES } from 'src/common/constants/services-tokens';
+import { ITeamsService } from 'src/teams/interfaces/teams-service.interface';
+import { IHistoryService } from 'src/history/interfaces/history-service.interface';
+import { IShipmentsService } from 'src/shipments/interface/shipments-service.interface';
+import { IProductsService } from 'src/products/interfaces/products-service.interface';
 
-export interface MemberModel
-  extends Model<MemberDocument>,
-    SoftDeleteModel<MemberDocument> {}
+// export interface MemberModel
+//   extends Model<MemberDocument>,
+//     SoftDeleteModel<MemberDocument> {}
+export type MemberModel = SoftDeleteModel<MemberDocument>;
 
 @Injectable()
 export class MembersService {
   private slackOffboardingWebhook: IncomingWebhook;
   private readonly logger = new Logger(MembersService.name);
   constructor(
-    @Inject('MEMBER_MODEL') private memberRepository: MemberModel,
-    @Inject('PRODUCT_MODEL') private productRepository: ProductModel,
-    @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
-    private readonly teamsService: TeamsService,
-    @InjectSlack() private readonly slack: IncomingWebhook,
-    private readonly historyService: HistoryService,
+    @Inject('MEMBER_MODEL')
+    private readonly memberRepository: MemberModel,
+    @Inject(SERVICES.PRODUCTS)
+    private readonly productsService: IProductsService,
+
+    @Inject(SERVICES.TEAMS)
+    private readonly teamsService: ITeamsService,
+
+    @Inject(SERVICES.HISTORY)
+    private readonly historyService: IHistoryService,
+
+    @Inject(SERVICES.SHIPMENTS)
+    private readonly shipmentsService: IShipmentsService,
+
     private readonly connectionService: TenantConnectionService,
-    @Inject(forwardRef(() => ShipmentsService))
-    private readonly shipmentsService: ShipmentsService,
+
+    @InjectSlack()
+    private readonly slack: IncomingWebhook,
   ) {
     const slackOffboardingWebhookUrl =
       process.env.SLACK_WEBHOOK_URL_OFFBOARDING;
@@ -232,14 +241,14 @@ export class MembersService {
     memberFullName: string,
     session: ClientSession,
   ) {
-    const productsToUpdate = await this.productRepository
+    const productsToUpdate = await this.productsService
       .find({ assignedEmail: memberEmail })
       .session(session);
 
     for (const product of productsToUpdate) {
       product.assignedMember = memberFullName;
       await product.save({ session });
-      await this.productRepository
+      await this.productsService
         .deleteOne({ _id: product._id })
         .session(session);
     }
@@ -336,7 +345,7 @@ export class MembersService {
 
       const uniqueTeamNames = [...new Set(teamNames)];
 
-      const existingTeams = await this.teamRepository.find({
+      const existingTeams = await this.teamsService.find({
         name: { $in: uniqueTeamNames },
       });
       const teamMap = new Map<string, Schema.Types.ObjectId>();
@@ -378,14 +387,14 @@ export class MembersService {
 
       for (const member of createdMembers) {
         const fullName = this.getFullName(member);
-        const productsToUpdate = await this.productRepository.find({
+        const productsToUpdate = await this.productsService.find({
           assignedEmail: member.email,
         });
 
         for (const product of productsToUpdate) {
           product.assignedMember = fullName;
           await product.save({ session });
-          await this.productRepository
+          await this.productsService
             .deleteOne({ _id: product._id })
             .session(session);
         }
@@ -565,6 +574,15 @@ export class MembersService {
 
         member.products = updatedProducts;
         await member.save({ session });
+
+        const locationDataUpdated = this.isLocationDataBeingModified(
+          member,
+          updateMemberDto,
+        );
+
+        if (locationDataUpdated) {
+          await this.checkAndUpdateShipmentsOnMemberUpdate(member, tenantName);
+        }
       }
 
       await session.commitTransaction();
@@ -585,6 +603,74 @@ export class MembersService {
       await session.abortTransaction();
       session.endSession();
       this.handleDBExceptions(error);
+    }
+  }
+
+  private isLocationDataBeingModified(
+    original: MemberDocument,
+    updateDto: Partial<UpdateMemberDto>,
+  ): boolean {
+    const locationFields = [
+      'address',
+      'apartment',
+      'city',
+      'zipCode',
+      'country',
+      'dni',
+      'phone',
+      'personalEmail',
+    ];
+    return locationFields.some(
+      (field) =>
+        updateDto[field] !== undefined && updateDto[field] !== original[field],
+    );
+  }
+
+  async checkAndUpdateShipmentsOnMemberUpdate(
+    member: MemberDocument,
+    tenantName: string,
+  ) {
+    const shipments = await this.shipmentsService.getShipmentsByMember(
+      member.email,
+      tenantName,
+    );
+
+    for (const shipment of shipments) {
+      if (shipment.shipment_status !== 'On Hold - Missing Data') continue;
+
+      const [originInfo, destinationInfo] = await Promise.all([
+        this.shipmentsService.getLocationInfo(
+          shipment.origin,
+          tenantName,
+          undefined,
+          shipment.origin,
+        ),
+        this.shipmentsService.getLocationInfo(
+          shipment.destination,
+          tenantName,
+          undefined,
+          shipment.destination,
+        ),
+      ]);
+
+      const originComplete = originInfo.details
+        ? Object.values(originInfo.details).every(
+            (field) => field && (field as string).trim() !== '',
+          )
+        : false;
+
+      const destinationComplete = destinationInfo.details
+        ? Object.values(destinationInfo.details).every(
+            (field) => field && (field as string).trim() !== '',
+          )
+        : false;
+
+      if (originComplete && destinationComplete) {
+        await this.shipmentsService.updateShipmentStatusAndProductsToInPreparation(
+          new Types.ObjectId(shipment._id.toString()),
+          tenantName,
+        );
+      }
     }
   }
 

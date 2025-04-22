@@ -9,6 +9,8 @@ import { IncomingWebhook } from '@slack/webhook';
 import { UpdateTenantInformationSchemaDto } from './dto/update-information.dto';
 import { UserJWT } from 'src/auth/interfaces/auth.interface';
 import { UpdateDashboardSchemaDto } from './dto/update-dashboard.dto';
+import { TenantAddressUpdatedEvent } from 'src/common/events/tenant-address-update.event';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class TenantsService {
@@ -19,6 +21,7 @@ export class TenantsService {
     @InjectModel(Tenant.name)
     private tenantRepository: Model<Tenant>,
     @InjectSlack() private readonly slack: IncomingWebhook,
+    private eventEmitter: EventEmitter2,
   ) {
     const slackMerchWebhookUrl = process.env.SLACK_WEBHOOK_URL_MERCH;
     const slackShopWebhookUrl = process.env.SLACK_WEBHOOK_URL_SHOP;
@@ -370,6 +373,23 @@ export class TenantsService {
         { $set: updateFields },
       );
     }
+
+    this.eventEmitter.emit(
+      'tenant.address.updated',
+      new TenantAddressUpdatedEvent(
+        userUpdated.tenantName,
+        {
+          address: userUpdated?.address,
+          apartment: userUpdated?.apartment,
+          city: userUpdated?.city,
+          state: userUpdated?.state,
+          country: userUpdated?.country,
+          zipCode: userUpdated?.zipCode,
+          phone: userUpdated?.phone,
+        },
+        updateFields,
+      ),
+    );
 
     const sanitizedUser = {
       phone: userUpdated?.phone,

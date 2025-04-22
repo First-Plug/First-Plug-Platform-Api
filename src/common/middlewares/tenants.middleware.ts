@@ -16,6 +16,10 @@ export class TenantsMiddleware implements NestMiddleware {
   ) {}
 
   async use(req: Request, res: any, next: () => void) {
+    console.log(
+      '🌍 [TenantsMiddleware] Entrando en middleware, path:',
+      req.path,
+    );
     const token = this.extractTokenFromHeader(req);
 
     if (!token) throw new UnauthorizedException();
@@ -24,8 +28,14 @@ export class TenantsMiddleware implements NestMiddleware {
       const payload = await this.jwtService.verifyAsync(token, {
         secret: process.env.JWTSECRETKEY,
       });
+      console.log('✅ Token decodificado. Tenant:', payload.tenantName);
 
       const { tenantName } = payload;
+      console.log('✅ Token decodificado. Tenant:', tenantName);
+
+      if (!tenantName) {
+        throw new UnauthorizedException('Tenant not found in token');
+      }
 
       const tenantExits = await this.tenantsService.getByTenantName(tenantName);
 

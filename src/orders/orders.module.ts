@@ -4,16 +4,17 @@ import { OrdersController } from './orders.controller';
 import { TenantsModule } from 'src/tenants/tenants.module';
 import { tenantModels } from 'src/common/providers/tenant-models-provider';
 import { TenantsMiddleware } from 'src/common/middlewares/tenants.middleware';
-import { JwtService } from '@nestjs/jwt';
+import { JwtModule } from '@nestjs/jwt';
+// import { JwtService } from '@nestjs/jwt';
 
 @Module({
-  imports: [TenantsModule],
+  imports: [TenantsModule, JwtModule],
   controllers: [OrdersController],
   providers: [
     OrdersService,
     tenantModels.orderModel,
     tenantModels.memberModel,
-    JwtService,
+    // JwtService,
   ],
 })
 export class OrdersModule {

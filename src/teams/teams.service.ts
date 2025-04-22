@@ -11,16 +11,19 @@ import { Team } from './schemas/team.schema';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
 import { Member } from '../members/schemas/member.schema';
-import { HistoryService } from 'src/history/history.service';
 import { emptyTeam } from './utils/empty-team';
 import { flattenTeam } from './utils/flatten-team';
+import { SERVICES } from 'src/common/constants/services-tokens';
+import { IHistoryService } from 'src/history/interfaces/history-service.interface';
+import { IMembersService } from 'src/members/interfaces/members-service.interfaces';
 
 @Injectable()
 export class TeamsService {
   constructor(
     @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
     @Inject('MEMBER_MODEL') private memberRepository: Model<Member>,
-    private readonly historyService: HistoryService,
+    @Inject(SERVICES.HISTORY) private readonly historyService: IHistoryService,
+    @Inject(SERVICES.MEMBERS) private readonly membersService: IMembersService,
   ) {}
 
   private normalizeTeamName(name: string): string {

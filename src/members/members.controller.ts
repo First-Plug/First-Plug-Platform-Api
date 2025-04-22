@@ -10,25 +10,31 @@ import {
   UseInterceptors,
   Request,
   Req,
+  Inject,
+  NotFoundException,
 } from '@nestjs/common';
-import { MembersService } from './members.service';
 import { CreateMemberDto, UpdateMemberDto } from './dto';
 import { ObjectId } from 'mongoose';
 import { ParseMongoIdPipe } from '../common/pipes/parse-mongo-id.pipe';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { CreateMemberArrayDto } from './dto/create-member-array.dto';
 import { AddFullNameInterceptor } from './interceptors/add-full-name.interceptor';
-import { ProductsService } from 'src/products/products.service';
-import { HistoryService } from 'src/history/history.service';
+import { IMembersService } from 'src/members/interfaces/members-service.interfaces';
+import { SERVICES } from 'src/common/constants/services-tokens';
+import { IProductsService } from 'src/products/interfaces/products-service.interface';
+import { IHistoryService } from 'src/history/interfaces/history-service.interface';
 
 @Controller('members')
 @UseGuards(JwtGuard)
 @UseInterceptors(AddFullNameInterceptor)
 export class MembersController {
   constructor(
-    private readonly membersService: MembersService,
-    private readonly productService: ProductsService,
-    private readonly historyService: HistoryService,
+    @Inject(SERVICES.MEMBERS)
+    private readonly membersService: IMembersService,
+    @Inject(SERVICES.PRODUCTS)
+    private readonly productService: IProductsService,
+    @Inject(SERVICES.HISTORY)
+    private readonly historyService: IHistoryService,
   ) {}
 
   @Post()
@@ -162,7 +168,9 @@ export class MembersController {
     const updatedProducts = productsToUpdate.map((p) => p.product);
 
     const offboardingMember = await this.membersService.findById(id);
-
+    if (!offboardingMember) {
+      throw new NotFoundException(`Member with id "${id}" not found`);
+    }
     await this.membersService.softDeleteMember(id);
 
     await this.membersService.notifyOffBoarding(

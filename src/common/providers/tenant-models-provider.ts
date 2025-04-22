@@ -8,10 +8,13 @@ import {
   ShipmentMetadata,
   ShipmentMetadataSchema,
 } from 'src/shipments/schema/shipment-metadata.schema';
+import { Shipment, ShipmentSchema } from 'src/shipments/schema/shipment.schema';
+import { Scope } from '@nestjs/common';
 
 export const tenantModels = {
   productModel: {
     provide: 'PRODUCT_MODEL',
+    scope: Scope.REQUEST,
     useFactory: async (tenantConnection: Connection) => {
       return tenantConnection.model(Product.name, ProductSchema);
     },
@@ -19,6 +22,7 @@ export const tenantModels = {
   },
   memberModel: {
     provide: 'MEMBER_MODEL',
+    scope: Scope.REQUEST,
     useFactory: async (tenantConnection: Connection) => {
       return tenantConnection.model(Member.name, MemberSchema);
     },
@@ -26,6 +30,7 @@ export const tenantModels = {
   },
   teamModel: {
     provide: 'TEAM_MODEL',
+    scope: Scope.REQUEST,
     useFactory: async (tenantConnection: Connection) => {
       return tenantConnection.model(Team.name, TeamSchema);
     },
@@ -33,6 +38,7 @@ export const tenantModels = {
   },
   historyModel: {
     provide: 'HISTORY_MODEL',
+    scope: Scope.REQUEST,
     useFactory: async (tenantConnection: Connection) => {
       return tenantConnection.model(History.name, HistorySchema);
     },
@@ -40,13 +46,23 @@ export const tenantModels = {
   },
   orderModel: {
     provide: 'ORDER_MODEL',
+    scope: Scope.REQUEST,
     useFactory: async (tenantConnection: Connection) => {
       return tenantConnection.model(Order.name, OrderSchema);
     },
     inject: ['TENANT_CONNECTION'],
   },
+  shipmentModel: {
+    provide: 'SHIPMENT_MODEL',
+    scope: Scope.REQUEST,
+    useFactory: async (tenantConnection: Connection) => {
+      return tenantConnection.model(Shipment.name, ShipmentSchema);
+    },
+    inject: ['TENANT_CONNECTION'],
+  },
   shipmentMetadataModel: {
     provide: 'SHIPMENT_METADATA_MODEL',
+    scope: Scope.REQUEST,
     useFactory: async (tenantConnection: Connection) => {
       return tenantConnection.model(
         ShipmentMetadata.name,

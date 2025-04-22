@@ -4,8 +4,6 @@ import {
   InternalServerErrorException,
   NotFoundException,
   Logger,
-  forwardRef,
-  // forwardRef,
 } from '@nestjs/common';
 import { ClientSession, Model, ObjectId, Schema, Types } from 'mongoose';
 import {
@@ -16,8 +14,6 @@ import {
 import { CreateProductDto, UpdateProductDto } from './dto';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { BadRequestException } from '@nestjs/common';
-import { MembersService } from 'src/members/members.service';
-import { TenantsService } from 'src/tenants/tenants.service';
 import { Attribute, Condition, Status } from './interfaces/product.interface';
 import {
   MemberDocument,
@@ -25,11 +21,14 @@ import {
 } from 'src/members/schemas/member.schema';
 import { Response } from 'express';
 import { Parser } from 'json2csv';
-import { HistoryService } from 'src/history/history.service';
 import { updateProductPrice } from './helpers/update-price.helper';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
-import { ShipmentsService } from 'src/shipments/shipments.service';
 import { ModuleRef } from '@nestjs/core';
+import { SERVICES } from 'src/common/constants/services-tokens';
+import { IMembersService } from 'src/members/interfaces/members-service.interfaces';
+import { ITenantsService } from 'src/tenants/interfaces/tenants-service.interface';
+import { IHistoryService } from 'src/history/interfaces/history-service.interface';
+import { IShipmentsService } from 'src/shipments/interface/shipments-service.interface';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -41,20 +40,29 @@ export class ProductsService {
   constructor(
     @Inject('PRODUCT_MODEL')
     private readonly productRepository: ProductModel,
-    private readonly memberService: MembersService,
-    private tenantsService: TenantsService,
-    private readonly historyService: HistoryService,
+
+    @Inject(SERVICES.MEMBERS)
+    private readonly membersService: IMembersService,
+
+    @Inject(SERVICES.TENANTS)
+    private readonly tenantsService: ITenantsService,
+
+    @Inject(SERVICES.HISTORY)
+    private readonly historyService: IHistoryService,
+
     private readonly connectionService: TenantConnectionService,
 
-    @Inject(forwardRef(() => ShipmentsService))
-    private readonly shipmentsService: ShipmentsService,
+    @Inject(SERVICES.SHIPMENTS)
+    private readonly shipmentsService: IShipmentsService,
+
     private readonly moduleRef: ModuleRef,
   ) {}
 
-  onModuleInit() {
-    this.tenantsService = this.moduleRef.get(TenantsService, { strict: false });
-    console.log('🧩 TenantsService loaded manually:', !!this.tenantsService);
-  }
+  // onModuleInit() {
+  //   this.tenantsService = this.moduleRef.get(TenantsService, { strict: false });
+  //   console.log('🧩 TenantsService loaded manually:', !!this.tenantsService);
+  // }
+
   private normalizeProductData(product: CreateProductDto) {
     return {
       ...product,
@@ -84,7 +92,7 @@ export class ProductsService {
       serialNumber,
     });
     const memberProductWithSameSerialNumber =
-      await this.memberService.findProductBySerialNumber(serialNumber);
+      await this.membersService.findProductBySerialNumber(serialNumber);
 
     if (productWithSameSerialNumber || memberProductWithSameSerialNumber) {
       throw new BadRequestException('Serial Number already exists');
@@ -247,7 +255,7 @@ export class ProductsService {
     }
 
     if (product.location === 'Employee') {
-      const member = await this.memberService.findByEmailNotThrowError(
+      const member = await this.membersService.findByEmailNotThrowError(
         product.assignedEmail!,
       );
       if (!member) return false;
@@ -377,11 +385,22 @@ export class ProductsService {
       status,
       ...(price?.amount !== undefined && price?.currencyCode ? { price } : {}),
     };
-
+    console.log(
+      '📦 productRepository modelName:',
+      this.productRepository?.modelName,
+    );
+    console.log(
+      '🛢️ productRepository db name:',
+      this.productRepository?.db?.name,
+    );
+    console.log(
+      '🔗 Is model connected?',
+      this.productRepository?.db?.readyState,
+    );
     let assignedMember = '';
     console.log('createData before assigning:', createData);
     if (assignedEmail) {
-      const member = await this.memberService.assignProduct(
+      const member = await this.membersService.assignProduct(
         assignedEmail,
         createData,
       );
@@ -506,7 +525,7 @@ export class ProductsService {
       const assignProductPromises = productsWithAssignedEmail.map(
         async (product) => {
           if (product.assignedEmail) {
-            const member = await this.memberService.findByEmailNotThrowError(
+            const member = await this.membersService.findByEmailNotThrowError(
               product.assignedEmail,
             );
 
@@ -585,7 +604,7 @@ export class ProductsService {
     });
 
     const productsFromMembers =
-      await this.memberService.getAllProductsWithMembers();
+      await this.membersService.getAllProductsWithMembers();
 
     const allProducts = [...productsFromRepository, ...productsFromMembers];
 
@@ -804,7 +823,9 @@ export class ProductsService {
       return product;
     }
 
-    const memberProduct = await this.memberService.getProductByMembers(id);
+    const memberProduct = await this.membersService.getProductByMembers(
+      id.toString(),
+    );
 
     if (memberProduct?.product) {
       if (memberProduct?.product.isDeleted) {
@@ -846,8 +867,9 @@ export class ProductsService {
     let isUnknownEmail = false;
 
     if (!product) {
-      const memberProduct =
-        await this.memberService.getProductByMembers(productId);
+      const memberProduct = await this.membersService.getProductByMembers(
+        productId.toString(),
+      );
       if (!memberProduct) {
         throw new NotFoundException(`Product with id "${productId}" not found`);
       }
@@ -855,7 +877,7 @@ export class ProductsService {
       currentMember = memberProduct.member as MemberDocument;
     } else {
       if (product.assignedEmail) {
-        currentMember = await this.memberService.findByEmailNotThrowError(
+        currentMember = await this.membersService.findByEmailNotThrowError(
           product.assignedEmail,
         );
         if (!currentMember) {
@@ -864,7 +886,7 @@ export class ProductsService {
       }
     }
 
-    const members = await this.memberService.findAll();
+    const members = await this.membersService.findAll();
     let options;
 
     if (isUnknownEmail) {
@@ -882,7 +904,7 @@ export class ProductsService {
       throw new NotFoundException(`Product with id "${productId}" not found`);
     }
 
-    const members = await this.memberService.findAll();
+    const members = await this.membersService.findAll();
 
     const options = this.filterMembers(members, null);
 
@@ -940,7 +962,7 @@ export class ProductsService {
         }
 
         const originMember =
-          await this.memberService.findByEmailNotThrowError(originEmail);
+          await this.membersService.findByEmailNotThrowError(originEmail);
 
         if (!originMember) {
           throw new NotFoundException(
@@ -1003,7 +1025,7 @@ export class ProductsService {
     product: ProductDocument,
     updateProductDto: UpdateProductDto,
   ) {
-    const newMember = await this.memberService.findByEmailNotThrowError(
+    const newMember = await this.membersService.findByEmailNotThrowError(
       updateProductDto.assignedEmail!,
     );
 
@@ -1052,7 +1074,7 @@ export class ProductsService {
     memberEmail: string,
   ) {
     const member =
-      await this.memberService.findByEmailNotThrowError(memberEmail);
+      await this.membersService.findByEmailNotThrowError(memberEmail);
     if (member) {
       const productIndex = member.products.findIndex(
         (prod) => prod._id!.toString() === product._id!.toString(),
@@ -1189,7 +1211,7 @@ export class ProductsService {
 
     if (
       product.assignedEmail &&
-      !(await this.memberService.findByEmailNotThrowError(
+      !(await this.membersService.findByEmailNotThrowError(
         product.assignedEmail,
       ))
     ) {
@@ -1299,7 +1321,7 @@ export class ProductsService {
 
           if (serialNumber) {
             const isDuplicateInMembers =
-              await this.memberService.validateSerialNumber(
+              await this.membersService.validateSerialNumber(
                 serialNumber,
                 product._id as ObjectId,
               );
@@ -1525,7 +1547,7 @@ export class ProductsService {
 
         if (
           product.assignedEmail &&
-          !(await this.memberService.findByEmailNotThrowError(
+          !(await this.membersService.findByEmailNotThrowError(
             product.assignedEmail,
           ))
         ) {
@@ -1600,9 +1622,10 @@ export class ProductsService {
             updateProductDto.assignedEmail !== 'none' &&
             updateProductDto.assignedEmail !== product.assignedEmail
           ) {
-            const newMember = await this.memberService.findByEmailNotThrowError(
-              updateProductDto.assignedEmail,
-            );
+            const newMember =
+              await this.membersService.findByEmailNotThrowError(
+                updateProductDto.assignedEmail,
+              );
 
             if (newMember) {
               const lastMember = product.assignedEmail;
@@ -1700,7 +1723,7 @@ export class ProductsService {
         session.endSession();
         return { message: `Product with id "${id}" updated successfully` };
       } else {
-        const memberProduct = await this.memberService.getProductByMembers(
+        const memberProduct = await this.membersService.getProductByMembers(
           id,
           session,
         );
@@ -1746,9 +1769,10 @@ export class ProductsService {
             updateProductDto.assignedEmail &&
             updateProductDto.assignedEmail !== member.email
           ) {
-            const newMember = await this.memberService.findByEmailNotThrowError(
-              updateProductDto.assignedEmail,
-            );
+            const newMember =
+              await this.membersService.findByEmailNotThrowError(
+                updateProductDto.assignedEmail,
+              );
             if (newMember) {
               const lastMember = member.email;
 
@@ -1946,7 +1970,7 @@ export class ProductsService {
           changes.oldData = product;
         } else {
           const memberProduct =
-            await this.memberService.getProductByMembers(id);
+            await this.membersService.getProductByMembers(id);
 
           if (memberProduct && memberProduct.product) {
             await this.productRepository.create(
@@ -1974,7 +1998,7 @@ export class ProductsService {
             await this.productRepository.softDelete({ _id: id }, { session });
 
             const memberId = memberProduct.member._id;
-            await this.memberService.deleteProductFromMember(
+            await this.membersService.deleteProductFromMember(
               memberId,
               id,
               session,
@@ -2123,7 +2147,7 @@ export class ProductsService {
       const product = await this.productRepository.findById(id);
 
       if (!product) {
-        const member = await this.memberService.getProductByMembers(id);
+        const member = await this.membersService.getProductByMembers(id);
 
         if (!member) {
           throw new NotFoundException(`Product with id "${id}" not found`);

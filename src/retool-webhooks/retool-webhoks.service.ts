@@ -1,21 +1,27 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import mongoose from 'mongoose';
+import { SERVICES } from 'src/common/constants/services-tokens';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
 import { MemberSchema } from 'src/members/schemas/member.schema';
 import { ProductSchema } from 'src/products/schemas/product.schema';
 import { SHIPMENT_STATUS } from 'src/shipments/interface/shipment.interface';
+import { IShipmentsService } from 'src/shipments/interface/shipments-service.interface';
 import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
-import { ShipmentsService } from 'src/shipments/shipments.service';
+import { IProductsService } from 'src/products/interfaces/products-service.interface';
 
 @Injectable()
 export class RetoolWebhooksService {
   constructor(
     private tenantConnectionService: TenantConnectionService,
-    private readonly shipmentsService: ShipmentsService,
+    @Inject(SERVICES.SHIPMENTS)
+    private readonly shipmentsService: IShipmentsService,
+    @Inject(SERVICES.PRODUCTS)
+    private readonly productsService: IProductsService,
   ) {}
 
   async updateShipmentStatusWebhook(body: {

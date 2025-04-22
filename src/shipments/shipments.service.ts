@@ -1,8 +1,8 @@
 import {
   BadRequestException,
-  forwardRef,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import mongoose, {
@@ -18,9 +18,6 @@ import {
   ShipmentSchema,
 } from './schema/shipment.schema';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
-import { MembersService } from 'src/members/members.service';
-import { TenantsService } from 'src/tenants/tenants.service';
-import { ProductsService } from 'src/products/products.service';
 import { countryCodes } from 'src/shipments/helpers/countryCodes';
 import { GlobalConnectionProvider } from 'src/common/providers/global-connection.provider';
 import {
@@ -38,6 +35,11 @@ import {
   ShipmentMetadataSchema,
 } from 'src/shipments/schema/shipment-metadata.schema';
 import { OrderNumberGenerator } from 'src/shipments/helpers/order-number.util';
+import { AddressData } from 'src/common/events/tenant-address-update.event';
+import { SERVICES } from 'src/common/constants/services-tokens';
+import { IMembersService } from 'src/members/interfaces/members-service.interfaces';
+import { ITenantsService } from 'src/tenants/interfaces/tenants-service.interface';
+import { IProductsService } from 'src/products/interfaces/products-service.interface';
 
 interface SoftDeleteModel<T> extends Model<T> {
   softDelete(filter: any, options?: any): Promise<any>;
@@ -45,14 +47,19 @@ interface SoftDeleteModel<T> extends Model<T> {
 
 @Injectable()
 export class ShipmentsService {
+  private readonly logger = new Logger(ShipmentsService.name);
   constructor(
     private readonly globalConnectionProvider: GlobalConnectionProvider,
     private readonly tenantConnectionService: TenantConnectionService,
-    @Inject(forwardRef(() => MembersService))
-    private readonly membersService: MembersService,
-    private readonly tenantsService: TenantsService,
-    @Inject(forwardRef(() => ProductsService))
-    private readonly productsService: ProductsService,
+    @Inject(SERVICES.MEMBERS)
+    private readonly membersService: IMembersService,
+
+    @Inject(SERVICES.TENANTS)
+    private readonly tenantsService: ITenantsService,
+
+    @Inject(SERVICES.PRODUCTS)
+    private readonly productsService: IProductsService,
+
     @Inject('SHIPMENT_METADATA_MODEL')
     private readonly shipmentMetadataRepository: Model<ShipmentMetadata>,
   ) {
@@ -1015,5 +1022,105 @@ export class ShipmentsService {
     return {
       message: `Shipment with id "${id}" was soft deleted successfully`,
     };
+  }
+
+  async updateShipmentStatusAndProductsToInPreparation(
+    shipmentId: Types.ObjectId,
+    tenantName: string,
+  ) {
+    await new Promise((resolve) => process.nextTick(resolve));
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+    const ProductModel = this.getProductModel(connection);
+    const MemberModel = connection.model<MemberDocument>('Member');
+
+    const shipment = await ShipmentModel.findById(shipmentId);
+    if (!shipment) {
+      throw new NotFoundException(`Shipment with id "${shipmentId}" not found`);
+    }
+
+    shipment.shipment_status = 'In Preparation';
+    await shipment.save();
+
+    for (const productId of shipment.products) {
+      const product = await ProductModel.findById(productId);
+
+      if (product) {
+        if (product.status === 'In Transit - Missing Data') {
+          product.status = 'In Transit';
+          await product.save();
+        }
+      } else {
+        const memberWithProduct = await MemberModel.findOne({
+          'products._id': productId,
+        });
+
+        const embeddedProduct = memberWithProduct?.products.find(
+          (p) => p._id?.toString() === productId.toString(),
+        );
+
+        if (
+          embeddedProduct &&
+          embeddedProduct.status === 'In Transit - Missing Data'
+        ) {
+          await MemberModel.updateOne(
+            { 'products._id': productId },
+            {
+              $set: {
+                'products.$.status': 'In Transit',
+              },
+            },
+          );
+        }
+      }
+    }
+
+    return shipment;
+  }
+
+  async checkAndUpdateShipmentsForOurOffice(
+    tenantName: string,
+    oldAddress: AddressData,
+    newAddress: AddressData,
+  ) {
+    this.logger.debug(`Checking shipments for tenant: ${tenantName}`);
+
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+
+    const ShipmentModel =
+      connection.models.Shipment ||
+      connection.model('Shipment', ShipmentSchema, 'shipments');
+
+    const shipmentsToUpdate = await ShipmentModel.find({
+      origin: 'Our office',
+      shipment_status: { $nin: ['Cancelled', 'Received'] },
+    });
+
+    if (shipmentsToUpdate.length === 0) {
+      this.logger.debug('No shipments found requiring updates');
+      return;
+    }
+
+    this.logger.debug(`Found ${shipmentsToUpdate.length} shipments to update`);
+
+    const updatePromises = shipmentsToUpdate.map((shipment) => {
+      const updates = {};
+      for (const [key, value] of Object.entries(newAddress)) {
+        if (value !== oldAddress[key]) {
+          updates[`originAddress.${key}`] = value;
+        }
+      }
+
+      return ShipmentModel.findByIdAndUpdate(
+        shipment._id,
+        { $set: updates },
+        { new: true },
+      );
+    });
+
+    await Promise.all(updatePromises);
+    this.logger.debug('Successfully updated all affected shipments');
   }
 }
