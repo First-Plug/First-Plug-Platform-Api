@@ -1138,4 +1138,98 @@ export class ShipmentsService {
       }
     }
   }
+
+  async checkAndUpdateShipmentsForMember(
+    memberEmail: string,
+    tenantName: string,
+  ) {
+    console.log(
+      `🚚 [CHECK AND UPDATE SHIPMENTS] Start for member ${memberEmail}`,
+    );
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = connection.model<ShipmentDocument>(
+      'Shipment',
+      ShipmentSchema,
+      'shipments',
+    );
+
+    const member =
+      await this.membersService.findByEmailNotThrowError(memberEmail);
+    if (!member) {
+      console.log(`❌ Member ${memberEmail} not found`);
+      return;
+    }
+
+    const fullName = `${member.firstName} ${member.lastName}`;
+
+    const shipments = await ShipmentModel.find({
+      shipment_status: 'On Hold - Missing Data',
+      $or: [{ origin: fullName }, { destination: fullName }],
+    });
+
+    this.logger.debug(
+      `Found ${shipments.length} On Hold shipments involving member ${fullName}`,
+    );
+    console.log(shipments.length, 'On Hold shipments found:', shipments);
+    for (const shipment of shipments) {
+      let updated = false;
+
+      if (shipment.origin === fullName) {
+        shipment.originDetails = {
+          ...shipment.originDetails,
+          address: member.address || '',
+          apartment: member.apartment || '',
+          city: member.city || '',
+          country: member.country || '',
+          zipCode: member.zipCode || '',
+          phone: member.phone || '',
+          personalEmail: member.personalEmail || '',
+          dni: `${member.dni || ''}`,
+        };
+        updated = true;
+      }
+
+      if (shipment.destination === fullName) {
+        shipment.destinationDetails = {
+          ...shipment.destinationDetails,
+          address: member.address || '',
+          apartment: member.apartment || '',
+          city: member.city || '',
+          country: member.country || '',
+          zipCode: member.zipCode || '',
+          phone: member.phone || '',
+          personalEmail: member.personalEmail || '',
+          dni: `${member.dni || ''}`,
+        };
+        updated = true;
+      }
+
+      const originComplete = Object.values(shipment.originDetails || {}).every(
+        (val) => val && val.toString().trim() !== '',
+      );
+      const destinationComplete = Object.values(
+        shipment.destinationDetails || {},
+      ).every((val) => val && val.toString().trim() !== '');
+
+      if (originComplete && destinationComplete) {
+        shipment.shipment_status = 'In Preparation';
+        updated = true;
+
+        const ProductModel = connection.model('Product');
+        await ProductModel.updateMany(
+          { _id: { $in: shipment.products } },
+          { $set: { status: 'In Transit' } },
+        );
+      }
+
+      if (updated) {
+        await shipment.save();
+        this.logger.debug(
+          `Shipment ${shipment._id} updated for member ${fullName}`,
+        );
+        console.log(`Shipment ${shipment._id} updated for member ${fullName}`);
+      }
+    }
+  }
 }

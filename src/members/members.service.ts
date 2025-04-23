@@ -22,6 +22,9 @@ import { HistoryService } from 'src/history/history.service';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
 import { Status } from 'src/products/interfaces/product.interface';
 import { ShipmentsService } from 'src/shipments/shipments.service';
+import { EventTypes } from 'src/common/events/types';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { MemberAddressUpdatedEvent } from 'src/common/events/member-address-update.event';
 
 export interface MemberModel
   extends Model<MemberDocument>,
@@ -41,6 +44,7 @@ export class MembersService {
     private readonly connectionService: TenantConnectionService,
     @Inject(forwardRef(() => ShipmentsService))
     private readonly shipmentsService: ShipmentsService,
+    private eventEmitter: EventEmitter2,
   ) {
     const slackOffboardingWebhookUrl =
       process.env.SLACK_WEBHOOK_URL_OFFBOARDING;
@@ -565,6 +569,45 @@ export class MembersService {
 
         member.products = updatedProducts;
         await member.save({ session });
+      }
+      if (this.isPersonalDataBeingModified(member, updateMemberDto)) {
+        if (member.activeShipment) {
+          console.log('✅ Emitting MEMBER_ADDRESS_UPDATED for:', member.email);
+          console.log(
+            '📦 Emitiendo evento de actualización de dirección del miembro',
+          );
+          this.eventEmitter.emit(
+            EventTypes.MEMBER_ADDRESS_UPDATED,
+            new MemberAddressUpdatedEvent(
+              member.email,
+              tenantName,
+              {
+                address: initialMember.address,
+                apartment: initialMember.apartment,
+                city: initialMember.city,
+                country: initialMember.country,
+                zipCode: initialMember.zipCode,
+                phone: initialMember.phone,
+                personalEmail: initialMember.personalEmail,
+                dni: initialMember.dni?.toString(),
+              },
+              {
+                address: member.address,
+                apartment: member.apartment,
+                city: member.city,
+                country: member.country,
+                zipCode: member.zipCode,
+                phone: member.phone,
+                personalEmail: member.personalEmail,
+                dni: member.dni?.toString(),
+              },
+            ),
+          );
+        } else {
+          console.log(
+            '🟨 No se emite evento: el miembro no tiene shipments activos',
+          );
+        }
       }
 
       await session.commitTransaction();
