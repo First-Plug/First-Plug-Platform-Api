@@ -1,11 +1,13 @@
-import { MiddlewareConsumer, Module } from '@nestjs/common';
+import { forwardRef, MiddlewareConsumer, Module } from '@nestjs/common';
 import { ShipmentsService } from './shipments.service';
 import { ShipmentsController } from './shipments.controller';
 import { tenantModels } from '../common/providers/tenant-models-provider';
 import { TenantsMiddleware } from 'src/common/middlewares/tenants.middleware';
 import { TenantAddressUpdatedListener } from 'src/shipments/listeners/tenant-address-update.listener';
+import { FeatureModule } from 'src/feature/feature.module';
 
 @Module({
+  imports: [forwardRef(() => FeatureModule)],
   controllers: [ShipmentsController],
   providers: [
     ShipmentsService,
