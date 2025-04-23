@@ -3,6 +3,7 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import mongoose, {
@@ -38,9 +39,15 @@ import {
   ShipmentMetadataSchema,
 } from 'src/shipments/schema/shipment-metadata.schema';
 import { OrderNumberGenerator } from 'src/shipments/helpers/order-number.util';
+import { AddressData } from 'src/common/events/tenant-address-update.event';
+
+// interface SoftDeleteModel<T> extends Model<T> {
+//   softDelete(filter: any, options?: any): Promise<any>;
+// }
 
 @Injectable()
 export class ShipmentsService {
+  private readonly logger = new Logger(ShipmentsService.name);
   constructor(
     private readonly globalConnectionProvider: GlobalConnectionProvider,
     private readonly tenantConnectionService: TenantConnectionService,
@@ -966,5 +973,169 @@ export class ShipmentsService {
       },
       $or: [{ origin: fullName }, { destination: fullName }],
     });
+  }
+
+  async getShipments(tenantName: string) {
+    await new Promise((resolve) => process.nextTick(resolve));
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+
+    return ShipmentModel.find({ isDeleted: false }).sort({ createdAt: -1 });
+  }
+
+  async getShipmentById(id: Types.ObjectId, tenantName: string) {
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+
+    const shipment = await ShipmentModel.findOne({ _id: id, isDeleted: false });
+
+    if (!shipment) {
+      throw new NotFoundException(`Shipment with id "${id}" not found`);
+    }
+
+    return shipment;
+  }
+
+  // async softDeleteShipment(id: Types.ObjectId, tenantName: string) {
+  //   const connection =
+  //     await this.tenantConnectionService.getTenantConnection(tenantName);
+  //   const ShipmentModel = this.getShipmentModel(connection);
+
+  //   const shipment = await ShipmentModel.findById(id);
+  //   if (!shipment) {
+  //     throw new NotFoundException(`Shipment with id "${id}" not found`);
+  //   }
+
+  //   await ShipmentModel.softDelete({ _id: id });
+
+  //   return {
+  //     message: `Shipment with id "${id}" was soft deleted successfully`,
+  //   };
+  // }
+
+  async updateShipmentStatusAndProductsToInPreparation(
+    shipmentId: Types.ObjectId,
+    tenantName: string,
+  ) {
+    await new Promise((resolve) => process.nextTick(resolve));
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+    const ProductModel = this.getProductModel(connection);
+    const MemberModel = connection.model<MemberDocument>('Member');
+
+    const shipment = await ShipmentModel.findById(shipmentId);
+    if (!shipment) {
+      throw new NotFoundException(`Shipment with id "${shipmentId}" not found`);
+    }
+
+    shipment.shipment_status = 'In Preparation';
+    await shipment.save();
+
+    for (const productId of shipment.products) {
+      const product = await ProductModel.findById(productId);
+
+      if (product) {
+        if (product.status === 'In Transit - Missing Data') {
+          product.status = 'In Transit';
+          await product.save();
+        }
+      } else {
+        const memberWithProduct = await MemberModel.findOne({
+          'products._id': productId,
+        });
+
+        const embeddedProduct = memberWithProduct?.products.find(
+          (p) => p._id?.toString() === productId.toString(),
+        );
+
+        if (
+          embeddedProduct &&
+          embeddedProduct.status === 'In Transit - Missing Data'
+        ) {
+          await MemberModel.updateOne(
+            { 'products._id': productId },
+            {
+              $set: {
+                'products.$.status': 'In Transit',
+              },
+            },
+          );
+        }
+      }
+    }
+
+    return shipment;
+  }
+
+  async checkAndUpdateShipmentsForOurOffice(
+    tenantName: string,
+    oldAddress: AddressData,
+    newAddress: AddressData,
+  ) {
+    await new Promise((resolve) => process.nextTick(resolve));
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = connection.model(
+      'Shipment',
+      ShipmentSchema,
+      'shipments',
+    );
+    const shipments = await ShipmentModel.find({
+      $or: [{ origin: 'Our office' }, { destination: 'Our office' }],
+      shipment_status: 'On Hold - Missing Data',
+    });
+
+    for (const shipment of shipments) {
+      let updated = false;
+
+      if (shipment.origin === 'Our office') {
+        shipment.originDetails = {
+          ...(shipment.originDetails ?? {}),
+          ...newAddress,
+        };
+        console.log(
+          `Updated originDetails for shipment ${shipment._id} with new address`,
+        );
+        updated = true;
+      }
+
+      if (shipment.destination === 'Our office') {
+        shipment.destinationDetails = {
+          ...(shipment.destinationDetails ?? {}),
+          ...newAddress,
+        };
+        this.logger.debug(
+          `Updated destinationDetails for shipment ${shipment._id}`,
+        );
+        updated = true;
+      }
+
+      // Validar si ambos extremos están completos
+      const originComplete = Object.values(shipment.originDetails || {}).every(
+        (val) => val && val.toString().trim() !== '',
+      );
+      const destinationComplete = Object.values(
+        shipment.destinationDetails || {},
+      ).every((val) => val && val.toString().trim() !== '');
+
+      if (originComplete && destinationComplete) {
+        shipment.shipment_status = 'In Preparation';
+
+        updated = true;
+
+        const ProductModel = connection.model('Product');
+        await ProductModel.updateMany(
+          { _id: { $in: shipment.products } },
+          { $set: { status: 'In Transit' } },
+        );
+      }
+
+      if (updated) {
+        await shipment.save();
+      }
+    }
   }
 }

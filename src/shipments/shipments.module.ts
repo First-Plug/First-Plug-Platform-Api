@@ -8,6 +8,7 @@ import { Shipment, ShipmentSchema } from './schema/shipment.schema';
 import { JwtService } from '@nestjs/jwt';
 import { MembersModule } from 'src/members/members.module';
 import { ProductsModule } from 'src/products/products.module';
+import { TenantAddressUpdatedListener } from 'src/shipments/listeners/tenant-address-update.listener';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ProductsModule } from 'src/products/products.module';
   controllers: [ShipmentsController],
   providers: [
     ShipmentsService,
+    TenantAddressUpdatedListener,
     JwtService,
     tenantConnectionProvider,
     {
