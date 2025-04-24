@@ -2,15 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { EventTypes } from 'src/common/events/types';
 import { MemberAddressUpdatedEvent } from 'src/common/events/member-address-update.event';
-import { ShipmentsService } from '../../shipments/shipments.service';
+import { ShipmentsService } from '../shipments.service';
 
 @Injectable()
 export class MemberAddressUpdatedListener {
   private readonly logger = new Logger(MemberAddressUpdatedListener.name);
 
-  constructor(private readonly shipmentsService: ShipmentsService) {
-    console.log('👂 Listener MemberAddressUpdatedListener registrado');
-  }
+  constructor(private readonly shipmentsService: ShipmentsService) {}
 
   @OnEvent(EventTypes.MEMBER_ADDRESS_UPDATED)
   async handleMemberAddressUpdated(event: MemberAddressUpdatedEvent) {

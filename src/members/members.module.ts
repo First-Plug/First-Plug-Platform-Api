@@ -11,7 +11,6 @@ import { TeamsService } from 'src/teams/teams.service';
 import { ProductsService } from 'src/products/products.service';
 import { HistoryModule } from 'src/history/history.module';
 import { ShipmentsModule } from 'src/shipments/shipments.module';
-import { MemberAddressUpdatedListener } from 'src/members/listeners/member-address-update.listener';
 
 @Module({
   imports: [
@@ -24,7 +23,6 @@ import { MemberAddressUpdatedListener } from 'src/members/listeners/member-addre
   controllers: [MembersController],
   providers: [
     MembersService,
-    MemberAddressUpdatedListener,
     ProductsService,
     tenantModels.memberModel,
     JwtService,

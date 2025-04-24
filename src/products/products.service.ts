@@ -1613,6 +1613,26 @@ export class ProductsService {
               ...updateProductDto,
               recoverable: isRecoverable,
             });
+
+            await this.maybeCreateShipmentAndUpdateStatus(
+              product,
+              updateProductDto,
+              tenantName,
+              actionType!,
+              session,
+              {
+                location: product.location,
+                assignedEmail: product.assignedEmail,
+                assignedMember: product.assignedMember,
+              },
+              {
+                location: updateProductDto.location ?? product.location,
+                assignedEmail:
+                  updateProductDto.assignedEmail ?? product.assignedEmail,
+                assignedMember:
+                  updateProductDto.assignedMember ?? product.assignedMember,
+              },
+            );
           } else {
             await this.updateProductAttributes(
               session,
@@ -1622,26 +1642,6 @@ export class ProductsService {
             );
           }
         }
-
-        await this.maybeCreateShipmentAndUpdateStatus(
-          product,
-          updateProductDto,
-          tenantName,
-          actionType!,
-          session,
-          {
-            location: product.location,
-            assignedEmail: product.assignedEmail,
-            assignedMember: product.assignedMember,
-          },
-          {
-            location: updateProductDto.location ?? product.location,
-            assignedEmail:
-              updateProductDto.assignedEmail ?? product.assignedEmail,
-            assignedMember:
-              updateProductDto.assignedMember ?? product.assignedMember,
-          },
-        );
 
         await session.commitTransaction();
         session.endSession();
@@ -1754,13 +1754,6 @@ export class ProductsService {
               );
             }
           } else if (updateProductDto.assignedEmail === '') {
-            const updateProduct = await this.handleProductUnassignment(
-              session,
-              memberProduct.product as ProductDocument,
-              { ...updateProductDto, recoverable: isRecoverable },
-              member,
-            );
-
             await this.maybeCreateShipmentAndUpdateStatus(
               memberProduct.product as ProductDocument,
               updateProductDto,
@@ -1777,6 +1770,12 @@ export class ProductsService {
                 assignedEmail: '',
                 assignedMember: '',
               },
+            );
+            const updateProduct = await this.handleProductUnassignment(
+              session,
+              memberProduct.product as ProductDocument,
+              { ...updateProductDto, recoverable: isRecoverable },
+              member,
             );
 
             // Registrar return

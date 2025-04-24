@@ -1096,9 +1096,7 @@ export class ShipmentsService {
           ...(shipment.originDetails ?? {}),
           ...newAddress,
         };
-        console.log(
-          `Updated originDetails for shipment ${shipment._id} with new address`,
-        );
+
         updated = true;
       }
 
@@ -1113,7 +1111,6 @@ export class ShipmentsService {
         updated = true;
       }
 
-      // Validar si ambos extremos están completos
       const originComplete = Object.values(shipment.originDetails || {}).every(
         (val) => val && val.toString().trim() !== '',
       );
@@ -1143,9 +1140,7 @@ export class ShipmentsService {
     memberEmail: string,
     tenantName: string,
   ) {
-    console.log(
-      `🚚 [CHECK AND UPDATE SHIPMENTS] Start for member ${memberEmail}`,
-    );
+    await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
     const ShipmentModel = connection.model<ShipmentDocument>(
@@ -1168,10 +1163,6 @@ export class ShipmentsService {
       $or: [{ origin: fullName }, { destination: fullName }],
     });
 
-    this.logger.debug(
-      `Found ${shipments.length} On Hold shipments involving member ${fullName}`,
-    );
-    console.log(shipments.length, 'On Hold shipments found:', shipments);
     for (const shipment of shipments) {
       let updated = false;
 
@@ -1205,12 +1196,36 @@ export class ShipmentsService {
         updated = true;
       }
 
-      const originComplete = Object.values(shipment.originDetails || {}).every(
-        (val) => val && val.toString().trim() !== '',
+      const isAddressComplete = (details: any, label: string): boolean => {
+        const requiredFields = [
+          'address',
+          'apartment',
+          'city',
+          'country',
+          'zipCode',
+          'phone',
+        ];
+
+        if (label === 'Our office') {
+          requiredFields.push('state');
+        } else {
+          requiredFields.push('personalEmail', 'dni');
+        }
+
+        return requiredFields.every((field) => {
+          const value = details?.[field];
+          return typeof value === 'string' && value.trim() !== '';
+        });
+      };
+
+      const originComplete = isAddressComplete(
+        shipment.originDetails,
+        shipment.origin,
       );
-      const destinationComplete = Object.values(
-        shipment.destinationDetails || {},
-      ).every((val) => val && val.toString().trim() !== '');
+      const destinationComplete = isAddressComplete(
+        shipment.destinationDetails,
+        shipment.destination,
+      );
 
       if (originComplete && destinationComplete) {
         shipment.shipment_status = 'In Preparation';
@@ -1228,7 +1243,6 @@ export class ShipmentsService {
         this.logger.debug(
           `Shipment ${shipment._id} updated for member ${fullName}`,
         );
-        console.log(`Shipment ${shipment._id} updated for member ${fullName}`);
       }
     }
   }

@@ -540,6 +540,10 @@ export class MembersService {
         member.personalEmail = updateMemberDto.personalEmail.trim();
       }
 
+      if (updateMemberDto.activeShipment === undefined) {
+        updateMemberDto.activeShipment = member.activeShipment;
+      }
+
       Object.assign(member, updateMemberDto);
 
       if (updateMemberDto.dni === undefined) {
@@ -549,6 +553,7 @@ export class MembersService {
       member.email = member.email.trim().toLowerCase();
       member.firstName = member.firstName.trim();
       member.lastName = member.lastName.trim();
+
       await member.save({ session });
 
       const emailUpdated = oldEmail !== member.email;
@@ -570,12 +575,13 @@ export class MembersService {
         member.products = updatedProducts;
         await member.save({ session });
       }
-      if (this.isPersonalDataBeingModified(member, updateMemberDto)) {
+      const modified = this.isPersonalDataBeingModified(
+        initialMember,
+        updateMemberDto,
+      );
+
+      if (modified) {
         if (member.activeShipment) {
-          console.log('✅ Emitting MEMBER_ADDRESS_UPDATED for:', member.email);
-          console.log(
-            '📦 Emitiendo evento de actualización de dirección del miembro',
-          );
           this.eventEmitter.emit(
             EventTypes.MEMBER_ADDRESS_UPDATED,
             new MemberAddressUpdatedEvent(
@@ -588,7 +594,7 @@ export class MembersService {
                 country: initialMember.country,
                 zipCode: initialMember.zipCode,
                 phone: initialMember.phone,
-                personalEmail: initialMember.personalEmail,
+                email: initialMember.email,
                 dni: initialMember.dni?.toString(),
               },
               {
@@ -598,7 +604,7 @@ export class MembersService {
                 country: member.country,
                 zipCode: member.zipCode,
                 phone: member.phone,
-                personalEmail: member.personalEmail,
+                email: member.email,
                 dni: member.dni?.toString(),
               },
             ),
@@ -704,7 +710,7 @@ export class MembersService {
         member.city &&
         member.zipCode &&
         member.address &&
-        member.personalEmail &&
+        member.email &&
         member.phone &&
         member.dni
       );

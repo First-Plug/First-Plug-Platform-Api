@@ -2,11 +2,10 @@ export interface AddressData {
   address?: string;
   apartment?: string;
   city?: string;
-  state?: string;
   country?: string;
   zipCode?: string;
   phone?: string;
-  personalEmail?: string;
+  email?: string;
   dni?: string;
 }
 
