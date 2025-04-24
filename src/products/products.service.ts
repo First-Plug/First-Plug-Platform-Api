@@ -1172,6 +1172,7 @@ export class ProductsService {
     updateProductDto: UpdateProductDto,
     config: { tenantName: string; userId: string },
   ) {
+    await new Promise((resolve) => process.nextTick(resolve));
     const { tenantName, userId } = config;
 
     try {
@@ -1292,6 +1293,11 @@ export class ProductsService {
 
       return { message: `Product with id "${id}" updated successfully` };
     } catch (error) {
+      console.log('❌ Error in updateEntity:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      });
       if (error?.code === 11000) {
         throw new BadRequestException('Serial Number already exists');
       }
