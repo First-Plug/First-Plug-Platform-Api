@@ -1554,14 +1554,6 @@ export class ProductsService {
             if (newMember) {
               const lastMember = product.assignedEmail;
 
-              await this.moveToMemberCollection(
-                session,
-                product,
-                newMember,
-                { ...updateProductDto, recoverable: isRecoverable },
-                product.assignedEmail || '',
-              );
-
               await this.maybeCreateShipmentAndUpdateStatus(
                 product,
                 updateProductDto,
@@ -1578,6 +1570,14 @@ export class ProductsService {
                   assignedEmail: updateProductDto.assignedEmail,
                   assignedMember: updateProductDto.assignedMember,
                 },
+              );
+
+              await this.moveToMemberCollection(
+                session,
+                product,
+                newMember,
+                { ...updateProductDto, recoverable: isRecoverable },
+                product.assignedEmail || '',
               );
 
               // Registrar reassign & assign
@@ -1699,14 +1699,6 @@ export class ProductsService {
             if (newMember) {
               const lastMember = member.email;
 
-              await this.moveToMemberCollection(
-                session,
-                memberProduct.product as ProductDocument,
-                newMember,
-                { ...updateProductDto, recoverable: isRecoverable },
-                member.email,
-              );
-
               await this.maybeCreateShipmentAndUpdateStatus(
                 memberProduct.product as ProductDocument,
                 updateProductDto,
@@ -1728,6 +1720,14 @@ export class ProductsService {
                     updateProductDto.assignedMember ??
                     memberProduct.product.assignedMember,
                 },
+              );
+
+              await this.moveToMemberCollection(
+                session,
+                memberProduct.product as ProductDocument,
+                newMember,
+                { ...updateProductDto, recoverable: isRecoverable },
+                member.email,
               );
 
               // Registrar relocate
