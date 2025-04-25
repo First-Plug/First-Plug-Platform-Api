@@ -97,7 +97,7 @@ export const ProductSchemaZod = z
       .union([
         z.string(),
         z.object({
-          origin: z.string().optional(),
+          origin: z.union([z.string(), z.date()]).optional(),
           destination: z.string().optional(),
         }),
       ])
@@ -151,30 +151,30 @@ export const ProductSchemaZod = z
       //         path: ['status'],
       //       });
       //     }
-    } else {
-      // Validaciones para productos no "Unusable"
-      if (data.assignedMember) {
-        if (data.location !== 'Employee' || data.status !== 'Delivered') {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message:
-              'When assigned to a member, location must be Employee and status must be Delivered.',
-            path: ['status'],
-          });
-        }
-      } else if (data.assignedEmail === 'none') {
-        if (
-          !['FP warehouse', 'Our office'].includes(data.location) ||
-          data.status !== 'Available'
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message:
-              'When unassigned, location must be FP warehouse or Our office, and status must be Available.',
-            path: ['status'],
-          });
-        }
-      }
+      // } else {
+      //   // Validaciones para productos no "Unusable"
+      //   if (data.assignedMember) {
+      //     if (data.location !== 'Employee' || data.status !== 'Delivered') {
+      //       ctx.addIssue({
+      //         code: z.ZodIssueCode.custom,
+      //         message:
+      //           'When assigned to a member, location must be Employee and status must be Delivered.',
+      //         path: ['status'],
+      //       });
+      //     }
+      //   } else if (data.assignedEmail === 'none') {
+      //     if (
+      //       !['FP warehouse', 'Our office'].includes(data.location) ||
+      //       data.status !== 'Available'
+      //     ) {
+      //       ctx.addIssue({
+      //         code: z.ZodIssueCode.custom,
+      //         message:
+      //           'When unassigned, location must be FP warehouse or Our office, and status must be Available.',
+      //         path: ['status'],
+      //       });
+      //     }
+      //   }
 
       // Validación de condiciones de producto para ubicaciones específicas
       if (
