@@ -58,12 +58,7 @@ export class ShipmentsService {
     private readonly productsService: ProductsService,
     @Inject('SHIPMENT_METADATA_MODEL')
     private readonly shipmentMetadataRepository: Model<ShipmentMetadata>,
-  ) {
-    console.log(
-      '🚚 ShipmentsService cargado - tenantConnectionService:',
-      !!tenantConnectionService,
-    );
-  }
+  ) {}
 
   private getShipmentModel(tenantConnection): Model<ShipmentDocument> {
     if (tenantConnection.models.Shipment) {
