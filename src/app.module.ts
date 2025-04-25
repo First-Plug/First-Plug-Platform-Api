@@ -13,6 +13,7 @@ import { HistoryModule } from './history/history.module';
 import { ShipmentsModule } from 'src/shipments/shipments.module';
 import { CommonModule } from 'src/common/common.module';
 import { RetoolWebhooksModule } from 'src/retool-webhooks/retool-webhooks.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
   imports: [
@@ -22,6 +23,8 @@ import { RetoolWebhooksModule } from 'src/retool-webhooks/retool-webhooks.module
       load: [EnvConfiguration],
       validate: (env) => ZodEnvironmentsSchema.parse(env),
     }),
+    EventEmitterModule.forRoot(),
+    CommonModule,
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (config) => ({
@@ -47,7 +50,6 @@ import { RetoolWebhooksModule } from 'src/retool-webhooks/retool-webhooks.module
     HistoryModule,
     ShipmentsModule,
     RetoolWebhooksModule,
-    CommonModule,
   ],
   controllers: [],
   providers: [],

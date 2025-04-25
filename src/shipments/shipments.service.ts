@@ -3,6 +3,7 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import mongoose, {
@@ -38,9 +39,15 @@ import {
   ShipmentMetadataSchema,
 } from 'src/shipments/schema/shipment-metadata.schema';
 import { OrderNumberGenerator } from 'src/shipments/helpers/order-number.util';
+import { AddressData } from 'src/common/events/tenant-address-update.event';
+
+// interface SoftDeleteModel<T> extends Model<T> {
+//   softDelete(filter: any, options?: any): Promise<any>;
+// }
 
 @Injectable()
 export class ShipmentsService {
+  private readonly logger = new Logger(ShipmentsService.name);
   constructor(
     private readonly globalConnectionProvider: GlobalConnectionProvider,
     private readonly tenantConnectionService: TenantConnectionService,
@@ -966,5 +973,277 @@ export class ShipmentsService {
       },
       $or: [{ origin: fullName }, { destination: fullName }],
     });
+  }
+
+  async getShipments(tenantName: string) {
+    await new Promise((resolve) => process.nextTick(resolve));
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+
+    return ShipmentModel.find({ isDeleted: false }).sort({ createdAt: -1 });
+  }
+
+  async getShipmentById(id: Types.ObjectId, tenantName: string) {
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+
+    const shipment = await ShipmentModel.findOne({ _id: id, isDeleted: false });
+
+    if (!shipment) {
+      throw new NotFoundException(`Shipment with id "${id}" not found`);
+    }
+
+    return shipment;
+  }
+
+  // async softDeleteShipment(id: Types.ObjectId, tenantName: string) {
+  //   const connection =
+  //     await this.tenantConnectionService.getTenantConnection(tenantName);
+  //   const ShipmentModel = this.getShipmentModel(connection);
+
+  //   const shipment = await ShipmentModel.findById(id);
+  //   if (!shipment) {
+  //     throw new NotFoundException(`Shipment with id "${id}" not found`);
+  //   }
+
+  //   await ShipmentModel.softDelete({ _id: id });
+
+  //   return {
+  //     message: `Shipment with id "${id}" was soft deleted successfully`,
+  //   };
+  // }
+
+  async updateShipmentStatusAndProductsToInPreparation(
+    shipmentId: Types.ObjectId,
+    tenantName: string,
+  ) {
+    await new Promise((resolve) => process.nextTick(resolve));
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+    const ProductModel = this.getProductModel(connection);
+    const MemberModel = connection.model<MemberDocument>('Member');
+
+    const shipment = await ShipmentModel.findById(shipmentId);
+    if (!shipment) {
+      throw new NotFoundException(`Shipment with id "${shipmentId}" not found`);
+    }
+
+    shipment.shipment_status = 'In Preparation';
+    await shipment.save();
+
+    for (const productId of shipment.products) {
+      const product = await ProductModel.findById(productId);
+
+      if (product) {
+        if (product.status === 'In Transit - Missing Data') {
+          product.status = 'In Transit';
+          await product.save();
+        }
+      } else {
+        const memberWithProduct = await MemberModel.findOne({
+          'products._id': productId,
+        });
+
+        const embeddedProduct = memberWithProduct?.products.find(
+          (p) => p._id?.toString() === productId.toString(),
+        );
+
+        if (
+          embeddedProduct &&
+          embeddedProduct.status === 'In Transit - Missing Data'
+        ) {
+          await MemberModel.updateOne(
+            { 'products._id': productId },
+            {
+              $set: {
+                'products.$.status': 'In Transit',
+              },
+            },
+          );
+        }
+      }
+    }
+
+    return shipment;
+  }
+
+  async checkAndUpdateShipmentsForOurOffice(
+    tenantName: string,
+    oldAddress: AddressData,
+    newAddress: AddressData,
+  ) {
+    await new Promise((resolve) => process.nextTick(resolve));
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = connection.model(
+      'Shipment',
+      ShipmentSchema,
+      'shipments',
+    );
+    const shipments = await ShipmentModel.find({
+      $or: [{ origin: 'Our office' }, { destination: 'Our office' }],
+      shipment_status: 'On Hold - Missing Data',
+    });
+
+    for (const shipment of shipments) {
+      let updated = false;
+
+      if (shipment.origin === 'Our office') {
+        shipment.originDetails = {
+          ...(shipment.originDetails ?? {}),
+          ...newAddress,
+        };
+
+        updated = true;
+      }
+
+      if (shipment.destination === 'Our office') {
+        shipment.destinationDetails = {
+          ...(shipment.destinationDetails ?? {}),
+          ...newAddress,
+        };
+        this.logger.debug(
+          `Updated destinationDetails for shipment ${shipment._id}`,
+        );
+        updated = true;
+      }
+
+      const originComplete = Object.values(shipment.originDetails || {}).every(
+        (val) => val && val.toString().trim() !== '',
+      );
+      const destinationComplete = Object.values(
+        shipment.destinationDetails || {},
+      ).every((val) => val && val.toString().trim() !== '');
+
+      if (originComplete && destinationComplete) {
+        shipment.shipment_status = 'In Preparation';
+
+        updated = true;
+
+        const ProductModel = connection.model('Product');
+        await ProductModel.updateMany(
+          { _id: { $in: shipment.products } },
+          { $set: { status: 'In Transit' } },
+        );
+      }
+
+      if (updated) {
+        await shipment.save();
+      }
+    }
+  }
+
+  async checkAndUpdateShipmentsForMember(
+    memberEmail: string,
+    tenantName: string,
+  ) {
+    await new Promise((resolve) => process.nextTick(resolve));
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = connection.model<ShipmentDocument>(
+      'Shipment',
+      ShipmentSchema,
+      'shipments',
+    );
+
+    const member =
+      await this.membersService.findByEmailNotThrowError(memberEmail);
+    if (!member) {
+      console.log(`❌ Member ${memberEmail} not found`);
+      return;
+    }
+
+    const fullName = `${member.firstName} ${member.lastName}`;
+
+    const shipments = await ShipmentModel.find({
+      shipment_status: 'On Hold - Missing Data',
+      $or: [{ origin: fullName }, { destination: fullName }],
+    });
+
+    for (const shipment of shipments) {
+      let updated = false;
+
+      if (shipment.origin === fullName) {
+        shipment.originDetails = {
+          ...shipment.originDetails,
+          address: member.address || '',
+          apartment: member.apartment || '',
+          city: member.city || '',
+          country: member.country || '',
+          zipCode: member.zipCode || '',
+          phone: member.phone || '',
+          personalEmail: member.personalEmail || '',
+          dni: `${member.dni || ''}`,
+        };
+        updated = true;
+      }
+
+      if (shipment.destination === fullName) {
+        shipment.destinationDetails = {
+          ...shipment.destinationDetails,
+          address: member.address || '',
+          apartment: member.apartment || '',
+          city: member.city || '',
+          country: member.country || '',
+          zipCode: member.zipCode || '',
+          phone: member.phone || '',
+          personalEmail: member.personalEmail || '',
+          dni: `${member.dni || ''}`,
+        };
+        updated = true;
+      }
+
+      const isAddressComplete = (details: any, label: string): boolean => {
+        const requiredFields = [
+          'address',
+          'apartment',
+          'city',
+          'country',
+          'zipCode',
+          'phone',
+        ];
+
+        if (label === 'Our office') {
+          requiredFields.push('state');
+        } else {
+          requiredFields.push('personalEmail', 'dni');
+        }
+
+        return requiredFields.every((field) => {
+          const value = details?.[field];
+          return typeof value === 'string' && value.trim() !== '';
+        });
+      };
+
+      const originComplete = isAddressComplete(
+        shipment.originDetails,
+        shipment.origin,
+      );
+      const destinationComplete = isAddressComplete(
+        shipment.destinationDetails,
+        shipment.destination,
+      );
+
+      if (originComplete && destinationComplete) {
+        shipment.shipment_status = 'In Preparation';
+        updated = true;
+
+        const ProductModel = connection.model('Product');
+        await ProductModel.updateMany(
+          { _id: { $in: shipment.products } },
+          { $set: { status: 'In Transit' } },
+        );
+      }
+
+      if (updated) {
+        await shipment.save();
+        this.logger.debug(
+          `Shipment ${shipment._id} updated for member ${fullName}`,
+        );
+      }
+    }
   }
 }

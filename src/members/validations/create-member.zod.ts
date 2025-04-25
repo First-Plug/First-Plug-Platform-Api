@@ -54,6 +54,7 @@ export const MemberSchemaZod = z.object({
   dni: z
     .union([z.number().int().positive().or(z.literal(0)), z.undefined()])
     .optional(),
+  activeShipment: z.boolean().optional(),
 });
 
 export const MemberSchemaZodArray = z.array(MemberSchemaZod);

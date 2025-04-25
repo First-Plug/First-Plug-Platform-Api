@@ -429,6 +429,7 @@ export class ProductsService {
     tenantName: string,
     userId: string,
   ) {
+    await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     const session = await connection.startSession();
@@ -1171,6 +1172,7 @@ export class ProductsService {
     updateProductDto: UpdateProductDto,
     config: { tenantName: string; userId: string },
   ) {
+    await new Promise((resolve) => process.nextTick(resolve));
     const { tenantName, userId } = config;
 
     try {
@@ -1291,6 +1293,11 @@ export class ProductsService {
 
       return { message: `Product with id "${id}" updated successfully` };
     } catch (error) {
+      console.log('❌ Error in updateEntity:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      });
       if (error?.code === 11000) {
         throw new BadRequestException('Serial Number already exists');
       }
@@ -1553,14 +1560,6 @@ export class ProductsService {
             if (newMember) {
               const lastMember = product.assignedEmail;
 
-              await this.moveToMemberCollection(
-                session,
-                product,
-                newMember,
-                { ...updateProductDto, recoverable: isRecoverable },
-                product.assignedEmail || '',
-              );
-
               await this.maybeCreateShipmentAndUpdateStatus(
                 product,
                 updateProductDto,
@@ -1577,6 +1576,14 @@ export class ProductsService {
                   assignedEmail: updateProductDto.assignedEmail,
                   assignedMember: updateProductDto.assignedMember,
                 },
+              );
+
+              await this.moveToMemberCollection(
+                session,
+                product,
+                newMember,
+                { ...updateProductDto, recoverable: isRecoverable },
+                product.assignedEmail || '',
               );
 
               // Registrar reassign & assign
@@ -1612,6 +1619,26 @@ export class ProductsService {
               ...updateProductDto,
               recoverable: isRecoverable,
             });
+
+            await this.maybeCreateShipmentAndUpdateStatus(
+              product,
+              updateProductDto,
+              tenantName,
+              actionType!,
+              session,
+              {
+                location: product.location,
+                assignedEmail: product.assignedEmail,
+                assignedMember: product.assignedMember,
+              },
+              {
+                location: updateProductDto.location ?? product.location,
+                assignedEmail:
+                  updateProductDto.assignedEmail ?? product.assignedEmail,
+                assignedMember:
+                  updateProductDto.assignedMember ?? product.assignedMember,
+              },
+            );
           } else {
             await this.updateProductAttributes(
               session,
@@ -1621,26 +1648,6 @@ export class ProductsService {
             );
           }
         }
-
-        await this.maybeCreateShipmentAndUpdateStatus(
-          product,
-          updateProductDto,
-          tenantName,
-          actionType!,
-          session,
-          {
-            location: product.location,
-            assignedEmail: product.assignedEmail,
-            assignedMember: product.assignedMember,
-          },
-          {
-            location: updateProductDto.location ?? product.location,
-            assignedEmail:
-              updateProductDto.assignedEmail ?? product.assignedEmail,
-            assignedMember:
-              updateProductDto.assignedMember ?? product.assignedMember,
-          },
-        );
 
         await session.commitTransaction();
         session.endSession();
@@ -1698,14 +1705,6 @@ export class ProductsService {
             if (newMember) {
               const lastMember = member.email;
 
-              await this.moveToMemberCollection(
-                session,
-                memberProduct.product as ProductDocument,
-                newMember,
-                { ...updateProductDto, recoverable: isRecoverable },
-                member.email,
-              );
-
               await this.maybeCreateShipmentAndUpdateStatus(
                 memberProduct.product as ProductDocument,
                 updateProductDto,
@@ -1727,6 +1726,14 @@ export class ProductsService {
                     updateProductDto.assignedMember ??
                     memberProduct.product.assignedMember,
                 },
+              );
+
+              await this.moveToMemberCollection(
+                session,
+                memberProduct.product as ProductDocument,
+                newMember,
+                { ...updateProductDto, recoverable: isRecoverable },
+                member.email,
               );
 
               // Registrar relocate
@@ -1753,13 +1760,6 @@ export class ProductsService {
               );
             }
           } else if (updateProductDto.assignedEmail === '') {
-            const updateProduct = await this.handleProductUnassignment(
-              session,
-              memberProduct.product as ProductDocument,
-              { ...updateProductDto, recoverable: isRecoverable },
-              member,
-            );
-
             await this.maybeCreateShipmentAndUpdateStatus(
               memberProduct.product as ProductDocument,
               updateProductDto,
@@ -1776,6 +1776,12 @@ export class ProductsService {
                 assignedEmail: '',
                 assignedMember: '',
               },
+            );
+            const updateProduct = await this.handleProductUnassignment(
+              session,
+              memberProduct.product as ProductDocument,
+              { ...updateProductDto, recoverable: isRecoverable },
+              member,
             );
 
             // Registrar return
