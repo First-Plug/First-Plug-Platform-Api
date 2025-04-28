@@ -68,8 +68,13 @@ export class ShipmentsService {
     return tenantConnection.model('Shipment', ShipmentSchema);
   }
 
-  private getCountryCode(countryName: string): string {
-    return countryCodes[countryName] || 'XX';
+  private getCountryCode(country: string): string {
+    // Special case for 'Our office'
+    if (country === 'Our office') {
+      return 'OO';
+    }
+
+    return countryCodes[country] || 'XX';
   }
 
   public async getLocationInfo(
@@ -1405,17 +1410,19 @@ export class ShipmentsService {
         currentOrderId: shipment.order_id,
       });
 
-      // Create snapshots first
       await this.createSnapshots(shipment, connection);
 
-      // Check if addresses have all required fields
-      const hasRequiredOriginFields = !!(
-        shipment.originDetails &&
-        shipment.originDetails.address &&
-        shipment.originDetails.city &&
-        shipment.originDetails.country &&
-        shipment.originDetails.zipCode
-      );
+      // Special handling for FP warehouse - no need to validate origin address
+      const hasRequiredOriginFields =
+        shipment.origin === 'FP warehouse'
+          ? true
+          : !!(
+              shipment.originDetails &&
+              shipment.originDetails.address &&
+              shipment.originDetails.city &&
+              shipment.originDetails.country &&
+              shipment.originDetails.zipCode
+            );
 
       const hasRequiredDestinationFields = !!(
         shipment.destinationDetails &&
@@ -1425,41 +1432,79 @@ export class ShipmentsService {
         shipment.destinationDetails.zipCode
       );
 
-      console.log('📋 Address fields check:', {
-        hasRequiredOriginFields,
-        hasRequiredDestinationFields,
-        originCountry: shipment.originDetails?.country,
-        destinationCountry: shipment.destinationDetails?.country,
-      });
-
       if (hasRequiredOriginFields && hasRequiredDestinationFields) {
         console.log(
           '✅ Both addresses are complete, updating status to In Preparation',
         );
         shipment.shipment_status = 'In Preparation';
 
-        // Get country codes for origin and destination
-        const originCode = this.getCountryCode(
-          shipment.originDetails?.country || '',
-        );
-        const destinationCode = this.getCountryCode(
-          shipment.destinationDetails?.country || '',
-        );
+        // Get country codes and update order_id
+        const originCode =
+          shipment.origin === 'FP warehouse'
+            ? 'FP'
+            : shipment.origin === 'Our office'
+              ? 'OO'
+              : this.getCountryCode(shipment.originDetails?.country || '');
 
-        // Extract the order number from the current order_id
+        const destinationCode =
+          shipment.destination === 'Our office'
+            ? 'OO'
+            : this.getCountryCode(shipment.destinationDetails?.country || '');
+
         const orderNumber = parseInt(shipment.order_id.slice(-4));
+        const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
 
-        // Generate new order_id using country codes
-        shipment.order_id = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
-        console.log('📝 Updated order_id to:', shipment.order_id);
+        console.log('📝 Updating order ID:', {
+          oldOrderId: shipment.order_id,
+          newOrderId,
+          origin: shipment.origin,
+          destination: shipment.destination,
+          originCode,
+          destinationCode,
+          destinationCountry: shipment.destinationDetails?.country,
+        });
+
+        shipment.order_id = newOrderId;
 
         // Update products status
         const ProductModel = this.getProductModel(connection);
-        await ProductModel.updateMany(
-          { _id: { $in: shipment.products } },
-          { $set: { status: 'In Transit' } },
-          { session },
-        );
+        const MemberModel = connection.model<MemberDocument>('Member');
+
+        for (const productId of shipment.products) {
+          // First try in Product collection
+          const product =
+            await ProductModel.findById(productId).session(session);
+
+          if (product) {
+            product.status = 'In Transit';
+            await product.save({ session });
+            console.log(
+              `✅ Updated product status in Products collection: ${productId}`,
+            );
+          } else {
+            // If not found in Products, look in Members collection
+            const memberWithProduct = await MemberModel.findOne(
+              { 'products._id': productId },
+              null,
+              { session },
+            );
+
+            if (memberWithProduct) {
+              await MemberModel.updateOne(
+                { 'products._id': productId },
+                { $set: { 'products.$.status': 'In Transit' } },
+                { session },
+              );
+              console.log(
+                `✅ Updated product status in Member collection: ${productId}`,
+              );
+            } else {
+              console.log(
+                `⚠️ Product ${productId} not found in either collection`,
+              );
+            }
+          }
+        }
       } else {
         console.log(
           '⚠️ Missing required address fields, keeping status as On Hold - Missing Data',
