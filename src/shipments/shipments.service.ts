@@ -1408,7 +1408,6 @@ export class ShipmentsService {
       // Create snapshots first
       await this.createSnapshots(shipment, connection);
 
-      // Check if addresses have all required fields
       const hasRequiredOriginFields = !!(
         shipment.originDetails &&
         shipment.originDetails.address &&
@@ -1425,41 +1424,61 @@ export class ShipmentsService {
         shipment.destinationDetails.zipCode
       );
 
-      console.log('📋 Address fields check:', {
-        hasRequiredOriginFields,
-        hasRequiredDestinationFields,
-        originCountry: shipment.originDetails?.country,
-        destinationCountry: shipment.destinationDetails?.country,
-      });
-
       if (hasRequiredOriginFields && hasRequiredDestinationFields) {
         console.log(
           '✅ Both addresses are complete, updating status to In Preparation',
         );
         shipment.shipment_status = 'In Preparation';
 
-        // Get country codes for origin and destination
+        // Get country codes and update order_id
         const originCode = this.getCountryCode(
           shipment.originDetails?.country || '',
         );
         const destinationCode = this.getCountryCode(
           shipment.destinationDetails?.country || '',
         );
-
-        // Extract the order number from the current order_id
         const orderNumber = parseInt(shipment.order_id.slice(-4));
-
-        // Generate new order_id using country codes
         shipment.order_id = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
-        console.log('📝 Updated order_id to:', shipment.order_id);
 
         // Update products status
         const ProductModel = this.getProductModel(connection);
-        await ProductModel.updateMany(
-          { _id: { $in: shipment.products } },
-          { $set: { status: 'In Transit' } },
-          { session },
-        );
+        const MemberModel = connection.model<MemberDocument>('Member');
+
+        for (const productId of shipment.products) {
+          // First try in Product collection
+          const product =
+            await ProductModel.findById(productId).session(session);
+
+          if (product) {
+            product.status = 'In Transit';
+            await product.save({ session });
+            console.log(
+              `✅ Updated product status in Products collection: ${productId}`,
+            );
+          } else {
+            // If not found in Products, look in Members collection
+            const memberWithProduct = await MemberModel.findOne(
+              { 'products._id': productId },
+              null,
+              { session },
+            );
+
+            if (memberWithProduct) {
+              await MemberModel.updateOne(
+                { 'products._id': productId },
+                { $set: { 'products.$.status': 'In Transit' } },
+                { session },
+              );
+              console.log(
+                `✅ Updated product status in Member collection: ${productId}`,
+              );
+            } else {
+              console.log(
+                `⚠️ Product ${productId} not found in either collection`,
+              );
+            }
+          }
+        }
       } else {
         console.log(
           '⚠️ Missing required address fields, keeping status as On Hold - Missing Data',
