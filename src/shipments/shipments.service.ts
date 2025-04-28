@@ -68,8 +68,13 @@ export class ShipmentsService {
     return tenantConnection.model('Shipment', ShipmentSchema);
   }
 
-  private getCountryCode(countryName: string): string {
-    return countryCodes[countryName] || 'XX';
+  private getCountryCode(country: string): string {
+    // Special case for 'Our office'
+    if (country === 'Our office') {
+      return 'OO';
+    }
+
+    return countryCodes[country] || 'XX';
   }
 
   public async getLocationInfo(
@@ -1405,16 +1410,19 @@ export class ShipmentsService {
         currentOrderId: shipment.order_id,
       });
 
-      // Create snapshots first
       await this.createSnapshots(shipment, connection);
 
-      const hasRequiredOriginFields = !!(
-        shipment.originDetails &&
-        shipment.originDetails.address &&
-        shipment.originDetails.city &&
-        shipment.originDetails.country &&
-        shipment.originDetails.zipCode
-      );
+      // Special handling for FP warehouse - no need to validate origin address
+      const hasRequiredOriginFields =
+        shipment.origin === 'FP warehouse'
+          ? true
+          : !!(
+              shipment.originDetails &&
+              shipment.originDetails.address &&
+              shipment.originDetails.city &&
+              shipment.originDetails.country &&
+              shipment.originDetails.zipCode
+            );
 
       const hasRequiredDestinationFields = !!(
         shipment.destinationDetails &&
@@ -1431,14 +1439,32 @@ export class ShipmentsService {
         shipment.shipment_status = 'In Preparation';
 
         // Get country codes and update order_id
-        const originCode = this.getCountryCode(
-          shipment.originDetails?.country || '',
-        );
-        const destinationCode = this.getCountryCode(
-          shipment.destinationDetails?.country || '',
-        );
+        const originCode =
+          shipment.origin === 'FP warehouse'
+            ? 'FP'
+            : shipment.origin === 'Our office'
+              ? 'OO'
+              : this.getCountryCode(shipment.originDetails?.country || '');
+
+        const destinationCode =
+          shipment.destination === 'Our office'
+            ? 'OO'
+            : this.getCountryCode(shipment.destinationDetails?.country || '');
+
         const orderNumber = parseInt(shipment.order_id.slice(-4));
-        shipment.order_id = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
+        const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
+
+        console.log('📝 Updating order ID:', {
+          oldOrderId: shipment.order_id,
+          newOrderId,
+          origin: shipment.origin,
+          destination: shipment.destination,
+          originCode,
+          destinationCode,
+          destinationCountry: shipment.destinationDetails?.country,
+        });
+
+        shipment.order_id = newOrderId;
 
         // Update products status
         const ProductModel = this.getProductModel(connection);
