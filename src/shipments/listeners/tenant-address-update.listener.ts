@@ -15,7 +15,16 @@ export class TenantAddressUpdatedListener {
     try {
       this.logger.debug(
         `Processing address update for tenant: ${event.tenantName}`,
+        {
+          oldAddress: event.oldAddress,
+          newAddress: event.newAddress,
+        },
       );
+
+      if (!event.newAddress || !event.oldAddress) {
+        this.logger.error('Missing address data in event');
+        return;
+      }
 
       await this.shipmentsService.checkAndUpdateShipmentsForOurOffice(
         event.tenantName,
@@ -31,7 +40,6 @@ export class TenantAddressUpdatedListener {
         `Failed to process address update for tenant: ${event.tenantName}`,
         error.stack,
       );
-
       throw error;
     }
   }
