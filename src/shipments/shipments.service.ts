@@ -130,6 +130,17 @@ export class ShipmentsService {
         },
       };
     }
+    const countryCode = this.getCountryCode(location);
+    if (countryCode !== 'XX') {
+      return {
+        name: location,
+        code: countryCode,
+        details: {
+          country: location,
+          desirableDate: desirableDate || '',
+        },
+      };
+    }
 
     return { name: assignedMember || 'Unknown', code: 'XX' };
   }
@@ -248,8 +259,24 @@ export class ShipmentsService {
     if (!orderOrigin || !orderDestination || orderNumber === undefined) {
       throw new Error('❌ Parámetros inválidos para generar el Order ID');
     }
+
+    // If the input is already a country code (2 letters), use it directly
+    const originCode =
+      orderOrigin.length === 2
+        ? orderOrigin
+        : orderOrigin === 'Our office'
+          ? 'OO'
+          : this.getCountryCode(orderOrigin);
+
+    const destinationCode =
+      orderDestination.length === 2
+        ? orderDestination
+        : orderDestination === 'Our office'
+          ? 'OO'
+          : this.getCountryCode(orderDestination);
+
     const orderNumberFormatted = orderNumber.toString().padStart(4, '0');
-    return `${orderOrigin}${orderDestination}${orderNumberFormatted}`;
+    return `${originCode}${destinationCode}${orderNumberFormatted}`;
   }
 
   private isCreatingAction(actionType?: string): boolean {
@@ -319,9 +346,9 @@ export class ShipmentsService {
     productId: string,
     actionType: string,
     tenantId: string,
-    session: mongoose.ClientSession | null = null,
-    desirableDestinationDate?: string,
-    desirableOriginDate?: string,
+    session?: ClientSession | null,
+    desirableDestinationDate?: string | Date,
+    desirableOriginDate?: string | Date,
     oldData?: {
       location?: string;
       assignedEmail?: string;
@@ -333,6 +360,17 @@ export class ShipmentsService {
       assignedMember?: string;
     },
   ): Promise<ShipmentDocument> {
+    // Convert dates to strings if they are Date objects
+    const originDate =
+      desirableOriginDate instanceof Date
+        ? desirableOriginDate.toISOString()
+        : desirableOriginDate;
+
+    const destinationDate =
+      desirableDestinationDate instanceof Date
+        ? desirableDestinationDate.toISOString()
+        : desirableDestinationDate;
+
     console.log('🚚 [INIT] findOrCreateShipment llamado', {
       productId,
       actionType,
@@ -366,8 +404,8 @@ export class ShipmentsService {
       actionType,
       oldData,
       newData,
-      desirableOriginDate,
-      desirableDestinationDate,
+      originDate,
+      destinationDate,
     );
     console.log('📍 Ubicaciones obtenidas:', {
       origin,
@@ -383,7 +421,7 @@ export class ShipmentsService {
           tenantId,
           oldData?.assignedEmail || '',
           oldData?.assignedMember || '',
-          desirableOriginDate,
+          originDate,
         ).then((res) => res.details);
 
     console.log('📄 originDetails:', originDetails);
@@ -393,7 +431,7 @@ export class ShipmentsService {
       tenantId,
       newData?.assignedEmail || '',
       newData?.assignedMember || '',
-      desirableDestinationDate,
+      destinationDate,
     ).then((res) => res.details);
 
     console.log('📄 destinationDetails:', destinationDetails);
@@ -409,7 +447,7 @@ export class ShipmentsService {
       'originDetails.desirableDate': originDetails?.desirableDate || null,
       'destinationDetails.desirableDate':
         destinationDetails?.desirableDate || null,
-    }).session(session);
+    }).session(session || null);
 
     const productObjectId = new mongoose.Types.ObjectId(productId);
 
@@ -477,14 +515,30 @@ export class ShipmentsService {
     });
 
     console.log('✅ Shipment creado');
+    const originEmail = oldData?.assignedEmail || '';
+    const destinationEmail = newData?.assignedEmail || '';
 
-    if (['In Preparation', 'On The Way'].includes(shipmentStatus)) {
+    // Modified condition to include 'On Hold - Missing Data'
+    if (
+      ['In Preparation', 'On The Way', 'On Hold - Missing Data'].includes(
+        shipmentStatus,
+      )
+    ) {
+      console.log('🚢 Creating shipment with emails:', {
+        originEmail,
+        destinationEmail,
+        origin,
+        destination,
+      });
+
       await this.markActiveShipmentTargets(
         productId,
         tenantId,
         origin,
         destination,
-        assignedEmail,
+        originEmail,
+        destinationEmail,
+        session,
       );
     }
     await this.finalizeOrderNumber(
@@ -630,43 +684,91 @@ export class ShipmentsService {
     tenantName: string,
     origin: string,
     destination: string,
-    memberEmail?: string,
+    originEmail?: string,
+    destinationEmail?: string,
+    session?: ClientSession | null, // Modified to accept null
   ) {
+    console.log('📍 Marking active shipment targets:', {
+      origin,
+      destination,
+      originEmail,
+      destinationEmail,
+    });
+
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
 
-    const ProductModel = connection.model<ProductDocument>(
-      'Product',
-      ProductSchema,
-    );
-    const MemberModel = connection.model<MemberDocument>(
-      'Member',
-      MemberSchema,
-    );
+    // Start a new session if one wasn't provided or is null
+    const useSession = session || (await connection.startSession());
+    const isNewSession = !session;
 
-    const updatedProduct = await ProductModel.findByIdAndUpdate(productId, {
-      activeShipment: true,
-    });
+    try {
+      if (isNewSession) {
+        useSession.startTransaction();
+      }
 
-    if (!updatedProduct) {
-      await MemberModel.updateOne(
-        { 'products._id': productId },
-        { $set: { 'products.$.activeShipment': true } },
+      const ProductModel = connection.model<ProductDocument>(
+        'Product',
+        ProductSchema,
       );
-    }
+      const MemberModel = connection.model<MemberDocument>(
+        'Member',
+        MemberSchema,
+      );
 
-    if (!['Our office', 'FP warehouse'].includes(origin) && memberEmail) {
-      await MemberModel.updateOne(
-        { email: memberEmail },
+      // Mark product as having active shipment
+      const updatedProduct = await ProductModel.findByIdAndUpdate(
+        productId,
         { activeShipment: true },
+        { session: useSession },
       );
-    }
 
-    if (!['Our office', 'FP warehouse'].includes(destination) && memberEmail) {
-      await MemberModel.updateOne(
-        { email: memberEmail },
-        { activeShipment: true },
-      );
+      if (!updatedProduct) {
+        await MemberModel.updateOne(
+          { 'products._id': productId },
+          { $set: { 'products.$.activeShipment': true } },
+          { session: useSession },
+        );
+      }
+
+      // Handle origin member
+      if (!['Our office', 'FP warehouse'].includes(origin) && originEmail) {
+        console.log('📤 Marking origin member as active:', originEmail);
+        await MemberModel.updateOne(
+          { email: originEmail },
+          { $set: { activeShipment: true } },
+          { session: useSession },
+        );
+      }
+
+      // Handle destination member
+      if (
+        !['Our office', 'FP warehouse'].includes(destination) &&
+        destinationEmail
+      ) {
+        console.log(
+          '📥 Marking destination member as active:',
+          destinationEmail,
+        );
+        await MemberModel.updateOne(
+          { email: destinationEmail },
+          { $set: { activeShipment: true } },
+          { session: useSession },
+        );
+      }
+
+      if (isNewSession) {
+        await useSession.commitTransaction();
+      }
+    } catch (error) {
+      if (isNewSession) {
+        await useSession.abortTransaction();
+      }
+      throw error;
+    } finally {
+      if (isNewSession) {
+        useSession.endSession();
+      }
     }
   }
 
@@ -936,6 +1038,7 @@ export class ShipmentsService {
         tenantId,
         'XX',
         destinationName,
+        '',
         assignedEmail,
       );
     }
@@ -1070,64 +1173,78 @@ export class ShipmentsService {
     oldAddress: AddressData,
     newAddress: AddressData,
   ) {
+    console.log('🔄 Starting office address update:', {
+      tenantName,
+      oldAddress,
+      newAddress,
+    });
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
-    const ShipmentModel = connection.model(
-      'Shipment',
-      ShipmentSchema,
-      'shipments',
-    );
-    const shipments = await ShipmentModel.find({
-      $or: [{ origin: 'Our office' }, { destination: 'Our office' }],
-      shipment_status: 'On Hold - Missing Data',
-    });
 
-    for (const shipment of shipments) {
-      let updated = false;
+    const session = await connection.startSession();
 
-      if (shipment.origin === 'Our office') {
-        shipment.originDetails = {
-          ...(shipment.originDetails ?? {}),
-          ...newAddress,
-        };
-
-        updated = true;
-      }
-
-      if (shipment.destination === 'Our office') {
-        shipment.destinationDetails = {
-          ...(shipment.destinationDetails ?? {}),
-          ...newAddress,
-        };
-        this.logger.debug(
-          `Updated destinationDetails for shipment ${shipment._id}`,
+    try {
+      await session.withTransaction(async () => {
+        const ShipmentModel = connection.model(
+          'Shipment',
+          ShipmentSchema,
+          'shipments',
         );
-        updated = true;
-      }
 
-      const originComplete = Object.values(shipment.originDetails || {}).every(
-        (val) => val && val.toString().trim() !== '',
-      );
-      const destinationComplete = Object.values(
-        shipment.destinationDetails || {},
-      ).every((val) => val && val.toString().trim() !== '');
+        // const ProductModel = this.getProductModel(connection);
+        // const MemberModel = connection.model('Member', MemberSchema, 'members');
 
-      if (originComplete && destinationComplete) {
-        shipment.shipment_status = 'In Preparation';
+        console.log('🔍 Searching for shipments with Our office');
 
-        updated = true;
+        const shipments = await ShipmentModel.find({
+          $or: [{ origin: 'Our office' }, { destination: 'Our office' }],
+          shipment_status: {
+            $in: ['In Preparation', 'On Hold - Missing Data'],
+          },
+          isDeleted: { $ne: true },
+        }).session(session);
 
-        const ProductModel = connection.model('Product');
-        await ProductModel.updateMany(
-          { _id: { $in: shipment.products } },
-          { $set: { status: 'In Transit' } },
-        );
-      }
+        console.log(`📦 Found ${shipments.length} shipments for Our office`);
 
-      if (updated) {
-        await shipment.save();
-      }
+        for (const shipment of shipments) {
+          let updated = false;
+
+          if (shipment.origin === 'Our office') {
+            shipment.originDetails = {
+              ...(shipment.originDetails || {}),
+              ...newAddress,
+            };
+            updated = true;
+          }
+
+          if (shipment.destination === 'Our office') {
+            shipment.destinationDetails = {
+              ...(shipment.destinationDetails || {}),
+              ...newAddress,
+            };
+            updated = true;
+          }
+
+          if (updated) {
+            // Update status based on address completion
+            await this.updateShipmentOnAddressComplete(
+              shipment,
+              connection,
+              session,
+            );
+
+            console.log(`✅ Updated shipment ${shipment._id}`);
+          }
+        }
+      });
+
+      console.log('✨ Completed office address update');
+    } catch (error) {
+      console.error('❌ Failed to update office shipments:', error);
+      throw error;
+    } finally {
+      await session.endSession();
     }
   }
 
@@ -1138,107 +1255,230 @@ export class ShipmentsService {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
-    const ShipmentModel = connection.model<ShipmentDocument>(
-      'Shipment',
-      ShipmentSchema,
-      'shipments',
-    );
 
-    const member =
-      await this.membersService.findByEmailNotThrowError(memberEmail);
-    if (!member) {
-      console.log(`❌ Member ${memberEmail} not found`);
-      return;
-    }
+    const session = await connection.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const ShipmentModel = connection.model<ShipmentDocument>(
+          'Shipment',
+          ShipmentSchema,
+          'shipments',
+        );
 
-    const fullName = `${member.firstName} ${member.lastName}`;
-
-    const shipments = await ShipmentModel.find({
-      shipment_status: 'On Hold - Missing Data',
-      $or: [{ origin: fullName }, { destination: fullName }],
-    });
-
-    for (const shipment of shipments) {
-      let updated = false;
-
-      if (shipment.origin === fullName) {
-        shipment.originDetails = {
-          ...shipment.originDetails,
-          address: member.address || '',
-          apartment: member.apartment || '',
-          city: member.city || '',
-          country: member.country || '',
-          zipCode: member.zipCode || '',
-          phone: member.phone || '',
-          personalEmail: member.personalEmail || '',
-          dni: `${member.dni || ''}`,
-        };
-        updated = true;
-      }
-
-      if (shipment.destination === fullName) {
-        shipment.destinationDetails = {
-          ...shipment.destinationDetails,
-          address: member.address || '',
-          apartment: member.apartment || '',
-          city: member.city || '',
-          country: member.country || '',
-          zipCode: member.zipCode || '',
-          phone: member.phone || '',
-          personalEmail: member.personalEmail || '',
-          dni: `${member.dni || ''}`,
-        };
-        updated = true;
-      }
-
-      const isAddressComplete = (details: any, label: string): boolean => {
-        const requiredFields = [
-          'address',
-          'apartment',
-          'city',
-          'country',
-          'zipCode',
-          'phone',
-        ];
-
-        if (label === 'Our office') {
-          requiredFields.push('state');
-        } else {
-          requiredFields.push('personalEmail', 'dni');
+        const member =
+          await this.membersService.findByEmailNotThrowError(memberEmail);
+        if (!member) {
+          this.logger.error(`Member ${memberEmail} not found`);
+          return;
         }
 
-        return requiredFields.every((field) => {
-          const value = details?.[field];
-          return typeof value === 'string' && value.trim() !== '';
+        const fullName = `${member.firstName} ${member.lastName}`;
+        this.logger.debug(`Searching shipments for member: ${fullName}`);
+
+        const shipments = await ShipmentModel.find({
+          $or: [{ origin: fullName }, { destination: fullName }],
+        }).session(session);
+
+        this.logger.debug(`Found ${shipments.length} shipments to update`);
+
+        for (const shipment of shipments) {
+          let updated = false;
+
+          if (shipment.origin === fullName) {
+            shipment.originDetails = {
+              address: member.address || '',
+              apartment: member.apartment || '',
+              city: member.city || '',
+              country: member.country || '',
+              zipCode: member.zipCode || '',
+              phone: member.phone || '',
+              personalEmail: member.personalEmail || '',
+              dni: `${member.dni || ''}`,
+            };
+            updated = true;
+          }
+
+          if (shipment.destination === fullName) {
+            shipment.destinationDetails = {
+              address: member.address || '',
+              apartment: member.apartment || '',
+              city: member.city || '',
+              country: member.country || '',
+              zipCode: member.zipCode || '',
+              phone: member.phone || '',
+              personalEmail: member.personalEmail || '',
+              dni: `${member.dni || ''}`,
+            };
+            updated = true;
+          }
+
+          if (updated) {
+            await this.updateShipmentOnAddressComplete(
+              shipment,
+              connection,
+              session,
+            );
+          }
+        }
+      });
+    } catch (error) {
+      this.logger.error('Error updating shipments for member:', error);
+      throw error;
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  private async createSnapshots(
+    shipment: ShipmentDocument,
+    connection: mongoose.Connection,
+  ) {
+    const ProductModel =
+      connection.models.Product ||
+      connection.model('Product', ProductSchema, 'products');
+
+    const MemberModel =
+      connection.models.Member ||
+      connection.model('Member', MemberSchema, 'members');
+
+    const productIds = shipment.products.map(
+      (id) => new Types.ObjectId(id.toString()),
+    );
+
+    const products: ProductDocument[] = await ProductModel.find({
+      _id: { $in: productIds },
+    });
+
+    if (products.length < productIds.length) {
+      const foundIds = new Set(products.map((p) => p._id?.toString()));
+      const remainingIds = productIds.filter(
+        (id) => !foundIds.has(id.toString()),
+      );
+
+      const members = await MemberModel.find({
+        'products._id': { $in: remainingIds },
+      });
+
+      members.forEach((member) => {
+        member.products.forEach((p) => {
+          if (p._id && remainingIds.some((id) => id.equals(p._id))) {
+            products.push(p as unknown as ProductDocument);
+          }
         });
-      };
+      });
+    }
 
-      const originComplete = isAddressComplete(
-        shipment.originDetails,
-        shipment.origin,
-      );
-      const destinationComplete = isAddressComplete(
-        shipment.destinationDetails,
-        shipment.destination,
+    shipment.snapshots = products
+      .filter((p): p is ProductDocument & { _id: Types.ObjectId } => !!p._id)
+      .map((product) => ({
+        _id: product._id,
+        name: product.name,
+        category: product.category,
+        attributes: product.attributes,
+        status: 'In Transit',
+        recoverable: product.recoverable,
+        serialNumber: product.serialNumber || '',
+        assignedEmail: product.assignedEmail,
+        assignedMember: product.assignedMember,
+        lastAssigned: product.lastAssigned,
+        acquisitionDate: product.acquisitionDate,
+        location: product.location,
+        price: product.price,
+        additionalInfo: product.additionalInfo,
+        productCondition: product.productCondition,
+        fp_shipment: product.fp_shipment,
+      }));
+  }
+
+  private async updateShipmentOnAddressComplete(
+    shipment: ShipmentDocument,
+    connection: mongoose.Connection,
+    session: ClientSession,
+  ) {
+    try {
+      console.log('🔍 Detailed shipment check:', {
+        id: shipment._id,
+        origin: shipment.origin,
+        originDetails: shipment.originDetails,
+        destination: shipment.destination,
+        destinationDetails: shipment.destinationDetails,
+        currentOrderId: shipment.order_id,
+      });
+
+      // Create snapshots first
+      await this.createSnapshots(shipment, connection);
+
+      // Check if addresses have all required fields
+      const hasRequiredOriginFields = !!(
+        shipment.originDetails &&
+        shipment.originDetails.address &&
+        shipment.originDetails.city &&
+        shipment.originDetails.country &&
+        shipment.originDetails.zipCode
       );
 
-      if (originComplete && destinationComplete) {
+      const hasRequiredDestinationFields = !!(
+        shipment.destinationDetails &&
+        shipment.destinationDetails.address &&
+        shipment.destinationDetails.city &&
+        shipment.destinationDetails.country &&
+        shipment.destinationDetails.zipCode
+      );
+
+      console.log('📋 Address fields check:', {
+        hasRequiredOriginFields,
+        hasRequiredDestinationFields,
+        originCountry: shipment.originDetails?.country,
+        destinationCountry: shipment.destinationDetails?.country,
+      });
+
+      if (hasRequiredOriginFields && hasRequiredDestinationFields) {
+        console.log(
+          '✅ Both addresses are complete, updating status to In Preparation',
+        );
         shipment.shipment_status = 'In Preparation';
-        updated = true;
 
-        const ProductModel = connection.model('Product');
+        // Get country codes for origin and destination
+        const originCode = this.getCountryCode(
+          shipment.originDetails?.country || '',
+        );
+        const destinationCode = this.getCountryCode(
+          shipment.destinationDetails?.country || '',
+        );
+
+        // Extract the order number from the current order_id
+        const orderNumber = parseInt(shipment.order_id.slice(-4));
+
+        // Generate new order_id using country codes
+        shipment.order_id = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
+        console.log('📝 Updated order_id to:', shipment.order_id);
+
+        // Update products status
+        const ProductModel = this.getProductModel(connection);
         await ProductModel.updateMany(
           { _id: { $in: shipment.products } },
           { $set: { status: 'In Transit' } },
+          { session },
         );
+      } else {
+        console.log(
+          '⚠️ Missing required address fields, keeping status as On Hold - Missing Data',
+        );
+        shipment.shipment_status = 'On Hold - Missing Data';
       }
 
-      if (updated) {
-        await shipment.save();
-        this.logger.debug(
-          `Shipment ${shipment._id} updated for member ${fullName}`,
-        );
-      }
+      await shipment.save({ session });
+      console.log(
+        '💾 Saved shipment with status:',
+        shipment.shipment_status,
+        'and order_id:',
+        shipment.order_id,
+      );
+
+      return shipment;
+    } catch (error) {
+      console.error('❌ Error in updateShipmentOnAddressComplete:', error);
+      throw error;
     }
   }
 }
