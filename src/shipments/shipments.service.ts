@@ -297,8 +297,11 @@ export class ShipmentsService {
     desirableOriginDate?: string,
     desirableDestinationDate?: string,
   ) {
+    const originLocation = oldData?.location || 'Employee';
+    const destinationLocation = newData?.location || 'Employee';
+
     const originInfo = await this.getLocationInfo(
-      oldData?.location || '',
+      originLocation,
       tenantId,
       oldData?.assignedEmail || '',
       oldData?.assignedMember || '',
@@ -306,20 +309,24 @@ export class ShipmentsService {
     );
 
     const destinationInfo = await this.getLocationInfo(
-      newData?.location || '',
+      destinationLocation,
       tenantId,
       newData?.assignedEmail || '',
       newData?.assignedMember || '',
       desirableDestinationDate,
     );
+    console.log('📍 Location Info Details:', {
+      originInfo,
+      destinationInfo,
+    });
 
     return {
       origin: originInfo.name,
       destination: destinationInfo.name,
       orderOrigin: originInfo.code,
       orderDestination: destinationInfo.code,
-      originLocation: oldData?.location || '',
-      destinationLocation: newData?.location || '',
+      originLocation,
+      destinationLocation,
     };
   }
 
@@ -444,10 +451,12 @@ export class ShipmentsService {
       return existingShipment;
     }
     console.log('🆕 Creando nuevo shipment...');
+
     const destinationComplete = await this.productsService.isAddressComplete(
       { ...product, location: destinationLocation, assignedEmail },
       tenantId,
     );
+
     const originComplete = ['create', 'bulkCreate'].includes(actionType)
       ? true
       : await this.productsService.isAddressComplete(
@@ -528,6 +537,46 @@ export class ShipmentsService {
       session ?? undefined,
     );
     console.log('✅ Orden finalizada correctamente');
+
+    // Determine and update product status using the service method
+    const productStatus = await this.productsService.determineProductStatus(
+      {
+        fp_shipment: true,
+        location: destinationLocation,
+        assignedEmail: newData?.assignedEmail || '',
+        productCondition: product.productCondition,
+      },
+      tenantId,
+      actionType,
+      origin,
+    );
+
+    // Update product status in the appropriate collection
+    const ProductModel = this.getProductModel(connection);
+    const productInProducts = await ProductModel.findById(productId).session(
+      session || null,
+    );
+
+    if (productInProducts) {
+      productInProducts.status = productStatus;
+      await productInProducts.save({ session: session ?? undefined });
+    } else {
+      // If not in Products collection, check Members collection
+      const MemberModel =
+        connection.models.Member ||
+        connection.model('Member', MemberSchema, 'members');
+
+      await MemberModel.updateOne(
+        { 'products._id': productId },
+        {
+          $set: {
+            'products.$.status': productStatus,
+          },
+        },
+        { session: session ?? undefined },
+      );
+    }
+
     return newShipment;
   }
 

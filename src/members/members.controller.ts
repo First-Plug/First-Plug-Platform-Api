@@ -105,7 +105,7 @@ export class MembersController {
             console.log('Creating shipment for New employee');
             await this.shipmentsService.findOrCreateShipment(
               product._id.toString(),
-              'create',
+              'transfer',
               tenantName,
               null,
               element.desirableDate?.origin,
@@ -146,7 +146,7 @@ export class MembersController {
             console.log('Creating shipment for FP warehouse');
             await this.shipmentsService.findOrCreateShipment(
               product._id.toString(),
-              'create',
+              'transfer',
               tenantName,
               null,
               element.desirableDate?.origin,
@@ -188,7 +188,7 @@ export class MembersController {
             console.log('Creating shipment for Our office');
             await this.shipmentsService.findOrCreateShipment(
               product._id.toString(),
-              'create',
+              'transfer',
               tenantName,
               null,
               element.desirableDate?.origin,
