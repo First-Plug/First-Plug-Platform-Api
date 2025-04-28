@@ -20,6 +20,7 @@ import { CreateMemberArrayDto } from './dto/create-member-array.dto';
 import { AddFullNameInterceptor } from './interceptors/add-full-name.interceptor';
 import { ProductsService } from 'src/products/products.service';
 import { HistoryService } from 'src/history/history.service';
+import { ShipmentsService } from 'src/shipments/shipments.service';
 
 @Controller('members')
 @UseGuards(JwtGuard)
@@ -29,6 +30,7 @@ export class MembersController {
     private readonly membersService: MembersService,
     private readonly productService: ProductsService,
     private readonly historyService: HistoryService,
+    private readonly shipmentsService: ShipmentsService,
   ) {}
 
   @Post()
@@ -62,6 +64,7 @@ export class MembersController {
     @Body() data: any,
     @Request() req: any,
   ) {
+    console.log('🔍 Starting offboarding process');
     const tenantName = req.user.tenantName;
     const { userId } = req;
 
@@ -85,20 +88,50 @@ export class MembersController {
       products: [],
     };
 
-    data.forEach((element) => {
+    const offboardingMember = await this.membersService.findById(id);
+    const originLocation = 'Employee';
+
+    for (const element of data) {
       const product = element.product;
+      console.log('📦 Processing element:', {
+        fp_shipment: element.fp_shipment,
+        relocation: element.relocation,
+      });
 
       switch (element.relocation) {
         case 'New employee':
+          if (element.fp_shipment) {
+            // Changed from product.fp_shipment
+            console.log('Creating shipment for New employee');
+            await this.shipmentsService.findOrCreateShipment(
+              product._id.toString(),
+              'create',
+              tenantName,
+              null,
+              element.desirableDate?.origin,
+              element.desirableDate?.destination,
+              {
+                assignedEmail: offboardingMember.email,
+                location: originLocation,
+              },
+              {
+                assignedEmail: element.newMember.email,
+                assignedMember: `${element.newMember.firstName} ${element.newMember.lastName}`,
+              },
+            );
+          }
+
+          product.fp_shipment = true;
+          product.activeShipment = true;
           product.assignedEmail = element.newMember.email;
-          product.assignedMember = element.newMember.fullName;
+          product.assignedMember = `${element.newMember.firstName} ${element.newMember.lastName}`;
+          product.status = 'In Transit';
 
           productsToUpdate.push({
             id: product._id,
             product,
           });
 
-          // Agregar al newData
           newData.products.push({
             productId: product._id,
             newLocation: 'New employee',
@@ -108,18 +141,39 @@ export class MembersController {
           break;
 
         case 'FP warehouse':
+          if (element.fp_shipment) {
+            // Changed from product.fp_shipment
+            console.log('Creating shipment for FP warehouse');
+            await this.shipmentsService.findOrCreateShipment(
+              product._id.toString(),
+              'create',
+              tenantName,
+              null,
+              element.desirableDate?.origin,
+              element.desirableDate?.destination,
+              {
+                assignedEmail: offboardingMember.email,
+                location: originLocation,
+              },
+              {
+                location: 'FP warehouse',
+              },
+            );
+          }
+
+          product.fp_shipment = true;
+          product.activeShipment = true;
           product.lastAssigned = product.assignedEmail;
           product.assignedEmail = '';
           product.assignedMember = '';
           product.location = 'FP warehouse';
-          product.status = 'Available';
+          product.status = 'In Transit';
 
           productsToUpdate.push({
             id: product._id,
             product,
           });
 
-          // Agregar al newData
           newData.products.push({
             productId: product._id,
             newLocation: 'FP warehouse',
@@ -129,18 +183,39 @@ export class MembersController {
           break;
 
         case 'My office':
+          if (element.fp_shipment) {
+            // Changed from product.fp_shipment
+            console.log('Creating shipment for Our office');
+            await this.shipmentsService.findOrCreateShipment(
+              product._id.toString(),
+              'create',
+              tenantName,
+              null,
+              element.desirableDate?.origin,
+              element.desirableDate?.destination,
+              {
+                assignedEmail: offboardingMember.email,
+                location: originLocation,
+              },
+              {
+                location: 'Our office',
+              },
+            );
+          }
+
+          product.fp_shipment = true;
+          product.activeShipment = true;
           product.lastAssigned = product.assignedEmail;
           product.assignedEmail = '';
           product.assignedMember = '';
           product.location = 'Our office';
-          product.status = 'Available';
+          product.status = 'In Transit';
 
           productsToUpdate.push({
             id: product._id,
             product,
           });
 
-          // Agregar al newData
           newData.products.push({
             productId: product._id,
             newLocation: 'Our office',
@@ -149,7 +224,7 @@ export class MembersController {
           });
           break;
       }
-    });
+    }
 
     if (productsToUpdate.length > 0) {
       await this.productService.updateMultipleProducts(
@@ -160,8 +235,6 @@ export class MembersController {
     }
 
     const updatedProducts = productsToUpdate.map((p) => p.product);
-
-    const offboardingMember = await this.membersService.findById(id);
 
     await this.membersService.softDeleteMember(id);
 

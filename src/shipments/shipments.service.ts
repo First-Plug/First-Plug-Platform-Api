@@ -190,71 +190,51 @@ export class ShipmentsService {
     );
   }
 
-  async getProductLocationData(
-    productId: Product | string,
-    tenantId: string,
-    actionType?: string,
-    overrideAssignedEmail?: string,
-    desirableOriginDate?: string,
-    desirableDestinationDate?: string,
-  ): Promise<{
-    product: Product;
-    origin: string;
-    destination: string;
-    orderOrigin: string;
-    orderDestination: string;
-    assignedEmail: string;
-    originLocation: string;
-    destinationLocation: string;
-  }> {
-    const productIdStr =
-      typeof productId === 'string' ? productId : productId._id?.toString();
-    if (!productIdStr) throw new BadRequestException(`Invalid product ID`);
+  // private async getProductLocationData(
+  //   productId: string,
+  //   tenantId: string,
+  //   actionType: string,
+  //   desirableOriginDate?: string,
+  //   desirableDestinationDate?: string,
+  // ) {
+  //   const found = await this.productsService.findProductById(productId);
+  //   if (!found || !found.product) {
+  //     throw new NotFoundException(`Product with ID ${productId} not found`);
+  //   }
 
-    const found = await this.productsService.findProductById(
-      new Types.ObjectId(productIdStr) as unknown as Schema.Types.ObjectId,
-    );
-    if (!found || !found.product) {
-      throw new NotFoundException(`Product with ID ${productId} not found`);
-    }
+  //   const product = found.product;
+  //   const assignedEmail = found.member?.email || product.assignedEmail || '';
+  //   const assignedMember = found.member
+  //     ? `${found.member.firstName} ${found.member.lastName}`
+  //     : product.assignedMember || '';
 
-    const product = found.product;
-    const assignedEmail = found.member?.email || product.assignedEmail || '';
-    const assignedMember = found.member
-      ? `${found.member.firstName} ${found.member.lastName}`
-      : product.assignedMember || '';
+  //   const originInfo = await this.getLocationInfo(
+  //     product.location || '',
+  //     tenantId,
+  //     assignedEmail,
+  //     assignedMember,
+  //     desirableOriginDate,
+  //   );
 
-    const isCreating = this.isCreatingAction(actionType);
+  //   const destinationInfo = await this.getLocationInfo(
+  //     assignedMember ? 'Employee' : product.location || '',
+  //     tenantId,
+  //     assignedEmail,
+  //     assignedMember,
+  //     desirableDestinationDate,
+  //   );
 
-    const originInfo = isCreating
-      ? { name: 'XX', code: 'XX' }
-      : await this.getLocationInfo(
-          product.location || '',
-          tenantId,
-          assignedEmail,
-          assignedMember,
-          desirableOriginDate,
-        );
-
-    const destinationInfo = await this.getLocationInfo(
-      assignedMember ? 'Employee' : product.location || '',
-      tenantId,
-      assignedEmail,
-      assignedMember,
-      desirableDestinationDate,
-    );
-
-    return {
-      product,
-      origin: originInfo.name,
-      destination: destinationInfo.name,
-      orderOrigin: originInfo.code,
-      orderDestination: destinationInfo.code,
-      assignedEmail: assignedEmail || '',
-      originLocation: isCreating ? 'XX' : product.location || '',
-      destinationLocation: assignedMember ? 'Employee' : product.location || '',
-    };
-  }
+  //   return {
+  //     product,
+  //     origin: originInfo.name,
+  //     destination: destinationInfo.name,
+  //     orderOrigin: originInfo.code,
+  //     orderDestination: destinationInfo.code,
+  //     assignedEmail: assignedEmail || '',
+  //     originLocation: product.location || '',
+  //     destinationLocation: assignedMember ? 'Employee' : product.location || '',
+  //   };
+  // }
 
   private generateOrderId(
     orderOrigin: string,
@@ -300,16 +280,16 @@ export class ShipmentsService {
     return ShipmentModel.findById(shipmentId).exec();
   }
 
-  async getProductLocationDataFromSnapshots(
+  private async getProductLocationDataFromSnapshots(
     productId: string,
     tenantId: string,
     actionType: string,
-    originSnapshot?: {
+    oldData?: {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
     },
-    destinationSnapshot?: {
+    newData?: {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
@@ -317,23 +297,19 @@ export class ShipmentsService {
     desirableOriginDate?: string,
     desirableDestinationDate?: string,
   ) {
-    const isCreating = this.isCreatingAction(actionType);
-
-    const originInfo = isCreating
-      ? { name: 'XX', code: 'XX' }
-      : await this.getLocationInfo(
-          originSnapshot?.location || '',
-          tenantId,
-          originSnapshot?.assignedEmail || '',
-          originSnapshot?.assignedMember || '',
-          desirableOriginDate,
-        );
+    const originInfo = await this.getLocationInfo(
+      oldData?.location || '',
+      tenantId,
+      oldData?.assignedEmail || '',
+      oldData?.assignedMember || '',
+      desirableOriginDate,
+    );
 
     const destinationInfo = await this.getLocationInfo(
-      destinationSnapshot?.location || '',
+      newData?.location || '',
       tenantId,
-      destinationSnapshot?.assignedEmail || '',
-      destinationSnapshot?.assignedMember || '',
+      newData?.assignedEmail || '',
+      newData?.assignedMember || '',
       desirableDestinationDate,
     );
 
@@ -342,8 +318,8 @@ export class ShipmentsService {
       destination: destinationInfo.name,
       orderOrigin: originInfo.code,
       orderDestination: destinationInfo.code,
-      originLocation: originSnapshot?.location || '',
-      destinationLocation: destinationSnapshot?.location || '',
+      originLocation: oldData?.location || '',
+      destinationLocation: newData?.location || '',
     };
   }
 
