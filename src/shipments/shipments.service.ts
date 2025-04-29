@@ -60,6 +60,31 @@ export class ShipmentsService {
     private readonly shipmentMetadataRepository: Model<ShipmentMetadata>,
   ) {}
 
+  async findAll(page: number, size: number, tenantId: string) {
+    const skip = (page - 1) * size;
+
+    const dateFilter: any = {};
+
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantId);
+    const ShipmentModel = this.getShipmentModel(connection);
+
+    const [data, totalCount] = await Promise.all([
+      ShipmentModel.find(dateFilter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(size)
+        .exec(),
+      ShipmentModel.countDocuments(dateFilter).exec(),
+    ]);
+
+    return {
+      data,
+      totalCount,
+      totalPages: Math.ceil(totalCount / size),
+    };
+  }
+
   private getShipmentModel(tenantConnection): Model<ShipmentDocument> {
     if (tenantConnection.models.Shipment) {
       return tenantConnection.models.Shipment;
