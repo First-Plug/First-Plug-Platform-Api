@@ -180,19 +180,14 @@ export class MembersController {
           product.status = await this.productService.determineProductStatus(
             {
               fp_shipment: true,
-              location: 'Employee',
-              assignedEmail: element.newMember.email,
+              location: 'FP warehouse',
+              assignedEmail: '',
               productCondition: product.productCondition,
             },
             tenantName,
             'transfer',
             originLocation,
           );
-
-          productsToUpdate.push({
-            id: product._id,
-            product,
-          });
 
           newData.products.push({
             productId: product._id,

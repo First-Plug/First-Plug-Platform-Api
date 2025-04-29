@@ -265,7 +265,6 @@ export class ProductsService {
     }
 
     if (product.location === 'Our office') {
-      //  Obtener datos del tenant
       const tenant = await this.tenantsService.getByTenantName(tenantName);
 
       if (!tenant) return false;
@@ -285,50 +284,57 @@ export class ProductsService {
   }
 
   public async determineProductStatus(
-    product: Partial<Product>,
-    tenantName: string,
+    params: {
+      fp_shipment?: boolean;
+      location?: string;
+      assignedEmail?: string;
+      productCondition?: string;
+    },
+    tenantId: string,
     actionType?: string,
-    origin?: string,
+    shipmentStatus?: string,
   ): Promise<Status> {
-    console.log('🧪 Status evaluation:', {
-      fp_shipment: product.fp_shipment,
-      assignedEmail: product.assignedEmail,
-      location: product.location,
-      productCondition: product.productCondition,
-    });
-    if (product.productCondition === 'Unusable') {
-      return 'Unavailable';
-    }
-
-    if (!product.fp_shipment) {
-      if (product.assignedEmail && product.location === 'Employee') {
-        return 'Delivered';
-      } else if (
-        ['FP warehouse', 'Our office'].includes(product.location ?? '')
-      ) {
-        return 'Available';
+    if (params.fp_shipment) {
+      if (shipmentStatus) {
+        switch (shipmentStatus) {
+          case 'In Preparation':
+          case 'On The Way':
+            return 'In Transit';
+          case 'On Hold - Missing Data':
+            return 'In Transit - Missing Data';
+          case 'Cancelled':
+          case 'Received':
+            // ⬇️ recalcular como si no tuviera shipment
+            break;
+          default:
+            // En caso de otros estados desconocidos, fallback
+            break;
+        }
       } else {
-        return 'Unavailable';
+        // 🔥 Si no nos pasaron shipmentStatus, fallback (lógica vieja de fp_shipment)
+        return 'In Transit - Missing Data';
       }
     }
 
-    const isCreating = this.isCreatingAction(actionType);
+    // 📦 Lógica normal para producto sin shipment activo o shipment Cancelled / Received
 
-    const destinationIsComplete = await this.isAddressComplete(
-      { ...product, location: product.location },
-      tenantName,
-    );
+    if (params.productCondition === 'Unusable') {
+      return 'Unavailable';
+    }
 
-    const originIsComplete = isCreating
-      ? true
-      : await this.isAddressComplete(
-          { ...product, location: origin },
-          tenantName,
-        );
+    if (params.assignedEmail && params.location === 'Employee') {
+      return 'Delivered';
+    }
 
-    return destinationIsComplete && originIsComplete
-      ? 'In Transit'
-      : 'In Transit - Missing Data';
+    if (
+      params.location === 'FP warehouse' ||
+      params.location === 'Our office'
+    ) {
+      return 'Available';
+    }
+
+    // Si no hay una localización reconocida o assignedEmail, default a Available
+    return 'Available';
   }
 
   async create(
@@ -1365,18 +1371,6 @@ export class ProductsService {
   ) {
     if (!updateDto.fp_shipment || !actionType) return;
 
-    const newStatus = await this.determineProductStatus(
-      {
-        fp_shipment: updateDto.fp_shipment,
-        location: updateDto.location,
-        assignedEmail: updateDto.assignedEmail,
-        productCondition: updateDto.productCondition,
-      },
-      tenantName,
-      actionType,
-    );
-    updateDto.status = newStatus;
-
     const desirableDateOrigin =
       typeof updateDto.desirableDate === 'object'
         ? updateDto.desirableDate.origin || ''
@@ -1386,7 +1380,7 @@ export class ProductsService {
         ? updateDto.desirableDate
         : updateDto.desirableDate?.destination || '';
 
-    await this.shipmentsService.findOrCreateShipment(
+    const shipment = await this.shipmentsService.findOrCreateShipment(
       product._id!.toString(),
       actionType,
       tenantName,
@@ -1396,6 +1390,19 @@ export class ProductsService {
       oldData,
       newData,
     );
+
+    const newStatus = await this.determineProductStatus(
+      {
+        fp_shipment: updateDto.fp_shipment,
+        location: updateDto.location,
+        assignedEmail: updateDto.assignedEmail,
+        productCondition: updateDto.productCondition,
+      },
+      tenantName,
+      actionType,
+      shipment.shipment_status,
+    );
+    updateDto.status = newStatus;
   }
 
   async update(
