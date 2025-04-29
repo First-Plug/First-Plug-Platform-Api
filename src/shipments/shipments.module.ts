@@ -10,12 +10,14 @@ import { MembersModule } from 'src/members/members.module';
 import { ProductsModule } from 'src/products/products.module';
 import { TenantAddressUpdatedListener } from 'src/shipments/listeners/tenant-address-update.listener';
 import { MemberAddressUpdatedListener } from 'src/shipments/listeners/member-address-update.listener';
+import { HistoryModule } from 'src/history/history.module';
 
 @Module({
   imports: [
     TenantsModule,
     forwardRef(() => MembersModule),
     forwardRef(() => ProductsModule),
+    HistoryModule,
   ],
   controllers: [ShipmentsController],
   providers: [

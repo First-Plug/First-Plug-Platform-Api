@@ -40,6 +40,7 @@ import {
 } from 'src/shipments/schema/shipment-metadata.schema';
 import { OrderNumberGenerator } from 'src/shipments/helpers/order-number.util';
 import { AddressData } from 'src/common/events/tenant-address-update.event';
+import { HistoryService } from 'src/history/history.service';
 
 // interface SoftDeleteModel<T> extends Model<T> {
 //   softDelete(filter: any, options?: any): Promise<any>;
@@ -58,6 +59,7 @@ export class ShipmentsService {
     private readonly productsService: ProductsService,
     @Inject('SHIPMENT_METADATA_MODEL')
     private readonly shipmentMetadataRepository: Model<ShipmentMetadata>,
+    private readonly historyService: HistoryService,
   ) {}
 
   private getShipmentModel(tenantConnection): Model<ShipmentDocument> {
@@ -334,6 +336,7 @@ export class ShipmentsService {
     productId: string,
     actionType: string,
     tenantId: string,
+    userId: string,
     session?: ClientSession | null,
     desirableDestinationDate?: string | Date,
     desirableOriginDate?: string | Date,
@@ -536,43 +539,7 @@ export class ShipmentsService {
       session ?? undefined,
     );
     console.log('✅ Orden finalizada correctamente');
-
-    // Determine and update product status using the service method
-    // const productStatus = await this.productsService.determineProductStatus(
-    //   {
-    //     fp_shipment: true,
-    //     location: destinationLocation,
-    //     assignedEmail: newData?.assignedEmail || '',
-    //     productCondition: product.productCondition,
-    //   },
-    //   tenantId,
-    //   actionType,
-    //   origin,
-    // );
-
-    // const ProductModel = this.getProductModel(connection);
-    // const productInProducts = await ProductModel.findById(productId).session(
-    //   session || null,
-    // );
-
-    // if (productInProducts) {
-    //   productInProducts.status = productStatus;
-    //   await productInProducts.save({ session: session ?? undefined });
-    // } else {
-    //   const MemberModel =
-    //     connection.models.Member ||
-    //     connection.model('Member', MemberSchema, 'members');
-
-    //   await MemberModel.updateOne(
-    //     { 'products._id': productId },
-    //     {
-    //       $set: {
-    //         'products.$.status': productStatus,
-    //       },
-    //     },
-    //     { session: session ?? undefined },
-    //   );
-    // }
+    await this.logShipmentCreation(newShipment, userId);
 
     return newShipment;
   }
@@ -588,6 +555,7 @@ export class ShipmentsService {
   async cancelShipmentAndUpdateProducts(
     shipmentId: string,
     tenantId: string,
+    userId: string,
   ): Promise<ShipmentDocument> {
     console.log('🚨 [CANCEL SHIPMENT] Start for', shipmentId);
 
@@ -642,6 +610,8 @@ export class ShipmentsService {
         product.status = newStatus;
         product.activeShipment = false;
         await product.save();
+
+        await this.logShipmentCancellation(shipment, userId);
 
         console.log(`✅ Product updated from Product collection:`, {
           id: product._id,
@@ -1123,26 +1093,10 @@ export class ShipmentsService {
     return shipment;
   }
 
-  // async softDeleteShipment(id: Types.ObjectId, tenantName: string) {
-  //   const connection =
-  //     await this.tenantConnectionService.getTenantConnection(tenantName);
-  //   const ShipmentModel = this.getShipmentModel(connection);
-
-  //   const shipment = await ShipmentModel.findById(id);
-  //   if (!shipment) {
-  //     throw new NotFoundException(`Shipment with id "${id}" not found`);
-  //   }
-
-  //   await ShipmentModel.softDelete({ _id: id });
-
-  //   return {
-  //     message: `Shipment with id "${id}" was soft deleted successfully`,
-  //   };
-  // }
-
   async updateShipmentStatusAndProductsToInPreparation(
     shipmentId: Types.ObjectId,
     tenantName: string,
+    userId: string,
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
@@ -1156,8 +1110,11 @@ export class ShipmentsService {
       throw new NotFoundException(`Shipment with id "${shipmentId}" not found`);
     }
 
+    const oldShipment = shipment.toObject();
     shipment.shipment_status = 'In Preparation';
     await shipment.save();
+
+    await this.logShipmentUpdate(oldShipment, shipment.toObject(), userId);
 
     for (const productId of shipment.products) {
       const product = await ProductModel.findById(productId);
@@ -1545,5 +1502,55 @@ export class ShipmentsService {
       console.error('❌ Error in updateShipmentOnAddressComplete:', error);
       throw error;
     }
+  }
+
+  private async logShipmentCreation(
+    shipment: ShipmentDocument | ShipmentDocument[],
+    userId: string,
+  ) {
+    const isMultiple = Array.isArray(shipment);
+    await this.historyService.create({
+      actionType: isMultiple ? 'bulk-create' : 'create',
+      itemType: 'shipments',
+      userId,
+      changes: {
+        oldData: null,
+        newData: isMultiple ? shipment : [shipment],
+      },
+    });
+  }
+
+  private async logShipmentCancellation(
+    shipment: ShipmentDocument,
+    userId: string,
+  ) {
+    await this.historyService.create({
+      actionType: 'cancel',
+      itemType: 'shipments',
+      userId,
+      changes: {
+        oldData: shipment.toObject(),
+        newData: {
+          ...shipment.toObject(),
+          shipment_status: 'Cancelled',
+        },
+      },
+    });
+  }
+
+  private async logShipmentUpdate(
+    oldShipment: ShipmentDocument,
+    newShipment: ShipmentDocument,
+    userId: string,
+  ) {
+    await this.historyService.create({
+      actionType: 'update',
+      itemType: 'shipments',
+      userId,
+      changes: {
+        oldData: oldShipment.toObject(),
+        newData: newShipment.toObject(),
+      },
+    });
   }
 }

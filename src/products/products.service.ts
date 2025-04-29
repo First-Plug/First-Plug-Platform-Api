@@ -1357,6 +1357,7 @@ export class ProductsService {
     updateDto: UpdateProductDto,
     tenantName: string,
     actionType: string,
+    userId: string,
     session: ClientSession,
     oldData: {
       location?: string;
@@ -1384,6 +1385,7 @@ export class ProductsService {
       product._id!.toString(),
       actionType,
       tenantName,
+      userId,
       session,
       desirableDateDestination,
       desirableDateOrigin,
@@ -1571,6 +1573,7 @@ export class ProductsService {
                 updateProductDto,
                 tenantName,
                 actionType!,
+                userId,
                 session,
                 {
                   location: product.location,
@@ -1631,6 +1634,7 @@ export class ProductsService {
               updateProductDto,
               tenantName,
               actionType!,
+              userId,
               session,
               {
                 location: product.location,
@@ -1716,6 +1720,7 @@ export class ProductsService {
                 updateProductDto,
                 tenantName,
                 actionType!,
+                userId,
                 session,
                 {
                   location: memberProduct.product.location,
@@ -1771,6 +1776,7 @@ export class ProductsService {
               updateProductDto,
               tenantName,
               actionType!,
+              userId,
               session,
               {
                 location: 'Employee',
@@ -1816,6 +1822,7 @@ export class ProductsService {
               updateProductDto,
               tenantName,
               actionType!,
+              userId,
               session,
               {
                 location: memberProduct.product.location,
