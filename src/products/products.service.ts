@@ -265,7 +265,6 @@ export class ProductsService {
     }
 
     if (product.location === 'Our office') {
-      //  Obtener datos del tenant
       const tenant = await this.tenantsService.getByTenantName(tenantName);
 
       if (!tenant) return false;
@@ -313,6 +312,26 @@ export class ProductsService {
     }
 
     const isCreating = this.isCreatingAction(actionType);
+
+    if (product.location === 'FP warehouse') {
+      return !isCreating && origin && origin !== 'FP warehouse'
+        ? (await this.isAddressComplete(
+            { ...product, location: origin },
+            tenantName,
+          ))
+          ? 'In Transit'
+          : 'In Transit - Missing Data'
+        : 'In Transit';
+    }
+
+    if (origin === 'FP warehouse') {
+      return (await this.isAddressComplete(
+        { ...product, location: product.location },
+        tenantName,
+      ))
+        ? 'In Transit'
+        : 'In Transit - Missing Data';
+    }
 
     const destinationIsComplete = await this.isAddressComplete(
       { ...product, location: product.location },

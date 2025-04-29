@@ -348,7 +348,6 @@ export class ShipmentsService {
       assignedMember?: string;
     },
   ): Promise<ShipmentDocument> {
-    // Convert dates to strings if they are Date objects
     const originDate =
       desirableOriginDate instanceof Date
         ? desirableOriginDate.toISOString()
