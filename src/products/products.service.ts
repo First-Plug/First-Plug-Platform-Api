@@ -257,7 +257,7 @@ export class ProductsService {
         member.city &&
         member.zipCode &&
         member.address &&
-        member.apartment &&
+        // member.apartment &&
         member.personalEmail &&
         member.phone &&
         member.dni
@@ -276,7 +276,7 @@ export class ProductsService {
         tenant.state &&
         tenant.zipCode &&
         tenant.address &&
-        tenant.apartment &&
+        // tenant.apartment &&
         tenant.phone
       );
     }
@@ -300,7 +300,6 @@ export class ProductsService {
       return 'Unavailable';
     }
 
-    // ✅ Luego, si NO participa en shipment
     if (!product.fp_shipment) {
       if (product.assignedEmail && product.location === 'Employee') {
         return 'Delivered';
@@ -309,7 +308,7 @@ export class ProductsService {
       ) {
         return 'Available';
       } else {
-        return 'Unavailable'; // Datos incompletos o inválidos
+        return 'Unavailable';
       }
     }
 

@@ -551,7 +551,6 @@ export class ShipmentsService {
       origin,
     );
 
-    // Update product status in the appropriate collection
     const ProductModel = this.getProductModel(connection);
     const productInProducts = await ProductModel.findById(productId).session(
       session || null,
@@ -561,7 +560,6 @@ export class ShipmentsService {
       productInProducts.status = productStatus;
       await productInProducts.save({ session: session ?? undefined });
     } else {
-      // If not in Products collection, check Members collection
       const MemberModel =
         connection.models.Member ||
         connection.model('Member', MemberSchema, 'members');
@@ -1437,7 +1435,6 @@ export class ShipmentsService {
 
       await this.createSnapshots(shipment, connection);
 
-      // Special handling for FP warehouse - no need to validate origin address
       const hasRequiredOriginFields =
         shipment.origin === 'FP warehouse'
           ? true
@@ -1491,12 +1488,10 @@ export class ShipmentsService {
 
         shipment.order_id = newOrderId;
 
-        // Update products status
         const ProductModel = this.getProductModel(connection);
         const MemberModel = connection.model<MemberDocument>('Member');
 
         for (const productId of shipment.products) {
-          // First try in Product collection
           const product =
             await ProductModel.findById(productId).session(session);
 
@@ -1507,7 +1502,6 @@ export class ShipmentsService {
               `✅ Updated product status in Products collection: ${productId}`,
             );
           } else {
-            // If not found in Products, look in Members collection
             const memberWithProduct = await MemberModel.findOne(
               { 'products._id': productId },
               null,

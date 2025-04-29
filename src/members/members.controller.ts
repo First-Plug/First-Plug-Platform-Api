@@ -101,7 +101,6 @@ export class MembersController {
       switch (element.relocation) {
         case 'New employee':
           if (element.fp_shipment) {
-            // Changed from product.fp_shipment
             console.log('Creating shipment for New employee');
             await this.shipmentsService.findOrCreateShipment(
               product._id.toString(),
@@ -125,7 +124,18 @@ export class MembersController {
           product.activeShipment = true;
           product.assignedEmail = element.newMember.email;
           product.assignedMember = `${element.newMember.firstName} ${element.newMember.lastName}`;
-          product.status = 'In Transit';
+
+          product.status = await this.productService.determineProductStatus(
+            {
+              fp_shipment: true,
+              location: 'Employee',
+              assignedEmail: element.newMember.email,
+              productCondition: product.productCondition,
+            },
+            tenantName,
+            'transfer',
+            originLocation,
+          );
 
           productsToUpdate.push({
             id: product._id,
@@ -142,7 +152,6 @@ export class MembersController {
 
         case 'FP warehouse':
           if (element.fp_shipment) {
-            // Changed from product.fp_shipment
             console.log('Creating shipment for FP warehouse');
             await this.shipmentsService.findOrCreateShipment(
               product._id.toString(),
@@ -167,7 +176,18 @@ export class MembersController {
           product.assignedEmail = '';
           product.assignedMember = '';
           product.location = 'FP warehouse';
-          product.status = 'In Transit';
+
+          product.status = await this.productService.determineProductStatus(
+            {
+              fp_shipment: true,
+              location: 'Employee',
+              assignedEmail: element.newMember.email,
+              productCondition: product.productCondition,
+            },
+            tenantName,
+            'transfer',
+            originLocation,
+          );
 
           productsToUpdate.push({
             id: product._id,
@@ -184,7 +204,6 @@ export class MembersController {
 
         case 'My office':
           if (element.fp_shipment) {
-            // Changed from product.fp_shipment
             console.log('Creating shipment for Our office');
             await this.shipmentsService.findOrCreateShipment(
               product._id.toString(),
@@ -209,7 +228,18 @@ export class MembersController {
           product.assignedEmail = '';
           product.assignedMember = '';
           product.location = 'Our office';
-          product.status = 'In Transit';
+
+          product.status = await this.productService.determineProductStatus(
+            {
+              fp_shipment: true,
+              location: 'Our office',
+              assignedEmail: '',
+              productCondition: product.productCondition,
+            },
+            tenantName,
+            'transfer',
+            originLocation,
+          );
 
           productsToUpdate.push({
             id: product._id,
