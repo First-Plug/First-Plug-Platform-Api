@@ -348,7 +348,6 @@ export class ShipmentsService {
       assignedMember?: string;
     },
   ): Promise<ShipmentDocument> {
-    // Convert dates to strings if they are Date objects
     const originDate =
       desirableOriginDate instanceof Date
         ? desirableOriginDate.toISOString()
@@ -539,41 +538,41 @@ export class ShipmentsService {
     console.log('✅ Orden finalizada correctamente');
 
     // Determine and update product status using the service method
-    const productStatus = await this.productsService.determineProductStatus(
-      {
-        fp_shipment: true,
-        location: destinationLocation,
-        assignedEmail: newData?.assignedEmail || '',
-        productCondition: product.productCondition,
-      },
-      tenantId,
-      actionType,
-      origin,
-    );
+    // const productStatus = await this.productsService.determineProductStatus(
+    //   {
+    //     fp_shipment: true,
+    //     location: destinationLocation,
+    //     assignedEmail: newData?.assignedEmail || '',
+    //     productCondition: product.productCondition,
+    //   },
+    //   tenantId,
+    //   actionType,
+    //   origin,
+    // );
 
-    const ProductModel = this.getProductModel(connection);
-    const productInProducts = await ProductModel.findById(productId).session(
-      session || null,
-    );
+    // const ProductModel = this.getProductModel(connection);
+    // const productInProducts = await ProductModel.findById(productId).session(
+    //   session || null,
+    // );
 
-    if (productInProducts) {
-      productInProducts.status = productStatus;
-      await productInProducts.save({ session: session ?? undefined });
-    } else {
-      const MemberModel =
-        connection.models.Member ||
-        connection.model('Member', MemberSchema, 'members');
+    // if (productInProducts) {
+    //   productInProducts.status = productStatus;
+    //   await productInProducts.save({ session: session ?? undefined });
+    // } else {
+    //   const MemberModel =
+    //     connection.models.Member ||
+    //     connection.model('Member', MemberSchema, 'members');
 
-      await MemberModel.updateOne(
-        { 'products._id': productId },
-        {
-          $set: {
-            'products.$.status': productStatus,
-          },
-        },
-        { session: session ?? undefined },
-      );
-    }
+    //   await MemberModel.updateOne(
+    //     { 'products._id': productId },
+    //     {
+    //       $set: {
+    //         'products.$.status': productStatus,
+    //       },
+    //     },
+    //     { session: session ?? undefined },
+    //   );
+    // }
 
     return newShipment;
   }
@@ -637,7 +636,7 @@ export class ShipmentsService {
           },
           tenantId,
           undefined,
-          shipment.origin,
+          'Cancelled',
         );
 
         product.status = newStatus;
@@ -669,13 +668,13 @@ export class ShipmentsService {
             {
               fp_shipment: false,
               location: embeddedProduct.location,
-              status: embeddedProduct.status,
+              // status: embeddedProduct.status,
               assignedEmail: embeddedProduct.assignedEmail,
               productCondition: embeddedProduct.productCondition,
             },
             tenantId,
             undefined,
-            shipment.origin,
+            'Cancelled',
           );
 
           await MemberModel.updateOne(
