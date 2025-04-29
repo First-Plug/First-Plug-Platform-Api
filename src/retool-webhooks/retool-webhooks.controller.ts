@@ -16,6 +16,7 @@ export class RetoolWebhooksController {
       tenantName: string;
       shipmentId: string;
       newStatus: ShipmentStatus;
+      userId: string;
     },
   ) {
     return this.retoolService.updateShipmentStatusWebhook(body);
@@ -30,6 +31,7 @@ export class RetoolWebhooksController {
       newStatus?: ShipmentStatus;
       shipment_type?: ShipmentType;
       trackingURL?: string;
+      userId: string;
     },
   ) {
     console.log('📩 Llamada PATCH recibida con body:', body);
