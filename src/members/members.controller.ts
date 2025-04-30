@@ -64,7 +64,6 @@ export class MembersController {
     @Body() data: any,
     @Request() req: any,
   ) {
-    console.log('🔍 Starting offboarding process');
     const tenantName = req.user.tenantName;
     const { userId } = req;
 
@@ -88,60 +87,40 @@ export class MembersController {
       products: [],
     };
 
-    const offboardingMember = await this.membersService.findById(id);
-    const originLocation = 'Employee';
-
-    for (const element of data) {
+    data.forEach((element) => {
       const product = element.product;
-      console.log('📦 Processing element:', {
-        fp_shipment: element.fp_shipment,
-        relocation: element.relocation,
-      });
 
       switch (element.relocation) {
-        case 'New employee':
-          if (element.fp_shipment) {
-            console.log('Creating shipment for New employee');
-            await this.shipmentsService.findOrCreateShipment(
-              product._id.toString(),
-              'transfer',
-              tenantName,
-              null,
-              element.desirableDate?.origin,
-              element.desirableDate?.destination,
-              {
-                assignedEmail: offboardingMember.email,
-                location: originLocation,
-              },
-              {
-                assignedEmail: element.newMember.email,
-                assignedMember: `${element.newMember.firstName} ${element.newMember.lastName}`,
-              },
-            );
-          }
-
-          product.fp_shipment = true;
-          product.activeShipment = true;
+        case 'New employee': {
           product.assignedEmail = element.newMember.email;
-          product.assignedMember = `${element.newMember.firstName} ${element.newMember.lastName}`;
+          product.assignedMember = element.newMember.fullName;
 
-          product.status = await this.productService.determineProductStatus(
-            {
-              fp_shipment: true,
-              location: 'Employee',
-              assignedEmail: element.newMember.email,
-              productCondition: product.productCondition,
-            },
-            tenantName,
-            'transfer',
-            originLocation,
-          );
+          product.fp_shipment = element.fp_shipment;
+          product.actionType = 'offboarding';
+
+          const desirableDate = element.desirableDate;
+
+          if (typeof desirableDate === 'string') {
+            product.desirableDate = desirableDate;
+          } else if (typeof desirableDate === 'object') {
+            product.desirableDate = {
+              origin: desirableDate.origin,
+              destination: desirableDate.destination,
+            };
+          }
+          console.log('🟡 Producto recibido en offboarding:', {
+            fp_shipment: element.fp_shipment,
+            desirableDate: element.desirableDate,
+            relocation: element.relocation,
+            assignedEmail: element.newMember?.email || '',
+          });
 
           productsToUpdate.push({
             id: product._id,
             product,
           });
 
+          // Agregar al newData
           newData.products.push({
             productId: product._id,
             newLocation: 'New employee',
@@ -149,46 +128,39 @@ export class MembersController {
             assignedMember: product.assignedMember,
           });
           break;
-
-        case 'FP warehouse':
-          if (element.fp_shipment) {
-            console.log('Creating shipment for FP warehouse');
-            await this.shipmentsService.findOrCreateShipment(
-              product._id.toString(),
-              'transfer',
-              tenantName,
-              null,
-              element.desirableDate?.origin,
-              element.desirableDate?.destination,
-              {
-                assignedEmail: offboardingMember.email,
-                location: originLocation,
-              },
-              {
-                location: 'FP warehouse',
-              },
-            );
-          }
-
-          product.fp_shipment = true;
-          product.activeShipment = true;
+        }
+        case 'FP warehouse': {
           product.lastAssigned = product.assignedEmail;
           product.assignedEmail = '';
           product.assignedMember = '';
           product.location = 'FP warehouse';
+          product.status = 'Available';
 
-          product.status = await this.productService.determineProductStatus(
-            {
-              fp_shipment: true,
-              location: 'FP warehouse',
-              assignedEmail: '',
-              productCondition: product.productCondition,
-            },
-            tenantName,
-            'transfer',
-            originLocation,
-          );
+          product.fp_shipment = element.fp_shipment;
+          product.actionType = 'offboarding';
 
+          const desirableDate = element.desirableDate;
+
+          if (typeof desirableDate === 'string') {
+            product.desirableDate = desirableDate;
+          } else if (typeof desirableDate === 'object') {
+            product.desirableDate = {
+              origin: desirableDate.origin,
+              destination: desirableDate.destination,
+            };
+          }
+          console.log('🟡 Producto recibido en offboarding:', {
+            fp_shipment: element.fp_shipment,
+            desirableDate: element.desirableDate,
+            relocation: element.relocation,
+            assignedEmail: element.newMember?.email || '',
+          });
+          productsToUpdate.push({
+            id: product._id,
+            product,
+          });
+
+          // Agregar al newData
           newData.products.push({
             productId: product._id,
             newLocation: 'FP warehouse',
@@ -196,51 +168,39 @@ export class MembersController {
             assignedMember: '',
           });
           break;
-
-        case 'My office':
-          if (element.fp_shipment) {
-            console.log('Creating shipment for Our office');
-            await this.shipmentsService.findOrCreateShipment(
-              product._id.toString(),
-              'transfer',
-              tenantName,
-              null,
-              element.desirableDate?.origin,
-              element.desirableDate?.destination,
-              {
-                assignedEmail: offboardingMember.email,
-                location: originLocation,
-              },
-              {
-                location: 'Our office',
-              },
-            );
-          }
-
-          product.fp_shipment = true;
-          product.activeShipment = true;
+        }
+        case 'My office': {
           product.lastAssigned = product.assignedEmail;
           product.assignedEmail = '';
           product.assignedMember = '';
           product.location = 'Our office';
+          product.status = 'Available';
 
-          product.status = await this.productService.determineProductStatus(
-            {
-              fp_shipment: true,
-              location: 'Our office',
-              assignedEmail: '',
-              productCondition: product.productCondition,
-            },
-            tenantName,
-            'transfer',
-            originLocation,
-          );
+          product.fp_shipment = element.fp_shipment;
+          product.actionType = 'offboarding';
 
+          const desirableDate = element.desirableDate;
+
+          if (typeof desirableDate === 'string') {
+            product.desirableDate = desirableDate;
+          } else if (typeof desirableDate === 'object') {
+            product.desirableDate = {
+              origin: desirableDate.origin,
+              destination: desirableDate.destination,
+            };
+          }
+          console.log('🟡 Producto recibido en offboarding:', {
+            fp_shipment: element.fp_shipment,
+            desirableDate: element.desirableDate,
+            relocation: element.relocation,
+            assignedEmail: element.newMember?.email || '',
+          });
           productsToUpdate.push({
             id: product._id,
             product,
           });
 
+          // Agregar al newData
           newData.products.push({
             productId: product._id,
             newLocation: 'Our office',
@@ -248,8 +208,9 @@ export class MembersController {
             assignedMember: '',
           });
           break;
+        }
       }
-    }
+    });
 
     if (productsToUpdate.length > 0) {
       await this.productService.updateMultipleProducts(
@@ -260,6 +221,8 @@ export class MembersController {
     }
 
     const updatedProducts = productsToUpdate.map((p) => p.product);
+
+    const offboardingMember = await this.membersService.findById(id);
 
     await this.membersService.softDeleteMember(id);
 

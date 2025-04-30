@@ -908,7 +908,13 @@ export class ProductsService {
     try {
       for (const { id, product } of productsToUpdate) {
         const updateProductDto = { ...product };
-
+        console.log('🟠 Producto enviado a update:', {
+          id,
+          fp_shipment: updateProductDto.fp_shipment,
+          actionType: updateProductDto.actionType,
+          desirableDate: updateProductDto.desirableDate,
+          location: updateProductDto.location,
+        });
         await this.update(id, { ...updateProductDto }, tenantName, userId);
       }
 
@@ -1369,6 +1375,11 @@ export class ProductsService {
       assignedMember?: string;
     },
   ) {
+    console.log('🔵 Análisis de shipment:', {
+      fp_shipment: updateDto.fp_shipment,
+      actionType,
+      desirableDate: updateDto.desirableDate,
+    });
     if (!updateDto.fp_shipment || !actionType) return;
 
     const desirableDateOrigin =
