@@ -508,12 +508,14 @@ export class ShipmentsService {
       tenantId,
     );
 
-    const originComplete = ['create', 'bulkCreate'].includes(actionType)
-      ? true
-      : await this.productsService.isAddressComplete(
-          { ...product, location: originLocation, assignedEmail },
-          tenantId,
-        );
+    const originComplete = await this.productsService.isAddressComplete(
+      {
+        ...product,
+        location: originLocation,
+        assignedEmail: oldData?.assignedEmail || '',
+      },
+      tenantId,
+    );
 
     const shipmentStatus =
       destinationComplete && originComplete

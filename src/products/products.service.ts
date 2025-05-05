@@ -304,19 +304,14 @@ export class ProductsService {
             return 'In Transit - Missing Data';
           case 'Cancelled':
           case 'Received':
-            // ⬇️ recalcular como si no tuviera shipment
             break;
           default:
-            // En caso de otros estados desconocidos, fallback
             break;
         }
       } else {
-        // 🔥 Si no nos pasaron shipmentStatus, fallback (lógica vieja de fp_shipment)
         return 'In Transit - Missing Data';
       }
     }
-
-    // 📦 Lógica normal para producto sin shipment activo o shipment Cancelled / Received
 
     if (params.productCondition === 'Unusable') {
       return 'Unavailable';
@@ -333,7 +328,6 @@ export class ProductsService {
       return 'Available';
     }
 
-    // Si no hay una localización reconocida o assignedEmail, default a Available
     return 'Available';
   }
 
