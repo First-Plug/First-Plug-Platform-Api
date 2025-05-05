@@ -32,8 +32,9 @@ export class ShipmentsController {
   @Patch(':id/cancel')
   async cancelShipment(
     @Param('id') shipmentId: string,
-    @Query('tenant') tenantId: string,
+    @Request() req: any,
   ): Promise<ShipmentDocument> {
+    const tenantId = req.user.tenantName;
     return this.shipmentsService.cancelShipmentAndUpdateProducts(
       shipmentId,
       tenantId,
