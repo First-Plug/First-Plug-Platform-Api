@@ -275,21 +275,28 @@ export class ShipmentsService {
     if (!orderOrigin || !orderDestination || orderNumber === undefined) {
       throw new Error('❌ Parámetros inválidos para generar el Order ID');
     }
+    let originCode = orderOrigin;
+    let destinationCode = orderDestination;
 
-    // If the input is already a country code (2 letters), use it directly
-    const originCode =
-      orderOrigin.length === 2
-        ? orderOrigin
-        : orderOrigin === 'Our office'
-          ? 'OO'
-          : this.getCountryCode(orderOrigin);
+    if (originCode.length !== 2) {
+      if (originCode === 'FP warehouse') {
+        originCode = 'FP';
+      } else if (originCode === 'Our office') {
+        originCode = 'OO';
+      } else {
+        originCode = this.getCountryCode(originCode);
+      }
+    }
 
-    const destinationCode =
-      orderDestination.length === 2
-        ? orderDestination
-        : orderDestination === 'Our office'
-          ? 'OO'
-          : this.getCountryCode(orderDestination);
+    if (destinationCode.length !== 2) {
+      if (destinationCode === 'FP warehouse') {
+        destinationCode = 'FP';
+      } else if (destinationCode === 'Our office') {
+        destinationCode = 'OO';
+      } else {
+        destinationCode = this.getCountryCode(destinationCode);
+      }
+    }
 
     const orderNumberFormatted = orderNumber.toString().padStart(4, '0');
     return `${originCode}${destinationCode}${orderNumberFormatted}`;
@@ -1250,9 +1257,6 @@ export class ShipmentsService {
           'shipments',
         );
 
-        // const ProductModel = this.getProductModel(connection);
-        // const MemberModel = connection.model('Member', MemberSchema, 'members');
-
         console.log('🔍 Searching for shipments with Our office');
 
         const shipments = await ShipmentModel.find({
@@ -1269,30 +1273,108 @@ export class ShipmentsService {
           let updated = false;
 
           if (shipment.origin === 'Our office') {
-            shipment.originDetails = {
-              ...(shipment.originDetails || {}),
-              ...newAddress,
+            const desirableDate = shipment.originDetails?.desirableDate || '';
+
+            const updatedOriginDetails = {
+              address: newAddress.address || '',
+              city: newAddress.city || '',
+              state: newAddress.state || '',
+              country: newAddress.country || '',
+              zipCode: newAddress.zipCode || '',
+              apartment: newAddress.apartment || '',
+              phone: newAddress.phone || '',
+              desirableDate: desirableDate,
             };
+
+            await ShipmentModel.updateOne(
+              { _id: shipment._id },
+              {
+                $set: {
+                  'originDetails.address': updatedOriginDetails.address,
+                  'originDetails.city': updatedOriginDetails.city,
+                  'originDetails.state': updatedOriginDetails.state,
+                  'originDetails.country': updatedOriginDetails.country,
+                  'originDetails.zipCode': updatedOriginDetails.zipCode,
+                  'originDetails.apartment': updatedOriginDetails.apartment,
+                  'originDetails.phone': updatedOriginDetails.phone,
+                  'originDetails.desirableDate':
+                    updatedOriginDetails.desirableDate,
+                },
+              },
+              { session },
+            );
+
             updated = true;
+
+            console.log(
+              '✅ Updated origin details for Our office:',
+              updatedOriginDetails,
+            );
           }
 
           if (shipment.destination === 'Our office') {
-            shipment.destinationDetails = {
-              ...(shipment.destinationDetails || {}),
-              ...newAddress,
+            const desirableDate =
+              shipment.destinationDetails?.desirableDate || '';
+
+            const updatedDestinationDetails = {
+              address: newAddress.address || '',
+              city: newAddress.city || '',
+              state: newAddress.state || '',
+              country: newAddress.country || '',
+              zipCode: newAddress.zipCode || '',
+              apartment: newAddress.apartment || '',
+              phone: newAddress.phone || '',
+              desirableDate: desirableDate,
             };
+
+            console.log(
+              '🔄 Updating destination details for Our office:',
+              updatedDestinationDetails,
+            );
+
+            await ShipmentModel.updateOne(
+              { _id: shipment._id },
+              {
+                $set: {
+                  'destinationDetails.address':
+                    updatedDestinationDetails.address,
+                  'destinationDetails.city': updatedDestinationDetails.city,
+                  'destinationDetails.state': updatedDestinationDetails.state,
+                  'destinationDetails.country':
+                    updatedDestinationDetails.country,
+                  'destinationDetails.zipCode':
+                    updatedDestinationDetails.zipCode,
+                  'destinationDetails.apartment':
+                    updatedDestinationDetails.apartment,
+                  'destinationDetails.phone': updatedDestinationDetails.phone,
+                  'destinationDetails.desirableDate':
+                    updatedDestinationDetails.desirableDate,
+                },
+              },
+              { session },
+            );
+
             updated = true;
+            console.log('✅ Updated destination details for Our office');
           }
 
           if (updated) {
-            // Update status based on address completion
-            await this.updateShipmentOnAddressComplete(
-              shipment,
-              connection,
-              session,
-            );
+            const refreshedShipment = await ShipmentModel.findById(
+              shipment._id,
+            ).session(session);
 
-            console.log(`✅ Updated shipment ${shipment._id}`);
+            if (refreshedShipment) {
+              console.log('📋 Refreshed shipment details:', {
+                originDetails: refreshedShipment.originDetails,
+                destinationDetails: refreshedShipment.destinationDetails,
+              });
+
+              await this.updateShipmentStatusOnAddressComplete(
+                refreshedShipment,
+                connection,
+                session,
+              );
+            }
           }
         }
       });
@@ -1345,7 +1427,6 @@ export class ShipmentsService {
         for (const shipment of shipments) {
           let updated = false;
 
-          // Create complete member details object
           const memberDetails = {
             address: member.address || '',
             apartment: member.apartment || '',
@@ -1359,10 +1440,8 @@ export class ShipmentsService {
           };
 
           if (shipment.origin === fullName) {
-            // Preserve the desirableDate
             const desirableDate = shipment.originDetails?.desirableDate || '';
 
-            // Update the shipment directly in the database
             await ShipmentModel.updateOne(
               { _id: shipment._id },
               {
@@ -1376,7 +1455,6 @@ export class ShipmentsService {
               { session },
             );
 
-            // Also update the in-memory object
             shipment.originDetails = {
               ...memberDetails,
               desirableDate,
@@ -1389,11 +1467,9 @@ export class ShipmentsService {
           }
 
           if (shipment.destination === fullName) {
-            // Preserve the desirableDate
             const desirableDate =
               shipment.destinationDetails?.desirableDate || '';
 
-            // Update the shipment directly in the database
             await ShipmentModel.updateOne(
               { _id: shipment._id },
               {
@@ -1407,7 +1483,6 @@ export class ShipmentsService {
               { session },
             );
 
-            // Also update the in-memory object
             shipment.destinationDetails = {
               ...memberDetails,
               desirableDate,
@@ -1420,7 +1495,6 @@ export class ShipmentsService {
           }
 
           if (updated) {
-            // Reload the shipment to ensure we have the latest data
             const refreshedShipment = await ShipmentModel.findById(
               shipment._id,
             ).session(session);
@@ -1536,27 +1610,34 @@ export class ShipmentsService {
               shipment.destinationDetails.zipCode
             );
 
-      // Get current order number and update order_id
       const orderNumber = parseInt(shipment.order_id.slice(-4));
-      const originCode = hasRequiredOriginFields
-        ? shipment.origin === 'FP warehouse'
-          ? 'FP'
-          : shipment.origin === 'Our office'
-            ? 'OO'
-            : this.getCountryCode(shipment.originDetails?.country || '')
-        : 'XX';
 
-      const destinationCode = hasRequiredDestinationFields
-        ? shipment.destination === 'FP warehouse'
-          ? 'FP'
-          : shipment.destination === 'Our office'
-            ? 'OO'
-            : this.getCountryCode(shipment.destinationDetails?.country || '')
-        : 'XX';
+      let originCode;
+      if (shipment.origin === 'FP warehouse') {
+        originCode = 'FP';
+      } else if (shipment.origin === 'Our office') {
+        originCode = 'OO';
+      } else {
+        originCode = hasRequiredOriginFields
+          ? this.getCountryCode(shipment.originDetails?.country || '')
+          : 'XX';
+      }
+
+      let destinationCode;
+      if (shipment.destination === 'FP warehouse') {
+        destinationCode = 'FP';
+      } else if (shipment.destination === 'Our office') {
+        destinationCode = 'OO';
+      } else {
+        destinationCode = hasRequiredDestinationFields
+          ? this.getCountryCode(shipment.destinationDetails?.country || '')
+          : 'XX';
+      }
 
       const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
-
-      // Actualizar directamente en la base de datos para asegurar que los cambios se apliquen
+      console.log(
+        `🔄 Generating new order ID: ${newOrderId} (was: ${shipment.order_id})`,
+      );
       const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
 
       if (hasRequiredOriginFields && hasRequiredDestinationFields) {
@@ -1568,7 +1649,6 @@ export class ShipmentsService {
           console.log('📸 Generando snapshot de productos...');
           await this.createSnapshots(shipment, connection);
 
-          // Save the snapshots to the shipment
           await ShipmentModel.updateOne(
             { _id: shipment._id },
             { $set: { snapshots: shipment.snapshots } },
@@ -1587,7 +1667,6 @@ export class ShipmentsService {
           { session },
         );
 
-        // Actualizar productos
         const ProductModel = this.getProductModel(connection);
         const MemberModel = connection.model<MemberDocument>('Member');
 
@@ -1629,7 +1708,6 @@ export class ShipmentsService {
         );
       }
 
-      // Recargar el shipment para verificar los cambios
       const updatedShipment = await ShipmentModel.findById(
         shipment._id,
       ).session(session);
@@ -1641,6 +1719,158 @@ export class ShipmentsService {
       return updatedShipment;
     } catch (error) {
       console.error('❌ Error in updateShipmentOnAddressComplete:', error);
+      throw error;
+    }
+  }
+
+  private async updateShipmentStatusOnAddressComplete(
+    shipment: ShipmentDocument,
+    connection: mongoose.Connection,
+    session: ClientSession,
+  ) {
+    try {
+      console.log(
+        '🔍 Checking if shipment status should change:',
+        shipment.shipment_status,
+      );
+
+      const hasRequiredOriginFields =
+        shipment.origin === 'FP warehouse'
+          ? true
+          : !!(
+              shipment.originDetails &&
+              shipment.originDetails.address &&
+              shipment.originDetails.city &&
+              shipment.originDetails.country &&
+              shipment.originDetails.zipCode
+            );
+
+      const hasRequiredDestinationFields =
+        shipment.destination === 'FP warehouse'
+          ? true
+          : !!(
+              shipment.destinationDetails &&
+              shipment.destinationDetails.address &&
+              shipment.destinationDetails.city &&
+              shipment.destinationDetails.country &&
+              shipment.destinationDetails.zipCode
+            );
+
+      const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
+
+      if (shipment.shipment_status === 'On Hold - Missing Data') {
+        const orderNumber = parseInt(shipment.order_id.slice(-4));
+
+        let originCode;
+        if (shipment.origin === 'FP warehouse') {
+          originCode = 'FP';
+        } else if (shipment.origin === 'Our office') {
+          originCode = 'OO';
+        } else {
+          originCode = hasRequiredOriginFields
+            ? this.getCountryCode(shipment.originDetails?.country || '')
+            : 'XX';
+        }
+
+        let destinationCode;
+        if (shipment.destination === 'FP warehouse') {
+          destinationCode = 'FP';
+        } else if (shipment.destination === 'Our office') {
+          destinationCode = 'OO';
+        } else {
+          destinationCode = hasRequiredDestinationFields
+            ? this.getCountryCode(shipment.destinationDetails?.country || '')
+            : 'XX';
+        }
+
+        const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
+        console.log(
+          `🔄 Checking order ID: ${newOrderId} (current: ${shipment.order_id})`,
+        );
+
+        if (newOrderId !== shipment.order_id) {
+          await ShipmentModel.updateOne(
+            { _id: shipment._id },
+            { $set: { order_id: newOrderId } },
+            { session },
+          );
+          console.log(
+            `📝 Updated order_id from ${shipment.order_id} to ${newOrderId}`,
+          );
+        }
+      }
+
+      if (hasRequiredOriginFields && hasRequiredDestinationFields) {
+        console.log(
+          '✅ Both addresses are complete, updating to In Preparation',
+        );
+
+        if (shipment.shipment_status === 'On Hold - Missing Data') {
+          console.log('📸 Generando snapshot de productos...');
+          await this.createSnapshots(shipment, connection);
+
+          await ShipmentModel.updateOne(
+            { _id: shipment._id },
+            {
+              $set: {
+                snapshots: shipment.snapshots,
+                shipment_status: 'In Preparation',
+              },
+            },
+            { session },
+          );
+
+          const ProductModel = this.getProductModel(connection);
+          const MemberModel = connection.model<MemberDocument>('Member');
+
+          for (const productId of shipment.products) {
+            const product =
+              await ProductModel.findById(productId).session(session);
+
+            if (product) {
+              await ProductModel.findByIdAndUpdate(
+                productId,
+                { $set: { status: 'In Transit' } },
+                { session },
+              );
+              console.log(
+                `✅ Updated product in Products collection: ${productId}`,
+              );
+            } else {
+              await MemberModel.updateOne(
+                { 'products._id': productId },
+                { $set: { 'products.$.status': 'In Transit' } },
+                { session },
+              );
+              console.log(
+                `✅ Updated product in Member collection: ${productId}`,
+              );
+            }
+          }
+        }
+      } else {
+        console.log('⚠️ Missing required address fields');
+        await ShipmentModel.updateOne(
+          { _id: shipment._id },
+          { $set: { shipment_status: 'On Hold - Missing Data' } },
+          { session },
+        );
+      }
+
+      const updatedShipment = await ShipmentModel.findById(
+        shipment._id,
+      ).session(session);
+      console.log(
+        '📋 Final shipment status:',
+        updatedShipment?.shipment_status,
+      );
+
+      return updatedShipment;
+    } catch (error) {
+      console.error(
+        '❌ Error in updateShipmentStatusOnAddressComplete:',
+        error,
+      );
       throw error;
     }
   }
