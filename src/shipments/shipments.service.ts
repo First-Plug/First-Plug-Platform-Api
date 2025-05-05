@@ -114,7 +114,13 @@ export class ShipmentsService {
     details?: Record<string, string>;
   }> {
     if (location === 'FP warehouse') {
-      return { name: 'FP warehouse', code: 'FP' };
+      return {
+        name: 'FP warehouse',
+        code: 'FP',
+        details: {
+          desirableDate: desirableDate || '',
+        },
+      };
     }
 
     if (location === 'Our office') {
@@ -1329,6 +1335,9 @@ export class ShipmentsService {
 
         const shipments = await ShipmentModel.find({
           $or: [{ origin: fullName }, { destination: fullName }],
+          shipment_status: {
+            $in: ['In Preparation', 'On Hold - Missing Data'],
+          },
         }).session(session);
 
         this.logger.debug(`Found ${shipments.length} shipments to update`);
@@ -1336,40 +1345,92 @@ export class ShipmentsService {
         for (const shipment of shipments) {
           let updated = false;
 
+          // Create complete member details object
+          const memberDetails = {
+            address: member.address || '',
+            apartment: member.apartment || '',
+            city: member.city || '',
+            country: member.country || '',
+            zipCode: member.zipCode || '',
+            phone: member.phone || '',
+            personalEmail: member.personalEmail || '',
+            dni: `${member.dni || ''}`,
+            contactName: fullName,
+          };
+
           if (shipment.origin === fullName) {
+            // Preserve the desirableDate
+            const desirableDate = shipment.originDetails?.desirableDate || '';
+
+            // Update the shipment directly in the database
+            await ShipmentModel.updateOne(
+              { _id: shipment._id },
+              {
+                $set: {
+                  originDetails: {
+                    ...memberDetails,
+                    desirableDate,
+                  },
+                },
+              },
+              { session },
+            );
+
+            // Also update the in-memory object
             shipment.originDetails = {
-              address: member.address || '',
-              apartment: member.apartment || '',
-              city: member.city || '',
-              country: member.country || '',
-              zipCode: member.zipCode || '',
-              phone: member.phone || '',
-              personalEmail: member.personalEmail || '',
-              dni: `${member.dni || ''}`,
+              ...memberDetails,
+              desirableDate,
             };
+
             updated = true;
+            this.logger.debug(
+              `Updated origin details for shipment ${shipment._id}`,
+            );
           }
 
           if (shipment.destination === fullName) {
+            // Preserve the desirableDate
+            const desirableDate =
+              shipment.destinationDetails?.desirableDate || '';
+
+            // Update the shipment directly in the database
+            await ShipmentModel.updateOne(
+              { _id: shipment._id },
+              {
+                $set: {
+                  destinationDetails: {
+                    ...memberDetails,
+                    desirableDate,
+                  },
+                },
+              },
+              { session },
+            );
+
+            // Also update the in-memory object
             shipment.destinationDetails = {
-              address: member.address || '',
-              apartment: member.apartment || '',
-              city: member.city || '',
-              country: member.country || '',
-              zipCode: member.zipCode || '',
-              phone: member.phone || '',
-              personalEmail: member.personalEmail || '',
-              dni: `${member.dni || ''}`,
+              ...memberDetails,
+              desirableDate,
             };
+
             updated = true;
+            this.logger.debug(
+              `Updated destination details for shipment ${shipment._id}`,
+            );
           }
 
           if (updated) {
-            await this.updateShipmentOnAddressComplete(
-              shipment,
-              connection,
-              session,
-            );
+            // Reload the shipment to ensure we have the latest data
+            const refreshedShipment = await ShipmentModel.findById(
+              shipment._id,
+            ).session(session);
+            if (refreshedShipment) {
+              await this.updateShipmentOnAddressComplete(
+                refreshedShipment,
+                connection,
+                session,
+              );
+            }
           }
         }
       });
@@ -1502,6 +1563,18 @@ export class ShipmentsService {
         console.log(
           '✅ Both addresses are complete, updating to In Preparation',
         );
+
+        if (shipment.shipment_status === 'On Hold - Missing Data') {
+          console.log('📸 Generando snapshot de productos...');
+          await this.createSnapshots(shipment, connection);
+
+          // Save the snapshots to the shipment
+          await ShipmentModel.updateOne(
+            { _id: shipment._id },
+            { $set: { snapshots: shipment.snapshots } },
+            { session },
+          );
+        }
 
         await ShipmentModel.findByIdAndUpdate(
           shipment._id,
