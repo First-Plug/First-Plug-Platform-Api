@@ -10,6 +10,7 @@ import { MembersModule } from 'src/members/members.module';
 import { ProductsModule } from 'src/products/products.module';
 import { TenantAddressUpdatedListener } from 'src/shipments/listeners/tenant-address-update.listener';
 import { MemberAddressUpdatedListener } from 'src/shipments/listeners/member-address-update.listener';
+import { ProductUpdatedListener } from 'src/shipments/listeners/product-updated.listener';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { MemberAddressUpdatedListener } from 'src/shipments/listeners/member-add
     ShipmentsService,
     TenantAddressUpdatedListener,
     MemberAddressUpdatedListener,
+    ProductUpdatedListener,
     JwtService,
     tenantConnectionProvider,
     {

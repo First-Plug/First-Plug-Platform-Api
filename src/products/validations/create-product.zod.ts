@@ -93,6 +93,7 @@ export const ProductSchemaZod = z
       .optional()
       .nullable(),
     fp_shipment: z.boolean().optional(),
+    activeShipment: z.boolean().optional(),
     desirableDate: z
       .union([
         z.string(),
