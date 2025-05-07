@@ -30,6 +30,8 @@ import { updateProductPrice } from './helpers/update-price.helper';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
 import { ShipmentsService } from 'src/shipments/shipments.service';
 import { ModuleRef } from '@nestjs/core';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EventTypes } from 'src/common/events/types';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -49,6 +51,7 @@ export class ProductsService {
     @Inject(forwardRef(() => ShipmentsService))
     private readonly shipmentsService: ShipmentsService,
     private readonly moduleRef: ModuleRef,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   onModuleInit() {
@@ -304,14 +307,19 @@ export class ProductsService {
             return 'In Transit - Missing Data';
           case 'Cancelled':
           case 'Received':
+            // ⬇️ recalcular como si no tuviera shipment
             break;
           default:
+            // En caso de otros estados desconocidos, fallback
             break;
         }
       } else {
+        // 🔥 Si no nos pasaron shipmentStatus, fallback (lógica vieja de fp_shipment)
         return 'In Transit - Missing Data';
       }
     }
+
+    // 📦 Lógica normal para producto sin shipment activo o shipment Cancelled / Received
 
     if (params.productCondition === 'Unusable') {
       return 'Unavailable';
@@ -328,6 +336,7 @@ export class ProductsService {
       return 'Available';
     }
 
+    // Si no hay una localización reconocida o assignedEmail, default a Available
     return 'Available';
   }
 
@@ -902,13 +911,7 @@ export class ProductsService {
     try {
       for (const { id, product } of productsToUpdate) {
         const updateProductDto = { ...product };
-        console.log('🟠 Producto enviado a update:', {
-          id,
-          fp_shipment: updateProductDto.fp_shipment,
-          actionType: updateProductDto.actionType,
-          desirableDate: updateProductDto.desirableDate,
-          location: updateProductDto.location,
-        });
+
         await this.update(id, { ...updateProductDto }, tenantName, userId);
       }
 
@@ -937,15 +940,57 @@ export class ProductsService {
     product: ProductDocument,
     updateProductDto: UpdateProductDto,
   ) {
+    console.log('🔍 Calculando campos actualizados');
+    console.log(
+      '📦 Producto actual:',
+      JSON.stringify(
+        {
+          fp_shipment: product.fp_shipment,
+          activeShipment: product.activeShipment,
+          status: product.status,
+        },
+        null,
+        2,
+      ),
+    );
+    console.log(
+      '📦 DTO de actualización:',
+      JSON.stringify(
+        {
+          fp_shipment: updateProductDto.fp_shipment,
+          status: updateProductDto.status,
+        },
+        null,
+        2,
+      ),
+    );
+
     const updatedFields: any = {};
     for (const key in updateProductDto) {
       if (
         updateProductDto[key] !== undefined &&
         updateProductDto[key] !== product[key]
       ) {
+        // Si el producto está en shipment activo, no actualizar el status
+        if (key === 'status' && product.fp_shipment === true) {
+          console.log(
+            '⚠️ Producto en shipment activo, ignorando cambio de status',
+          );
+          continue;
+        }
         updatedFields[key] = updateProductDto[key];
       }
     }
+
+    // Asegurarse de que activeShipment coincida con fp_shipment
+    if (updatedFields.fp_shipment !== undefined) {
+      updatedFields.activeShipment = updatedFields.fp_shipment;
+    }
+
+    console.log(
+      '📦 Campos a actualizar:',
+      JSON.stringify(updatedFields, null, 2),
+    );
     return updatedFields;
   }
 
@@ -981,12 +1026,16 @@ export class ProductsService {
     session: any,
     product: ProductDocument,
     updateProductDto: UpdateProductDto,
+    tenantName: string,
   ) {
     const updatedFields = this.getUpdatedFields(product, updateProductDto);
 
     if (updatedFields.assignedEmail === '') {
       updatedFields.lastAssigned = product.assignedEmail;
     }
+    // const hadActiveShipment = product.fp_shipment === true;
+    updatedFields.fp_shipment =
+      updateProductDto.fp_shipment ?? product.fp_shipment;
 
     await this.productRepository.updateOne(
       { _id: product._id },
@@ -994,6 +1043,9 @@ export class ProductsService {
       { session, runValidators: true, new: true, omitUndefined: true },
     );
 
+    if (updatedFields.fp_shipment === true && tenantName) {
+      this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
+    }
     return updatedFields;
   }
 
@@ -1023,6 +1075,7 @@ export class ProductsService {
     newMember: MemberDocument,
     updateProductDto: UpdateProductDto,
     lastAssigned: string,
+    tenantName?: string,
   ) {
     // Eliminar el producto del miembro anterior
     if (product.assignedEmail) {
@@ -1060,9 +1113,7 @@ export class ProductsService {
           ? updateProductDto.productCondition
           : product.productCondition,
       fp_shipment: updateProductDto.fp_shipment ?? product.fp_shipment,
-      activeShipment: updateProductDto.fp_shipment
-        ? true
-        : product.activeShipment,
+      activeShipment: updateProductDto.fp_shipment ?? product.fp_shipment,
       isDeleted: product.isDeleted,
       lastAssigned: lastAssigned,
     };
@@ -1075,6 +1126,10 @@ export class ProductsService {
     await this.productRepository
       .findByIdAndDelete(product._id)
       .session(session);
+
+    if (updateProductDto.fp_shipment === true && tenantName) {
+      this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
+    }
   }
 
   // Metodo para mover un producto de un miembro a la colección de productos
@@ -1083,6 +1138,7 @@ export class ProductsService {
     product: ProductDocument,
     member: MemberDocument,
     updateProductDto: UpdateProductDto,
+    tenantName?: string,
   ) {
     const productIndex = member.products.findIndex(
       (prod) => prod._id!.toString() === product._id!.toString(),
@@ -1120,12 +1176,28 @@ export class ProductsService {
           ? updateProductDto.productCondition
           : product.productCondition,
       fp_shipment: updateProductDto.fp_shipment ?? product.fp_shipment,
-      activeShipment: updateProductDto.fp_shipment
-        ? true
-        : product.activeShipment,
+      activeShipment: updateProductDto.fp_shipment ?? product.fp_shipment,
       isDeleted: product.isDeleted,
     };
-    return await this.productRepository.create([updateData], { session });
+    const createdProducts = await this.productRepository.create([updateData], {
+      session,
+    });
+
+    if (updateProductDto.fp_shipment === true && tenantName) {
+      this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
+    }
+
+    return createdProducts;
+  }
+
+  private emitProductUpdatedEvent(productId: string, tenantName: string) {
+    console.log(
+      `🔔 Emitiendo evento de actualización para producto ${productId} en tenant ${tenantName}`,
+    );
+    this.eventEmitter.emit(EventTypes.PRODUCT_ADDRESS_UPDATED, {
+      productId,
+      tenantName,
+    });
   }
 
   // Método para actualizar los atributos del producto
@@ -1135,23 +1207,16 @@ export class ProductsService {
     updateProductDto: UpdateProductDto,
     currentLocation: 'products' | 'members',
     member?: MemberDocument,
+    tenantName?: string,
   ) {
     const updatedFields = this.getUpdatedFields(product, updateProductDto);
     updatedFields.status = updateProductDto.status ?? product.status;
 
-    if (
-      product.assignedEmail &&
-      !(await this.memberService.findByEmailNotThrowError(
-        product.assignedEmail,
-      ))
-    ) {
-      updatedFields.lastAssigned = product.assignedEmail;
-    }
-    updatedFields.fp_shipment =
-      updateProductDto.fp_shipment ?? product.fp_shipment;
-
-    if (updateProductDto.fp_shipment) {
-      updatedFields.activeShipment = true;
+    // Manejar fp_shipment y activeShipment
+    if (updateProductDto.fp_shipment !== undefined) {
+      updatedFields.fp_shipment = updateProductDto.fp_shipment;
+      // Actualizar activeShipment basado en fp_shipment
+      updatedFields.activeShipment = updateProductDto.fp_shipment;
     }
 
     if (currentLocation === 'products') {
@@ -1170,6 +1235,9 @@ export class ProductsService {
       }
       console.log('🧪 Campos actualizados en producto:', updatedFields);
     }
+    if (updatedFields.fp_shipment === true && tenantName) {
+      this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
+    }
   }
 
   async updateEntity(
@@ -1179,6 +1247,11 @@ export class ProductsService {
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
     const { tenantName, userId } = config;
+    console.log('🔍 Iniciando updateEntity para producto:', id.toString());
+    console.log(
+      '📦 Datos recibidos:',
+      JSON.stringify(updateProductDto, null, 2),
+    );
 
     try {
       const { member, product } = await this.findProductById(id);
@@ -1186,6 +1259,31 @@ export class ProductsService {
       const currentLocation = member ? 'members' : 'products';
 
       const productCopy = JSON.parse(JSON.stringify(product));
+
+      // Verificar si el producto está en un shipment activo
+      const isInActiveShipment = product.fp_shipment === true;
+
+      // Si el producto está en un shipment activo:
+      if (isInActiveShipment) {
+        console.log(
+          '⚠️ Producto en shipment activo, aplicando reglas especiales',
+        );
+
+        // 1. Ignorar cambio a fp_shipment=false
+        if (updateProductDto.fp_shipment === false) {
+          console.log('⚠️ Ignorando cambio a fp_shipment=false');
+          updateProductDto.fp_shipment = true;
+        }
+
+        // 2. Preservar el status actual si el producto está en shipment
+        if (
+          updateProductDto.status &&
+          !['In Transit', 'In Transit - Missing Data'].includes(product.status)
+        ) {
+          console.log(`⚠️ Preservando status de shipment: ${product.status}`);
+          updateProductDto.status = product.status;
+        }
+      }
 
       await this.getRecoverableConfigForTenant(tenantName);
 
@@ -1220,12 +1318,23 @@ export class ProductsService {
         recoverable: isRecoverable,
       });
 
+      // Asegurarse de que no se actualice el status si el producto está en shipment
+      if (isInActiveShipment && updatedFields.status) {
+        console.log(`⚠️ Eliminando status de los campos a actualizar`);
+        delete updatedFields.status;
+      }
+
       if (updateProductDto.price === null) {
         delete updatedFields.price;
       }
 
       if (updateProductDto.serialNumber === null && !member) {
         delete updatedFields.serialNumber;
+      }
+
+      // Asegurarse de que activeShipment coincida con fp_shipment
+      if (updatedFields.fp_shipment !== undefined) {
+        updatedFields.activeShipment = updatedFields.fp_shipment;
       }
 
       let productUpdated;
@@ -1236,6 +1345,19 @@ export class ProductsService {
           { $set: updatedFields },
           { runValidators: true, new: true, omitUndefined: true },
         );
+
+        console.log(
+          '✅ Producto actualizado en Products, fp_shipment:',
+          productUpdated.fp_shipment,
+        );
+
+        if (productUpdated.fp_shipment === true) {
+          console.log('🔔 Emitiendo evento para producto con fp_shipment=true');
+          this.emitProductUpdatedEvent(
+            productUpdated._id.toString(),
+            tenantName,
+          );
+        }
       } else if (currentLocation === 'members' && member) {
         const productIndex = member.products.findIndex(
           (prod) => prod._id!.toString() === product._id!.toString(),
@@ -1248,41 +1370,23 @@ export class ProductsService {
             member.products[productIndex].price = undefined;
           }
 
-          const serialNumber = member.products[productIndex].serialNumber;
-
-          if (serialNumber) {
-            const isDuplicateInMembers =
-              await this.memberService.validateSerialNumber(
-                serialNumber,
-                product._id as ObjectId,
-              );
-
-            const isDuplicateInMember = member.products.some(
-              (product) =>
-                product.serialNumber === serialNumber &&
-                product._id !== member.products[productIndex]._id,
-            );
-
-            const isDuplicateInProducts = await this.productRepository.exists({
-              serialNumber: serialNumber,
-              _id: { $ne: product._id },
-            });
-
-            if (
-              isDuplicateInMembers ||
-              isDuplicateInProducts ||
-              isDuplicateInMember
-            ) {
-              throw { code: 11000 };
-            }
-          }
-
-          if (updateProductDto.serialNumber === '') {
-            member.products[productIndex].serialNumber = undefined;
-          }
-
           await member.save();
           productUpdated = member.products[productIndex];
+
+          console.log(
+            '✅ Producto actualizado en Members, fp_shipment:',
+            productUpdated.fp_shipment,
+          );
+
+          if (productUpdated.fp_shipment === true) {
+            console.log(
+              '🔔 Emitiendo evento para producto con fp_shipment=true',
+            );
+            this.emitProductUpdatedEvent(
+              productUpdated._id.toString(),
+              tenantName,
+            );
+          }
         }
       }
 
@@ -1369,11 +1473,6 @@ export class ProductsService {
       assignedMember?: string;
     },
   ) {
-    console.log('🔵 Análisis de shipment:', {
-      fp_shipment: updateDto.fp_shipment,
-      actionType,
-      desirableDate: updateDto.desirableDate,
-    });
     if (!updateDto.fp_shipment || !actionType) return;
 
     const desirableDateOrigin =
@@ -1416,11 +1515,69 @@ export class ProductsService {
     tenantName: string,
     userId: string,
   ) {
+    console.log('🔍 Iniciando update para producto:', id.toString());
+    console.log(
+      '📦 Datos recibidos:',
+      JSON.stringify(updateProductDto, null, 2),
+    );
+
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     const session = await connection.startSession();
     session.startTransaction();
+
+    // Si no está presente, mantenemos el valor actual
+    if (updateProductDto.fp_shipment === undefined) {
+      // Buscar el producto para obtener su valor actual de fp_shipment
+      const existingProduct = await this.productRepository.findById(id);
+      let currentFpShipment = false;
+      if (existingProduct) {
+        console.log('✅ Producto encontrado en colección Products');
+        currentFpShipment = existingProduct.fp_shipment === true;
+        console.log('🚢 fp_shipment actual:', currentFpShipment);
+      } else {
+        const memberProduct = await this.memberService.getProductByMembers(id);
+        if (memberProduct?.product) {
+          console.log('✅ Producto encontrado en colección Members');
+          currentFpShipment = memberProduct.product.fp_shipment === true;
+          console.log('🚢 fp_shipment actual:', currentFpShipment);
+        }
+      }
+      updateProductDto.fp_shipment = currentFpShipment;
+    } else {
+      // Si el producto está en un shipment activo y se intenta cambiar fp_shipment a false,
+      // verificamos si debemos ignorar ese cambio
+      const existingProduct = await this.productRepository.findById(id);
+      if (
+        existingProduct &&
+        existingProduct.fp_shipment === true &&
+        updateProductDto.fp_shipment === false
+      ) {
+        console.log(
+          '⚠️ Producto en shipment activo, verificando si se puede cambiar fp_shipment a false',
+        );
+
+        // Aquí podrías verificar el estado del shipment para decidir si permitir el cambio
+        // Por ahora, simplemente mantenemos fp_shipment como true
+        updateProductDto.fp_shipment = true;
+      } else {
+        const memberProduct = await this.memberService.getProductByMembers(id);
+        if (
+          memberProduct?.product &&
+          memberProduct.product.fp_shipment === true &&
+          updateProductDto.fp_shipment === false
+        ) {
+          console.log(
+            '⚠️ Producto en shipment activo (en miembro), verificando si se puede cambiar fp_shipment a false',
+          );
+
+          // Aquí podrías verificar el estado del shipment para decidir si permitir el cambio
+          // Por ahora, simplemente mantenemos fp_shipment como true
+          updateProductDto.fp_shipment = true;
+        }
+      }
+    }
 
     const { actionType } = updateProductDto;
 
@@ -1504,6 +1661,7 @@ export class ProductsService {
                 ...updateProductDto,
                 recoverable: isRecoverable,
               },
+              tenantName,
             );
 
             if (actionType) {
@@ -1556,6 +1714,8 @@ export class ProductsService {
               product,
               { ...updateProductDto, recoverable: isRecoverable },
               'products',
+              undefined,
+              tenantName,
             );
           }
         } else {
@@ -1595,6 +1755,7 @@ export class ProductsService {
                 newMember,
                 { ...updateProductDto, recoverable: isRecoverable },
                 product.assignedEmail || '',
+                tenantName,
               );
 
               // Registrar reassign & assign
@@ -1656,6 +1817,8 @@ export class ProductsService {
               product,
               { ...updateProductDto, recoverable: isRecoverable },
               'products',
+              undefined,
+              tenantName,
             );
           }
         }
@@ -1745,6 +1908,7 @@ export class ProductsService {
                 newMember,
                 { ...updateProductDto, recoverable: isRecoverable },
                 member.email,
+                tenantName,
               );
 
               // Registrar relocate
@@ -1793,6 +1957,7 @@ export class ProductsService {
               memberProduct.product as ProductDocument,
               { ...updateProductDto, recoverable: isRecoverable },
               member,
+              tenantName,
             );
 
             // Registrar return
@@ -1814,6 +1979,7 @@ export class ProductsService {
               { ...updateProductDto, recoverable: isRecoverable },
               'members',
               member,
+              tenantName,
             );
 
             await this.maybeCreateShipmentAndUpdateStatus(
@@ -1839,7 +2005,17 @@ export class ProductsService {
               },
             );
           }
+          console.log(
+            '✅ Actualización completada, fp_shipment final:',
+            updateProductDto.fp_shipment,
+          );
 
+          if (updateProductDto.fp_shipment === true) {
+            console.log(
+              '🔔 Emitiendo evento para producto con fp_shipment=true',
+            );
+            this.emitProductUpdatedEvent(id.toString(), tenantName);
+          }
           await session.commitTransaction();
           session.endSession();
           return { message: `Product with id "${id}" updated successfully` };
@@ -1860,6 +2036,7 @@ export class ProductsService {
     product: ProductDocument,
     updateProductDto: UpdateProductDto,
     currentMember?: MemberDocument,
+    tenantName?: string,
   ) {
     if (currentMember) {
       return await this.moveToProductsCollection(
@@ -1867,6 +2044,7 @@ export class ProductsService {
         product,
         currentMember,
         updateProductDto,
+        tenantName,
       );
     } else {
       await this.updateProductAttributes(
@@ -1874,6 +2052,8 @@ export class ProductsService {
         product,
         updateProductDto,
         'products',
+        undefined,
+        tenantName,
       );
     }
   }

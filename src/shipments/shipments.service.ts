@@ -478,7 +478,9 @@ export class ShipmentsService {
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantId);
     const ShipmentModel = this.getShipmentModel(connection);
+
     console.log('🔎 Buscando shipment existente...');
+
     const existingShipment = await ShipmentModel.findOne({
       origin,
       destination,
@@ -496,6 +498,12 @@ export class ShipmentsService {
         console.log('➕ Agregando producto al shipment existente...');
         existingShipment.products.push(productObjectId);
         existingShipment.quantity_products = existingShipment.products.length;
+
+        console.log(
+          '📸 Actualizando snapshots para incluir el nuevo producto...',
+        );
+        await this.createSnapshots(existingShipment, connection);
+
         await existingShipment.save({ session });
         console.log('💾 Shipment existente actualizado');
       }
@@ -558,6 +566,11 @@ export class ShipmentsService {
     });
 
     console.log('✅ Shipment creado');
+    console.log('📸 Generando snapshot inicial de productos...');
+
+    await this.createSnapshots(newShipment, connection);
+    await newShipment.save();
+
     const originEmail = oldData?.assignedEmail || '';
     const destinationEmail = newData?.assignedEmail || '';
 
@@ -590,43 +603,6 @@ export class ShipmentsService {
       session ?? undefined,
     );
     console.log('✅ Orden finalizada correctamente');
-
-    // Determine and update product status using the service method
-    // const productStatus = await this.productsService.determineProductStatus(
-    //   {
-    //     fp_shipment: true,
-    //     location: destinationLocation,
-    //     assignedEmail: newData?.assignedEmail || '',
-    //     productCondition: product.productCondition,
-    //   },
-    //   tenantId,
-    //   actionType,
-    //   origin,
-    // );
-
-    // const ProductModel = this.getProductModel(connection);
-    // const productInProducts = await ProductModel.findById(productId).session(
-    //   session || null,
-    // );
-
-    // if (productInProducts) {
-    //   productInProducts.status = productStatus;
-    //   await productInProducts.save({ session: session ?? undefined });
-    // } else {
-    //   const MemberModel =
-    //     connection.models.Member ||
-    //     connection.model('Member', MemberSchema, 'members');
-
-    //   await MemberModel.updateOne(
-    //     { 'products._id': productId },
-    //     {
-    //       $set: {
-    //         'products.$.status': productStatus,
-    //       },
-    //     },
-    //     { session: session ?? undefined },
-    //   );
-    // }
 
     return newShipment;
   }
@@ -1591,6 +1567,137 @@ export class ShipmentsService {
         productCondition: product.productCondition,
         fp_shipment: product.fp_shipment,
       }));
+  }
+
+  async updateSnapshotsForProduct(
+    productId: string,
+    tenantName: string,
+  ): Promise<void> {
+    console.log(`🔄 Checking if product ${productId} needs snapshot updates`);
+    await new Promise((resolve) => process.nextTick(resolve));
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+
+    const ProductModel =
+      connection.models.Product || connection.model('Product', ProductSchema);
+    const MemberModel =
+      connection.models.Member || connection.model('Member', MemberSchema);
+
+    const product = await ProductModel.findById(productId);
+    let isActiveShipment = false;
+
+    let productData: any = null;
+
+    if (product) {
+      isActiveShipment = product.activeShipment === true;
+      productData = product;
+      console.log(`✅ Producto encontrado en Products collection`);
+    } else {
+      const member = await MemberModel.findOne({
+        'products._id': new Types.ObjectId(productId),
+      });
+      if (member) {
+        const memberProduct = member.products.find(
+          (p) => p._id?.toString() === productId,
+        );
+        if (memberProduct) {
+          isActiveShipment = memberProduct.activeShipment === true;
+          productData = memberProduct;
+          console.log(`✅ Producto encontrado en Member collection`);
+        }
+      }
+    }
+
+    if (!isActiveShipment) {
+      console.log(
+        `ℹ️ Product ${productId} is not part of an active shipment, skipping snapshot update`,
+      );
+      return;
+    }
+
+    if (!productData) {
+      console.log(`❌ Product data not found for ${productId}`);
+      return;
+    }
+
+    console.log(
+      `✅ Product ${productId} has activeShipment flag, proceeding with snapshot updates`,
+    );
+
+    const ShipmentModel =
+      connection.models.Shipment ||
+      connection.model('Shipment', ShipmentSchema, 'shipments');
+
+    const shipments = await ShipmentModel.find({
+      products: new Types.ObjectId(productId),
+      shipment_status: { $in: ['On Hold - Missing Data', 'In Preparation'] },
+    });
+
+    if (shipments.length === 0) {
+      console.log(`ℹ️ No updatable shipments found for product ${productId}`);
+      return;
+    }
+
+    console.log(`🔍 Found ${shipments.length} shipments to update snapshots`);
+
+    // Create updated snapshot
+    const updatedSnapshot = {
+      _id: productData._id,
+      name: productData.name || '',
+      category: productData.category || '',
+      attributes: productData.attributes || [],
+      status: productData.status || 'In Transit',
+      recoverable: productData.recoverable || false,
+      serialNumber: productData.serialNumber || '',
+      assignedEmail: productData.assignedEmail || '',
+      assignedMember: productData.assignedMember || '',
+      lastAssigned: productData.lastAssigned || '',
+      acquisitionDate: productData.acquisitionDate || '',
+      location: productData.location || '',
+      price: productData.price || { amount: null, currencyCode: 'TBC' },
+      additionalInfo: productData.additionalInfo || '',
+      productCondition: productData.productCondition || 'Optimal',
+      fp_shipment: productData.fp_shipment || false,
+    };
+
+    // Update snapshots in all shipments
+    for (const shipment of shipments) {
+      try {
+        const snapshotIndex = shipment.snapshots?.findIndex(
+          (s) => s._id.toString() === productId,
+        );
+
+        if (
+          snapshotIndex !== undefined &&
+          snapshotIndex >= 0 &&
+          shipment.snapshots
+        ) {
+          console.log(`📸 Updating snapshot in shipment ${shipment._id}`);
+          shipment.snapshots[snapshotIndex] = updatedSnapshot;
+          await shipment.save();
+        } else if (shipment.snapshots) {
+          console.log(`📸 Adding new snapshot to shipment ${shipment._id}`);
+          shipment.snapshots.push(updatedSnapshot);
+          await shipment.save();
+        } else {
+          console.log(
+            `📸 Creating snapshots array for shipment ${shipment._id}`,
+          );
+          shipment.snapshots = [updatedSnapshot];
+          await shipment.save();
+        }
+      } catch (error) {
+        console.error(
+          `❌ Error updating snapshot for shipment ${shipment._id}:`,
+          error,
+        );
+        // Continue with next shipment
+      }
+    }
+
+    console.log(
+      `✅ Updated snapshots for product ${productId} in ${shipments.length} shipments`,
+    );
   }
 
   private async updateShipmentOnAddressComplete(
