@@ -187,6 +187,7 @@ export class ShipmentsService {
           contactName: `${member.firstName} ${member.lastName}`,
           phone: member.phone || '',
           personalEmail: member.personalEmail || '',
+          assignedEmail: member.email,
           dni: `${member.dni || ''}`,
           desirableDate: desirableDate || '',
         },
@@ -566,10 +567,8 @@ export class ShipmentsService {
     });
 
     console.log('✅ Shipment creado');
-    console.log('📸 Generando snapshot inicial de productos...');
 
-    await this.createSnapshots(newShipment, connection);
-    await newShipment.save();
+    // await newShipment.save();
 
     const originEmail = oldData?.assignedEmail || '';
     const destinationEmail = newData?.assignedEmail || '';
@@ -603,7 +602,9 @@ export class ShipmentsService {
       session ?? undefined,
     );
     console.log('✅ Orden finalizada correctamente');
-
+    console.log('📸 Generando snapshot con estado actualizado...');
+    await this.createSnapshots(newShipment, connection);
+    await newShipment.save();
     return newShipment;
   }
 
@@ -1427,6 +1428,7 @@ export class ShipmentsService {
             zipCode: member.zipCode || '',
             phone: member.phone || '',
             personalEmail: member.personalEmail || '',
+            assignedEmail: member.email,
             dni: `${member.dni || ''}`,
             contactName: fullName,
           };
