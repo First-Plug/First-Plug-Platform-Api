@@ -545,6 +545,10 @@ export class MembersService {
       }
 
       Object.assign(member, updateMemberDto);
+      console.log(
+        '📋 Datos que se están seteando en el miembro:',
+        updateMemberDto,
+      );
 
       if (updateMemberDto.dni === undefined) {
         member.dni = undefined;

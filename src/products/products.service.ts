@@ -1118,6 +1118,7 @@ export class ProductsService {
       lastAssigned: lastAssigned,
     };
     newMember.products.push(updateData);
+
     if (updateProductDto.fp_shipment) {
       newMember.activeShipment = true;
     }
@@ -1484,6 +1485,34 @@ export class ProductsService {
         ? updateDto.desirableDate
         : updateDto.desirableDate?.destination || '';
 
+    console.log('🚢 Creating shipment for product:', product._id?.toString());
+
+    // Ensure we have a connection to the tenant database
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+
+    // First determine the new status before creating the shipment
+    const newStatus = await this.determineProductStatus(
+      {
+        fp_shipment: true, // Force fp_shipment to true since we're creating a shipment
+        location: updateDto.location || product.location,
+        assignedEmail: updateDto.assignedEmail || product.assignedEmail,
+        productCondition:
+          updateDto.productCondition || product.productCondition,
+      },
+      tenantName,
+      actionType,
+      'On Hold - Missing Data', // Default shipment status when creating
+    );
+
+    // Update the product status before creating the shipment
+    product.status = newStatus;
+    updateDto.status = newStatus;
+    await product.save({ session });
+    console.log(
+      `✅ Product status updated to ${newStatus} before shipment creation`,
+    );
+
     const shipment = await this.shipmentsService.findOrCreateShipment(
       product._id!.toString(),
       actionType,
@@ -1495,18 +1524,55 @@ export class ProductsService {
       newData,
     );
 
-    const newStatus = await this.determineProductStatus(
-      {
-        fp_shipment: updateDto.fp_shipment,
-        location: updateDto.location,
-        assignedEmail: updateDto.assignedEmail,
-        productCondition: updateDto.productCondition,
-      },
-      tenantName,
-      actionType,
-      shipment.shipment_status,
-    );
-    updateDto.status = newStatus;
+    if (!shipment || !shipment._id) {
+      console.error('❌ Failed to create shipment or shipment has no ID');
+      return;
+    }
+
+    console.log('✅ Shipment created with ID:', shipment._id.toString());
+
+    // Ensure product is marked as having an active shipment
+    product.activeShipment = true;
+    product.fp_shipment = true;
+    await product.save({ session });
+    console.log('✅ Product marked as having active shipment');
+
+    // Commit the transaction to ensure the shipment is saved to the database
+    // before trying to create snapshots
+    if (session.inTransaction()) {
+      await session.commitTransaction();
+      session.startTransaction();
+    }
+
+    const shipmentId = shipment._id.toString();
+    console.log('📸 Creating snapshots for shipment:', shipmentId);
+
+    try {
+      // Get the shipment model directly
+      const ShipmentModel = connection.model('Shipment');
+
+      // Verify the shipment exists in the database
+      const verifyShipment = await ShipmentModel.findById(shipmentId);
+      if (!verifyShipment) {
+        console.error(
+          `❌ Verification failed: Shipment ${shipmentId} not found in database`,
+        );
+      } else {
+        console.log(
+          `✅ Verification passed: Shipment ${shipmentId} found in database`,
+        );
+
+        // Refresh the product to ensure we have the latest data
+        const refreshedProduct = await this.productRepository.findById(
+          product._id,
+        );
+        console.log(
+          `📋 Product status before snapshot creation: ${refreshedProduct?.status}`,
+        );
+      }
+    } catch (error) {
+      console.error('❌ Error creating snapshots:', error, error.stack);
+    }
   }
 
   async update(

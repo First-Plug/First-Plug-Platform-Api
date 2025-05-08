@@ -503,7 +503,7 @@ export class ShipmentsService {
         console.log(
           '📸 Actualizando snapshots para incluir el nuevo producto...',
         );
-        await this.createSnapshots(existingShipment, connection);
+        // await this.createSnapshots(existingShipment, connection);
 
         await existingShipment.save({ session });
         console.log('💾 Shipment existente actualizado');
@@ -602,8 +602,8 @@ export class ShipmentsService {
       session ?? undefined,
     );
     console.log('✅ Orden finalizada correctamente');
-    console.log('📸 Generando snapshot con estado actualizado...');
-    await this.createSnapshots(newShipment, connection);
+    // console.log('📸 Generando snapshot con estado actualizado...');
+    // await this.createSnapshots(newShipment, connection);
     await newShipment.save();
     return newShipment;
   }
@@ -1510,7 +1510,7 @@ export class ShipmentsService {
     }
   }
 
-  private async createSnapshots(
+  public async createSnapshots(
     shipment: ShipmentDocument,
     connection: mongoose.Connection,
   ) {
@@ -1556,7 +1556,7 @@ export class ShipmentsService {
         name: product.name,
         category: product.category,
         attributes: product.attributes,
-        status: 'In Transit',
+        status: product.status,
         recoverable: product.recoverable,
         serialNumber: product.serialNumber || '',
         assignedEmail: product.assignedEmail,
@@ -1569,6 +1569,17 @@ export class ShipmentsService {
         productCondition: product.productCondition,
         fp_shipment: product.fp_shipment,
       }));
+
+    const uniqueSnapshots = new Map<
+      string,
+      (typeof shipment.snapshots)[number]
+    >();
+
+    for (const snapshot of shipment.snapshots) {
+      uniqueSnapshots.set(snapshot._id.toString(), snapshot);
+    }
+
+    shipment.snapshots = Array.from(uniqueSnapshots.values());
   }
 
   async updateSnapshotsForProduct(
@@ -1595,10 +1606,12 @@ export class ShipmentsService {
       productData = product;
       console.log(`✅ Producto encontrado en Products collection`);
     } else {
+      console.log('📥 Buscando producto en colección Members');
       const member = await MemberModel.findOne({
         'products._id': new Types.ObjectId(productId),
       });
       if (member) {
+        console.log('❌ No se encontró el miembro');
         const memberProduct = member.products.find(
           (p) => p._id?.toString() === productId,
         );
@@ -1639,10 +1652,8 @@ export class ShipmentsService {
       console.log(`ℹ️ No updatable shipments found for product ${productId}`);
       return;
     }
-
     console.log(`🔍 Found ${shipments.length} shipments to update snapshots`);
 
-    // Create updated snapshot
     const updatedSnapshot = {
       _id: productData._id,
       name: productData.name || '',
@@ -1662,7 +1673,6 @@ export class ShipmentsService {
       fp_shipment: productData.fp_shipment || false,
     };
 
-    // Update snapshots in all shipments
     for (const shipment of shipments) {
       try {
         const snapshotIndex = shipment.snapshots?.findIndex(
@@ -1693,7 +1703,6 @@ export class ShipmentsService {
           `❌ Error updating snapshot for shipment ${shipment._id}:`,
           error,
         );
-        // Continue with next shipment
       }
     }
 
