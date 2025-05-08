@@ -171,6 +171,9 @@ export class Shipment {
     productCondition: string;
     fp_shipment: boolean;
   }>;
+
+  isDeleted?: boolean;
+  deleteAt?: string | null;
 }
 
 export const ShipmentSchema =
