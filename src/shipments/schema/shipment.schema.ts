@@ -153,6 +153,9 @@ export class Shipment {
     ],
     required: false,
   })
+  @Prop({ type: Boolean, default: false })
+  isDeleted: boolean;
+
   snapshots?: Array<{
     _id: mongoose.Schema.Types.ObjectId;
     name?: string;

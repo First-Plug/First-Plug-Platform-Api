@@ -40,6 +40,8 @@ import {
 } from 'src/shipments/schema/shipment-metadata.schema';
 import { OrderNumberGenerator } from 'src/shipments/helpers/order-number.util';
 import { AddressData } from 'src/common/events/tenant-address-update.event';
+import { UpdateShipmentDto } from 'src/shipments/dto/update.shipment.dto';
+import { HistoryService } from 'src/history/history.service';
 
 // interface SoftDeleteModel<T> extends Model<T> {
 //   softDelete(filter: any, options?: any): Promise<any>;
@@ -58,6 +60,7 @@ export class ShipmentsService {
     private readonly productsService: ProductsService,
     @Inject('SHIPMENT_METADATA_MODEL')
     private readonly shipmentMetadataRepository: Model<ShipmentMetadata>,
+    private readonly historyService: HistoryService,
   ) {}
 
   async findAll(page: number, size: number, tenantId: string) {
@@ -170,8 +173,23 @@ export class ShipmentsService {
     }
 
     if (location === 'Employee' && assignedEmail) {
-      const member =
-        await this.membersService.findByEmailNotThrowError(assignedEmail);
+      console.log(
+        '➡️ Buscando miembro con email:',
+        assignedEmail,
+        'tenant:',
+        tenantId,
+      );
+      const connection =
+        await this.tenantConnectionService.getTenantConnection(tenantId);
+
+      const MemberModel =
+        connection.models.Member ||
+        connection.model('Member', MemberSchema, 'members');
+
+      const member = await MemberModel.findOne({
+        email: assignedEmail.trim().toLowerCase(),
+      });
+
       if (!member)
         throw new NotFoundException(`Member ${assignedEmail} not found`);
 
@@ -531,9 +549,6 @@ export class ShipmentsService {
         ? 'In Preparation'
         : 'On Hold - Missing Data';
 
-    // if (!session) {
-    //   throw new Error('Session is required to get next order number.');
-    // }
     const orderNumberGenerator = await this.initializeOrderNumberGenerator(
       connection,
       session,
@@ -602,10 +617,191 @@ export class ShipmentsService {
       session ?? undefined,
     );
     console.log('✅ Orden finalizada correctamente');
-    // console.log('📸 Generando snapshot con estado actualizado...');
-    // await this.createSnapshots(newShipment, connection);
+
     await newShipment.save();
     return newShipment;
+  }
+
+  async findConsolidateAndUpdateShipment(
+    shipmentId: string,
+    updateDto: UpdateShipmentDto,
+    tenantName: string,
+  ): Promise<ShipmentDocument> {
+    await new Promise((resolve) => process.nextTick(resolve));
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+    const ProductModel =
+      connection.models.Product ||
+      connection.model('Product', ProductSchema, 'products');
+
+    const shipment = await ShipmentModel.findById(shipmentId);
+    if (!shipment || shipment.isDeleted) {
+      throw new NotFoundException(
+        `Shipment ${shipmentId} not found or deleted.`,
+      );
+    }
+
+    const {
+      desirableDateOrigin,
+      desirableDateDestination,
+      newDestination,
+      newAssignedEmail,
+      newAssignedMember,
+    } = updateDto;
+
+    // Solo crear objetos si existen los detalles
+    if (shipment.originDetails && desirableDateOrigin) {
+      shipment.originDetails.desirableDate = desirableDateOrigin;
+    }
+    if (shipment.destinationDetails && desirableDateDestination) {
+      shipment.destinationDetails.desirableDate = desirableDateDestination;
+    }
+
+    if (newDestination) {
+      shipment.destination = newDestination;
+      const destInfo = await this.getLocationInfo(
+        newDestination,
+        tenantName,
+        newAssignedEmail,
+        newAssignedMember,
+        desirableDateDestination,
+      );
+      shipment.destinationDetails = destInfo.details || {};
+    }
+
+    const consolidable = await ShipmentModel.findOne({
+      _id: { $ne: shipment._id },
+      origin: shipment.origin,
+      destination: shipment.destination,
+      'originDetails.desirableDate':
+        shipment.originDetails?.desirableDate ?? null,
+      'destinationDetails.desirableDate':
+        shipment.destinationDetails?.desirableDate ?? null,
+      shipment_status: { $in: ['In Preparation', 'On Hold - Missing Data'] },
+      isDeleted: { $ne: true },
+    });
+
+    if (consolidable) {
+      const productIdsToMove = shipment.products.map((p) => p.toString());
+
+      for (const productId of productIdsToMove) {
+        const objectId = new Types.ObjectId(productId);
+
+        if (!consolidable.products.some((p) => p.equals(objectId))) {
+          consolidable.products.push(objectId);
+        }
+
+        if (!consolidable.snapshots) {
+          consolidable.snapshots = [];
+        }
+        const product = await ProductModel.findById(productId);
+        if (!product || !product._id) continue;
+
+        if (product) {
+          const snapshot = this.buildSnapshot(
+            product as ProductDocument & { _id: Types.ObjectId },
+          );
+          consolidable.snapshots.push(snapshot);
+
+          const updatedStatus =
+            await this.productsService.determineProductStatus(
+              {
+                fp_shipment: product.fp_shipment,
+                location: product.location,
+                assignedEmail: product.assignedEmail,
+                productCondition: product.productCondition,
+              },
+              tenantName,
+              'reassign',
+              consolidable.shipment_status,
+            );
+
+          product.status = updatedStatus;
+          await product.save();
+
+          await this.productsService.update(
+            product._id!,
+            {
+              assignedEmail: newAssignedEmail ?? '',
+              assignedMember: newAssignedMember ?? '',
+              location:
+                newDestination === 'Our office' ||
+                newDestination === 'FP warehouse'
+                  ? newDestination
+                  : 'Employee',
+              fp_shipment: true,
+              actionType: 'reassign',
+              desirableDate: desirableDateDestination,
+              category: product.category,
+              attributes: product.attributes,
+              status: updatedStatus,
+              productCondition: product.productCondition,
+            },
+            tenantName,
+            'system',
+          );
+        }
+      }
+
+      await consolidable.save();
+      shipment.isDeleted = true;
+      shipment.products = [];
+      shipment.snapshots = [];
+      await shipment.save();
+
+      await this.historyService.create({
+        actionType: 'update',
+        itemType: 'shipments',
+        userId: 'system',
+        changes: {
+          oldData: shipment,
+          newData: consolidable,
+        },
+      });
+
+      return consolidable;
+    }
+
+    const isReady =
+      this.areShipmentDetailsComplete(shipment.originDetails) &&
+      this.areShipmentDetailsComplete(shipment.destinationDetails);
+
+    shipment.shipment_status = isReady
+      ? 'In Preparation'
+      : 'On Hold - Missing Data';
+    await shipment.save();
+
+    return shipment;
+  }
+
+  buildSnapshot(product: ProductDocument & { _id: Types.ObjectId }) {
+    return {
+      _id: product._id,
+      name: product.name,
+      category: product.category,
+      attributes: product.attributes,
+      status: product.status,
+      recoverable: product.recoverable,
+      serialNumber: product.serialNumber || '',
+      assignedEmail: product.assignedEmail,
+      assignedMember: product.assignedMember,
+      lastAssigned: product.lastAssigned,
+      acquisitionDate: product.acquisitionDate,
+      location: product.location,
+      price: product.price,
+      additionalInfo: product.additionalInfo,
+      productCondition: product.productCondition,
+      fp_shipment: product.fp_shipment,
+    };
+  }
+
+  private areShipmentDetailsComplete(
+    details?: Record<string, string>,
+  ): boolean {
+    if (!details) return false;
+    const requiredFields = ['address', 'city', 'country', 'zipCode', 'phone'];
+    return requiredFields.every((field) => !!details[field]);
   }
 
   private getProductModel(connection: Connection): Model<ProductDocument> {
