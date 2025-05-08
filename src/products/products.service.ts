@@ -1487,14 +1487,12 @@ export class ProductsService {
 
     console.log('🚢 Creating shipment for product:', product._id?.toString());
 
-    // Ensure we have a connection to the tenant database
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
 
-    // First determine the new status before creating the shipment
     const newStatus = await this.determineProductStatus(
       {
-        fp_shipment: true, // Force fp_shipment to true since we're creating a shipment
+        fp_shipment: true,
         location: updateDto.location || product.location,
         assignedEmail: updateDto.assignedEmail || product.assignedEmail,
         productCondition:
@@ -1502,10 +1500,9 @@ export class ProductsService {
       },
       tenantName,
       actionType,
-      'On Hold - Missing Data', // Default shipment status when creating
+      'On Hold - Missing Data',
     );
 
-    // Update the product status before creating the shipment
     product.status = newStatus;
     updateDto.status = newStatus;
     await product.save({ session });
@@ -1531,14 +1528,11 @@ export class ProductsService {
 
     console.log('✅ Shipment created with ID:', shipment._id.toString());
 
-    // Ensure product is marked as having an active shipment
     product.activeShipment = true;
     product.fp_shipment = true;
     await product.save({ session });
     console.log('✅ Product marked as having active shipment');
 
-    // Commit the transaction to ensure the shipment is saved to the database
-    // before trying to create snapshots
     if (session.inTransaction()) {
       await session.commitTransaction();
       session.startTransaction();
@@ -1548,10 +1542,8 @@ export class ProductsService {
     console.log('📸 Creating snapshots for shipment:', shipmentId);
 
     try {
-      // Get the shipment model directly
       const ShipmentModel = connection.model('Shipment');
 
-      // Verify the shipment exists in the database
       const verifyShipment = await ShipmentModel.findById(shipmentId);
       if (!verifyShipment) {
         console.error(
@@ -1562,7 +1554,6 @@ export class ProductsService {
           `✅ Verification passed: Shipment ${shipmentId} found in database`,
         );
 
-        // Refresh the product to ensure we have the latest data
         const refreshedProduct = await this.productRepository.findById(
           product._id,
         );
