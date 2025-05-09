@@ -1551,12 +1551,6 @@ export class ProductsService {
           `✅ Verification passed: Shipment ${shipmentId} found in database`,
         );
 
-        // await this.shipmentsService.createSnapshots(verifyShipment, connection);
-        // verifyShipment.markModified('snapshots');
-        // await verifyShipment.save({ session });
-
-        console.log(`📸 Snapshots created for shipment ${shipmentId}`);
-
         const refreshedProduct = await this.productRepository.findById(
           product._id,
         );
