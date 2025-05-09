@@ -153,9 +153,6 @@ export class Shipment {
     ],
     required: false,
   })
-  @Prop({ type: Boolean, default: false })
-  isDeleted: boolean;
-
   snapshots?: Array<{
     _id: mongoose.Schema.Types.ObjectId;
     name?: string;
@@ -174,6 +171,9 @@ export class Shipment {
     productCondition: string;
     fp_shipment: boolean;
   }>;
+
+  isDeleted?: boolean;
+  deleteAt?: string | null;
 }
 
 export const ShipmentSchema =

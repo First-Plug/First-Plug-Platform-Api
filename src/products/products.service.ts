@@ -1485,16 +1485,12 @@ export class ProductsService {
         ? updateDto.desirableDate
         : updateDto.desirableDate?.destination || '';
 
-    console.log('🚢 Creating shipment for product:', product._id?.toString());
-
-    // Ensure we have a connection to the tenant database
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
 
-    // First determine the new status before creating the shipment
     const newStatus = await this.determineProductStatus(
       {
-        fp_shipment: true, // Force fp_shipment to true since we're creating a shipment
+        fp_shipment: true,
         location: updateDto.location || product.location,
         assignedEmail: updateDto.assignedEmail || product.assignedEmail,
         productCondition:
@@ -1502,10 +1498,9 @@ export class ProductsService {
       },
       tenantName,
       actionType,
-      'On Hold - Missing Data', // Default shipment status when creating
+      'On Hold - Missing Data',
     );
 
-    // Update the product status before creating the shipment
     product.status = newStatus;
     updateDto.status = newStatus;
     await product.save({ session });
@@ -1531,27 +1526,21 @@ export class ProductsService {
 
     console.log('✅ Shipment created with ID:', shipment._id.toString());
 
-    // Ensure product is marked as having an active shipment
     product.activeShipment = true;
     product.fp_shipment = true;
     await product.save({ session });
     console.log('✅ Product marked as having active shipment');
 
-    // Commit the transaction to ensure the shipment is saved to the database
-    // before trying to create snapshots
     if (session.inTransaction()) {
       await session.commitTransaction();
       session.startTransaction();
     }
 
     const shipmentId = shipment._id.toString();
-    console.log('📸 Creating snapshots for shipment:', shipmentId);
 
     try {
-      // Get the shipment model directly
       const ShipmentModel = connection.model('Shipment');
 
-      // Verify the shipment exists in the database
       const verifyShipment = await ShipmentModel.findById(shipmentId);
       if (!verifyShipment) {
         console.error(
@@ -1562,13 +1551,12 @@ export class ProductsService {
           `✅ Verification passed: Shipment ${shipmentId} found in database`,
         );
 
-        await this.shipmentsService.createSnapshots(verifyShipment, connection);
-        verifyShipment.markModified('snapshots');
-        await verifyShipment.save({ session });
+        // await this.shipmentsService.createSnapshots(verifyShipment, connection);
+        // verifyShipment.markModified('snapshots');
+        // await verifyShipment.save({ session });
 
         console.log(`📸 Snapshots created for shipment ${shipmentId}`);
 
-        // Refresh the product to ensure we have the latest data
         const refreshedProduct = await this.productRepository.findById(
           product._id,
         );
@@ -1599,9 +1587,7 @@ export class ProductsService {
     const session = await connection.startSession();
     session.startTransaction();
 
-    // Si no está presente, mantenemos el valor actual
     if (updateProductDto.fp_shipment === undefined) {
-      // Buscar el producto para obtener su valor actual de fp_shipment
       const existingProduct = await this.productRepository.findById(id);
       let currentFpShipment = false;
       if (existingProduct) {
@@ -1618,8 +1604,6 @@ export class ProductsService {
       }
       updateProductDto.fp_shipment = currentFpShipment;
     } else {
-      // Si el producto está en un shipment activo y se intenta cambiar fp_shipment a false,
-      // verificamos si debemos ignorar ese cambio
       const existingProduct = await this.productRepository.findById(id);
       if (
         existingProduct &&
@@ -1630,8 +1614,6 @@ export class ProductsService {
           '⚠️ Producto en shipment activo, verificando si se puede cambiar fp_shipment a false',
         );
 
-        // Aquí podrías verificar el estado del shipment para decidir si permitir el cambio
-        // Por ahora, simplemente mantenemos fp_shipment como true
         updateProductDto.fp_shipment = true;
       } else {
         const memberProduct = await this.memberService.getProductByMembers(id);
@@ -1644,8 +1626,6 @@ export class ProductsService {
             '⚠️ Producto en shipment activo (en miembro), verificando si se puede cambiar fp_shipment a false',
           );
 
-          // Aquí podrías verificar el estado del shipment para decidir si permitir el cambio
-          // Por ahora, simplemente mantenemos fp_shipment como true
           updateProductDto.fp_shipment = true;
         }
       }
@@ -1799,7 +1779,9 @@ export class ProductsService {
             const newMember = await this.memberService.findByEmailNotThrowError(
               updateProductDto.assignedEmail,
             );
-
+            console.log(
+              `🔄 Cambio de assignedEmail detectado: ${product.assignedEmail} ➡️ ${updateProductDto.assignedEmail}`,
+            );
             if (newMember) {
               const lastMember = product.assignedEmail;
 

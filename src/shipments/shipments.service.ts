@@ -42,6 +42,7 @@ import { OrderNumberGenerator } from 'src/shipments/helpers/order-number.util';
 import { AddressData } from 'src/common/events/tenant-address-update.event';
 import { UpdateShipmentDto } from 'src/shipments/dto/update.shipment.dto';
 import { HistoryService } from 'src/history/history.service';
+import { UpdateProductDto } from 'src/products/dto';
 
 // interface SoftDeleteModel<T> extends Model<T> {
 //   softDelete(filter: any, options?: any): Promise<any>;
@@ -172,7 +173,11 @@ export class ShipmentsService {
       };
     }
 
-    if (location === 'Employee' && assignedEmail) {
+    if (
+      (location === 'Employee' ||
+        !['Our office', 'FP warehouse'].includes(location)) &&
+      assignedEmail
+    ) {
       console.log(
         '➡️ Buscando miembro con email:',
         assignedEmail,
@@ -650,104 +655,112 @@ export class ShipmentsService {
       newAssignedMember,
     } = updateDto;
 
-    // Solo crear objetos si existen los detalles
-    if (shipment.originDetails && desirableDateOrigin) {
-      shipment.originDetails.desirableDate = desirableDateOrigin;
-    }
-    if (shipment.destinationDetails && desirableDateDestination) {
-      shipment.destinationDetails.desirableDate = desirableDateDestination;
-    }
+    const productIds = shipment.products.map((p) => p.toString());
 
-    if (newDestination) {
-      shipment.destination = newDestination;
-      const destInfo = await this.getLocationInfo(
-        newDestination,
-        tenantName,
-        newAssignedEmail,
-        newAssignedMember,
-        desirableDateDestination,
-      );
-      shipment.destinationDetails = destInfo.details || {};
-    }
+    // Detectar si hubo cambio de destino
+    const destinationChanged = !!(
+      newDestination ||
+      newAssignedEmail ||
+      newAssignedMember
+    );
 
-    const consolidable = await ShipmentModel.findOne({
-      _id: { $ne: shipment._id },
-      origin: shipment.origin,
-      destination: shipment.destination,
-      'originDetails.desirableDate':
-        shipment.originDetails?.desirableDate ?? null,
-      'destinationDetails.desirableDate':
-        shipment.destinationDetails?.desirableDate ?? null,
-      shipment_status: { $in: ['In Preparation', 'On Hold - Missing Data'] },
-      isDeleted: { $ne: true },
-    });
+    // 🔍 1. Buscar consolidable antes de modificar nada
+    const potentialDestination =
+      newDestination === 'Employee'
+        ? newAssignedMember || ''
+        : newDestination || '';
+    const destInfo = destinationChanged
+      ? await this.getLocationInfo(
+          potentialDestination,
+          tenantName,
+          newAssignedEmail,
+          newAssignedMember,
+          desirableDateDestination,
+        )
+      : undefined;
 
+    const consolidable = destinationChanged
+      ? await ShipmentModel.findOne({
+          _id: { $ne: shipment._id },
+          origin: shipment.origin,
+          destination: destInfo?.name,
+          'originDetails.desirableDate': desirableDateOrigin ?? null,
+          'destinationDetails.desirableDate': desirableDateDestination ?? null,
+          shipment_status: {
+            $in: ['In Preparation', 'On Hold - Missing Data'],
+          },
+          isDeleted: { $ne: true },
+        })
+      : null;
+
+    // 📦 2. Si se encuentra otro shipment consolidable
     if (consolidable) {
-      const productIdsToMove = shipment.products.map((p) => p.toString());
-
-      for (const productId of productIdsToMove) {
+      for (const productId of productIds) {
         const objectId = new Types.ObjectId(productId);
 
         if (!consolidable.products.some((p) => p.equals(objectId))) {
           consolidable.products.push(objectId);
         }
 
-        if (!consolidable.snapshots) {
-          consolidable.snapshots = [];
-        }
         const product = await ProductModel.findById(productId);
-        if (!product || !product._id) continue;
+        if (!product) continue;
 
-        if (product) {
-          const snapshot = this.buildSnapshot(
-            product as ProductDocument & { _id: Types.ObjectId },
-          );
-          consolidable.snapshots.push(snapshot);
+        const snapshot = this.buildSnapshot(
+          product as ProductDocument & { _id: Types.ObjectId },
+        );
+        consolidable.snapshots = consolidable.snapshots || [];
+        consolidable.snapshots.push(snapshot);
 
-          const updatedStatus =
-            await this.productsService.determineProductStatus(
-              {
-                fp_shipment: product.fp_shipment,
-                location: product.location,
-                assignedEmail: product.assignedEmail,
-                productCondition: product.productCondition,
-              },
-              tenantName,
-              'reassign',
-              consolidable.shipment_status,
-            );
+        const updatedStatus = await this.productsService.determineProductStatus(
+          {
+            fp_shipment: product.fp_shipment,
+            location: product.location,
+            assignedEmail: product.assignedEmail,
+            productCondition: product.productCondition,
+          },
+          tenantName,
+          'reassign',
+          consolidable.shipment_status,
+        );
 
-          product.status = updatedStatus;
-          await product.save();
+        const productDto: UpdateProductDto = {
+          assignedEmail: newAssignedEmail?.trim().toLowerCase() ?? '',
+          assignedMember: newAssignedMember ?? '',
+          location:
+            newDestination === 'Our office' || newDestination === 'FP warehouse'
+              ? newDestination
+              : 'Employee',
+          fp_shipment: true,
+          actionType: 'reassign',
+          desirableDate: desirableDateDestination,
+          category: product.category,
+          attributes: product.attributes,
+          status: updatedStatus,
+          productCondition: product.productCondition,
+          name: product.name,
+          serialNumber: product.serialNumber,
+          price: product.price,
+          recoverable: product.recoverable,
+          additionalInfo: product.additionalInfo,
+        };
 
-          await this.productsService.update(
-            product._id!,
-            {
-              assignedEmail: newAssignedEmail ?? '',
-              assignedMember: newAssignedMember ?? '',
-              location:
-                newDestination === 'Our office' ||
-                newDestination === 'FP warehouse'
-                  ? newDestination
-                  : 'Employee',
-              fp_shipment: true,
-              actionType: 'reassign',
-              desirableDate: desirableDateDestination,
-              category: product.category,
-              attributes: product.attributes,
-              status: updatedStatus,
-              productCondition: product.productCondition,
-            },
-            tenantName,
-            'system',
-          );
-        }
+        await this.productsService.update(
+          product._id,
+          productDto,
+          tenantName,
+          'system',
+        );
       }
-
+      console.log(
+        `💾 Guardando shipment consolidado con ID: ${consolidable._id}`,
+      );
+      console.log(`💾 Guardando shipment actualizado con nuevo snapshot`);
       await consolidable.save();
+
+      // 🚫 Eliminar el shipment original (solo marcarlo)
       shipment.isDeleted = true;
-      shipment.products = [];
-      shipment.snapshots = [];
+      // shipment.products = [];
+      // shipment.snapshots = [];
       await shipment.save();
 
       await this.historyService.create({
@@ -763,6 +776,21 @@ export class ShipmentsService {
       return consolidable;
     }
 
+    // ✏️ 3. Si no se consolida, actualizar directamente este shipment
+
+    if (desirableDateOrigin && shipment.originDetails) {
+      shipment.originDetails.desirableDate = desirableDateOrigin;
+    }
+
+    if (desirableDateDestination && shipment.destinationDetails) {
+      shipment.destinationDetails.desirableDate = desirableDateDestination;
+    }
+
+    if (destinationChanged && destInfo) {
+      shipment.destination = destInfo.name;
+      shipment.destinationDetails = destInfo.details || {};
+    }
+
     const isReady =
       this.areShipmentDetailsComplete(shipment.originDetails) &&
       this.areShipmentDetailsComplete(shipment.destinationDetails);
@@ -771,6 +799,76 @@ export class ShipmentsService {
       ? 'In Preparation'
       : 'On Hold - Missing Data';
     await shipment.save();
+
+    // 🛠️ También mover el producto visualmente en la plataforma si cambió destino
+    if (destinationChanged) {
+      for (const productId of productIds) {
+        const product = await ProductModel.findById(productId);
+        if (!product) continue;
+
+        const updatedStatus = await this.productsService.determineProductStatus(
+          {
+            fp_shipment: product.fp_shipment,
+            location: product.location,
+            assignedEmail: product.assignedEmail,
+            productCondition: product.productCondition,
+          },
+          tenantName,
+          'reassign',
+          shipment.shipment_status,
+        );
+        console.log('📦 UpdateProductDto enviado:', {
+          assignedEmail: newAssignedEmail,
+          assignedMember: newAssignedMember,
+          location:
+            newDestination === 'Our office' || newDestination === 'FP warehouse'
+              ? newDestination
+              : 'Employee',
+          desirableDate: desirableDateDestination,
+        });
+        console.log(
+          `🔁 Reasignando producto ${product._id} a ${newAssignedEmail} (${newAssignedMember})`,
+        );
+
+        const productDto: UpdateProductDto = {
+          assignedEmail: newAssignedEmail?.trim().toLowerCase() ?? '',
+          assignedMember: newAssignedMember ?? '',
+          location:
+            newDestination === 'Our office' || newDestination === 'FP warehouse'
+              ? newDestination
+              : 'Employee',
+          fp_shipment: true,
+          actionType: 'reassign',
+          desirableDate: desirableDateDestination,
+          category: product.category,
+          attributes: product.attributes,
+          status: updatedStatus,
+          productCondition: product.productCondition,
+          name: product.name,
+          serialNumber: product.serialNumber,
+          price: product.price,
+          recoverable: product.recoverable,
+          additionalInfo: product.additionalInfo,
+        };
+
+        await this.productsService.update(
+          product._id,
+          productDto,
+          tenantName,
+          'system',
+        );
+        console.log(`✅ Producto ${product._id} reasignado correctamente`);
+
+        const newSnapshot = this.buildSnapshot(
+          product as ProductDocument & { _id: Types.ObjectId },
+        );
+        shipment.snapshots = shipment.snapshots || [];
+        shipment.snapshots.push(newSnapshot);
+        console.log(
+          `📸 Snapshot creado en shipment original para ${product._id}`,
+        );
+      }
+    }
 
     return shipment;
   }
