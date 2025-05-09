@@ -1191,7 +1191,7 @@ export class ProductsService {
     return createdProducts;
   }
 
-  private emitProductUpdatedEvent(productId: string, tenantName: string) {
+  public emitProductUpdatedEvent(productId: string, tenantName: string) {
     console.log(
       `🔔 Emitiendo evento de actualización para producto ${productId} en tenant ${tenantName}`,
     );

@@ -47,7 +47,11 @@ export class ShipmentsController {
     @Param('id') shipmentId: string,
     @Body() updateDto: UpdateShipmentDto,
     @Request() req: any,
-  ): Promise<ShipmentDocument> {
+  ): Promise<{
+    message: string;
+    consolidatedInto?: string;
+    shipment: ShipmentDocument;
+  }> {
     const tenantId = req.user.tenantName;
     return this.shipmentsService.findConsolidateAndUpdateShipment(
       shipmentId,
