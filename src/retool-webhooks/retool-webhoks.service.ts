@@ -22,14 +22,16 @@ export class RetoolWebhooksService {
     tenantName: string;
     shipmentId: string;
     newStatus: string;
+    userId: string;
   }) {
-    const { tenantName, shipmentId, newStatus } = body;
+    const { tenantName, shipmentId, newStatus, userId } = body;
 
     if (newStatus === 'Cancelled') {
       console.log('🚨 Ejecutando cancelShipmentAndUpdateProducts...');
       return this.shipmentsService.cancelShipmentAndUpdateProducts(
         shipmentId,
         tenantName,
+        userId,
       );
     }
 
@@ -171,13 +173,20 @@ export class RetoolWebhooksService {
   async updateShipmentFromRetool(body: {
     tenantName: string;
     shipmentId: string;
+    userId: string;
     newStatus?: string;
     shipment_type?: string;
     trackingURL?: string;
   }) {
     console.log('📥 Datos recibidos desde Retool:', body);
-    const { tenantName, shipmentId, newStatus, shipment_type, trackingURL } =
-      body;
+    const {
+      tenantName,
+      shipmentId,
+      userId,
+      newStatus,
+      shipment_type,
+      trackingURL,
+    } = body;
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
 
@@ -192,6 +201,7 @@ export class RetoolWebhooksService {
       await this.updateShipmentStatusWebhook({
         tenantName,
         shipmentId,
+        userId,
         newStatus,
       });
     }

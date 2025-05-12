@@ -1473,6 +1473,7 @@ export class ProductsService {
       assignedEmail?: string;
       assignedMember?: string;
     },
+    userId: string,
   ) {
     if (!updateDto.fp_shipment || !actionType) return;
 
@@ -1512,6 +1513,7 @@ export class ProductsService {
       product._id!.toString(),
       actionType,
       tenantName,
+      userId,
       session,
       desirableDateDestination,
       desirableDateOrigin,
@@ -1795,6 +1797,7 @@ export class ProductsService {
                   assignedEmail: updateProductDto.assignedEmail,
                   assignedMember: updateProductDto.assignedMember,
                 },
+                userId,
               );
 
               await this.moveToMemberCollection(
@@ -1858,6 +1861,7 @@ export class ProductsService {
                 assignedMember:
                   updateProductDto.assignedMember ?? product.assignedMember,
               },
+              userId,
             );
           } else {
             await this.updateProductAttributes(
@@ -1948,6 +1952,7 @@ export class ProductsService {
                     updateProductDto.assignedMember ??
                     memberProduct.product.assignedMember,
                 },
+                userId,
               );
 
               await this.moveToMemberCollection(
@@ -1999,6 +2004,7 @@ export class ProductsService {
                 assignedEmail: '',
                 assignedMember: '',
               },
+              userId,
             );
             const updateProduct = await this.handleProductUnassignment(
               session,
@@ -2051,6 +2057,7 @@ export class ProductsService {
                   updateProductDto.assignedMember ??
                   memberProduct.product.assignedMember,
               },
+              userId,
             );
           }
           console.log(

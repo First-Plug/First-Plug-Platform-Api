@@ -16,5 +16,6 @@ export class MemberAddressUpdatedEvent {
     public readonly oldAddress: AddressData,
     public readonly newAddress: AddressData,
     public readonly updatedAt: Date = new Date(),
+    public readonly userId: string = 'system',
   ) {}
 }

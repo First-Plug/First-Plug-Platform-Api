@@ -37,9 +37,11 @@ export class ShipmentsController {
     @Request() req: any,
   ): Promise<ShipmentDocument> {
     const tenantId = req.user.tenantName;
+    const userId = req.user.userId;
     return this.shipmentsService.cancelShipmentAndUpdateProducts(
       shipmentId,
       tenantId,
+      userId,
     );
   }
   @Patch(':id')
@@ -53,10 +55,12 @@ export class ShipmentsController {
     shipment: ShipmentDocument;
   }> {
     const tenantId = req.user.tenantName;
+    const userId = req.user.userId;
     return this.shipmentsService.findConsolidateAndUpdateShipment(
       shipmentId,
       updateDto,
       tenantId,
+      userId,
     );
   }
 }

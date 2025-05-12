@@ -351,6 +351,7 @@ export class ShipmentsService {
     productId: string,
     actionType: string,
     tenantId: string,
+    userId: string,
     session?: ClientSession | null,
     desirableDestinationDate?: string | Date,
     desirableOriginDate?: string | Date,
@@ -443,12 +444,21 @@ export class ShipmentsService {
     if (existingShipment) {
       console.log('✅ Shipment existente encontrado');
       if (!existingShipment.products.includes(productObjectId)) {
-        console.log('➕ Agregando producto al shipment existente...');
         existingShipment.products.push(productObjectId);
         existingShipment.quantity_products = existingShipment.products.length;
 
         await existingShipment.save({ session });
         console.log('💾 Shipment existente actualizado');
+
+        await this.historyService.create({
+          actionType: 'consolidate',
+          itemType: 'shipments',
+          userId: userId,
+          changes: {
+            oldData: null,
+            newData: existingShipment,
+          },
+        });
       }
       return existingShipment;
     }
@@ -531,6 +541,15 @@ export class ShipmentsService {
     );
     console.log('✅ Orden finalizada correctamente');
 
+    await this.historyService.create({
+      actionType: 'create',
+      itemType: 'shipments',
+      userId: userId,
+      changes: {
+        oldData: null,
+        newData: newShipment,
+      },
+    });
     await newShipment.save();
     return newShipment;
   }
@@ -561,6 +580,7 @@ export class ShipmentsService {
     shipmentId: string,
     updateDto: UpdateShipmentDto,
     tenantName: string,
+    userId: string,
   ): Promise<{
     message: string;
     consolidatedInto?: string;
@@ -578,14 +598,19 @@ export class ShipmentsService {
       );
     }
 
+    const originalShipment = { ...shipment.toObject() };
+    let wasModified = false;
+
     const { desirableDateOrigin, desirableDateDestination } = updateDto;
 
     if (desirableDateOrigin && shipment.originDetails) {
       shipment.originDetails.desirableDate = desirableDateOrigin;
+      wasModified = true;
     }
 
     if (desirableDateDestination && shipment.destinationDetails) {
       shipment.destinationDetails.desirableDate = desirableDateDestination;
+      wasModified = true;
     }
 
     const consolidable = await ShipmentModel.findOne({
@@ -603,6 +628,8 @@ export class ShipmentsService {
     if (consolidable) {
       const productIds = shipment.products.map((p) => p.toString());
       console.log('🔍 Productos en el shipment a consolidar:', productIds);
+
+      const originalConsolidable = { ...consolidable.toObject() };
 
       const existingSnapshotIds =
         consolidable.snapshots?.map((s) => s._id.toString()) || [];
@@ -667,12 +694,22 @@ export class ShipmentsService {
       );
 
       await this.historyService.create({
-        actionType: 'update',
+        actionType: 'consolidate',
         itemType: 'shipments',
-        userId: 'system',
+        userId: userId,
         changes: {
-          oldData: shipment,
+          oldData: originalConsolidable,
           newData: consolidable,
+        },
+      });
+
+      await this.historyService.create({
+        actionType: 'delete',
+        itemType: 'shipments',
+        userId: userId,
+        changes: {
+          oldData: originalShipment,
+          newData: { ...shipment.toObject(), isDeleted: true },
         },
       });
 
@@ -682,18 +719,50 @@ export class ShipmentsService {
         shipment: consolidable,
       };
     }
+    if (wasModified) {
+      const isReady =
+        this.areShipmentDetailsComplete(shipment.originDetails) &&
+        this.areShipmentDetailsComplete(shipment.destinationDetails);
 
-    const isReady =
-      this.areShipmentDetailsComplete(shipment.originDetails) &&
-      this.areShipmentDetailsComplete(shipment.destinationDetails);
+      const oldStatus = shipment.shipment_status;
+      shipment.shipment_status = isReady
+        ? 'In Preparation'
+        : 'On Hold - Missing Data';
 
-    shipment.shipment_status = isReady
-      ? 'In Preparation'
-      : 'On Hold - Missing Data';
-    await shipment.save();
+      await shipment.save();
 
+      await this.historyService.create({
+        actionType: 'update',
+        itemType: 'shipments',
+        userId: userId,
+        changes: {
+          oldData: originalShipment,
+          newData: shipment,
+        },
+      });
+
+      if (
+        oldStatus !== shipment.shipment_status &&
+        shipment.shipment_status === 'In Preparation'
+      ) {
+        const session = await connection.startSession();
+        for (const productId of shipment.products) {
+          await this.updateProductStatusToInTransit(
+            productId.toString(),
+            connection,
+            session,
+            userId,
+          );
+        }
+      }
+
+      return {
+        message: 'Shipment updated successfully',
+        shipment,
+      };
+    }
     return {
-      message: 'Shipment updated successfully',
+      message: 'No changes were made to the shipment',
       shipment,
     };
   }
@@ -738,6 +807,7 @@ export class ShipmentsService {
   async cancelShipmentAndUpdateProducts(
     shipmentId: string,
     tenantId: string,
+    userId: string,
   ): Promise<ShipmentDocument> {
     console.log('🚨 [CANCEL SHIPMENT] Start for', shipmentId);
 
@@ -751,6 +821,8 @@ export class ShipmentsService {
     if (!shipment) {
       throw new NotFoundException(`Shipment ${shipmentId} not found`);
     }
+
+    const originalShipment = { ...shipment.toObject() };
 
     if (
       shipment.shipment_status !== 'In Preparation' &&
@@ -768,6 +840,16 @@ export class ShipmentsService {
     shipment.shipment_status = 'Cancelled';
     await shipment.save();
     console.log('✅ Shipment cancelled');
+
+    await this.historyService.create({
+      actionType: 'cancel',
+      itemType: 'shipments',
+      userId: userId,
+      changes: {
+        oldData: originalShipment,
+        newData: shipment,
+      },
+    });
 
     for (const productId of shipment.products) {
       console.log('📦 Processing product:', productId.toString());
@@ -1349,6 +1431,7 @@ export class ShipmentsService {
     tenantName: string,
     oldAddress: AddressData,
     newAddress: AddressData,
+    userId: string,
   ) {
     console.log('🔄 Starting office address update:', {
       tenantName,
@@ -1485,6 +1568,7 @@ export class ShipmentsService {
                 refreshedShipment,
                 connection,
                 session,
+                userId,
               );
             }
           }
@@ -1503,6 +1587,7 @@ export class ShipmentsService {
   async checkAndUpdateShipmentsForMember(
     memberEmail: string,
     tenantName: string,
+    userId: string,
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
@@ -1616,6 +1701,7 @@ export class ShipmentsService {
                 refreshedShipment,
                 connection,
                 session,
+                userId,
               );
             }
           }
@@ -1834,12 +1920,14 @@ export class ShipmentsService {
     shipment: ShipmentDocument,
     connection: mongoose.Connection,
     session: ClientSession,
+    userId: string,
   ) {
     try {
       console.log(
         '🔍 Starting shipment update with status:',
         shipment.shipment_status,
       );
+      const originalShipment = { ...shipment.toObject() };
 
       const orderNumber = parseInt(shipment.order_id.slice(-4));
 
@@ -1881,10 +1969,21 @@ export class ShipmentsService {
               productId.toString(),
               connection,
               session,
+              userId,
             );
           }
           await session.commitTransaction();
           await session.startTransaction();
+
+          await this.historyService.create({
+            actionType: 'update',
+            itemType: 'shipments',
+            userId: userId,
+            changes: {
+              oldData: originalShipment,
+              newData: { ...originalShipment, shipment_status: newStatus },
+            },
+          });
 
           console.log('📸 Generating product snapshots...');
           await this.createSnapshots(shipment, connection);
@@ -1918,6 +2017,7 @@ export class ShipmentsService {
     shipment: ShipmentDocument,
     connection: mongoose.Connection,
     session: ClientSession,
+    userId: string,
   ) {
     try {
       console.log(
@@ -1994,6 +2094,7 @@ export class ShipmentsService {
               productId.toString(),
               connection,
               session,
+              userId,
             );
           }
         }
@@ -2015,6 +2116,7 @@ export class ShipmentsService {
     productId: string,
     connection: mongoose.Connection,
     session: ClientSession,
+    userId: string,
   ): Promise<void> {
     try {
       console.log(`🔄 Updating product ${productId} status to In Transit`);
@@ -2029,8 +2131,19 @@ export class ShipmentsService {
 
       if (product) {
         if (product.status === 'In Transit - Missing Data') {
+          const originalProduct = { ...product.toObject() };
           product.status = 'In Transit';
           await product.save({ session });
+
+          await this.historyService.create({
+            actionType: 'update',
+            itemType: 'assets',
+            userId: userId,
+            changes: {
+              oldData: originalProduct,
+              newData: product,
+            },
+          });
           console.log(
             `✅ Updated product status in Products collection: ${productId}`,
           );
