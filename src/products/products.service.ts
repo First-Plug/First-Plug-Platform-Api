@@ -297,7 +297,9 @@ export class ProductsService {
     actionType?: string,
     shipmentStatus?: string,
   ): Promise<Status> {
-    if (params.fp_shipment) {
+    console.log('📦 determineProductStatus inputs:', params);
+    if (params.fp_shipment === true) {
+      // Si hay status explícito del shipment, usarlo
       if (shipmentStatus) {
         switch (shipmentStatus) {
           case 'In Preparation':
@@ -307,19 +309,36 @@ export class ProductsService {
             return 'In Transit - Missing Data';
           case 'Cancelled':
           case 'Received':
-            // ⬇️ recalcular como si no tuviera shipment
-            break;
-          default:
-            // En caso de otros estados desconocidos, fallback
-            break;
+            break; // se recalcula abajo
         }
-      } else {
-        // 🔥 Si no nos pasaron shipmentStatus, fallback (lógica vieja de fp_shipment)
-        return 'In Transit - Missing Data';
       }
-    }
 
-    // 📦 Lógica normal para producto sin shipment activo o shipment Cancelled / Received
+      // Cálculo manual según destino
+      if (params.location === 'Employee' && params.assignedEmail) {
+        const member = await this.memberService.findByEmailNotThrowError(
+          params.assignedEmail,
+        );
+        if (
+          member?.address &&
+          member.country &&
+          member.city &&
+          member.zipCode
+        ) {
+          return 'In Transit';
+        } else {
+          return 'In Transit - Missing Data';
+        }
+      }
+
+      if (
+        params.location === 'Our office' ||
+        params.location === 'FP warehouse'
+      ) {
+        return 'In Transit';
+      }
+
+      return 'In Transit - Missing Data';
+    }
 
     if (params.productCondition === 'Unusable') {
       return 'Unavailable';
@@ -333,10 +352,18 @@ export class ProductsService {
       params.location === 'FP warehouse' ||
       params.location === 'Our office'
     ) {
+      console.log('🧪 Status fallback logic (no shipment):', {
+        location: params.location,
+        assignedEmail: params.assignedEmail,
+        productCondition: params.productCondition,
+      });
       return 'Available';
     }
-
-    // Si no hay una localización reconocida o assignedEmail, default a Available
+    console.log('🧪 Checking delivered logic:', {
+      location: params.location,
+      assignedEmail: params.assignedEmail,
+      condition: params.productCondition,
+    });
     return 'Available';
   }
 
@@ -1095,7 +1122,7 @@ export class ProductsService {
       name: updateProductDto.name || product.name,
       category: product.category,
       attributes: updateProductDto.attributes || product.attributes,
-      status: product.activeShipment ? product.status : updateProductDto.status,
+      status: updateProductDto.status ?? product.status,
       // recoverable: product.recoverable,
       recoverable:
         updateProductDto.recoverable !== undefined
@@ -1117,6 +1144,11 @@ export class ProductsService {
       isDeleted: product.isDeleted,
       lastAssigned: lastAssigned,
     };
+
+    console.log(
+      '🧪 Producto que se va a insertar en member.products:',
+      updateData,
+    );
     newMember.products.push(updateData);
 
     if (updateProductDto.fp_shipment) {
@@ -1499,15 +1531,13 @@ export class ProductsService {
       },
       tenantName,
       actionType,
-      'On Hold - Missing Data',
     );
 
     product.status = newStatus;
+    console.log('[DEBUG] updateDto.status before overwrite:', updateDto.status);
     updateDto.status = newStatus;
+    console.log('[DEBUG] updateDto.status after overwrite:', updateDto.status);
     await product.save({ session });
-    console.log(
-      `✅ Product status updated to ${newStatus} before shipment creation`,
-    );
 
     const shipment = await this.shipmentsService.findOrCreateShipment(
       product._id!.toString(),
@@ -1531,7 +1561,6 @@ export class ProductsService {
     product.activeShipment = true;
     product.fp_shipment = true;
     await product.save({ session });
-    console.log('✅ Product marked as having active shipment');
 
     if (session.inTransaction()) {
       await session.commitTransaction();
@@ -1659,24 +1688,29 @@ export class ProductsService {
 
         if (updateProductDto.productCondition === 'Unusable') {
           updateProductDto.status = 'Unavailable';
-        } else if (
-          updateProductDto.assignedEmail &&
-          updateProductDto.assignedEmail !== 'none'
-        ) {
-          updateProductDto.location = 'Employee';
-          updateProductDto.status = 'Delivered';
-        } else if (
-          updateProductDto.assignedEmail === 'none' &&
-          (updateProductDto.productCondition as Condition) !== 'Unusable'
-        ) {
+        } else if (updateProductDto.fp_shipment !== true) {
+          // Solo calculamos estos si NO se va a generar un shipment
           if (
-            !['FP warehouse', 'Our office'].includes(updateProductDto.location)
+            updateProductDto.assignedEmail &&
+            updateProductDto.assignedEmail !== 'none'
           ) {
-            throw new BadRequestException(
-              'When unassigned, location must be FP warehouse or Our office.',
-            );
+            updateProductDto.location = 'Employee';
+            updateProductDto.status = 'Delivered';
+          } else if (
+            updateProductDto.assignedEmail === 'none' &&
+            (updateProductDto.productCondition as Condition) !== 'Unusable'
+          ) {
+            if (
+              !['FP warehouse', 'Our office'].includes(
+                updateProductDto.location,
+              )
+            ) {
+              throw new BadRequestException(
+                'When unassigned, location must be FP warehouse or Our office.',
+              );
+            }
+            updateProductDto.status = 'Available';
           }
-          updateProductDto.status = 'Available';
         }
 
         if (
@@ -1780,31 +1814,53 @@ export class ProductsService {
             );
             if (newMember) {
               const lastMember = product.assignedEmail;
+              if (updateProductDto.fp_shipment === true) {
+                await this.maybeCreateShipmentAndUpdateStatus(
+                  product,
+                  updateProductDto,
+                  tenantName,
+                  actionType!,
+                  session,
+                  {
+                    location: product.location,
+                    assignedEmail: product.assignedEmail,
+                    assignedMember: product.assignedMember,
+                  },
+                  {
+                    location: updateProductDto.location,
+                    assignedEmail: updateProductDto.assignedEmail,
+                    assignedMember: updateProductDto.assignedMember,
+                  },
+                  userId,
+                );
+              } else {
+                updateProductDto.status = await this.determineProductStatus(
+                  {
+                    fp_shipment: false,
+                    location: updateProductDto.location || product.location,
+                    assignedEmail:
+                      updateProductDto.assignedEmail || product.assignedEmail,
+                    productCondition:
+                      updateProductDto.productCondition ||
+                      product.productCondition,
+                  },
+                  tenantName,
+                );
+              }
 
-              await this.maybeCreateShipmentAndUpdateStatus(
-                product,
-                updateProductDto,
-                tenantName,
-                actionType!,
-                session,
-                {
-                  location: product.location,
-                  assignedEmail: product.assignedEmail,
-                  assignedMember: product.assignedMember,
-                },
-                {
-                  location: updateProductDto.location,
-                  assignedEmail: updateProductDto.assignedEmail,
-                  assignedMember: updateProductDto.assignedMember,
-                },
-                userId,
-              );
+              const fixedUpdateDto = {
+                ...updateProductDto,
+                recoverable: isRecoverable,
+                status: updateProductDto.status ?? product.status,
+              };
 
               await this.moveToMemberCollection(
                 session,
                 product,
                 newMember,
-                { ...updateProductDto, recoverable: isRecoverable },
+                {
+                  ...fixedUpdateDto,
+                },
                 product.assignedEmail || '',
                 tenantName,
               );
@@ -1862,6 +1918,10 @@ export class ProductsService {
                   updateProductDto.assignedMember ?? product.assignedMember,
               },
               userId,
+            );
+            console.log(
+              '🧪 Status después de maybeCreateShipmentAndUpdateStatus segundo:',
+              updateProductDto.status,
             );
           } else {
             await this.updateProductAttributes(
@@ -1954,6 +2014,10 @@ export class ProductsService {
                 },
                 userId,
               );
+              console.log(
+                '🧪 Status después de maybeCreateShipmentAndUpdateStatus tercero:',
+                updateProductDto.status,
+              );
 
               await this.moveToMemberCollection(
                 session,
@@ -2006,6 +2070,11 @@ export class ProductsService {
               },
               userId,
             );
+            console.log(
+              '🧪 Status después de maybeCreateShipmentAndUpdateStatus cuarto:',
+              updateProductDto.status,
+            );
+
             const updateProduct = await this.handleProductUnassignment(
               session,
               memberProduct.product as ProductDocument,
@@ -2058,6 +2127,10 @@ export class ProductsService {
                   memberProduct.product.assignedMember,
               },
               userId,
+            );
+            console.log(
+              '🧪 Status después de maybeCreateShipmentAndUpdateStatus quinto:',
+              updateProductDto.status,
             );
           }
           console.log(

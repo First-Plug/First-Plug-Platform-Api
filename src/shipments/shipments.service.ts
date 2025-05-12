@@ -1682,7 +1682,12 @@ export class ShipmentsService {
       members.forEach((member) => {
         member.products.forEach((p) => {
           if (p._id && remainingIds.some((id) => id.equals(p._id))) {
-            products.push(p as unknown as ProductDocument);
+            const enriched = {
+              ...(p.toObject?.() ?? p),
+              assignedEmail: member.email,
+              assignedMember: `${member.firstName} ${member.lastName}`,
+            };
+            products.push(enriched as unknown as ProductDocument);
           }
         });
       });
