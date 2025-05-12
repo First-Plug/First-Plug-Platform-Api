@@ -56,6 +56,7 @@ export class ShipmentsController {
   }> {
     const tenantId = req.user.tenantName;
     const userId = req.user.userId;
+    console.log('🔐 User ID in request:', userId);
     return this.shipmentsService.findConsolidateAndUpdateShipment(
       shipmentId,
       updateDto,

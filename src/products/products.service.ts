@@ -1095,7 +1095,7 @@ export class ProductsService {
       name: updateProductDto.name || product.name,
       category: product.category,
       attributes: updateProductDto.attributes || product.attributes,
-      status: updateProductDto.status,
+      status: product.activeShipment ? product.status : updateProductDto.status,
       // recoverable: product.recoverable,
       recoverable:
         updateProductDto.recoverable !== undefined
