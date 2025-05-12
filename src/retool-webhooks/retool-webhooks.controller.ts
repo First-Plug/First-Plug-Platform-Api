@@ -15,6 +15,7 @@ export class RetoolWebhooksController {
     body: {
       tenantName: string;
       shipmentId: string;
+      userId: string;
       newStatus: ShipmentStatus;
     },
   ) {
@@ -27,6 +28,7 @@ export class RetoolWebhooksController {
     body: {
       tenantName: string;
       shipmentId: string;
+      userId: string;
       newStatus?: ShipmentStatus;
       shipment_type?: ShipmentType;
       trackingURL?: string;

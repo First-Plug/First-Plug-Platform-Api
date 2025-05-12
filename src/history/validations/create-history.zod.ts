@@ -13,6 +13,8 @@ export const CreateHistorySchema = z.object({
     'assign',
     'reassign',
     'unassign',
+    'cancel',
+    'consolidate',
   ]),
   userId: z.string().min(1, 'User ID is required'),
   itemType: z.enum(['members', 'teams', 'assets', 'shipments']),

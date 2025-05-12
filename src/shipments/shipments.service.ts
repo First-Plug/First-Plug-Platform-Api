@@ -166,12 +166,6 @@ export class ShipmentsService {
         !['Our office', 'FP warehouse'].includes(location)) &&
       assignedEmail
     ) {
-      console.log(
-        '➡️ Buscando miembro con email:',
-        assignedEmail,
-        'tenant:',
-        tenantId,
-      );
       const connection =
         await this.tenantConnectionService.getTenantConnection(tenantId);
 
@@ -281,11 +275,6 @@ export class ShipmentsService {
     return `${originCode}${destinationCode}${orderNumberFormatted}`;
   }
 
-  private isCreatingAction(actionType?: string): boolean {
-    console.log('🧠 isCreatingAction llamado con:', actionType);
-    return actionType === 'create' || actionType === 'bulkCreate';
-  }
-
   async findById(
     shipmentId: string,
     tenantId: string,
@@ -332,10 +321,6 @@ export class ShipmentsService {
       newData?.assignedMember || '',
       desirableDestinationDate,
     );
-    console.log('📍 Location Info Details:', {
-      originInfo,
-      destinationInfo,
-    });
 
     return {
       origin: originInfo.name,
@@ -351,6 +336,7 @@ export class ShipmentsService {
     productId: string,
     actionType: string,
     tenantId: string,
+    userId: string,
     session?: ClientSession | null,
     desirableDestinationDate?: string | Date,
     desirableOriginDate?: string | Date,
@@ -427,8 +413,6 @@ export class ShipmentsService {
       await this.tenantConnectionService.getTenantConnection(tenantId);
     const ShipmentModel = this.getShipmentModel(connection);
 
-    console.log('🔎 Buscando shipment existente...');
-
     const existingShipment = await ShipmentModel.findOne({
       origin,
       destination,
@@ -436,19 +420,36 @@ export class ShipmentsService {
       'originDetails.desirableDate': originDetails?.desirableDate || null,
       'destinationDetails.desirableDate':
         destinationDetails?.desirableDate || null,
+      isDeleted: { $ne: true },
     }).session(session || null);
 
     const productObjectId = new mongoose.Types.ObjectId(productId);
 
     if (existingShipment) {
-      console.log('✅ Shipment existente encontrado');
       if (!existingShipment.products.includes(productObjectId)) {
-        console.log('➕ Agregando producto al shipment existente...');
         existingShipment.products.push(productObjectId);
         existingShipment.quantity_products = existingShipment.products.length;
 
         await existingShipment.save({ session });
-        console.log('💾 Shipment existente actualizado');
+
+        if (existingShipment.shipment_status === 'In Preparation' && session) {
+          await this.updateProductStatusToInTransit(
+            productId,
+            connection,
+            session,
+            userId,
+          );
+        }
+
+        await this.historyService.create({
+          actionType: 'consolidate',
+          itemType: 'shipments',
+          userId: userId,
+          changes: {
+            oldData: null,
+            newData: existingShipment,
+          },
+        });
       }
       return existingShipment;
     }
@@ -507,13 +508,6 @@ export class ShipmentsService {
         shipmentStatus,
       )
     ) {
-      console.log('🚢 Creating shipment with emails:', {
-        originEmail,
-        destinationEmail,
-        origin,
-        destination,
-      });
-
       await this.markActiveShipmentTargets(
         productId,
         tenantId,
@@ -529,9 +523,25 @@ export class ShipmentsService {
       orderNumberGenerator.getCurrent(),
       session ?? undefined,
     );
-    console.log('✅ Orden finalizada correctamente');
 
+    await this.historyService.create({
+      actionType: 'create',
+      itemType: 'shipments',
+      userId: userId,
+      changes: {
+        oldData: null,
+        newData: newShipment,
+      },
+    });
     await newShipment.save();
+    if (shipmentStatus === 'In Preparation' && session) {
+      await this.updateProductStatusToInTransit(
+        productId,
+        connection,
+        session,
+        userId,
+      );
+    }
     return newShipment;
   }
 
@@ -561,6 +571,7 @@ export class ShipmentsService {
     shipmentId: string,
     updateDto: UpdateShipmentDto,
     tenantName: string,
+    userId: string,
   ): Promise<{
     message: string;
     consolidatedInto?: string;
@@ -578,14 +589,19 @@ export class ShipmentsService {
       );
     }
 
+    const originalShipment = { ...shipment.toObject() };
+    let wasModified = false;
+
     const { desirableDateOrigin, desirableDateDestination } = updateDto;
 
     if (desirableDateOrigin && shipment.originDetails) {
       shipment.originDetails.desirableDate = desirableDateOrigin;
+      wasModified = true;
     }
 
     if (desirableDateDestination && shipment.destinationDetails) {
       shipment.destinationDetails.desirableDate = desirableDateDestination;
+      wasModified = true;
     }
 
     const consolidable = await ShipmentModel.findOne({
@@ -604,21 +620,16 @@ export class ShipmentsService {
       const productIds = shipment.products.map((p) => p.toString());
       console.log('🔍 Productos en el shipment a consolidar:', productIds);
 
+      const originalConsolidable = { ...consolidable.toObject() };
+
       const existingSnapshotIds =
         consolidable.snapshots?.map((s) => s._id.toString()) || [];
-      console.log(
-        '📸 Snapshots actuales del shipment consolidable:',
-        existingSnapshotIds,
-      );
 
       for (const productId of shipment.products) {
         const objectId = new Types.ObjectId(productId);
 
         if (!consolidable.products.some((p) => p.equals(objectId))) {
           consolidable.products.push(objectId);
-          console.log(
-            `➕ Producto ${productId} agregado a shipment consolidable`,
-          );
         } else {
           console.log(
             `🔁 Producto ${productId} ya estaba en shipment consolidable`,
@@ -647,7 +658,6 @@ export class ShipmentsService {
           );
           consolidable.snapshots = consolidable.snapshots || [];
           consolidable.snapshots.push(snapshot);
-          console.log(`📸 Snapshot creado para producto ${product._id}`);
         } else {
           console.log(
             `📸 Snapshot ya existe para producto ${product._id}, no se duplica`,
@@ -658,21 +668,27 @@ export class ShipmentsService {
       consolidable.markModified('snapshots');
       consolidable.quantity_products = consolidable.products.length;
       await consolidable.save();
-      console.log('✅ Consolidable shipment guardado');
 
       shipment.isDeleted = true;
       await shipment.save();
-      console.log(
-        `🗑️ Shipment original ${shipment._id} marcado como eliminado`,
-      );
 
       await this.historyService.create({
-        actionType: 'update',
+        actionType: 'consolidate',
         itemType: 'shipments',
-        userId: 'system',
+        userId: userId,
         changes: {
-          oldData: shipment,
+          oldData: originalConsolidable,
           newData: consolidable,
+        },
+      });
+
+      await this.historyService.create({
+        actionType: 'delete',
+        itemType: 'shipments',
+        userId: userId,
+        changes: {
+          oldData: originalShipment,
+          newData: { ...shipment.toObject(), isDeleted: true },
         },
       });
 
@@ -682,19 +698,50 @@ export class ShipmentsService {
         shipment: consolidable,
       };
     }
+    if (wasModified) {
+      const isReady =
+        this.areShipmentDetailsComplete(shipment.originDetails) &&
+        this.areShipmentDetailsComplete(shipment.destinationDetails);
 
-    const isReady =
-      this.areShipmentDetailsComplete(shipment.originDetails) &&
-      this.areShipmentDetailsComplete(shipment.destinationDetails);
+      const oldStatus = shipment.shipment_status;
+      shipment.shipment_status = isReady
+        ? 'In Preparation'
+        : 'On Hold - Missing Data';
 
-    shipment.shipment_status = isReady
-      ? 'In Preparation'
-      : 'On Hold - Missing Data';
-    await shipment.save();
+      await shipment.save();
 
+      await this.historyService.create({
+        actionType: 'update',
+        itemType: 'shipments',
+        userId: userId,
+        changes: {
+          oldData: originalShipment,
+          newData: shipment,
+        },
+      });
+
+      if (
+        oldStatus !== shipment.shipment_status &&
+        shipment.shipment_status === 'In Preparation'
+      ) {
+        const session = await connection.startSession();
+        for (const productId of shipment.products) {
+          await this.updateProductStatusToInTransit(
+            productId.toString(),
+            connection,
+            session,
+            userId,
+          );
+        }
+      }
+
+      return {
+        message: 'Shipment updated successfully',
+        shipment,
+      };
+    }
     return {
-      message:
-        'The desirable pickup and/or delivery date has been successfully updated.',
+      message: 'No changes were made to the shipment',
       shipment,
     };
   }
@@ -739,6 +786,7 @@ export class ShipmentsService {
   async cancelShipmentAndUpdateProducts(
     shipmentId: string,
     tenantId: string,
+    userId: string,
   ): Promise<ShipmentDocument> {
     console.log('🚨 [CANCEL SHIPMENT] Start for', shipmentId);
 
@@ -752,6 +800,8 @@ export class ShipmentsService {
     if (!shipment) {
       throw new NotFoundException(`Shipment ${shipmentId} not found`);
     }
+
+    const originalShipment = { ...shipment.toObject() };
 
     if (
       shipment.shipment_status !== 'In Preparation' &&
@@ -769,6 +819,16 @@ export class ShipmentsService {
     shipment.shipment_status = 'Cancelled';
     await shipment.save();
     console.log('✅ Shipment cancelled');
+
+    await this.historyService.create({
+      actionType: 'cancel',
+      itemType: 'shipments',
+      userId: userId,
+      changes: {
+        oldData: originalShipment,
+        newData: shipment,
+      },
+    });
 
     for (const productId of shipment.products) {
       console.log('📦 Processing product:', productId.toString());
@@ -864,7 +924,7 @@ export class ShipmentsService {
     destination: string,
     originEmail?: string,
     destinationEmail?: string,
-    session?: ClientSession | null, // Modified to accept null
+    session?: ClientSession | null,
   ) {
     console.log('📍 Marking active shipment targets:', {
       origin,
@@ -876,7 +936,6 @@ export class ShipmentsService {
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
 
-    // Start a new session if one wasn't provided or is null
     const useSession = session || (await connection.startSession());
     const isNewSession = !session;
 
@@ -894,7 +953,6 @@ export class ShipmentsService {
         MemberSchema,
       );
 
-      // Mark product as having active shipment
       const updatedProduct = await ProductModel.findByIdAndUpdate(
         productId,
         { activeShipment: true },
@@ -909,7 +967,6 @@ export class ShipmentsService {
         );
       }
 
-      // Handle origin member
       if (!['Our office', 'FP warehouse'].includes(origin) && originEmail) {
         console.log('📤 Marking origin member as active:', originEmail);
         await MemberModel.updateOne(
@@ -919,7 +976,6 @@ export class ShipmentsService {
         );
       }
 
-      // Handle destination member
       if (
         !['Our office', 'FP warehouse'].includes(destination) &&
         destinationEmail
@@ -966,10 +1022,6 @@ export class ShipmentsService {
       products: new Types.ObjectId(productId),
       shipment_status: { $in: ['In Preparation', 'On The Way'] },
     });
-    console.log(
-      `🔎 Active shipments for product ${productId}:`,
-      activeShipmentsForProduct,
-    );
 
     if (activeShipmentsForProduct === 0) {
       const updatedProduct = await ProductModel.findByIdAndUpdate(productId, {
@@ -1003,7 +1055,6 @@ export class ShipmentsService {
       }
     }
 
-    // ✅ Si lo conseguimos, verificamos si tiene otros shipments activos
     if (memberEmail) {
       const member = await MemberModel.findOne({ email: memberEmail });
 
@@ -1018,10 +1069,6 @@ export class ShipmentsService {
         shipment_status: { $in: ['In Preparation', 'On The Way'] },
         $or: [{ origin: fullName }, { destination: fullName }],
       });
-
-      console.log(
-        `🔎 Active shipments for member ${fullName}: ${activeShipmentsForMember}`,
-      );
 
       if (activeShipmentsForMember === 0) {
         console.log(`✅ Setting activeShipment: false for member ${fullName}`);
@@ -1096,141 +1143,141 @@ export class ShipmentsService {
     }
   }
 
-  async findOrCreateShipmentsForBulk(
-    products: ProductDocument[],
-    tenantId: string,
-    session: mongoose.ClientSession,
-  ): Promise<ShipmentDocument[]> {
-    const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantId);
-    const ShipmentModel = this.getShipmentModel(connection);
+  // async findOrCreateShipmentsForBulk(
+  //   products: ProductDocument[],
+  //   tenantId: string,
+  //   session: mongoose.ClientSession,
+  // ): Promise<ShipmentDocument[]> {
+  //   const connection =
+  //     await this.tenantConnectionService.getTenantConnection(tenantId);
+  //   const ShipmentModel = this.getShipmentModel(connection);
 
-    const createdOrUpdatedShipments: ShipmentDocument[] = [];
-    const shipmentCache = new Map<string, ShipmentDocument>();
+  //   const createdOrUpdatedShipments: ShipmentDocument[] = [];
+  //   const shipmentCache = new Map<string, ShipmentDocument>();
 
-    const shipmentsToSave: ShipmentDocument[] = [];
+  //   const shipmentsToSave: ShipmentDocument[] = [];
 
-    const orderNumberGenerator = await this.initializeOrderNumberGenerator(
-      connection,
-      session,
-    );
+  //   const orderNumberGenerator = await this.initializeOrderNumberGenerator(
+  //     connection,
+  //     session,
+  //   );
 
-    for (const product of products) {
-      if (!product._id) continue;
+  //   for (const product of products) {
+  //     if (!product._id) continue;
 
-      const assignedEmail = product.assignedEmail || '';
-      const assignedMember = product.assignedMember || '';
+  //     const assignedEmail = product.assignedEmail || '';
+  //     const assignedMember = product.assignedMember || '';
 
-      const destinationInfo = await this.getLocationInfo(
-        product.location || '',
-        tenantId,
-        assignedEmail,
-        assignedMember,
-        undefined,
-      );
+  //     const destinationInfo = await this.getLocationInfo(
+  //       product.location || '',
+  //       tenantId,
+  //       assignedEmail,
+  //       assignedMember,
+  //       undefined,
+  //     );
 
-      const desirableDate = destinationInfo.details?.desirableDate || '';
-      const destinationName = destinationInfo.name;
-      const destinationDetails = destinationInfo.details;
+  //     const desirableDate = destinationInfo.details?.desirableDate || '';
+  //     const destinationName = destinationInfo.name;
+  //     const destinationDetails = destinationInfo.details;
 
-      const shipmentKey = `XX-${destinationName}-${desirableDate}`;
+  //     const shipmentKey = `XX-${destinationName}-${desirableDate}`;
 
-      let shipment: ShipmentDocument | null | undefined =
-        shipmentCache.get(shipmentKey);
+  //     let shipment: ShipmentDocument | null | undefined =
+  //       shipmentCache.get(shipmentKey);
 
-      if (!shipment) {
-        shipment = await ShipmentModel.findOne({
-          origin: 'XX',
-          destination: destinationName,
-          shipment_status: {
-            $in: ['In Preparation', 'On Hold - Missing Data'],
-          },
-          'destinationDetails.desirableDate': desirableDate,
-        }).session(session);
+  //     if (!shipment) {
+  //       shipment = await ShipmentModel.findOne({
+  //         origin: 'XX',
+  //         destination: destinationName,
+  //         shipment_status: {
+  //           $in: ['In Preparation', 'On Hold - Missing Data'],
+  //         },
+  //         'destinationDetails.desirableDate': desirableDate,
+  //       }).session(session);
 
-        if (!shipment) {
-          const destinationComplete =
-            await this.productsService.isAddressComplete(
-              {
-                ...product.toObject(),
-                location: product.location,
-                assignedEmail,
-              },
-              tenantId,
-            );
+  //       if (!shipment) {
+  //         const destinationComplete =
+  //           await this.productsService.isAddressComplete(
+  //             {
+  //               ...product.toObject(),
+  //               location: product.location,
+  //               assignedEmail,
+  //             },
+  //             tenantId,
+  //           );
 
-          const shipmentStatus = destinationComplete
-            ? 'In Preparation'
-            : 'On Hold - Missing Data';
+  //         const shipmentStatus = destinationComplete
+  //           ? 'In Preparation'
+  //           : 'On Hold - Missing Data';
 
-          const orderId = this.generateOrderId(
-            'XX',
-            destinationInfo.code,
-            orderNumberGenerator.getNext(),
-          );
+  //         const orderId = this.generateOrderId(
+  //           'XX',
+  //           destinationInfo.code,
+  //           orderNumberGenerator.getNext(),
+  //         );
 
-          shipment = new ShipmentModel({
-            order_id: orderId,
-            tenant: tenantId,
-            quantity_products: 0,
-            shipment_status: shipmentStatus,
-            shipment_type: 'TBC',
-            origin: 'XX',
-            destination: destinationName,
-            destinationDetails,
-            products: [],
-            type: 'shipments',
-            order_date: new Date(),
-            price: { amount: null, currencyCode: 'TBC' },
-          });
+  //         shipment = new ShipmentModel({
+  //           order_id: orderId,
+  //           tenant: tenantId,
+  //           quantity_products: 0,
+  //           shipment_status: shipmentStatus,
+  //           shipment_type: 'TBC',
+  //           origin: 'XX',
+  //           destination: destinationName,
+  //           destinationDetails,
+  //           products: [],
+  //           type: 'shipments',
+  //           order_date: new Date(),
+  //           price: { amount: null, currencyCode: 'TBC' },
+  //         });
 
-          shipmentsToSave.push(shipment);
-        }
+  //         shipmentsToSave.push(shipment);
+  //       }
 
-        shipmentCache.set(shipmentKey, shipment);
-      }
+  //       shipmentCache.set(shipmentKey, shipment);
+  //     }
 
-      if (!(product._id instanceof Types.ObjectId)) {
-        throw new Error(`Invalid ObjectId: ${product._id}`);
-      }
+  //     if (!(product._id instanceof Types.ObjectId)) {
+  //       throw new Error(`Invalid ObjectId: ${product._id}`);
+  //     }
 
-      const productObjectId = product._id as Types.ObjectId;
+  //     const productObjectId = product._id as Types.ObjectId;
 
-      if (
-        !shipment.products.some((p: Types.ObjectId) =>
-          p.equals(productObjectId),
-        )
-      ) {
-        shipment.products.push(productObjectId);
-        shipment.quantity_products = shipment.products.length;
-        // await shipment.save({ session });
-        if (!shipmentsToSave.includes(shipment)) {
-          shipmentsToSave.push(shipment);
-        }
-      }
+  //     if (
+  //       !shipment.products.some((p: Types.ObjectId) =>
+  //         p.equals(productObjectId),
+  //       )
+  //     ) {
+  //       shipment.products.push(productObjectId);
+  //       shipment.quantity_products = shipment.products.length;
+  //       // await shipment.save({ session });
+  //       if (!shipmentsToSave.includes(shipment)) {
+  //         shipmentsToSave.push(shipment);
+  //       }
+  //     }
 
-      createdOrUpdatedShipments.push(shipment);
+  //     createdOrUpdatedShipments.push(shipment);
 
-      await this.markActiveShipmentTargets(
-        product._id.toString(),
-        tenantId,
-        'XX',
-        destinationName,
-        '',
-        assignedEmail,
-      );
-    }
-    for (const shipment of shipmentsToSave) {
-      await shipment.save({ session });
-    }
-    await this.finalizeOrderNumber(
-      connection,
-      orderNumberGenerator.getCurrent(),
-      session,
-    );
+  //     await this.markActiveShipmentTargets(
+  //       product._id.toString(),
+  //       tenantId,
+  //       'XX',
+  //       destinationName,
+  //       '',
+  //       assignedEmail,
+  //     );
+  //   }
+  //   for (const shipment of shipmentsToSave) {
+  //     await shipment.save({ session });
+  //   }
+  //   await this.finalizeOrderNumber(
+  //     connection,
+  //     orderNumberGenerator.getCurrent(),
+  //     session,
+  //   );
 
-    return createdOrUpdatedShipments;
-  }
+  //   return createdOrUpdatedShipments;
+  // }
 
   async getShipmentsByMember(memberEmail: string, tenantName: string) {
     const connection =
@@ -1274,82 +1321,66 @@ export class ShipmentsService {
     return shipment;
   }
 
-  // async softDeleteShipment(id: Types.ObjectId, tenantName: string) {
+  // async updateShipmentStatusAndProductsToInPreparation(
+  //   shipmentId: Types.ObjectId,
+  //   tenantName: string,
+  // ) {
+  //   await new Promise((resolve) => process.nextTick(resolve));
   //   const connection =
   //     await this.tenantConnectionService.getTenantConnection(tenantName);
   //   const ShipmentModel = this.getShipmentModel(connection);
+  //   const ProductModel = this.getProductModel(connection);
+  //   const MemberModel = connection.model<MemberDocument>('Member');
 
-  //   const shipment = await ShipmentModel.findById(id);
+  //   const shipment = await ShipmentModel.findById(shipmentId);
   //   if (!shipment) {
-  //     throw new NotFoundException(`Shipment with id "${id}" not found`);
+  //     throw new NotFoundException(`Shipment with id "${shipmentId}" not found`);
   //   }
 
-  //   await ShipmentModel.softDelete({ _id: id });
+  //   shipment.shipment_status = 'In Preparation';
+  //   await shipment.save();
 
-  //   return {
-  //     message: `Shipment with id "${id}" was soft deleted successfully`,
-  //   };
+  //   for (const productId of shipment.products) {
+  //     const product = await ProductModel.findById(productId);
+
+  //     if (product) {
+  //       if (product.status === 'In Transit - Missing Data') {
+  //         product.status = 'In Transit';
+  //         await product.save();
+  //       }
+  //     } else {
+  //       const memberWithProduct = await MemberModel.findOne({
+  //         'products._id': productId,
+  //       });
+
+  //       const embeddedProduct = memberWithProduct?.products.find(
+  //         (p) => p._id?.toString() === productId.toString(),
+  //       );
+
+  //       if (
+  //         embeddedProduct &&
+  //         embeddedProduct.status === 'In Transit - Missing Data'
+  //       ) {
+  //         await MemberModel.updateOne(
+  //           { 'products._id': productId },
+  //           {
+  //             $set: {
+  //               'products.$.status': 'In Transit',
+  //             },
+  //           },
+  //         );
+  //       }
+  //     }
+  //   }
+
+  //   return shipment;
   // }
-
-  async updateShipmentStatusAndProductsToInPreparation(
-    shipmentId: Types.ObjectId,
-    tenantName: string,
-  ) {
-    await new Promise((resolve) => process.nextTick(resolve));
-    const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const ShipmentModel = this.getShipmentModel(connection);
-    const ProductModel = this.getProductModel(connection);
-    const MemberModel = connection.model<MemberDocument>('Member');
-
-    const shipment = await ShipmentModel.findById(shipmentId);
-    if (!shipment) {
-      throw new NotFoundException(`Shipment with id "${shipmentId}" not found`);
-    }
-
-    shipment.shipment_status = 'In Preparation';
-    await shipment.save();
-
-    for (const productId of shipment.products) {
-      const product = await ProductModel.findById(productId);
-
-      if (product) {
-        if (product.status === 'In Transit - Missing Data') {
-          product.status = 'In Transit';
-          await product.save();
-        }
-      } else {
-        const memberWithProduct = await MemberModel.findOne({
-          'products._id': productId,
-        });
-
-        const embeddedProduct = memberWithProduct?.products.find(
-          (p) => p._id?.toString() === productId.toString(),
-        );
-
-        if (
-          embeddedProduct &&
-          embeddedProduct.status === 'In Transit - Missing Data'
-        ) {
-          await MemberModel.updateOne(
-            { 'products._id': productId },
-            {
-              $set: {
-                'products.$.status': 'In Transit',
-              },
-            },
-          );
-        }
-      }
-    }
-
-    return shipment;
-  }
 
   async checkAndUpdateShipmentsForOurOffice(
     tenantName: string,
     oldAddress: AddressData,
     newAddress: AddressData,
+    userId: string,
   ) {
     console.log('🔄 Starting office address update:', {
       tenantName,
@@ -1370,8 +1401,6 @@ export class ShipmentsService {
           'shipments',
         );
 
-        console.log('🔍 Searching for shipments with Our office');
-
         const shipments = await ShipmentModel.find({
           $or: [{ origin: 'Our office' }, { destination: 'Our office' }],
           shipment_status: {
@@ -1379,8 +1408,6 @@ export class ShipmentsService {
           },
           isDeleted: { $ne: true },
         }).session(session);
-
-        console.log(`📦 Found ${shipments.length} shipments for Our office`);
 
         for (const shipment of shipments) {
           let updated = false;
@@ -1418,11 +1445,6 @@ export class ShipmentsService {
             );
 
             updated = true;
-
-            console.log(
-              '✅ Updated origin details for Our office:',
-              updatedOriginDetails,
-            );
           }
 
           if (shipment.destination === 'Our office') {
@@ -1439,11 +1461,6 @@ export class ShipmentsService {
               phone: newAddress.phone || '',
               desirableDate: desirableDate,
             };
-
-            console.log(
-              '🔄 Updating destination details for Our office:',
-              updatedDestinationDetails,
-            );
 
             await ShipmentModel.updateOne(
               { _id: shipment._id },
@@ -1468,7 +1485,6 @@ export class ShipmentsService {
             );
 
             updated = true;
-            console.log('✅ Updated destination details for Our office');
           }
 
           if (updated) {
@@ -1486,6 +1502,7 @@ export class ShipmentsService {
                 refreshedShipment,
                 connection,
                 session,
+                userId,
               );
             }
           }
@@ -1504,6 +1521,7 @@ export class ShipmentsService {
   async checkAndUpdateShipmentsForMember(
     memberEmail: string,
     tenantName: string,
+    userId: string,
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
@@ -1617,6 +1635,7 @@ export class ShipmentsService {
                 refreshedShipment,
                 connection,
                 session,
+                userId,
               );
             }
           }
@@ -1663,7 +1682,12 @@ export class ShipmentsService {
       members.forEach((member) => {
         member.products.forEach((p) => {
           if (p._id && remainingIds.some((id) => id.equals(p._id))) {
-            products.push(p as unknown as ProductDocument);
+            const enriched = {
+              ...(p.toObject?.() ?? p),
+              assignedEmail: member.email,
+              assignedMember: `${member.firstName} ${member.lastName}`,
+            };
+            products.push(enriched as unknown as ProductDocument);
           }
         });
       });
@@ -1772,7 +1796,6 @@ export class ShipmentsService {
       console.log(`ℹ️ No updatable shipments found for product ${productId}`);
       return;
     }
-    console.log(`🔍 Found ${shipments.length} shipments to update snapshots`);
 
     const updatedSnapshot = {
       _id: productData._id,
@@ -1804,17 +1827,12 @@ export class ShipmentsService {
           snapshotIndex >= 0 &&
           shipment.snapshots
         ) {
-          console.log(`📸 Updating snapshot in shipment ${shipment._id}`);
           shipment.snapshots[snapshotIndex] = updatedSnapshot;
           await shipment.save();
         } else if (shipment.snapshots) {
-          console.log(`📸 Adding new snapshot to shipment ${shipment._id}`);
           shipment.snapshots.push(updatedSnapshot);
           await shipment.save();
         } else {
-          console.log(
-            `📸 Creating snapshots array for shipment ${shipment._id}`,
-          );
           shipment.snapshots = [updatedSnapshot];
           await shipment.save();
         }
@@ -1825,22 +1843,16 @@ export class ShipmentsService {
         );
       }
     }
-
-    console.log(
-      `✅ Updated snapshots for product ${productId} in ${shipments.length} shipments`,
-    );
   }
 
   private async updateShipmentOnAddressComplete(
     shipment: ShipmentDocument,
     connection: mongoose.Connection,
     session: ClientSession,
+    userId: string,
   ) {
     try {
-      console.log(
-        '🔍 Starting shipment update with status:',
-        shipment.shipment_status,
-      );
+      const originalShipment = { ...shipment.toObject() };
 
       const orderNumber = parseInt(shipment.order_id.slice(-4));
 
@@ -1882,10 +1894,21 @@ export class ShipmentsService {
               productId.toString(),
               connection,
               session,
+              userId,
             );
           }
           await session.commitTransaction();
           await session.startTransaction();
+
+          await this.historyService.create({
+            actionType: 'update',
+            itemType: 'shipments',
+            userId: userId,
+            changes: {
+              oldData: originalShipment,
+              newData: { ...originalShipment, shipment_status: newStatus },
+            },
+          });
 
           console.log('📸 Generating product snapshots...');
           await this.createSnapshots(shipment, connection);
@@ -1919,13 +1942,9 @@ export class ShipmentsService {
     shipment: ShipmentDocument,
     connection: mongoose.Connection,
     session: ClientSession,
+    userId: string,
   ) {
     try {
-      console.log(
-        '🔍 Checking if shipment status should change:',
-        shipment.shipment_status,
-      );
-
       const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
 
       if (shipment.shipment_status === 'On Hold - Missing Data') {
@@ -1995,6 +2014,7 @@ export class ShipmentsService {
               productId.toString(),
               connection,
               session,
+              userId,
             );
           }
         }
@@ -2016,6 +2036,7 @@ export class ShipmentsService {
     productId: string,
     connection: mongoose.Connection,
     session: ClientSession,
+    userId: string,
   ): Promise<void> {
     try {
       console.log(`🔄 Updating product ${productId} status to In Transit`);
@@ -2030,8 +2051,19 @@ export class ShipmentsService {
 
       if (product) {
         if (product.status === 'In Transit - Missing Data') {
+          const originalProduct = { ...product.toObject() };
           product.status = 'In Transit';
           await product.save({ session });
+
+          await this.historyService.create({
+            actionType: 'update',
+            itemType: 'assets',
+            userId: userId,
+            changes: {
+              oldData: originalProduct,
+              newData: product,
+            },
+          });
           console.log(
             `✅ Updated product status in Products collection: ${productId}`,
           );

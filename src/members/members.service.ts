@@ -611,6 +611,8 @@ export class MembersService {
                 email: member.email,
                 dni: member.dni?.toString(),
               },
+              new Date(),
+              userId,
             ),
           );
         } else {
