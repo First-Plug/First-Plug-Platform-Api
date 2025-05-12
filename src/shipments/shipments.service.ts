@@ -677,7 +677,7 @@ export class ShipmentsService {
       });
 
       return {
-        message: `Shipment consolidated into order ${consolidable.order_id}`,
+        message: `The pickup and/or delivery date has been successfully updated. This product is now consolidated into Shipment ID: ${consolidable.order_id}`,
         consolidatedInto: consolidable._id.toString(),
         shipment: consolidable,
       };
@@ -693,7 +693,8 @@ export class ShipmentsService {
     await shipment.save();
 
     return {
-      message: 'Shipment updated successfully',
+      message:
+        'The desirable pickup and/or delivery date has been successfully updated.',
       shipment,
     };
   }
