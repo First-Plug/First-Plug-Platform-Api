@@ -570,9 +570,6 @@ export class ShipmentsService {
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
     const ShipmentModel = this.getShipmentModel(connection);
-    // const ProductModel =
-    //   connection.models.Product ||
-    //   connection.model('Product', ProductSchema, 'products');
 
     const shipment = await ShipmentModel.findById(shipmentId);
     if (!shipment || shipment.isDeleted) {
@@ -659,18 +656,7 @@ export class ShipmentsService {
       }
 
       consolidable.markModified('snapshots');
-      console.log(
-        '📋 Consolidable antes de guardar:',
-        JSON.stringify(
-          {
-            products: consolidable.products.map((p) => p.toString()),
-            snapshots: consolidable.snapshots?.map((s) => s._id?.toString()),
-          },
-          null,
-          2,
-        ),
-      );
-
+      consolidable.quantity_products = consolidable.products.length;
       await consolidable.save();
       console.log('✅ Consolidable shipment guardado');
 
@@ -1866,13 +1852,6 @@ export class ShipmentsService {
         shipment.destinationDetails,
       );
 
-      console.log('🔤 Using codes:', {
-        originCode,
-        destinationCode,
-        origin: shipment.origin,
-        destination: shipment.destination,
-      });
-
       const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
       console.log(
         `🔄 Generating new order ID: ${newOrderId} (was: ${shipment.order_id})`,
@@ -1896,9 +1875,17 @@ export class ShipmentsService {
       if (shipment.shipment_status === 'On Hold - Missing Data') {
         if (hasRequiredOriginFields && hasRequiredDestinationFields) {
           newStatus = 'In Preparation';
-          console.log(
-            '✅ All required fields present, updating status to In Preparation',
-          );
+
+          for (const productId of shipment.products) {
+            await this.updateProductStatusToInTransit(
+              productId.toString(),
+              connection,
+              session,
+            );
+          }
+          await session.commitTransaction();
+          await session.startTransaction();
+
           console.log('📸 Generating product snapshots...');
           await this.createSnapshots(shipment, connection);
         } else {
@@ -1917,16 +1904,6 @@ export class ShipmentsService {
           },
           { session },
         );
-
-        if (newStatus === 'In Preparation') {
-          for (const productId of shipment.products) {
-            await this.updateProductStatusToInTransit(
-              productId.toString(),
-              connection,
-              session,
-            );
-          }
-        }
       }
 
       console.log('📋 Final shipment status:', newStatus);
