@@ -32,6 +32,7 @@ import { ShipmentsService } from 'src/shipments/shipments.service';
 import { ModuleRef } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EventTypes } from 'src/common/events/types';
+import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -1433,7 +1434,9 @@ export class ProductsService {
         },
       });
 
-      return { message: `Product with id "${id}" updated successfully` };
+      return {
+        message: `Product with id "${id}" updated successfully`,
+      };
     } catch (error) {
       console.log('❌ Error in updateEntity:', {
         name: error.name,
@@ -1506,8 +1509,8 @@ export class ProductsService {
       assignedMember?: string;
     },
     userId: string,
-  ) {
-    if (!updateDto.fp_shipment || !actionType) return;
+  ): Promise<ShipmentDocument | null> {
+    if (!updateDto.fp_shipment || !actionType) return null;
 
     const desirableDateOrigin =
       typeof updateDto.desirableDate === 'object'
@@ -1553,7 +1556,7 @@ export class ProductsService {
 
     if (!shipment || !shipment._id) {
       console.error('❌ Failed to create shipment or shipment has no ID');
-      return;
+      return null;
     }
 
     console.log('✅ Shipment created with ID:', shipment._id.toString());
@@ -1589,7 +1592,9 @@ export class ProductsService {
           `📋 Product status before snapshot creation: ${refreshedProduct?.status}`,
         );
       }
+      return shipment;
     } catch (error) {
+      return null;
       console.error('❌ Error creating snapshots:', error, error.stack);
     }
   }
@@ -1600,17 +1605,12 @@ export class ProductsService {
     tenantName: string,
     userId: string,
   ) {
-    console.log('🔍 Iniciando update para producto:', id.toString());
-    console.log(
-      '📦 Datos recibidos:',
-      JSON.stringify(updateProductDto, null, 2),
-    );
-
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     const session = await connection.startSession();
     session.startTransaction();
+    let finalShipment: ShipmentDocument | null = null;
 
     if (updateProductDto.fp_shipment === undefined) {
       const existingProduct = await this.productRepository.findById(id);
@@ -1814,8 +1814,9 @@ export class ProductsService {
             );
             if (newMember) {
               const lastMember = product.assignedEmail;
+              // let shipment: ShipmentDocument | null = null;
               if (updateProductDto.fp_shipment === true) {
-                await this.maybeCreateShipmentAndUpdateStatus(
+                finalShipment = await this.maybeCreateShipmentAndUpdateStatus(
                   product,
                   updateProductDto,
                   tenantName,
@@ -1899,7 +1900,7 @@ export class ProductsService {
               recoverable: isRecoverable,
             });
 
-            await this.maybeCreateShipmentAndUpdateStatus(
+            finalShipment = await this.maybeCreateShipmentAndUpdateStatus(
               product,
               updateProductDto,
               tenantName,
@@ -1937,7 +1938,10 @@ export class ProductsService {
 
         await session.commitTransaction();
         session.endSession();
-        return { message: `Product with id "${id}" updated successfully` };
+        return {
+          message: `Product with id "${id}" updated successfully`,
+          shipment: finalShipment,
+        };
       } else {
         const memberProduct = await this.memberService.getProductByMembers(
           id,
@@ -1991,7 +1995,7 @@ export class ProductsService {
             if (newMember) {
               const lastMember = member.email;
 
-              await this.maybeCreateShipmentAndUpdateStatus(
+              finalShipment = await this.maybeCreateShipmentAndUpdateStatus(
                 memberProduct.product as ProductDocument,
                 updateProductDto,
                 tenantName,
@@ -2052,7 +2056,7 @@ export class ProductsService {
               );
             }
           } else if (updateProductDto.assignedEmail === '') {
-            await this.maybeCreateShipmentAndUpdateStatus(
+            finalShipment = await this.maybeCreateShipmentAndUpdateStatus(
               memberProduct.product as ProductDocument,
               updateProductDto,
               tenantName,
@@ -2105,7 +2109,7 @@ export class ProductsService {
               tenantName,
             );
 
-            await this.maybeCreateShipmentAndUpdateStatus(
+            finalShipment = await this.maybeCreateShipmentAndUpdateStatus(
               memberProduct.product as ProductDocument,
               updateProductDto,
               tenantName,
@@ -2146,7 +2150,12 @@ export class ProductsService {
           }
           await session.commitTransaction();
           session.endSession();
-          return { message: `Product with id "${id}" updated successfully` };
+          console.log('Final shipment:', finalShipment);
+          return {
+            message: `Product with id "${id}" updated successfully`,
+            shipment: finalShipment,
+          };
+          console.log('Final shipment:', finalShipment);
         } else {
           throw new NotFoundException(`Product with id "${id}" not found`);
         }
