@@ -1,4 +1,4 @@
-import { forwardRef, Module } from '@nestjs/common';
+import { forwardRef, MiddlewareConsumer, Module } from '@nestjs/common';
 import { ShipmentsService } from './shipments.service';
 import { ShipmentsController } from './shipments.controller';
 import { tenantConnectionProvider } from 'src/common/providers/tenant-connection.provider';
@@ -12,6 +12,7 @@ import { TenantAddressUpdatedListener } from 'src/shipments/listeners/tenant-add
 import { MemberAddressUpdatedListener } from 'src/shipments/listeners/member-address-update.listener';
 import { ProductUpdatedListener } from 'src/shipments/listeners/product-updated.listener';
 import { HistoryModule } from 'src/history/history.module';
+import { TenantsMiddleware } from 'src/common/middlewares/tenants.middleware';
 
 @Module({
   imports: [
@@ -40,4 +41,8 @@ import { HistoryModule } from 'src/history/history.module';
   ],
   exports: [ShipmentsService, tenantModels.shipmentMetadataModel],
 })
-export class ShipmentsModule {}
+export class ShipmentsModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(TenantsMiddleware).forRoutes(ShipmentsController);
+  }
+}

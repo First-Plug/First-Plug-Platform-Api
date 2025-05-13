@@ -2223,6 +2223,7 @@ export class ProductsService {
   }
 
   async softDelete(id: ObjectId, userId: string, tenantName: string) {
+    await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     const session = await connection.startSession();
