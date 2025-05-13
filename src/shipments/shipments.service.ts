@@ -85,7 +85,7 @@ export class ShipmentsService {
     };
   }
 
-  private getShipmentModel(tenantConnection): Model<ShipmentDocument> {
+  public getShipmentModel(tenantConnection): Model<ShipmentDocument> {
     if (tenantConnection.models.Shipment) {
       return tenantConnection.models.Shipment;
     }
@@ -1279,25 +1279,6 @@ export class ShipmentsService {
   //   return createdOrUpdatedShipments;
   // }
 
-  async getShipmentsByMember(memberEmail: string, tenantName: string) {
-    const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const ShipmentModel = this.getShipmentModel(connection);
-
-    const member =
-      await this.membersService.findByEmailNotThrowError(memberEmail);
-    if (!member) return [];
-
-    const fullName = `${member.firstName} ${member.lastName}`;
-
-    return ShipmentModel.find({
-      shipment_status: {
-        $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
-      },
-      $or: [{ origin: fullName }, { destination: fullName }],
-    });
-  }
-
   async getShipments(tenantName: string) {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
@@ -2095,5 +2076,92 @@ export class ShipmentsService {
       console.error(`❌ Error updating product ${productId} status:`, error);
       throw error;
     }
+  }
+
+  async getShipmentByProductId(
+    productId: string,
+    tenantName: string,
+  ): Promise<ShipmentDocument | null> {
+    await new Promise((resolve) => process.nextTick(resolve));
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+
+    const shipment = await ShipmentModel.findOne({
+      products: new Types.ObjectId(productId),
+      shipment_status: {
+        $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
+      },
+      isDeleted: { $ne: true },
+    }).sort({ createdAt: -1 });
+
+    return shipment;
+  }
+
+  async getShipmentsByMember(memberEmail: string, tenantName: string) {
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+
+    const member =
+      await this.membersService.findByEmailNotThrowError(memberEmail);
+    if (!member) return [];
+
+    const fullName = `${member.firstName} ${member.lastName}`;
+
+    return ShipmentModel.find({
+      shipment_status: {
+        $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
+      },
+      $or: [{ origin: fullName }, { destination: fullName }],
+    });
+  }
+
+  async getShipmentsByMemberEmail(
+    memberEmail: string,
+    tenantName: string,
+    activeOnly: boolean = true,
+  ): Promise<ShipmentDocument[]> {
+    await new Promise((resolve) => process.nextTick(resolve));
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const ShipmentModel = this.getShipmentModel(connection);
+
+    // Intentamos encontrar al miembro para obtener su nombre completo
+    const member =
+      await this.membersService.findByEmailNotThrowError(memberEmail);
+    let fullName = '';
+
+    if (member) {
+      fullName = `${member.firstName} ${member.lastName}`;
+    }
+
+    // Construimos la consulta
+    const query: any = {
+      $or: [
+        { 'originDetails.assignedEmail': memberEmail },
+        { 'destinationDetails.assignedEmail': memberEmail },
+      ],
+      isDeleted: { $ne: true },
+    };
+
+    // Si encontramos al miembro, también buscamos por su nombre completo
+    if (fullName) {
+      query.$or.push({ origin: fullName });
+      query.$or.push({ destination: fullName });
+    }
+
+    if (activeOnly) {
+      query.shipment_status = {
+        $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
+      };
+    }
+
+    console.log(
+      'Buscando shipments con query:',
+      JSON.stringify(query, null, 2),
+    );
+
+    return ShipmentModel.find(query).sort({ createdAt: -1 });
   }
 }

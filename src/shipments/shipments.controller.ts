@@ -31,6 +31,25 @@ export class ShipmentsController {
     return this.shipmentsService.findAll(pageNumber, pageSize, tenantId);
   }
 
+  @Get('by-product/:productId')
+  async getShipmentByProductId(
+    @Param('productId') productId: string,
+    @Request() req: any,
+  ): Promise<ShipmentDocument | { message: string }> {
+    const tenantId = req.user.tenantName;
+
+    const shipment = await this.shipmentsService.getShipmentByProductId(
+      productId,
+      tenantId,
+    );
+
+    if (!shipment) {
+      return { message: `No active shipment found for product ${productId}` };
+    }
+
+    return shipment;
+  }
+
   @Patch(':id/cancel')
   async cancelShipment(
     @Param('id') shipmentId: string,
@@ -44,6 +63,7 @@ export class ShipmentsController {
       userId,
     );
   }
+
   @Patch(':id')
   async updateShipment(
     @Param('id') shipmentId: string,
@@ -63,5 +83,27 @@ export class ShipmentsController {
       tenantId,
       userId,
     );
+  }
+
+  @Get('by-member-email/:email')
+  async getShipmentsByMemberEmail(
+    @Param('email') email: string,
+    @Query('activeOnly') activeOnly: string = 'true',
+    @Request() req: any,
+  ): Promise<ShipmentDocument[] | { message: string }> {
+    const tenantId = req.user.tenantName;
+    const isActiveOnly = activeOnly.toLowerCase() === 'true';
+
+    const shipments = await this.shipmentsService.getShipmentsByMemberEmail(
+      email,
+      tenantId,
+      isActiveOnly,
+    );
+
+    if (shipments.length === 0) {
+      return { message: `No shipments found for member with email ${email}` };
+    }
+
+    return shipments;
   }
 }
