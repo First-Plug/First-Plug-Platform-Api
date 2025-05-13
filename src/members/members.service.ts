@@ -25,6 +25,7 @@ import { ShipmentsService } from 'src/shipments/shipments.service';
 import { EventTypes } from 'src/common/events/types';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MemberAddressUpdatedEvent } from 'src/common/events/member-address-update.event';
+import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
 
 export interface MemberModel
   extends Model<MemberDocument>,
@@ -437,13 +438,57 @@ export class MembersService {
     }
   }
 
-  async findById(id: ObjectId) {
+  async findById(id: ObjectId, tenantName: string) {
     const member = await this.memberRepository.findById(id).populate('team');
 
     if (!member)
       throw new NotFoundException(`Member with id "${id}" not found`);
 
-    return member;
+    const response: any = member.toObject();
+
+    if (member.activeShipment) {
+      const connection =
+        await this.connectionService.getTenantConnection(tenantName);
+
+      const ShipmentModel =
+        connection.models.Shipment ||
+        connection.model('Shipment', ShipmentSchema, 'shipments');
+
+      const activeShipments = await ShipmentModel.find({
+        destination: `${member.firstName} ${member.lastName}`,
+        shipment_status: {
+          $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
+        },
+        isDeleted: { $ne: true },
+      }).select('origin products shipment_status');
+
+      const incomingProducts = activeShipments.flatMap((shipment) =>
+        shipment.products.map((productId) => ({
+          productId: productId.toString(),
+          origin: shipment.origin,
+          destination: `${member.firstName} ${member.lastName}`,
+          shipmentStatus: shipment.shipment_status,
+        })),
+      );
+
+      response.products = response.products.map((product) => {
+        const incoming = incomingProducts.find(
+          (p) => p.productId === product._id.toString(),
+        );
+
+        if (incoming) {
+          return {
+            ...product,
+            origin: incoming.origin,
+            shipmentStatus: incoming.shipmentStatus,
+          };
+        }
+
+        return product;
+      });
+    }
+
+    return response;
   }
 
   async findByEmail(email: string, session?: ClientSession) {
@@ -643,8 +688,8 @@ export class MembersService {
     }
   }
 
-  async softDeleteMember(id: ObjectId) {
-    const member = await this.findById(id);
+  async softDeleteMember(id: ObjectId, tenantName) {
+    const member = await this.findById(id, tenantName);
 
     if (!member) {
       throw new NotFoundException(`Member with id "${id}" not found`);

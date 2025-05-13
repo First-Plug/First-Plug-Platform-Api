@@ -222,9 +222,12 @@ export class MembersController {
 
     const updatedProducts = productsToUpdate.map((p) => p.product);
 
-    const offboardingMember = await this.membersService.findById(id);
+    const offboardingMember = await this.membersService.findById(
+      id,
+      tenantName,
+    );
 
-    await this.membersService.softDeleteMember(id);
+    await this.membersService.softDeleteMember(id, tenantName);
 
     await this.membersService.notifyOffBoarding(
       offboardingMember,
@@ -270,8 +273,9 @@ export class MembersController {
   }
 
   @Get(':id')
-  findById(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.membersService.findById(id);
+  findById(@Param('id', ParseMongoIdPipe) id: ObjectId, @Req() req) {
+    const { tenantName } = req;
+    return this.membersService.findById(id, tenantName);
   }
 
   @Patch(':id')
@@ -287,9 +291,12 @@ export class MembersController {
 
   @Delete(':id')
   async remove(@Param('id', ParseMongoIdPipe) id: ObjectId, @Req() req) {
-    const { userId } = req;
+    const { userId, tenantName } = req;
 
-    const memberDeleted = await this.membersService.softDeleteMember(id);
+    const memberDeleted = await this.membersService.softDeleteMember(
+      id,
+      tenantName,
+    );
 
     await this.historyService.create({
       actionType: 'delete',
