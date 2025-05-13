@@ -478,6 +478,12 @@ export class ShipmentsService {
       session,
     );
     const nextNumber = orderNumberGenerator.getNext();
+    console.log('[ORDER ID DEBUG]', {
+      origin,
+      destination,
+      orderOrigin, // <- esto debería ser 'BR'
+      orderDestination, // <- esto debería ser 'OO'
+    });
     const order_id = this.generateOrderId(
       orderOrigin,
       orderDestination,
@@ -1799,23 +1805,34 @@ export class ShipmentsService {
 
     for (const shipment of shipments) {
       try {
-        const snapshotIndex = shipment.snapshots?.findIndex(
+        const existingSnapshotIndex = shipment.snapshots?.findIndex(
           (s) => s._id.toString() === productId,
         );
 
-        if (
-          snapshotIndex !== undefined &&
-          snapshotIndex >= 0 &&
-          shipment.snapshots
-        ) {
-          shipment.snapshots[snapshotIndex] = updatedSnapshot;
-          await shipment.save();
-        } else if (shipment.snapshots) {
-          shipment.snapshots.push(updatedSnapshot);
-          await shipment.save();
+        if (existingSnapshotIndex !== -1) {
+          await ShipmentModel.updateOne(
+            {
+              _id: shipment._id,
+              'snapshots._id': new Types.ObjectId(productId),
+            },
+            {
+              $set: {
+                'snapshots.$': updatedSnapshot,
+              },
+            },
+          );
         } else {
-          shipment.snapshots = [updatedSnapshot];
-          await shipment.save();
+          await ShipmentModel.updateOne(
+            {
+              _id: shipment._id,
+              'snapshots._id': { $ne: new Types.ObjectId(productId) },
+            },
+            {
+              $push: {
+                snapshots: updatedSnapshot,
+              },
+            },
+          );
         }
       } catch (error) {
         console.error(

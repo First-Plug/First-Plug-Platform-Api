@@ -1773,7 +1773,9 @@ export class ProductsService {
               tenantName,
             );
 
-            if (actionType) {
+            const validActions = ['assign', 'reassign', 'relocate', 'return'];
+
+            if (actionType && validActions.includes(actionType)) {
               await this.historyService.create({
                 actionType: actionType,
                 itemType: 'assets',
@@ -1801,7 +1803,9 @@ export class ProductsService {
               },
             );
 
-            if (actionType) {
+            const validActions = ['assign', 'reassign', 'relocate', 'return'];
+
+            if (actionType && validActions.includes(actionType)) {
               await this.historyService.create({
                 actionType: actionType,
                 itemType: 'assets',
@@ -1894,7 +1898,9 @@ export class ProductsService {
               );
 
               // Registrar reassign & assign
-              if (actionType) {
+              const validActions = ['assign', 'reassign', 'relocate', 'return'];
+
+              if (actionType && validActions.includes(actionType)) {
                 await this.historyService.create({
                   actionType: actionType,
                   itemType: 'assets',
@@ -2060,7 +2066,9 @@ export class ProductsService {
               );
 
               // Registrar relocate
-              if (actionType) {
+              const validActions = ['assign', 'reassign', 'relocate', 'return'];
+
+              if (actionType && validActions.includes(actionType)) {
                 await this.historyService.create({
                   actionType: actionType,
                   itemType: 'assets',
@@ -2115,7 +2123,9 @@ export class ProductsService {
             );
 
             // Registrar return
-            if (actionType) {
+            const validActions = ['assign', 'reassign', 'relocate', 'return'];
+
+            if (actionType && validActions.includes(actionType)) {
               await this.historyService.create({
                 actionType: actionType,
                 itemType: 'assets',
