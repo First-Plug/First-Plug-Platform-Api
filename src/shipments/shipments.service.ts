@@ -85,7 +85,7 @@ export class ShipmentsService {
     };
   }
 
-  private getShipmentModel(tenantConnection): Model<ShipmentDocument> {
+  public getShipmentModel(tenantConnection): Model<ShipmentDocument> {
     if (tenantConnection.models.Shipment) {
       return tenantConnection.models.Shipment;
     }

@@ -626,52 +626,79 @@ export class ProductsService {
 
     const allProducts = [...productsFromRepository, ...productsFromMembers];
 
-    const productsWithFilteredAttributes = allProducts.map((product) => {
-      const {
-        _id,
-        category,
-        name,
-        attributes,
-        status,
-        acquisitionDate,
-        assignedEmail,
-        assignedMember,
-        deleteAt,
-        isDeleted,
-        lastAssigned,
-        location,
-        recoverable,
-        serialNumber,
-        price,
-        productCondition,
-        additionalInfo,
-      } = product;
-      const filteredAttributes = attributes.filter(
-        (attribute: Attribute) =>
-          attribute.key !== 'keyboardLanguage' && attribute.key !== 'gpu',
-      );
+    const productsWithFilteredAttributes = await Promise.all(
+      allProducts.map(async (product) => {
+        const {
+          _id,
+          category,
+          name,
+          attributes,
+          status,
+          acquisitionDate,
+          assignedEmail,
+          assignedMember,
+          deleteAt,
+          isDeleted,
+          lastAssigned,
+          location,
+          recoverable,
+          serialNumber,
+          price,
+          productCondition,
+          additionalInfo,
+          activeShipment,
+        } = product;
+        const filteredAttributes = attributes.filter(
+          (attribute: Attribute) =>
+            attribute.key !== 'keyboardLanguage' && attribute.key !== 'gpu',
+        );
 
-      return {
-        _id,
-        category,
-        name,
-        attributes,
-        status,
-        acquisitionDate,
-        assignedEmail,
-        assignedMember,
-        deleteAt,
-        isDeleted,
-        lastAssigned,
-        location,
-        recoverable,
-        serialNumber,
-        filteredAttributes,
-        price,
-        productCondition,
-        additionalInfo,
-      };
-    });
+        let shipmentOrigin: string | null = null;
+        let shipmentDestination: string | null = null;
+
+        if (activeShipment) {
+          const tenantConnection = this.productRepository.db;
+          const ShipmentModel =
+            this.shipmentsService.getShipmentModel(tenantConnection);
+
+          const shipment = await ShipmentModel.findOne({
+            products: _id,
+            shipment_status: {
+              $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
+            },
+            isDeleted: { $ne: true },
+          }).lean();
+
+          if (shipment) {
+            shipmentOrigin = shipment.origin;
+            shipmentDestination = shipment.destination;
+          }
+        }
+
+        return {
+          _id,
+          category,
+          name,
+          attributes,
+          status,
+          acquisitionDate,
+          assignedEmail,
+          assignedMember,
+          deleteAt,
+          isDeleted,
+          lastAssigned,
+          location,
+          recoverable,
+          serialNumber,
+          filteredAttributes,
+          price,
+          productCondition,
+          additionalInfo,
+          shipmentOrigin,
+          shipmentDestination,
+        };
+      }),
+    );
 
     const groupedProducts = productsWithFilteredAttributes.reduce(
       (acc, product) => {
