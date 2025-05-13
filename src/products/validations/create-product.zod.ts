@@ -178,17 +178,17 @@ export const ProductSchemaZod = z
       //   }
 
       // Validación de condiciones de producto para ubicaciones específicas
-      if (
-        ['Employee', 'FP warehouse', 'Our office'].includes(data.location) &&
-        !['Optimal', 'Defective'].includes(data.productCondition)
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message:
-            'Product condition must be Optimal or Defective for the selected location.',
-          path: ['productCondition'],
-        });
-      }
+      //     if (
+      //       ['Employee', 'FP warehouse', 'Our office'].includes(data.location) &&
+      //       !['Optimal', 'Defective'].includes(data.productCondition)
+      //     ) {
+      //       ctx.addIssue({
+      //         code: z.ZodIssueCode.custom,
+      //         message:
+      //           'Product condition must be Optimal or Defective for the selected location.',
+      //         path: ['productCondition'],
+      //       });
+      //     }
     }
   })
   .refine(
