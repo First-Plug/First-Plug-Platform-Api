@@ -655,6 +655,7 @@ export class ProductsService {
 
         let shipmentOrigin: string | null = null;
         let shipmentDestination: string | null = null;
+        let shipmentId: string | null = null;
 
         if (activeShipment) {
           const tenantConnection = this.productRepository.db;
@@ -672,6 +673,7 @@ export class ProductsService {
           if (shipment) {
             shipmentOrigin = shipment.origin;
             shipmentDestination = shipment.destination;
+            shipmentId = shipment._id.toString();
           }
         }
 
@@ -696,6 +698,7 @@ export class ProductsService {
           additionalInfo,
           shipmentOrigin,
           shipmentDestination,
+          shipmentId,
         };
       }),
     );

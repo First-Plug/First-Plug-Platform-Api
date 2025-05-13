@@ -59,6 +59,31 @@ export class ShipmentsService {
     private readonly historyService: HistoryService,
   ) {}
 
+  async findShipmentPage(
+    shipmentId: string,
+    size: number,
+    tenantId: string,
+  ): Promise<{ page: number }> {
+    await new Promise((resolve) => process.nextTick(resolve));
+
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantId);
+    const ShipmentModel = this.getShipmentModel(connection);
+
+    const shipment = await ShipmentModel.findById(shipmentId).exec();
+    if (!shipment) {
+      throw new NotFoundException(`Shipment with ID ${shipmentId} not found`);
+    }
+
+    const position = await ShipmentModel.countDocuments({
+      _id: { $gt: shipment._id },
+    }).exec();
+
+    const page = Math.floor(position / size) + 1;
+
+    return { page };
+  }
+
   async findAll(page: number, size: number, tenantId: string) {
     await new Promise((resolve) => process.nextTick(resolve));
     const skip = (page - 1) * size;

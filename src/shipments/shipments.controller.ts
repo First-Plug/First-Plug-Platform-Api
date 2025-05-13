@@ -7,6 +7,7 @@ import {
   Get,
   Request,
   Body,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { ShipmentsService } from './shipments.service';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
@@ -105,5 +106,15 @@ export class ShipmentsController {
     }
 
     return shipments;
+  }
+
+  @Get('find-page/:shipmentId')
+  async findShipmentPage(
+    @Param('shipmentId') shipmentId: string,
+    @Query('size', ParseIntPipe) size: number,
+    @Request() req: any,
+  ) {
+    const tenantId = req.user.tenantName;
+    return this.shipmentsService.findShipmentPage(shipmentId, size, tenantId);
   }
 }
