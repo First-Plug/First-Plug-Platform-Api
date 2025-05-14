@@ -10,7 +10,7 @@ import {
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { ClientSession, Model, ObjectId, Schema } from 'mongoose';
-import { MemberDocument } from './schemas/member.schema';
+import { MemberDocument, MemberSchema } from './schemas/member.schema';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { CreateProductDto } from 'src/products/dto';
 import { Team } from 'src/teams/schemas/team.schema';
@@ -689,7 +689,13 @@ export class MembersService {
   }
 
   async softDeleteMember(id: ObjectId, tenantName) {
-    const member = await this.findById(id, tenantName);
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const MemberModel =
+      connection.models.Member ||
+      connection.model('Member', MemberSchema, 'members');
+
+    const member = await MemberModel.findById(id);
 
     if (!member) {
       throw new NotFoundException(`Member with id "${id}" not found`);
@@ -717,11 +723,7 @@ export class MembersService {
       });
     }
 
-    member.$isDeleted(true);
-    await member.save();
-
-    await this.memberRepository.softDelete({ _id: id });
-
+    await (MemberModel as any).softDelete({ _id: id });
     return member;
   }
 
