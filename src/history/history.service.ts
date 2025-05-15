@@ -17,6 +17,13 @@ export class HistoryService {
   ) {}
 
   async create(createHistoryDto: CreateHistoryDto) {
+    if (
+      createHistoryDto.itemType === 'assets' &&
+      createHistoryDto.actionType === 'offboarding'
+    ) {
+      console.log('🟡 Skipping offboarding history creation');
+      return null;
+    }
     return this.historyRepository.create(createHistoryDto);
   }
 

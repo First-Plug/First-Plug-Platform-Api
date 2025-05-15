@@ -1098,7 +1098,11 @@ export class ProductsService {
       { session, runValidators: true, new: true, omitUndefined: true },
     );
 
-    if (updatedFields.fp_shipment === true && tenantName) {
+    if (
+      updatedFields.fp_shipment === true &&
+      product.activeShipment === true &&
+      tenantName
+    ) {
       this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
     }
     return updatedFields;
@@ -1188,7 +1192,11 @@ export class ProductsService {
       .findByIdAndDelete(product._id)
       .session(session);
 
-    if (updateProductDto.fp_shipment === true && tenantName) {
+    if (
+      updateProductDto.fp_shipment === true &&
+      product.activeShipment === true &&
+      tenantName
+    ) {
       this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
     }
   }
@@ -1244,7 +1252,11 @@ export class ProductsService {
       session,
     });
 
-    if (updateProductDto.fp_shipment === true && tenantName) {
+    if (
+      updateProductDto.fp_shipment === true &&
+      product.activeShipment === true &&
+      tenantName
+    ) {
       this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
     }
 
@@ -1296,7 +1308,11 @@ export class ProductsService {
       }
       console.log('🧪 Campos actualizados en producto:', updatedFields);
     }
-    if (updatedFields.fp_shipment === true && tenantName) {
+    if (
+      updatedFields.fp_shipment === true &&
+      product.activeShipment === true &&
+      tenantName
+    ) {
       this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
     }
   }
@@ -1412,7 +1428,11 @@ export class ProductsService {
           productUpdated.fp_shipment,
         );
 
-        if (productUpdated.fp_shipment === true) {
+        if (
+          productUpdated.fp_shipment === true &&
+          tenantName &&
+          product.activeShipment === true
+        ) {
           console.log('🔔 Emitiendo evento para producto con fp_shipment=true');
           this.emitProductUpdatedEvent(
             productUpdated._id.toString(),
@@ -1439,7 +1459,11 @@ export class ProductsService {
             productUpdated.fp_shipment,
           );
 
-          if (productUpdated.fp_shipment === true) {
+          if (
+            productUpdated.fp_shipment === true &&
+            tenantName &&
+            product.activeShipment === true
+          ) {
             console.log(
               '🔔 Emitiendo evento para producto con fp_shipment=true',
             );
@@ -1564,9 +1588,8 @@ export class ProductsService {
     );
 
     product.status = newStatus;
-    console.log('[DEBUG] updateDto.status before overwrite:', updateDto.status);
     updateDto.status = newStatus;
-    console.log('[DEBUG] updateDto.status after overwrite:', updateDto.status);
+
     await product.save({ session });
 
     const shipment = await this.shipmentsService.findOrCreateShipment(
@@ -1585,8 +1608,6 @@ export class ProductsService {
       console.error('❌ Failed to create shipment or shipment has no ID');
       return null;
     }
-
-    console.log('✅ Shipment created with ID:', shipment._id.toString());
 
     product.activeShipment = true;
     product.fp_shipment = true;
@@ -1608,16 +1629,7 @@ export class ProductsService {
           `❌ Verification failed: Shipment ${shipmentId} not found in database`,
         );
       } else {
-        console.log(
-          `✅ Verification passed: Shipment ${shipmentId} found in database`,
-        );
-
-        const refreshedProduct = await this.productRepository.findById(
-          product._id,
-        );
-        console.log(
-          `📋 Product status before snapshot creation: ${refreshedProduct?.status}`,
-        );
+        await this.productRepository.findById(product._id);
       }
       return shipment;
     } catch (error) {
@@ -2169,12 +2181,16 @@ export class ProductsService {
             updateProductDto.fp_shipment,
           );
 
-          if (updateProductDto.fp_shipment === true) {
-            console.log(
-              '🔔 Emitiendo evento para producto con fp_shipment=true',
-            );
-            this.emitProductUpdatedEvent(id.toString(), tenantName);
-          }
+          // if (
+          //   updateProductDto.fp_shipment === true &&
+          //   tenantName &&
+          //   memberProduct.product.activeShipment === true
+          // ) {
+          //   console.log(
+          //     '🔔 Emitiendo evento para producto con fp_shipment=true',
+          //   );
+          //   this.emitProductUpdatedEvent(id.toString(), tenantName);
+          // }
           await session.commitTransaction();
           session.endSession();
           console.log('Final shipment:', finalShipment);

@@ -1711,7 +1711,7 @@ export class ShipmentsService {
     productId: string,
     tenantName: string,
   ): Promise<void> {
-    console.log(`🔄 Checking if product ${productId} needs snapshot updates`);
+  
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
@@ -1729,21 +1729,17 @@ export class ShipmentsService {
     if (product) {
       isActiveShipment = product.activeShipment === true;
       productData = product;
-      console.log(`✅ Producto encontrado en Products collection`);
     } else {
-      console.log('📥 Buscando producto en colección Members');
       const member = await MemberModel.findOne({
         'products._id': new Types.ObjectId(productId),
       });
       if (member) {
-        console.log('❌ No se encontró el miembro');
         const memberProduct = member.products.find(
           (p) => p._id?.toString() === productId,
         );
         if (memberProduct) {
           isActiveShipment = memberProduct.activeShipment === true;
           productData = memberProduct;
-          console.log(`✅ Producto encontrado en Member collection`);
         }
       }
     }
@@ -1759,10 +1755,6 @@ export class ShipmentsService {
       console.log(`❌ Product data not found for ${productId}`);
       return;
     }
-
-    console.log(
-      `✅ Product ${productId} has activeShipment flag, proceeding with snapshot updates`,
-    );
 
     const ShipmentModel =
       connection.models.Shipment ||
@@ -1798,32 +1790,62 @@ export class ShipmentsService {
     };
 
     for (const shipment of shipments) {
-      try {
-        const snapshotIndex = shipment.snapshots?.findIndex(
-          (s) => s._id.toString() === productId,
+      const snapshotIndex = shipment.snapshots?.findIndex(
+        (s) => s._id.toString() === productId,
+      );
+
+      if (snapshotIndex !== undefined && snapshotIndex >= 0) {
+        const existingSnapshot = shipment.snapshots[snapshotIndex];
+        const hasChanges = this.hasSnapshotChanged(
+          existingSnapshot,
+          updatedSnapshot,
         );
 
-        if (
-          snapshotIndex !== undefined &&
-          snapshotIndex >= 0 &&
-          shipment.snapshots
-        ) {
+        if (hasChanges) {
           shipment.snapshots[snapshotIndex] = updatedSnapshot;
           await shipment.save();
-        } else if (shipment.snapshots) {
-          shipment.snapshots.push(updatedSnapshot);
-          await shipment.save();
         } else {
-          shipment.snapshots = [updatedSnapshot];
-          await shipment.save();
+          console.log(
+            `🔁 No snapshot changes for product ${productId} in shipment ${shipment._id}`,
+          );
         }
-      } catch (error) {
-        console.error(
-          `❌ Error updating snapshot for shipment ${shipment._id}:`,
-          error,
+      } else {
+        await shipment.populate('snapshots');
+        const alreadyExists = shipment.snapshots.some(
+          (s) => s._id.toString() === productId,
         );
+        if (!alreadyExists) {
+          console.log(
+            `➕ Pushing new snapshot for product ${productId} in shipment ${shipment._id}`,
+          );
+          if (!alreadyExists) {
+            shipment.snapshots.push(updatedSnapshot);
+            await shipment.save();
+          }
+        } else {
+          console.log(
+            `⚠️ Snapshot already exists for product ${productId} in shipment ${shipment._id}, skipping push`,
+          );
+        }
       }
     }
+  }
+
+  private hasSnapshotChanged(oldSnapshot: any, newSnapshot: any): boolean {
+    const keysToCheck = [
+      'assignedEmail',
+      'assignedMember',
+      'location',
+      'status',
+      'serialNumber',
+      'productCondition',
+      'attributes',
+    ];
+
+    return keysToCheck.some(
+      (key) =>
+        JSON.stringify(oldSnapshot[key]) !== JSON.stringify(newSnapshot[key]),
+    );
   }
 
   private async updateShipmentOnAddressComplete(
