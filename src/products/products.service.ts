@@ -1081,7 +1081,7 @@ export class ProductsService {
     session: any,
     product: ProductDocument,
     updateProductDto: UpdateProductDto,
-    tenantName: string,
+    // tenantName: string,
   ) {
     const updatedFields = this.getUpdatedFields(product, updateProductDto);
 
@@ -1098,13 +1098,13 @@ export class ProductsService {
       { session, runValidators: true, new: true, omitUndefined: true },
     );
 
-    if (
-      updatedFields.fp_shipment === true &&
-      product.activeShipment === true &&
-      tenantName
-    ) {
-      this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
-    }
+    // if (
+    //   updatedFields.fp_shipment === true &&
+    //   product.activeShipment === true &&
+    //   tenantName
+    // ) {
+    //   this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
+    // }
     return updatedFields;
   }
 
@@ -1134,7 +1134,7 @@ export class ProductsService {
     newMember: MemberDocument,
     updateProductDto: UpdateProductDto,
     lastAssigned: string,
-    tenantName?: string,
+    // tenantName?: string,
   ) {
     // Eliminar el producto del miembro anterior
     if (product.assignedEmail) {
@@ -1192,13 +1192,13 @@ export class ProductsService {
       .findByIdAndDelete(product._id)
       .session(session);
 
-    if (
-      updateProductDto.fp_shipment === true &&
-      product.activeShipment === true &&
-      tenantName
-    ) {
-      this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
-    }
+    // if (
+    //   updateProductDto.fp_shipment === true &&
+    //   product.activeShipment === true &&
+    //   tenantName
+    // ) {
+    //   this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
+    // }
   }
 
   // Metodo para mover un producto de un miembro a la colección de productos
@@ -1207,7 +1207,7 @@ export class ProductsService {
     product: ProductDocument,
     member: MemberDocument,
     updateProductDto: UpdateProductDto,
-    tenantName?: string,
+    // tenantName?: string,
   ) {
     const productIndex = member.products.findIndex(
       (prod) => prod._id!.toString() === product._id!.toString(),
@@ -1252,13 +1252,13 @@ export class ProductsService {
       session,
     });
 
-    if (
-      updateProductDto.fp_shipment === true &&
-      product.activeShipment === true &&
-      tenantName
-    ) {
-      this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
-    }
+    // if (
+    //   updateProductDto.fp_shipment === true &&
+    //   product.activeShipment === true &&
+    //   tenantName
+    // ) {
+    //   this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
+    // }
 
     return createdProducts;
   }
@@ -1280,7 +1280,7 @@ export class ProductsService {
     updateProductDto: UpdateProductDto,
     currentLocation: 'products' | 'members',
     member?: MemberDocument,
-    tenantName?: string,
+    // tenantName?: string,
   ) {
     const updatedFields = this.getUpdatedFields(product, updateProductDto);
     updatedFields.status = updateProductDto.status ?? product.status;
@@ -1308,13 +1308,13 @@ export class ProductsService {
       }
       console.log('🧪 Campos actualizados en producto:', updatedFields);
     }
-    if (
-      updatedFields.fp_shipment === true &&
-      product.activeShipment === true &&
-      tenantName
-    ) {
-      this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
-    }
+    // if (
+    //   updatedFields.fp_shipment === true &&
+    //   product.activeShipment === true &&
+    //   tenantName
+    // ) {
+    //   this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
+    // }
   }
 
   async updateEntity(
@@ -1428,17 +1428,17 @@ export class ProductsService {
           productUpdated.fp_shipment,
         );
 
-        if (
-          productUpdated.fp_shipment === true &&
-          tenantName &&
-          product.activeShipment === true
-        ) {
-          console.log('🔔 Emitiendo evento para producto con fp_shipment=true');
-          this.emitProductUpdatedEvent(
-            productUpdated._id.toString(),
-            tenantName,
-          );
-        }
+        // if (
+        //   productUpdated.fp_shipment === true &&
+        //   tenantName &&
+        //   product.activeShipment === true
+        // ) {
+        //   console.log('🔔 Emitiendo evento para producto con fp_shipment=true');
+        //   this.emitProductUpdatedEvent(
+        //     productUpdated._id.toString(),
+        //     tenantName,
+        //   );
+        // }
       } else if (currentLocation === 'members' && member) {
         const productIndex = member.products.findIndex(
           (prod) => prod._id!.toString() === product._id!.toString(),
@@ -1459,19 +1459,19 @@ export class ProductsService {
             productUpdated.fp_shipment,
           );
 
-          if (
-            productUpdated.fp_shipment === true &&
-            tenantName &&
-            product.activeShipment === true
-          ) {
-            console.log(
-              '🔔 Emitiendo evento para producto con fp_shipment=true',
-            );
-            this.emitProductUpdatedEvent(
-              productUpdated._id.toString(),
-              tenantName,
-            );
-          }
+          // if (
+          //   productUpdated.fp_shipment === true &&
+          //   tenantName &&
+          //   product.activeShipment === true
+          // ) {
+          //   console.log(
+          //     '🔔 Emitiendo evento para producto con fp_shipment=true',
+          //   );
+          //   this.emitProductUpdatedEvent(
+          //     productUpdated._id.toString(),
+          //     tenantName,
+          //   );
+          // }
         }
       }
 
@@ -1575,23 +1575,6 @@ export class ProductsService {
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
 
-    const newStatus = await this.determineProductStatus(
-      {
-        fp_shipment: true,
-        location: updateDto.location || product.location,
-        assignedEmail: updateDto.assignedEmail || product.assignedEmail,
-        productCondition:
-          updateDto.productCondition || product.productCondition,
-      },
-      tenantName,
-      actionType,
-    );
-
-    product.status = newStatus;
-    updateDto.status = newStatus;
-
-    await product.save({ session });
-
     const shipment = await this.shipmentsService.findOrCreateShipment(
       product._id!.toString(),
       actionType,
@@ -1618,24 +1601,38 @@ export class ProductsService {
       session.startTransaction();
     }
 
-    const shipmentId = shipment._id.toString();
+    // shipment._id.toString();
 
-    try {
-      const ShipmentModel = connection.model('Shipment');
+    const newStatus =
+      shipment.shipment_status === 'On Hold - Missing Data'
+        ? 'In Transit - Missing Data'
+        : 'In Transit';
 
-      const verifyShipment = await ShipmentModel.findById(shipmentId);
-      if (!verifyShipment) {
-        console.error(
-          `❌ Verification failed: Shipment ${shipmentId} not found in database`,
-        );
-      } else {
-        await this.productRepository.findById(product._id);
-      }
-      return shipment;
-    } catch (error) {
-      return null;
-      console.error('❌ Error creating snapshots:', error, error.stack);
-    }
+    product.status = newStatus;
+    updateDto.status = newStatus;
+
+    await product.save({ session });
+    console.log('📸 Creando snapshot con status:', product.status);
+    await this.shipmentsService.createSnapshots(shipment, connection, [
+      product,
+    ]);
+    // if (
+    //   product.fp_shipment === true &&
+    //   product.activeShipment === true &&
+    //   tenantName
+    // ) {
+    //   console.log(
+    //     '🔔 Emitiendo evento desde maybeCreateShipmentAndUpdateStatus',
+    //   );
+    //   this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
+    // }
+    // console.log('📸 Generando snapshot de producto...');
+
+    // await this.shipmentsService.createSnapshots(shipment, connection, [
+    //   product,
+    // ]);
+
+    return shipment;
   }
 
   async update(
@@ -1782,7 +1779,7 @@ export class ProductsService {
                 ...updateProductDto,
                 recoverable: isRecoverable,
               },
-              tenantName,
+              // tenantName,
             );
 
             if (actionType) {
@@ -1836,7 +1833,7 @@ export class ProductsService {
               { ...updateProductDto, recoverable: isRecoverable },
               'products',
               undefined,
-              tenantName,
+              // tenantName,
             );
           }
         } else {
@@ -1902,7 +1899,7 @@ export class ProductsService {
                   ...fixedUpdateDto,
                 },
                 product.assignedEmail || '',
-                tenantName,
+                // tenantName,
               );
 
               // Registrar reassign & assign
@@ -1970,7 +1967,7 @@ export class ProductsService {
               { ...updateProductDto, recoverable: isRecoverable },
               'products',
               undefined,
-              tenantName,
+              // tenantName,
             );
           }
         }
@@ -2068,7 +2065,7 @@ export class ProductsService {
                 newMember,
                 { ...updateProductDto, recoverable: isRecoverable },
                 member.email,
-                tenantName,
+                // tenantName,
               );
 
               // Registrar relocate
@@ -2123,7 +2120,7 @@ export class ProductsService {
               memberProduct.product as ProductDocument,
               { ...updateProductDto, recoverable: isRecoverable },
               member,
-              tenantName,
+              // tenantName,
             );
 
             // Registrar return
@@ -2145,7 +2142,7 @@ export class ProductsService {
               { ...updateProductDto, recoverable: isRecoverable },
               'members',
               member,
-              tenantName,
+              // tenantName,
             );
 
             finalShipment = await this.maybeCreateShipmentAndUpdateStatus(
@@ -2216,7 +2213,7 @@ export class ProductsService {
     product: ProductDocument,
     updateProductDto: UpdateProductDto,
     currentMember?: MemberDocument,
-    tenantName?: string,
+    // tenantName?: string,
   ) {
     if (currentMember) {
       return await this.moveToProductsCollection(
@@ -2224,7 +2221,7 @@ export class ProductsService {
         product,
         currentMember,
         updateProductDto,
-        tenantName,
+        // tenantName,
       );
     } else {
       await this.updateProductAttributes(
@@ -2233,7 +2230,7 @@ export class ProductsService {
         updateProductDto,
         'products',
         undefined,
-        tenantName,
+        // tenantName,
       );
     }
   }

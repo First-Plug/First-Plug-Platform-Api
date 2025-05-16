@@ -1552,27 +1552,26 @@ export class ShipmentsService {
             contactName: fullName,
           };
 
-          if (shipment.origin === fullName) {
-            const desirableDate = shipment.originDetails?.desirableDate || '';
+          const desirableDateOrigin =
+            shipment.originDetails?.desirableDate || '';
+          const desirableDateDest =
+            shipment.destinationDetails?.desirableDate || '';
 
-            await ShipmentModel.updateOne(
+          if (shipment.origin === fullName) {
+            const updatedShipment = await ShipmentModel.findOneAndUpdate(
               { _id: shipment._id },
               {
                 $set: {
                   originDetails: {
                     ...memberDetails,
-                    desirableDate,
+                    desirableDate: desirableDateOrigin,
                   },
                 },
               },
-              { session },
+              { session, new: true },
             );
 
-            shipment.originDetails = {
-              ...memberDetails,
-              desirableDate,
-            };
-
+            shipment.originDetails = updatedShipment?.originDetails;
             updated = true;
             this.logger.debug(
               `Updated origin details for shipment ${shipment._id}`,
@@ -1580,27 +1579,20 @@ export class ShipmentsService {
           }
 
           if (shipment.destination === fullName) {
-            const desirableDate =
-              shipment.destinationDetails?.desirableDate || '';
-
-            await ShipmentModel.updateOne(
+            const updatedShipment = await ShipmentModel.findOneAndUpdate(
               { _id: shipment._id },
               {
                 $set: {
                   destinationDetails: {
                     ...memberDetails,
-                    desirableDate,
+                    desirableDate: desirableDateDest,
                   },
                 },
               },
-              { session },
+              { session, new: true },
             );
 
-            shipment.destinationDetails = {
-              ...memberDetails,
-              desirableDate,
-            };
-
+            shipment.destinationDetails = updatedShipment?.destinationDetails;
             updated = true;
             this.logger.debug(
               `Updated destination details for shipment ${shipment._id}`,
@@ -1633,7 +1625,12 @@ export class ShipmentsService {
   public async createSnapshots(
     shipment: ShipmentDocument,
     connection: mongoose.Connection,
+    providedProducts?: ProductDocument[],
   ) {
+    console.log(
+      `📸 createSnapshots() called for shipment ${shipment._id} with products:`,
+      shipment.products.map((p) => p.toString()),
+    );
     const ProductModel =
       connection.models.Product ||
       connection.model('Product', ProductSchema, 'products');
@@ -1642,76 +1639,86 @@ export class ShipmentsService {
       connection.models.Member ||
       connection.model('Member', MemberSchema, 'members');
 
-    const productIds = shipment.products.map(
-      (id) => new Types.ObjectId(id.toString()),
-    );
+    let products = providedProducts;
 
-    const products: ProductDocument[] = await ProductModel.find({
-      _id: { $in: productIds },
-    });
-
-    if (products.length < productIds.length) {
-      const foundIds = new Set(products.map((p) => p._id?.toString()));
-      const remainingIds = productIds.filter(
-        (id) => !foundIds.has(id.toString()),
+    if (!products) {
+      const productIds = shipment.products.map(
+        (id) => new Types.ObjectId(id.toString()),
       );
 
-      const members = await MemberModel.find({
-        'products._id': { $in: remainingIds },
+      products = await ProductModel.find({
+        _id: { $in: productIds },
       });
 
-      members.forEach((member) => {
-        member.products.forEach((p) => {
-          if (p._id && remainingIds.some((id) => id.equals(p._id))) {
-            const enriched = {
-              ...(p.toObject?.() ?? p),
-              assignedEmail: member.email,
-              assignedMember: `${member.firstName} ${member.lastName}`,
-            };
-            products.push(enriched as unknown as ProductDocument);
-          }
+      if (products.length < productIds.length) {
+        const foundIds = new Set(products.map((p) => p._id?.toString()));
+        const remainingIds = productIds.filter(
+          (id) => !foundIds.has(id.toString()),
+        );
+
+        const members = await MemberModel.find({
+          'products._id': { $in: remainingIds },
         });
-      });
+
+        members.forEach((member) => {
+          member.products.forEach((p) => {
+            if (p._id && remainingIds.some((id) => id.equals(p._id))) {
+              const enriched = {
+                ...(p.toObject?.() ?? p),
+                assignedEmail: member.email,
+                assignedMember: `${member.firstName} ${member.lastName}`,
+              };
+              products!.push(enriched as unknown as ProductDocument);
+            }
+          });
+        });
+      }
     }
 
-    shipment.snapshots = products
-      .filter((p): p is ProductDocument & { _id: Types.ObjectId } => !!p._id)
-      .map((product) => ({
-        _id: product._id,
-        name: product.name,
-        category: product.category,
-        attributes: product.attributes,
-        status: product.status,
-        recoverable: product.recoverable,
-        serialNumber: product.serialNumber || '',
-        assignedEmail: product.assignedEmail,
-        assignedMember: product.assignedMember,
-        lastAssigned: product.lastAssigned,
-        acquisitionDate: product.acquisitionDate,
-        location: product.location,
-        price: product.price,
-        additionalInfo: product.additionalInfo,
-        productCondition: product.productCondition,
-        fp_shipment: product.fp_shipment,
-      }));
+    shipment.snapshots = shipment.snapshots || [];
 
-    const uniqueSnapshots = new Map<
-      string,
-      (typeof shipment.snapshots)[number]
-    >();
+    const existingSnapshotMap = new Map(
+      shipment.snapshots.map((s) => [s._id.toString(), s]),
+    );
 
-    for (const snapshot of shipment.snapshots) {
-      uniqueSnapshots.set(snapshot._id.toString(), snapshot);
+    for (const product of products) {
+      if (!product._id) continue;
+      const idStr = product._id.toString();
+
+      const newSnapshot = this.buildSnapshot(
+        product as ProductDocument & { _id: Types.ObjectId },
+      );
+
+      const existingSnapshot = existingSnapshotMap.get(idStr);
+
+      if (!existingSnapshot) {
+        shipment.snapshots.push(newSnapshot);
+      } else {
+        const hasChanged = this.hasSnapshotChanged(
+          existingSnapshot,
+          newSnapshot,
+        );
+        if (hasChanged) {
+          Object.assign(existingSnapshot, newSnapshot);
+          console.log(
+            `✏️ Snapshot actualizado para producto ${product._id}`,
+            newSnapshot,
+          );
+        } else {
+          console.log(
+            `🔁 No hay cambios en el snapshot de ${product._id}, se mantiene igual.`,
+          );
+        }
+      }
     }
 
-    shipment.snapshots = Array.from(uniqueSnapshots.values());
+    await shipment.save();
   }
 
   async updateSnapshotsForProduct(
     productId: string,
     tenantName: string,
   ): Promise<void> {
-  
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
@@ -1802,6 +1809,10 @@ export class ShipmentsService {
         );
 
         if (hasChanges) {
+          console.log(
+            `✏️ Updating snapshot for ${productId} in shipment ${shipment._id} with:`,
+            JSON.stringify(updatedSnapshot, null, 2),
+          );
           shipment.snapshots[snapshotIndex] = updatedSnapshot;
           await shipment.save();
         } else {
@@ -1819,6 +1830,11 @@ export class ShipmentsService {
             `➕ Pushing new snapshot for product ${productId} in shipment ${shipment._id}`,
           );
           if (!alreadyExists) {
+            const snapshotToPush = updatedSnapshot;
+            console.log(
+              `📦 Pushing NEW snapshot for ${productId} into shipment ${shipment._id}:`,
+              JSON.stringify(snapshotToPush, null, 2),
+            );
             shipment.snapshots.push(updatedSnapshot);
             await shipment.save();
           }
@@ -1856,6 +1872,16 @@ export class ShipmentsService {
   ) {
     try {
       const originalShipment = { ...shipment.toObject() };
+      const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
+
+      const freshShipment = await ShipmentModel.findById(shipment._id).session(
+        session,
+      );
+      if (!freshShipment) {
+        throw new NotFoundException(`Shipment ${shipment._id} not found`);
+      }
+
+      shipment = freshShipment;
 
       const orderNumber = parseInt(shipment.order_id.slice(-4));
 
@@ -1873,7 +1899,14 @@ export class ShipmentsService {
         `🔄 Generating new order ID: ${newOrderId} (was: ${shipment.order_id})`,
       );
 
-      if (newOrderId !== shipment.order_id) {
+      const hasRequiredOriginFields = originCode !== 'XX';
+      const hasRequiredDestinationFields = destinationCode !== 'XX';
+
+      if (
+        newOrderId !== shipment.order_id &&
+        hasRequiredOriginFields &&
+        hasRequiredDestinationFields
+      ) {
         await connection
           .model<ShipmentDocument>('Shipment')
           .updateOne(
@@ -1882,9 +1915,6 @@ export class ShipmentsService {
             { session },
           );
       }
-
-      const hasRequiredOriginFields = originCode !== 'XX';
-      const hasRequiredDestinationFields = destinationCode !== 'XX';
 
       let newStatus = shipment.shipment_status;
 
@@ -1967,7 +1997,11 @@ export class ShipmentsService {
           `🔄 Checking order ID: ${newOrderId} (current: ${shipment.order_id})`,
         );
 
-        if (newOrderId !== shipment.order_id) {
+        if (
+          newOrderId !== shipment.order_id &&
+          originCode !== 'XX' &&
+          destinationCode !== 'XX'
+        ) {
           await ShipmentModel.updateOne(
             { _id: shipment._id },
             { $set: { order_id: newOrderId } },
@@ -1975,6 +2009,10 @@ export class ShipmentsService {
           );
           console.log(
             `📝 Updated order_id from ${shipment.order_id} to ${newOrderId}`,
+          );
+        } else if (newOrderId !== shipment.order_id) {
+          console.log(
+            `⛔️ Skipping order_id update: missing required fields for origin or destination (codes: ${originCode} ➡ ${destinationCode})`,
           );
         }
       }
@@ -2042,8 +2080,6 @@ export class ShipmentsService {
     userId: string,
   ): Promise<void> {
     try {
-      console.log(`🔄 Updating product ${productId} status to In Transit`);
-
       const ProductModel =
         connection.models.Product || connection.model('Product', ProductSchema);
 
@@ -2067,9 +2103,6 @@ export class ShipmentsService {
               newData: product,
             },
           });
-          console.log(
-            `✅ Updated product status in Products collection: ${productId}`,
-          );
         }
         return;
       }
