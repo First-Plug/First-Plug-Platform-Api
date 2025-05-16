@@ -6,6 +6,7 @@ export const countryCodes: Record<string, string> = {
   Belize: 'BZ',
   Bolivia: 'BO',
   Brazil: 'BR',
+  Brasil: 'BR',
   Canada: 'CA',
   Chile: 'CL',
   Colombia: 'CO',
