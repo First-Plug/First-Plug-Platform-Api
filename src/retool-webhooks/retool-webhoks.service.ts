@@ -48,6 +48,7 @@ export class RetoolWebhooksService {
     this.validateStatusTransition(shipment.shipment_status, newStatus);
 
     const statusChanged = shipment.shipment_status !== newStatus;
+    const previousStatus = shipment.shipment_status;
     shipment.shipment_status = newStatus;
 
     if (statusChanged && newStatus === 'On The Way') {
@@ -55,10 +56,11 @@ export class RetoolWebhooksService {
       await this.createSnapshots(shipment, connection);
     }
 
+    // TODO: Revisar si tenia que agarrar el previous y no el nuevo
     if (statusChanged && newStatus === 'Received') {
       if (
-        shipment.shipment_status !== 'On The Way' &&
-        shipment.shipment_status !== 'In Preparation'
+        previousStatus !== 'On The Way' &&
+        previousStatus !== 'In Preparation'
       ) {
         throw new BadRequestException(
           'Solo se puede marcar como Received un shipment que estaba In Preparation o On The Way',
@@ -96,8 +98,9 @@ export class RetoolWebhooksService {
         'Solo se puede cancelar un shipment con datos incompletos',
       );
     }
-
-    if (currentStatus === 'On The Way' || currentStatus === 'Received') {
+    // TODO: Revisar si se puede quitar el On The Way
+    // currentStatus === 'On The Way' ||
+    if (currentStatus === 'Received') {
       throw new BadRequestException(
         'No se puede modificar un shipment ya enviado o recibido',
       );

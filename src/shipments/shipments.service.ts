@@ -1114,7 +1114,9 @@ export class ShipmentsService {
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
     const ProductModel = this.getProductModel(connection);
-    const MemberModel = connection.model<MemberDocument>('Member');
+    const MemberModel =
+      connection.models.Member ||
+      connection.model('Member', MemberSchema, 'members');
 
     const product = await ProductModel.findById(productId);
 
@@ -1131,7 +1133,9 @@ export class ShipmentsService {
         origin,
       );
       await product.save();
-      console.log(`✅ Product updated (Products collection): ${product._id}`);
+      console.log(
+        `✅ Producto actualizado (colección Products): ${product._id}`,
+      );
       return;
     }
 
@@ -1163,7 +1167,7 @@ export class ShipmentsService {
             },
           },
         );
-        console.log(`✅ Product updated (Member collection): ${productId}`);
+        console.log(`✅ Producto actualizado (colección Member): ${productId}`);
       }
     }
   }
