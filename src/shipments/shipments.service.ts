@@ -42,6 +42,7 @@ import { OrderNumberGenerator } from 'src/shipments/helpers/order-number.util';
 import { AddressData } from 'src/common/events/tenant-address-update.event';
 import { UpdateShipmentDto } from 'src/shipments/dto/update.shipment.dto';
 import { HistoryService } from 'src/history/history.service';
+import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
 
 @Injectable()
 export class ShipmentsService {
@@ -133,14 +134,7 @@ export class ShipmentsService {
     if (locationName === 'FP warehouse') return 'FP';
     if (locationName === 'Our office') return 'OO';
 
-    const hasRequiredFields = !!(
-      locationDetails?.address &&
-      locationDetails?.city &&
-      locationDetails?.country &&
-      locationDetails?.zipCode
-    );
-
-    return hasRequiredFields && locationDetails?.country
+    return locationDetails?.country
       ? this.getCountryCode(locationDetails.country)
       : 'XX';
   }
@@ -375,7 +369,11 @@ export class ShipmentsService {
       assignedEmail?: string;
       assignedMember?: string;
     },
-  ): Promise<ShipmentDocument> {
+  ): Promise<{
+    shipment: ShipmentDocument;
+    isConsolidated: boolean;
+    oldSnapshot?: Partial<ShipmentDocument>;
+  }> {
     const originDate =
       desirableOriginDate instanceof Date
         ? desirableOriginDate.toISOString()
@@ -452,6 +450,7 @@ export class ShipmentsService {
 
     if (existingShipment) {
       if (!existingShipment.products.includes(productObjectId)) {
+        const oldSnapshot = JSON.parse(JSON.stringify(existingShipment));
         existingShipment.products.push(productObjectId);
         existingShipment.quantity_products = existingShipment.products.length;
 
@@ -465,18 +464,22 @@ export class ShipmentsService {
             userId,
           );
         }
-
-        await this.historyService.create({
-          actionType: 'consolidate',
-          itemType: 'shipments',
-          userId: userId,
-          changes: {
-            oldData: null,
-            newData: existingShipment,
-          },
-        });
+        return {
+          shipment: existingShipment,
+          isConsolidated: true,
+          oldSnapshot,
+        };
+        // await this.historyService.create({
+        //   actionType: 'consolidate',
+        //   itemType: 'shipments',
+        //   userId: userId,
+        //   changes: {
+        //     oldData: null,
+        //     newData: existingShipment,
+        //   },
+        // });
       }
-      return existingShipment;
+      return { shipment: existingShipment, isConsolidated: true };
     }
 
     const destinationComplete = await this.productsService.isAddressComplete(
@@ -549,15 +552,15 @@ export class ShipmentsService {
       session ?? undefined,
     );
 
-    await this.historyService.create({
-      actionType: 'create',
-      itemType: 'shipments',
-      userId: userId,
-      changes: {
-        oldData: null,
-        newData: newShipment,
-      },
-    });
+    // await this.historyService.create({
+    //   actionType: 'create',
+    //   itemType: 'shipments',
+    //   userId: userId,
+    //   changes: {
+    //     oldData: null,
+    //     newData: newShipment,
+    //   },
+    // });
     await newShipment.save();
     if (shipmentStatus === 'In Preparation' && session) {
       await this.updateProductStatusToInTransit(
@@ -567,7 +570,7 @@ export class ShipmentsService {
         userId,
       );
     }
-    return newShipment;
+    return { shipment: newShipment, isConsolidated: false };
   }
 
   async getProductByIdIncludingMembers(
@@ -697,25 +700,21 @@ export class ShipmentsService {
       shipment.isDeleted = true;
       await shipment.save();
 
-      await this.historyService.create({
-        actionType: 'consolidate',
-        itemType: 'shipments',
-        userId: userId,
-        changes: {
-          oldData: originalConsolidable,
-          newData: consolidable,
-        },
-      });
+      await recordShipmentHistory(
+        this.historyService,
+        'consolidate',
+        userId,
+        originalConsolidable,
+        consolidable.toObject(),
+      );
 
-      await this.historyService.create({
-        actionType: 'delete',
-        itemType: 'shipments',
-        userId: userId,
-        changes: {
-          oldData: originalShipment,
-          newData: { ...shipment.toObject(), isDeleted: true },
-        },
-      });
+      await recordShipmentHistory(
+        this.historyService,
+        'delete',
+        userId,
+        originalShipment,
+        { ...shipment.toObject(), isDeleted: true },
+      );
 
       return {
         message: `The pickup and/or delivery date has been successfully updated. This product is now consolidated into Shipment ID: ${consolidable.order_id}`,
@@ -735,15 +734,13 @@ export class ShipmentsService {
 
       await shipment.save();
 
-      await this.historyService.create({
-        actionType: 'update',
-        itemType: 'shipments',
-        userId: userId,
-        changes: {
-          oldData: originalShipment,
-          newData: shipment,
-        },
-      });
+      await recordShipmentHistory(
+        this.historyService,
+        'update',
+        userId,
+        originalShipment,
+        shipment.toObject(),
+      );
 
       if (
         oldStatus !== shipment.shipment_status &&
@@ -845,15 +842,13 @@ export class ShipmentsService {
     await shipment.save();
     console.log('✅ Shipment cancelled');
 
-    await this.historyService.create({
-      actionType: 'cancel',
-      itemType: 'shipments',
-      userId: userId,
-      changes: {
-        oldData: originalShipment,
-        newData: shipment,
-      },
-    });
+    await recordShipmentHistory(
+      this.historyService,
+      'cancel',
+      userId,
+      originalShipment,
+      shipment.toObject(),
+    );
 
     for (const productId of shipment.products) {
       console.log('📦 Processing product:', productId.toString());

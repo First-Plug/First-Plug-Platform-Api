@@ -1578,17 +1578,18 @@ export class ProductsService {
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
 
-    const shipment = await this.shipmentsService.findOrCreateShipment(
-      product._id!.toString(),
-      actionType,
-      tenantName,
-      userId,
-      session,
-      desirableDateDestination,
-      desirableDateOrigin,
-      oldData,
-      newData,
-    );
+    const { shipment, isConsolidated, oldSnapshot } =
+      await this.shipmentsService.findOrCreateShipment(
+        product._id!.toString(),
+        actionType,
+        tenantName,
+        userId,
+        session,
+        desirableDateDestination,
+        desirableDateOrigin,
+        oldData,
+        newData,
+      );
 
     if (!shipment || !shipment._id) {
       console.error('❌ Failed to create shipment or shipment has no ID');
@@ -1619,6 +1620,17 @@ export class ProductsService {
     await this.shipmentsService.createSnapshots(shipment, connection, [
       product,
     ]);
+    const history = await this.historyService.create({
+      actionType: isConsolidated ? 'consolidate' : 'create',
+      itemType: 'shipments',
+      userId,
+      changes: {
+        oldData: isConsolidated ? oldSnapshot ?? null : null,
+        newData: shipment,
+      },
+    });
+    console.log('History created:', history);
+
     // if (
     //   product.fp_shipment === true &&
     //   product.activeShipment === true &&
