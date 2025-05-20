@@ -1617,9 +1617,9 @@ export class ProductsService {
 
     await product.save({ session });
     console.log('📸 Creando snapshot con status:', product.status);
-    await this.shipmentsService.createSnapshots(shipment, connection, [
-      product,
-    ]);
+    await this.shipmentsService.createSnapshots(shipment, connection, {
+      providedProducts: [product],
+    });
     const history = await this.historyService.create({
       actionType: isConsolidated ? 'consolidate' : 'create',
       itemType: 'shipments',
