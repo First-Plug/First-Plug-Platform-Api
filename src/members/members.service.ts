@@ -536,10 +536,14 @@ export class MembersService {
       'phone',
       'email',
     ];
-    return sensitiveFields.some(
-      (field) =>
-        updateDto[field] !== undefined && updateDto[field] !== original[field],
-    );
+    return sensitiveFields.some((field) => {
+      const oldVal = original[field] ?? '';
+      const newVal = Object.prototype.hasOwnProperty.call(updateDto, field)
+        ? updateDto[field]
+        : original[field];
+
+      return oldVal !== newVal;
+    });
   }
 
   async update(
