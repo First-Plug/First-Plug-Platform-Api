@@ -19,13 +19,15 @@ const getAddress = (
   return `${address || ''} ${apartment || ''} ${city || ''} ${state || ''} ${country || ''} ${zipCode || ''}`;
 };
 
-const formatDate = (date: string) => {
-  if (!date || isNaN(new Date(date).getTime())) return 'ASAP';
+const formatDate = (dateString: string) => {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return 'ASAP';
 
-  return new Date(date).toLocaleDateString('es-AR', {
+  return date.toLocaleDateString(undefined, {
+    day: '2-digit',
+    month: '2-digit',
     year: 'numeric',
-    month: 'long',
-    day: 'numeric',
   });
 };
 
