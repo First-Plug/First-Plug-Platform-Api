@@ -81,7 +81,7 @@ export const CreateShipmentMessageToSlack = ({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*Shipment Order ID:* ${shipment.order_id}\n*Desirable pickup date:* ${shipment.originDetails?.desirableDate || ''}\n*Desirable delivery date:* ${shipment.destinationDetails?.desirableDate || ''}\n*Quantity of products:* ${shipment.snapshots?.length || 0}`,
+        text: `*Shipment Order ID:* ${shipment.order_id}\n*Desirable pickup date:* ${formatDate(shipment.originDetails?.desirableDate || '')}\n*Desirable delivery date:* ${formatDate(shipment.destinationDetails?.desirableDate || '')}\n*Quantity of products:* ${shipment.snapshots?.length || 0}`,
       },
     });
   }
