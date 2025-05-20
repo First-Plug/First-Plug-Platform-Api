@@ -648,7 +648,7 @@ export class ShipmentsService {
       const productIds = shipment.products.map((p) => p.toString());
       console.log('🔍 Productos en el shipment a consolidar:', productIds);
 
-      const originalConsolidable = { ...consolidable.toObject() };
+      // const originalConsolidable = { ...consolidable.toObject() };
 
       const existingSnapshotIds =
         consolidable.snapshots?.map((s) => s._id.toString()) || [];
@@ -704,7 +704,7 @@ export class ShipmentsService {
         this.historyService,
         'consolidate',
         userId,
-        originalConsolidable,
+        originalShipment,
         consolidable.toObject(),
       );
 
