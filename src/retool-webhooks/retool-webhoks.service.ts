@@ -242,11 +242,18 @@ export class RetoolWebhooksService {
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
 
+    console.log(connection);
+
     const ShipmentModel =
       connection.models.Shipment ||
       connection.model('Shipment', ShipmentSchema, 'shipments');
 
+    console.log(ShipmentModel);
+
     const shipment = await ShipmentModel.findById(shipmentId);
+
+    console.log(shipment);
+
     if (!shipment) throw new NotFoundException('Shipment no encontrado');
 
     shipment.price = price;
