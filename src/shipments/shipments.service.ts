@@ -773,6 +773,13 @@ export class ShipmentsService {
       shipment,
     };
   }
+  //TODO: Nahue status
+  /* aca es el fin del update de un shipment, 
+  a esta altura tener el shipment actualizado, por lo que si las fechas cambiaron en un shipment que
+  estaba in preparation, calculo que tenes que reenviar el mensaje de slack.
+  tambien se consolida un shipment con otro cuando se cambian fechas y coincide con otro.
+  Por lo tanto tendras que avisar si el shipment estaba in preparation y ahora se le sumo un nuevo producto
+  tambien es donde se borra el shipment que se consolido con el otro */
 
   buildSnapshot(product: ProductDocument & { _id: Types.ObjectId }) {
     return {
@@ -978,6 +985,10 @@ export class ShipmentsService {
         product?.assignedEmail || embeddedProduct?.assignedEmail,
       );
     }
+    //TODO: Nahue status
+    /* este es el fin del cancel de un shipment, en este punto vas a tener 
+    el shipment cancelado con su status cancel + el status del producti actualizado + los flags de
+    active shipment en false para producto o member involucrado */
     return shipment;
   }
 
