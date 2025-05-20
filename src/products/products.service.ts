@@ -1631,6 +1631,12 @@ export class ProductsService {
     });
     console.log('History created:', history);
 
+    //TODO: Nahue status
+    /* este es el fin de todas las acciones que pasan por update de product
+    8assign, reassign, relocate, offboarding, etc) 
+    en este punto vas a tener el shipment completo con el status final de shipment y de producto 
+    + el snapshot y el history */
+
     // if (
     //   product.fp_shipment === true &&
     //   product.activeShipment === true &&
