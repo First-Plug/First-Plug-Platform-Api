@@ -757,8 +757,14 @@ export class ShipmentsService {
     }
     if (wasModified) {
       const isReady =
-        this.areShipmentDetailsComplete(shipment.originDetails) &&
-        this.areShipmentDetailsComplete(shipment.destinationDetails);
+        this.areShipmentDetailsComplete(
+          shipment.originDetails,
+          shipment.origin,
+        ) &&
+        this.areShipmentDetailsComplete(
+          shipment.destinationDetails,
+          shipment.destination,
+        );
 
       const oldStatus = shipment.shipment_status;
       shipment.shipment_status = isReady
@@ -848,10 +854,48 @@ export class ShipmentsService {
 
   private areShipmentDetailsComplete(
     details?: Record<string, string>,
+    locationName?: string,
   ): boolean {
     if (!details) return false;
-    const requiredFields = ['address', 'city', 'country', 'zipCode', 'phone'];
-    return requiredFields.every((field) => !!details[field]);
+
+    if (locationName === 'FP warehouse') return true;
+
+    if (locationName === 'Our office') {
+      const requiredFields = [
+        'address',
+        'city',
+        'state',
+        'country',
+        'zipCode',
+        'phone',
+      ];
+      const result = requiredFields.every((field) => !!details[field]);
+      if (!result) {
+        console.log('🛑 Origin (Our office) está incompleto:', {
+          missing: requiredFields.filter((f) => !details[f]),
+          details,
+        });
+      }
+      return result;
+    }
+
+    const requiredFields = [
+      'address',
+      'city',
+      'country',
+      'zipCode',
+      'phone',
+      'personalEmail',
+      'dni',
+    ];
+    const result = requiredFields.every((field) => !!details[field]);
+    if (!result) {
+      console.log('🛑 Destination (Employee) está incompleto:', {
+        missing: requiredFields.filter((f) => !details[f]),
+        details,
+      });
+    }
+    return result;
   }
 
   private getProductModel(connection: Connection): Model<ProductDocument> {
@@ -1988,59 +2032,77 @@ export class ShipmentsService {
         `🔄 Generating new order ID: ${newOrderId} (was: ${shipment.order_id})`,
       );
 
-      const hasRequiredOriginFields = originCode !== 'XX';
-      const hasRequiredDestinationFields = destinationCode !== 'XX';
+      const hasCodesForOrderId =
+        originCode !== 'XX' && destinationCode !== 'XX';
 
-      if (
-        newOrderId !== shipment.order_id &&
-        hasRequiredOriginFields &&
-        hasRequiredDestinationFields
-      ) {
-        await connection
-          .model<ShipmentDocument>('Shipment')
-          .updateOne(
-            { _id: shipment._id },
-            { $set: { order_id: newOrderId } },
-            { session },
-          );
+      // Requiere dirección, ciudad, zip, etc. para el status
+      const originComplete = this.areShipmentDetailsComplete(
+        shipment.originDetails,
+        shipment.origin,
+      );
+      const destinationComplete = this.areShipmentDetailsComplete(
+        shipment.destinationDetails,
+        shipment.destination,
+      );
+
+      console.log('🧪 Verificando condiciones para pasar a In Preparation:');
+      console.log('  shipment.shipment_status:', shipment.shipment_status);
+      console.log('  originComplete:', originComplete);
+      console.log('  destinationComplete:', destinationComplete);
+
+      // 🔁 Update order_id si corresponde
+      if (newOrderId !== shipment.order_id && hasCodesForOrderId) {
+        await ShipmentModel.updateOne(
+          { _id: shipment._id },
+          { $set: { order_id: newOrderId } },
+          { session },
+        );
+        shipment.order_id = newOrderId;
       }
 
+      // 🔁 Update status si corresponde
       let newStatus = shipment.shipment_status;
+      if (
+        shipment.shipment_status === 'On Hold - Missing Data' &&
+        originComplete &&
+        destinationComplete
+      ) {
+        newStatus = 'In Preparation';
+        console.log('📦 Shipment status actual:', shipment.shipment_status);
+        console.log('✅ Origin Complete?', originComplete);
+        console.log('✅ Destination Complete?', destinationComplete);
+        console.log('📋 Origin Details:', shipment.originDetails);
+        console.log('📋 Destination Details:', shipment.destinationDetails);
 
-      if (shipment.shipment_status === 'On Hold - Missing Data') {
-        if (hasRequiredOriginFields && hasRequiredDestinationFields) {
-          newStatus = 'In Preparation';
-
-          for (const productId of shipment.products) {
-            await this.updateProductStatusToInTransit(
-              productId.toString(),
-              connection,
-              session,
-              userId,
-            );
-          }
-          await session.commitTransaction();
-          await session.startTransaction();
-
-          await this.historyService.create({
-            actionType: 'update',
-            itemType: 'shipments',
-            userId: userId,
-            changes: {
-              oldData: originalShipment,
-              newData: { ...originalShipment, shipment_status: newStatus },
-            },
-          });
-
-          console.log('📸 Generating product snapshots...');
-          await this.createSnapshots(shipment, connection);
-        } else {
-          console.log('⚠️ Missing required address fields');
+        for (const productId of shipment.products) {
+          await this.updateProductStatusToInTransit(
+            productId.toString(),
+            connection,
+            session,
+            userId,
+          );
         }
+
+        await session.commitTransaction();
+        await session.startTransaction();
+
+        await this.historyService.create({
+          actionType: 'update',
+          itemType: 'shipments',
+          userId,
+          changes: {
+            oldData: originalShipment,
+            newData: { ...originalShipment, shipment_status: newStatus },
+          },
+        });
+
+        console.log('📸 Generating product snapshots...');
+        await this.createSnapshots(shipment, connection);
       }
 
+      // Persistir nuevo status si cambió
       if (newStatus !== shipment.shipment_status) {
-        await connection.model<ShipmentDocument>('Shipment').updateOne(
+        await ShipmentModel.updateOne(
           { _id: shipment._id },
           {
             $set: {
@@ -2069,55 +2131,53 @@ export class ShipmentsService {
     try {
       const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
 
-      if (shipment.shipment_status === 'On Hold - Missing Data') {
-        const orderNumber = parseInt(shipment.order_id.slice(-4));
+      // 🟡 Orden ID solo depende de códigos, no de campos completos
+      const orderNumber = parseInt(shipment.order_id.slice(-4));
 
-        const originCode = this.getLocationCode(
-          shipment.origin,
-          shipment.originDetails,
-        );
-        const destinationCode = this.getLocationCode(
-          shipment.destination,
-          shipment.destinationDetails,
-        );
+      const originCode = this.getLocationCode(
+        shipment.origin,
+        shipment.originDetails,
+      );
+      const destinationCode = this.getLocationCode(
+        shipment.destination,
+        shipment.destinationDetails,
+      );
 
-        const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
+      const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
+      console.log(
+        `🔄 Checking order ID: ${newOrderId} (current: ${shipment.order_id})`,
+      );
+
+      if (
+        newOrderId !== shipment.order_id &&
+        originCode !== 'XX' &&
+        destinationCode !== 'XX'
+      ) {
+        await ShipmentModel.updateOne(
+          { _id: shipment._id },
+          { $set: { order_id: newOrderId } },
+          { session },
+        );
         console.log(
-          `🔄 Checking order ID: ${newOrderId} (current: ${shipment.order_id})`,
+          `📝 Updated order_id from ${shipment.order_id} to ${newOrderId}`,
         );
-
-        if (
-          newOrderId !== shipment.order_id &&
-          originCode !== 'XX' &&
-          destinationCode !== 'XX'
-        ) {
-          await ShipmentModel.updateOne(
-            { _id: shipment._id },
-            { $set: { order_id: newOrderId } },
-            { session },
-          );
-          console.log(
-            `📝 Updated order_id from ${shipment.order_id} to ${newOrderId}`,
-          );
-        } else if (newOrderId !== shipment.order_id) {
-          console.log(
-            `⛔️ Skipping order_id update: missing required fields for origin or destination (codes: ${originCode} ➡ ${destinationCode})`,
-          );
-        }
       }
 
-      const hasRequiredOriginFields =
-        this.getLocationCode(shipment.origin, shipment.originDetails) !== 'XX';
-      const hasRequiredDestinationFields =
-        this.getLocationCode(
-          shipment.destination,
-          shipment.destinationDetails,
-        ) !== 'XX';
+      // ✅ Validar status con campos realmente completos
+      const originComplete = this.areShipmentDetailsComplete(
+        shipment.originDetails,
+        shipment.origin,
+      );
+      const destinationComplete = this.areShipmentDetailsComplete(
+        shipment.destinationDetails,
+        shipment.destination,
+      );
 
       let newStatus = shipment.shipment_status;
 
       if (shipment.shipment_status === 'On Hold - Missing Data') {
-        if (hasRequiredOriginFields && hasRequiredDestinationFields) {
+        console.log('📦 Current shipment status:', shipment.shipment_status);
+        if (originComplete && destinationComplete) {
           newStatus = 'In Preparation';
           console.log(
             '✅ All required fields present, updating status to In Preparation',
@@ -2125,7 +2185,7 @@ export class ShipmentsService {
           console.log('📸 Generating product snapshots...');
           await this.createSnapshots(shipment, connection);
         } else {
-          console.log('⚠️ Missing required address fields');
+          console.log('⚠️ Still missing required address fields');
         }
       }
 
@@ -2133,7 +2193,10 @@ export class ShipmentsService {
         await ShipmentModel.updateOne(
           { _id: shipment._id },
           {
-            $set: { shipment_status: newStatus, snapshots: shipment.snapshots },
+            $set: {
+              shipment_status: newStatus,
+              snapshots: shipment.snapshots,
+            },
           },
           { session },
         );
