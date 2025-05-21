@@ -5,6 +5,7 @@ import { History } from './schemas/history.schema';
 import { EnvConfiguration } from 'src/config';
 import { TenantSchema } from 'src/tenants/schemas/tenant.schema';
 import { Team } from 'src/teams/schemas/team.schema';
+import { isValidObjectId } from 'mongoose';
 
 @Injectable()
 export class HistoryService {
@@ -153,7 +154,10 @@ export class HistoryService {
         EnvConfiguration().database.connectionString!,
       );
       const TenantModel = this.tenantConnection.model('Tenant', TenantSchema);
-      const tenants = await TenantModel.find({ _id: { $in: userIds } }).exec();
+      const validUserIds = userIds.filter((id) => isValidObjectId(id));
+      const tenants = await TenantModel.find({
+        _id: { $in: validUserIds },
+      }).exec();
 
       await this.tenantConnection.close();
 

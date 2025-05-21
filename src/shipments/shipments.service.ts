@@ -576,19 +576,24 @@ export class ShipmentsService {
   async getProductByIdIncludingMembers(
     connection: Connection,
     productId: string,
+    session?: ClientSession,
   ): Promise<ProductDocument | null> {
     const ProductModel =
       connection.models.Product ||
       connection.model('Product', ProductSchema, 'products');
 
-    const product = await ProductModel.findById(productId);
+    const product = await ProductModel.findById(productId).session(
+      session || null,
+    );
     if (product) return product;
 
     const MemberModel =
       connection.models.Member ||
       connection.model('Member', MemberSchema, 'members');
 
-    const member = await MemberModel.findOne({ 'products._id': productId });
+    const member = await MemberModel.findOne({
+      'products._id': productId,
+    }).session(session || null);
     const memberProduct = member?.products?.find(
       (p: any) => p._id.toString() === productId,
     );
@@ -2162,9 +2167,7 @@ export class ShipmentsService {
     try {
       const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
 
-      // 🟡 Orden ID solo depende de códigos, no de campos completos
       const orderNumber = parseInt(shipment.order_id.slice(-4));
-
       const originCode = this.getLocationCode(
         shipment.origin,
         shipment.originDetails,
@@ -2173,11 +2176,8 @@ export class ShipmentsService {
         shipment.destination,
         shipment.destinationDetails,
       );
-
+      const originalShipment = { ...shipment.toObject() };
       const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
-      console.log(
-        `🔄 Checking order ID: ${newOrderId} (current: ${shipment.order_id})`,
-      );
 
       if (
         newOrderId !== shipment.order_id &&
@@ -2189,12 +2189,8 @@ export class ShipmentsService {
           { $set: { order_id: newOrderId } },
           { session },
         );
-        console.log(
-          `📝 Updated order_id from ${shipment.order_id} to ${newOrderId}`,
-        );
       }
 
-      // ✅ Validar status con campos realmente completos
       const originComplete = this.areShipmentDetailsComplete(
         shipment.originDetails,
         shipment.origin,
@@ -2203,21 +2199,67 @@ export class ShipmentsService {
         shipment.destinationDetails,
         shipment.destination,
       );
+      const wasInPreparation = shipment.shipment_status === 'In Preparation';
+      const isNowComplete = originComplete && destinationComplete;
 
       let newStatus = shipment.shipment_status;
 
-      if (shipment.shipment_status === 'On Hold - Missing Data') {
-        console.log('📦 Current shipment status:', shipment.shipment_status);
-        if (originComplete && destinationComplete) {
-          newStatus = 'In Preparation';
-          console.log(
-            '✅ All required fields present, updating status to In Preparation',
+      if (
+        shipment.shipment_status === 'On Hold - Missing Data' &&
+        isNowComplete
+      ) {
+        newStatus = 'In Preparation';
+
+        const updatedProducts: ProductDocument[] = [];
+
+        for (const productId of shipment.products) {
+          await this.updateProductStatusToInTransit(
+            productId.toString(),
+            connection,
+            session,
+            userId,
           );
-          console.log('📸 Generating product snapshots...');
-          await this.createSnapshots(shipment, connection);
-        } else {
-          console.log('⚠️ Still missing required address fields');
+
+          const product = await this.getProductByIdIncludingMembers(
+            connection,
+            productId.toString(),
+            session,
+          );
+
+          if (product) {
+            updatedProducts.push(product);
+          }
         }
+
+        console.log('📸 Generating upgraded product snapshots...');
+        await this.createSnapshots(shipment, connection, {
+          providedProducts: updatedProducts,
+          force: true,
+        });
+      }
+
+      if (wasInPreparation && !isNowComplete) {
+        newStatus = 'On Hold - Missing Data';
+
+        const updatedProducts: ProductDocument[] = [];
+
+        for (const productId of shipment.products) {
+          const updatedProduct = await this.updateProductStatusToMissingData(
+            productId.toString(),
+            connection,
+            session,
+            userId,
+          );
+          if (updatedProduct) {
+            updatedProducts.push(updatedProduct);
+          }
+        }
+
+        console.log('📸 Generating downgrade product snapshots...');
+        await this.createSnapshots(shipment, connection, {
+          providedProducts: updatedProducts,
+          force: true,
+        });
       }
 
       if (newStatus !== shipment.shipment_status) {
@@ -2231,29 +2273,31 @@ export class ShipmentsService {
           },
           { session },
         );
-
-        if (newStatus === 'In Preparation') {
-          for (const productId of shipment.products) {
-            await this.updateProductStatusToInTransit(
-              productId.toString(),
-              connection,
-              session,
-              userId,
-            );
-          }
-        }
+        await this.historyService.create({
+          actionType: 'update',
+          itemType: 'shipments',
+          userId,
+          changes: {
+            oldData: originalShipment,
+            newData: {
+              ...originalShipment,
+              shipment_status: newStatus,
+              order_id: newOrderId,
+              snapshots: shipment.snapshots,
+            },
+          },
+        });
       }
 
       console.log('📋 Final shipment status:', newStatus);
       return newStatus;
     } catch (error) {
-      console.error('❌ Error updating shipment status:', error);
+      console.error(
+        '❌ Error in updateShipmentStatusOnAddressComplete:',
+        error,
+      );
       throw error;
     }
-  }
-  catch(error) {
-    console.error('❌ Error in updateShipmentStatusOnAddressComplete:', error);
-    throw error;
   }
 
   private async updateProductStatusToInTransit(
