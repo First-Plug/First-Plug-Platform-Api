@@ -18,6 +18,7 @@ export const CreateHistorySchema = z.object({
   ]),
   userId: z.string().min(1, 'User ID is required'),
   itemType: z.enum(['members', 'teams', 'assets', 'shipments']),
+  context: z.enum(['single-product', 'shipment-merge']).optional(),
   changes: z
     .object({
       oldData: z.union([

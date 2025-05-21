@@ -1605,8 +1605,6 @@ export class ProductsService {
       session.startTransaction();
     }
 
-    // shipment._id.toString();
-
     const newStatus =
       shipment.shipment_status === 'On Hold - Missing Data'
         ? 'In Transit - Missing Data'
@@ -1616,42 +1614,27 @@ export class ProductsService {
     updateDto.status = newStatus;
 
     await product.save({ session });
-    console.log('📸 Creando snapshot con status:', product.status);
+
     await this.shipmentsService.createSnapshots(shipment, connection, {
       providedProducts: [product],
     });
-    const history = await this.historyService.create({
+
+    await this.historyService.create({
       actionType: isConsolidated ? 'consolidate' : 'create',
       itemType: 'shipments',
       userId,
+      context: isConsolidated ? 'single-product' : undefined,
       changes: {
         oldData: isConsolidated ? oldSnapshot ?? null : null,
         newData: shipment,
       },
     });
-    console.log('History created:', history);
 
     //TODO: Nahue status
     /* este es el fin de todas las acciones que pasan por update de product
     8assign, reassign, relocate, offboarding, etc) 
     en este punto vas a tener el shipment completo con el status final de shipment y de producto 
     + el snapshot y el history */
-
-    // if (
-    //   product.fp_shipment === true &&
-    //   product.activeShipment === true &&
-    //   tenantName
-    // ) {
-    //   console.log(
-    //     '🔔 Emitiendo evento desde maybeCreateShipmentAndUpdateStatus',
-    //   );
-    //   this.emitProductUpdatedEvent(product._id!.toString(), tenantName);
-    // }
-    // console.log('📸 Generando snapshot de producto...');
-
-    // await this.shipmentsService.createSnapshots(shipment, connection, [
-    //   product,
-    // ]);
 
     return shipment;
   }

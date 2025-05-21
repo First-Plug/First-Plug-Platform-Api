@@ -469,15 +469,6 @@ export class ShipmentsService {
           isConsolidated: true,
           oldSnapshot,
         };
-        // await this.historyService.create({
-        //   actionType: 'consolidate',
-        //   itemType: 'shipments',
-        //   userId: userId,
-        //   changes: {
-        //     oldData: null,
-        //     newData: existingShipment,
-        //   },
-        // });
       }
       return { shipment: existingShipment, isConsolidated: true };
     }
@@ -653,8 +644,6 @@ export class ShipmentsService {
       const productIds = shipment.products.map((p) => p.toString());
       console.log('🔍 Productos en el shipment a consolidar:', productIds);
 
-      // const originalConsolidable = { ...consolidable.toObject() };
-
       const existingSnapshotIds =
         consolidable.snapshots?.map((s) => s._id.toString()) || [];
 
@@ -711,6 +700,7 @@ export class ShipmentsService {
         userId,
         originalShipment,
         consolidable.toObject(),
+        'shipment-merge',
       );
 
       await recordShipmentHistory(
