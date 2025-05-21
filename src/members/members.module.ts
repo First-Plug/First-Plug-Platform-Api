@@ -11,6 +11,7 @@ import { TeamsService } from 'src/teams/teams.service';
 import { ProductsService } from 'src/products/products.service';
 import { HistoryModule } from 'src/history/history.module';
 import { ShipmentsModule } from 'src/shipments/shipments.module';
+import { SlackModule } from 'src/slack/slack.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ShipmentsModule } from 'src/shipments/shipments.module';
     forwardRef(() => ProductsModule),
     forwardRef(() => ShipmentsModule),
     HistoryModule,
+    SlackModule,
   ],
   controllers: [MembersController],
   providers: [

@@ -44,6 +44,7 @@ import { UpdateShipmentDto } from 'src/shipments/dto/update.shipment.dto';
 import { HistoryService } from 'src/history/history.service';
 import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
 import { CreateShipmentMessageToSlack } from './helpers/create-message-to-slack';
+import { SlackService } from '../slack/slack.service';
 
 @Injectable()
 export class ShipmentsService {
@@ -59,6 +60,7 @@ export class ShipmentsService {
     @Inject('SHIPMENT_METADATA_MODEL')
     private readonly shipmentMetadataRepository: Model<ShipmentMetadata>,
     private readonly historyService: HistoryService,
+    private readonly slackService: SlackService,
   ) {}
 
   async findShipmentPage(
@@ -452,21 +454,10 @@ export class ShipmentsService {
     if (existingShipment) {
       if (!existingShipment.products.includes(productObjectId)) {
         const oldSnapshot = JSON.parse(JSON.stringify(existingShipment));
-        const originalShipment = existingShipment.toObject();
         existingShipment.products.push(productObjectId);
         existingShipment.quantity_products = existingShipment.products.length;
 
         await existingShipment.save({ session });
-
-        //TODO Enviar mensaje a Slack para Consolidated
-        const slackMessage = CreateShipmentMessageToSlack({
-          shipment: existingShipment,
-          tenantName: tenantId,
-          isOffboarding: false,
-          status: 'Consolidated',
-          previousShipment: originalShipment,
-        });
-        await this.sendSlackMessage(slackMessage);
 
         if (existingShipment.shipment_status === 'In Preparation' && session) {
           await this.updateProductStatusToInTransit(
@@ -481,15 +472,6 @@ export class ShipmentsService {
           isConsolidated: true,
           oldSnapshot,
         };
-        // await this.historyService.create({
-        //   actionType: 'consolidate',
-        //   itemType: 'shipments',
-        //   userId: userId,
-        //   changes: {
-        //     oldData: null,
-        //     newData: existingShipment,
-        //   },
-        // });
       }
       return { shipment: existingShipment, isConsolidated: true };
     }
@@ -557,17 +539,6 @@ export class ShipmentsService {
         destinationEmail,
         session,
       );
-    }
-
-    //TODO Enviar mensaje a Slack SOLO si el status es In Preparation
-    if (shipmentStatus === 'In Preparation') {
-      const slackMessage = CreateShipmentMessageToSlack({
-        shipment: newShipment,
-        tenantName: tenantId,
-        isOffboarding: false,
-        status: 'New',
-      });
-      await this.sendSlackMessage(slackMessage);
     }
 
     await this.finalizeOrderNumber(
@@ -744,7 +715,7 @@ export class ShipmentsService {
         status: 'Consolidated',
         previousShipment: originalShipment,
       });
-      await this.sendSlackMessage(slackMessage);
+      await this.slackService.sendMessage(slackMessage);
 
       await recordShipmentHistory(
         this.historyService,
@@ -785,30 +756,6 @@ export class ShipmentsService {
         originalShipment,
         shipment.toObject(),
       );
-      if (
-        oldStatus === 'In Preparation' &&
-        shipment.shipment_status === 'On Hold - Missing Data'
-      ) {
-        // TODO Si cambió a Missing Data, solo enviamos ese mensaje
-        const missingDataMessage = CreateShipmentMessageToSlack({
-          shipment,
-          tenantName,
-          isOffboarding: false,
-          status: 'Missing Data',
-          previousShipment: originalShipment,
-        });
-        await this.sendSlackMessage(missingDataMessage);
-      } else {
-        //TODO  En cualquier otro caso de actualización, enviamos el mensaje de Updated
-        const slackMessage = CreateShipmentMessageToSlack({
-          shipment,
-          tenantName,
-          isOffboarding: false,
-          status: 'Updated',
-          previousShipment: originalShipment,
-        });
-        await this.sendSlackMessage(slackMessage);
-      }
 
       if (
         oldStatus !== shipment.shipment_status &&
@@ -823,6 +770,31 @@ export class ShipmentsService {
             userId,
           );
         }
+      }
+
+      if (
+        oldStatus === 'In Preparation' &&
+        shipment.shipment_status === 'On Hold - Missing Data'
+      ) {
+        // TODO: Si cambio a missing data se envia este mensaje
+        const missingDataMessage = CreateShipmentMessageToSlack({
+          shipment,
+          tenantName,
+          isOffboarding: false,
+          status: 'Missing Data',
+          previousShipment: originalShipment,
+        });
+        await this.slackService.sendMessage(missingDataMessage);
+      } else {
+        //TODO: Status update
+        const slackMessage = CreateShipmentMessageToSlack({
+          shipment,
+          tenantName,
+          isOffboarding: false,
+          status: 'Updated',
+          previousShipment: originalShipment,
+        });
+        await this.slackService.sendMessage(slackMessage);
       }
 
       return {
@@ -962,14 +934,6 @@ export class ShipmentsService {
       originalShipment,
       shipment.toObject(),
     );
-    //TODO: Enviar mensaje a Slack para Cancelled
-    const slackMessage = CreateShipmentMessageToSlack({
-      shipment,
-      tenantName: tenantId,
-      isOffboarding: false,
-      status: 'Cancelled',
-    });
-    await this.sendSlackMessage(slackMessage);
 
     for (const productId of shipment.products) {
       console.log('📦 Processing product:', productId.toString());
@@ -1055,6 +1019,16 @@ export class ShipmentsService {
         product?.assignedEmail || embeddedProduct?.assignedEmail,
       );
     }
+
+    //TODO: Status cancel
+    const slackMessage = CreateShipmentMessageToSlack({
+      shipment,
+      tenantName: tenantId,
+      isOffboarding: false,
+      status: 'Cancelled',
+    });
+    await this.slackService.sendMessage(slackMessage);
+
     //TODO: Nahue status
     /* este es el fin del cancel de un shipment, en este punto vas a tener 
     el shipment cancelado con su status cancel + el status del producti actualizado + los flags de
@@ -1633,6 +1607,7 @@ export class ShipmentsService {
                 connection,
                 session,
                 userId,
+                tenantName,
               );
             }
           }
@@ -1758,6 +1733,7 @@ export class ShipmentsService {
                 connection,
                 session,
                 userId,
+                tenantName,
               );
             }
           }
@@ -2019,6 +1995,7 @@ export class ShipmentsService {
     connection: mongoose.Connection,
     session: ClientSession,
     userId: string,
+    tenantId: string,
   ) {
     try {
       const originalShipment = { ...shipment.toObject() };
@@ -2149,6 +2126,17 @@ export class ShipmentsService {
         );
       }
 
+      // TODO: Status On Hold - Missing Data
+      if (newStatus === 'On Hold - Missing Data') {
+        const slackMessage = CreateShipmentMessageToSlack({
+          shipment: shipment,
+          tenantName: tenantId,
+          isOffboarding: false,
+          status: 'Missing Data',
+        });
+        await this.slackService.sendMessage(slackMessage);
+      }
+
       console.log('📋 Final shipment status:', newStatus);
       return newStatus;
     } catch (error) {
@@ -2228,6 +2216,7 @@ export class ShipmentsService {
     connection: mongoose.Connection,
     session: ClientSession,
     userId: string,
+    tenantName: string,
   ) {
     try {
       const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
@@ -2352,6 +2341,17 @@ export class ShipmentsService {
             },
           },
         });
+      }
+
+      // TODO: Status On Hold - Missing Data
+      if (newStatus === 'On Hold - Missing Data') {
+        const slackMessage = CreateShipmentMessageToSlack({
+          shipment: shipment,
+          tenantName: tenantName,
+          isOffboarding: false,
+          status: 'Missing Data',
+        });
+        await this.slackService.sendMessage(slackMessage);
       }
 
       console.log('📋 Final shipment status:', newStatus);
@@ -2510,29 +2510,5 @@ export class ShipmentsService {
     );
 
     return ShipmentModel.find(query).sort({ createdAt: -1 });
-  }
-
-  private async sendSlackMessage(message: any): Promise<void> {
-    try {
-      const webhookUrl = process.env.SLACK_WEBHOOK_URL_SHIPMENTS;
-      if (!webhookUrl) {
-        this.logger.warn('Slack webhook URL not configured');
-        return;
-      }
-
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(message),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to send Slack message: ${response.statusText}`);
-      }
-    } catch (error) {
-      this.logger.error('Error sending Slack message:', error);
-    }
   }
 }

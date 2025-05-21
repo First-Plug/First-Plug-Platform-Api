@@ -16,7 +16,16 @@ const getAddress = (
   country: string,
   zipCode: string,
 ) => {
-  return `${address || ''} ${apartment || ''} ${city || ''} ${state || ''} ${country || ''} ${zipCode || ''}`;
+  const parts: string[] = [];
+
+  if (address) parts.push(address);
+  if (apartment) parts.push(apartment);
+  if (city) parts.push(city);
+  if (state) parts.push(state);
+  if (country) parts.push(country);
+  if (zipCode) parts.push(zipCode);
+
+  return parts.join(', ');
 };
 
 const formatDate = (dateString: string) => {
@@ -31,7 +40,13 @@ const formatDate = (dateString: string) => {
   });
 };
 
-type Status = 'New' | 'Cancelled' | 'Consolidated' | 'Updated' | 'Missing Data';
+type Status =
+  | 'New'
+  | 'Cancelled'
+  | 'Consolidated'
+  | 'Updated'
+  | 'Missing Data'
+  | 'Offboarding';
 
 interface CreateShipmentMessageParams {
   shipment: ShipmentDocument | Partial<ShipmentDocument>;
@@ -86,6 +101,8 @@ export const CreateShipmentMessageToSlack = ({
     });
   }
 
+  console.log(shipment);
+
   // Origin
   message.blocks.push({
     type: 'section',
@@ -98,7 +115,7 @@ export const CreateShipmentMessageToSlack = ({
         shipment.originDetails?.state || '',
         shipment.originDetails?.country || '',
         shipment.originDetails?.zipCode || '',
-      )}\n*Email:* ${shipment.originDetails?.email || ''}\n*Personal email:* ${shipment.originDetails?.personalEmail || ''}\n*Phone:* ${shipment.originDetails?.phone || ''}\n*DNI/CI/Passport:* ${shipment.originDetails?.dni || ''}`,
+      )}\n*Email:* ${shipment.originDetails?.assignedEmail || ''}\n*Personal email:* ${shipment.originDetails?.personalEmail || ''}\n*Phone:* ${shipment.originDetails?.phone || ''}\n*DNI/CI/Passport:* ${shipment.originDetails?.dni || ''}`,
     },
   });
 
@@ -127,7 +144,7 @@ export const CreateShipmentMessageToSlack = ({
         shipment.destinationDetails?.state || '',
         shipment.destinationDetails?.country || '',
         shipment.destinationDetails?.zipCode || '',
-      )}\n*Email:* ${shipment.destinationDetails?.email || ''}\n*Personal email:* ${shipment.destinationDetails?.personalEmail || ''}\n*Phone:* ${shipment.destinationDetails?.phone || ''}\n*DNI/CI/Passport:* ${shipment.destinationDetails?.dni || ''}`,
+      )}\n*Email:* ${shipment.destinationDetails?.assignedEmail || ''}\n*Personal email:* ${shipment.destinationDetails?.personalEmail || ''}\n*Phone:* ${shipment.destinationDetails?.phone || ''}\n*DNI/CI/Passport:* ${shipment.destinationDetails?.dni || ''}`,
     },
   });
 

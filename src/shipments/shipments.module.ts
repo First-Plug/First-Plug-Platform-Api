@@ -13,6 +13,7 @@ import { MemberAddressUpdatedListener } from 'src/shipments/listeners/member-add
 import { ProductUpdatedListener } from 'src/shipments/listeners/product-updated.listener';
 import { HistoryModule } from 'src/history/history.module';
 import { TenantsMiddleware } from 'src/common/middlewares/tenants.middleware';
+import { SlackModule } from '../slack/slack.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { TenantsMiddleware } from 'src/common/middlewares/tenants.middleware';
     forwardRef(() => MembersModule),
     forwardRef(() => ProductsModule),
     forwardRef(() => HistoryModule),
+    SlackModule,
   ],
   controllers: [ShipmentsController],
   providers: [
