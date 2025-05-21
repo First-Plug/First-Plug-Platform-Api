@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { MembersModule } from 'src/members/members.module';
 import { HistoryModule } from 'src/history/history.module';
 import { ShipmentsModule } from '../shipments/shipments.module';
+import { SlackModule } from 'src/slack/slack.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ShipmentsModule } from '../shipments/shipments.module';
     forwardRef(() => MembersModule),
     forwardRef(() => ShipmentsModule),
     HistoryModule,
+    SlackModule,
   ],
   controllers: [ProductsController],
   providers: [ProductsService, tenantModels.productModel, JwtService],

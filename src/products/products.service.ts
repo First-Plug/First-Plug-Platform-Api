@@ -33,6 +33,8 @@ import { ModuleRef } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EventTypes } from 'src/common/events/types';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
+import { CreateShipmentMessageToSlack } from 'src/shipments/helpers/create-message-to-slack';
+import { SlackService } from 'src/slack/slack.service';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -53,6 +55,7 @@ export class ProductsService {
     private readonly shipmentsService: ShipmentsService,
     private readonly moduleRef: ModuleRef,
     private readonly eventEmitter: EventEmitter2,
+    private readonly slackService: SlackService,
   ) {}
 
   onModuleInit() {
@@ -1629,6 +1632,30 @@ export class ProductsService {
         newData: shipment,
       },
     });
+
+    // TODO: Status New Shipment
+    if (shipment.shipment_status === 'In Preparation') {
+      const slackMessage = CreateShipmentMessageToSlack({
+        shipment: shipment,
+        tenantName: tenantName,
+        isOffboarding: false,
+        status: 'New',
+      });
+      await this.slackService.sendMessage(slackMessage);
+    }
+
+    //TODO: Status consolidate
+    if (isConsolidated) {
+      const slackMessage = CreateShipmentMessageToSlack({
+        shipment: shipment,
+        tenantName: tenantName,
+        isOffboarding: false,
+        status: 'Consolidated',
+        previousShipment: oldSnapshot,
+      });
+
+      await this.slackService.sendMessage(slackMessage);
+    }
 
     //TODO: Nahue status
     /* este es el fin de todas las acciones que pasan por update de product

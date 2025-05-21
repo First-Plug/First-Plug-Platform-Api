@@ -237,24 +237,44 @@ export class RetoolWebhooksService {
     price: { amount: number; currencyCode: string };
   }) {
     const { tenantName, shipmentId, price } = body;
-    console.log('📥 Datos recibidos para price desde Retool:', body);
 
-    const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
+    try {
+      const connection =
+        await this.tenantConnectionService.getTenantConnection(tenantName);
 
-    const ShipmentModel =
-      connection.models.Shipment ||
-      connection.model('Shipment', ShipmentSchema, 'shipments');
+      if (!connection) {
+        throw new BadRequestException(
+          `No se encontró conexión para el tenant: ${tenantName}`,
+        );
+      }
 
-    const shipment = await ShipmentModel.findById(shipmentId);
-    if (!shipment) throw new NotFoundException('Shipment no encontrado');
+      const ShipmentModel =
+        connection.models.Shipment ||
+        connection.model('Shipment', ShipmentSchema, 'shipments');
 
-    shipment.price = price;
-    await shipment.save();
+      if (!ShipmentModel) {
+        throw new BadRequestException(
+          `No se pudo obtener el modelo Shipment para el tenant: ${tenantName}`,
+        );
+      }
 
-    return {
-      message: `Shipment actualizado correctamente: price`,
-      shipment,
-    };
+      const shipment = await ShipmentModel.findById(shipmentId);
+
+      if (!shipment) {
+        throw new NotFoundException(
+          `No se encontró el shipment con ID: ${shipmentId} en el tenant: ${tenantName}`,
+        );
+      }
+
+      shipment.price = price;
+      await shipment.save();
+
+      return {
+        message: `Shipment actualizado correctamente: price`,
+        shipment,
+      };
+    } catch (error) {
+      throw error;
+    }
   }
 }
