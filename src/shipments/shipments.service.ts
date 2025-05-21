@@ -737,7 +737,7 @@ export class ShipmentsService {
         tenantName,
         isOffboarding: false,
         status: 'Consolidated',
-        previousShipment: originalConsolidable,
+        previousShipment: originalShipment,
       });
       await this.sendSlackMessage(slackMessage);
 
