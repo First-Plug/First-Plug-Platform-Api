@@ -25,7 +25,7 @@ export class TenantAddressUpdatedListener {
         this.logger.error('Missing address data in event');
         return;
       }
-      const userId = event.userId || 'system';
+      const userId = event.userId;
 
       await this.shipmentsService.checkAndUpdateShipmentsForOurOffice(
         event.tenantName,

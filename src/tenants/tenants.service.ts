@@ -413,6 +413,8 @@ export class TenantsService {
           userUpdated.tenantName,
           oldAddress,
           updateFields,
+          new Date(),
+          user._id.toString(),
         ),
       );
     }
