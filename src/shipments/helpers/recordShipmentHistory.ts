@@ -8,11 +8,13 @@ export async function recordShipmentHistory(
   userId: string,
   oldData: Partial<ShipmentDocument> | null = null,
   newData: Partial<ShipmentDocument> | null = null,
+  context?: 'single-product' | 'shipment-merge',
 ) {
   const historyPayload: CreateHistoryDto = {
     actionType,
     itemType: 'shipments',
     userId,
+    context,
     changes: {
       oldData,
       newData,

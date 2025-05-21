@@ -648,8 +648,6 @@ export class ShipmentsService {
       const productIds = shipment.products.map((p) => p.toString());
       console.log('🔍 Productos en el shipment a consolidar:', productIds);
 
-      // const originalConsolidable = { ...consolidable.toObject() };
-
       const existingSnapshotIds =
         consolidable.snapshots?.map((s) => s._id.toString()) || [];
 
@@ -706,6 +704,7 @@ export class ShipmentsService {
         userId,
         originalShipment,
         consolidable.toObject(),
+        'shipment-merge',
       );
       // Enviar mensaje a Slack para Consolidated
       const slackMessage = CreateShipmentMessageToSlack({
