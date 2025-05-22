@@ -742,6 +742,12 @@ export class MembersService {
       throw new NotFoundException(`Member with id "${id}" not found`);
     }
 
+    if (member.activeShipment) {
+      throw new BadRequestException(
+        'This member has an active shipment. Please complete or cancel the shipment before deleting.',
+      );
+    }
+
     const hasRecoverableProducts = member.products.some(
       (product) => product.recoverable,
     );
