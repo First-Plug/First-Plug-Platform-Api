@@ -2174,15 +2174,16 @@ export class ShipmentsService {
       product.status = 'In Transit - Missing Data';
       await product.save({ session });
 
-      await this.historyService.create({
+      const history = await this.historyService.create({
         actionType: 'update',
         itemType: 'assets',
         userId: userId,
         changes: {
           oldData: originalProduct,
-          newData: product,
+          newData: product.toObject(),
         },
       });
+      console.log('history', history);
 
       return product;
     }
@@ -2200,7 +2201,6 @@ export class ShipmentsService {
     );
 
     if (updateResult.modifiedCount > 0) {
-      // Lo querés usar para snapshot, entonces devolvelo enriquecido
       const member = await MemberModel.findOne({
         'products._id': new Types.ObjectId(productId),
       }).session(session);
@@ -2210,11 +2210,27 @@ export class ShipmentsService {
       );
 
       if (foundProduct) {
-        return {
-          ...(foundProduct.toObject?.() ?? foundProduct),
+        const original = { ...(foundProduct.toObject?.() ?? foundProduct) };
+
+        const enrichedProduct = {
+          ...original,
+          status: 'In Transit - Missing Data',
           assignedEmail: member.email,
           assignedMember: `${member.firstName} ${member.lastName}`,
-        } as unknown as ProductDocument;
+        };
+
+        const historyEnMember = await this.historyService.create({
+          actionType: 'update',
+          itemType: 'assets',
+          userId,
+          changes: {
+            oldData: original,
+            newData: enrichedProduct,
+          },
+        });
+        console.log('history en member:', historyEnMember);
+
+        return enrichedProduct as ProductDocument;
       }
     }
 

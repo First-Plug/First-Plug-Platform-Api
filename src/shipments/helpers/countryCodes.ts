@@ -27,6 +27,7 @@ export const countryCodes: Record<string, string> = {
   Panama: 'PA',
   Paraguay: 'PY',
   Peru: 'PE',
+  Perú: 'PE',
   'Saint Kitts and Nevis': 'KN',
   'Saint Lucia': 'LC',
   'Saint Vincent and the Grenadines': 'VC',
