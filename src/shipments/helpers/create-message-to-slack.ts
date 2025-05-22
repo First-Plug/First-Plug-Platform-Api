@@ -56,6 +56,10 @@ interface CreateShipmentMessageParams {
   previousShipment?: Partial<ShipmentDocument> | null;
 }
 
+const getBestEmail = (details: any) => {
+  return details?.assignedEmail || details?.email || '';
+};
+
 export const CreateShipmentMessageToSlack = ({
   shipment,
   tenantName,
@@ -115,7 +119,7 @@ export const CreateShipmentMessageToSlack = ({
         shipment.originDetails?.state || '',
         shipment.originDetails?.country || '',
         shipment.originDetails?.zipCode || '',
-      )}\n*Email:* ${shipment.originDetails?.assignedEmail || ''}\n*Personal email:* ${shipment.originDetails?.personalEmail || ''}\n*Phone:* ${shipment.originDetails?.phone || ''}\n*DNI/CI/Passport:* ${shipment.originDetails?.dni || ''}`,
+      )}\n*Email:* ${getBestEmail(shipment.originDetails)}\n*Personal email:* ${shipment.originDetails?.personalEmail || ''}\n*Phone:* ${shipment.originDetails?.phone || ''}\n*DNI/CI/Passport:* ${shipment.originDetails?.dni || ''}`,
     },
   });
 
@@ -144,7 +148,7 @@ export const CreateShipmentMessageToSlack = ({
         shipment.destinationDetails?.state || '',
         shipment.destinationDetails?.country || '',
         shipment.destinationDetails?.zipCode || '',
-      )}\n*Email:* ${shipment.destinationDetails?.assignedEmail || ''}\n*Personal email:* ${shipment.destinationDetails?.personalEmail || ''}\n*Phone:* ${shipment.destinationDetails?.phone || ''}\n*DNI/CI/Passport:* ${shipment.destinationDetails?.dni || ''}`,
+      )}\n*Email:* ${getBestEmail(shipment.destinationDetails)}\n*Personal email:* ${shipment.destinationDetails?.personalEmail || ''}\n*Phone:* ${shipment.destinationDetails?.phone || ''}\n*DNI/CI/Passport:* ${shipment.destinationDetails?.dni || ''}`,
     },
   });
 

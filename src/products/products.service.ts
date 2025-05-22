@@ -1635,7 +1635,7 @@ export class ProductsService {
     });
 
     // TODO: Status New Shipment
-    if (shipment.shipment_status === 'In Preparation') {
+    if (shipment.shipment_status === 'In Preparation' && !isConsolidated) {
       const slackMessage = CreateShipmentMessageToSlack({
         shipment: shipment,
         tenantName: tenantName,

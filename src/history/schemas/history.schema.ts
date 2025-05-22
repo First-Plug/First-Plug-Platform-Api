@@ -19,12 +19,14 @@ export class History {
     type: {
       oldData: { type: Object },
       newData: { type: Object },
+      context: { type: String },
     },
     required: true,
   })
   changes: {
     oldData: Record<string, any>;
     newData: Record<string, any>;
+    context: string;
   };
 
   createdAt: Date;

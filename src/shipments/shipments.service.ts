@@ -2136,6 +2136,17 @@ export class ShipmentsService {
         await this.slackService.sendMessage(slackMessage);
       }
 
+      if (newStatus === 'In Preparation') {
+        const slackMessage = CreateShipmentMessageToSlack({
+          shipment: shipment,
+          tenantName: tenantId,
+          isOffboarding: false,
+          status: 'Updated',
+          previousShipment: originalShipment,
+        });
+        await this.slackService.sendMessage(slackMessage);
+      }
+
       console.log('📋 Final shipment status:', newStatus);
       return newStatus;
     } catch (error) {
@@ -2349,6 +2360,17 @@ export class ShipmentsService {
           tenantName: tenantName,
           isOffboarding: false,
           status: 'Missing Data',
+        });
+        await this.slackService.sendMessage(slackMessage);
+      }
+
+      if (newStatus === 'In Preparation') {
+        const slackMessage = CreateShipmentMessageToSlack({
+          shipment: shipment,
+          tenantName: tenantName,
+          isOffboarding: false,
+          status: 'Updated',
+          previousShipment: originalShipment,
         });
         await this.slackService.sendMessage(slackMessage);
       }
