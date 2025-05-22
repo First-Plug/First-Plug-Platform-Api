@@ -1626,10 +1626,11 @@ export class ProductsService {
       actionType: isConsolidated ? 'consolidate' : 'create',
       itemType: 'shipments',
       userId,
-      context: isConsolidated ? 'single-product' : undefined,
+
       changes: {
         oldData: isConsolidated ? oldSnapshot ?? null : null,
         newData: shipment,
+        context: isConsolidated ? 'single-product' : undefined,
       },
     });
 

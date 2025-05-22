@@ -14,10 +14,10 @@ export async function recordShipmentHistory(
     actionType,
     itemType: 'shipments',
     userId,
-    context,
     changes: {
       oldData,
       newData,
+      context,
     },
   };
 
