@@ -536,13 +536,39 @@ export class MembersService {
       'phone',
       'email',
     ];
-    return sensitiveFields.some((field) => {
-      const oldVal = original[field] ?? '';
-      const newVal = Object.prototype.hasOwnProperty.call(updateDto, field)
-        ? updateDto[field]
-        : original[field];
 
-      return oldVal !== newVal;
+    return sensitiveFields.some((field) => {
+      const originalHasField =
+        field in original &&
+        original[field] !== undefined &&
+        original[field] !== null;
+      const originalValue = originalHasField ? original[field] : undefined;
+
+      const fieldExistsInUpdate = field in updateDto;
+
+      if (
+        originalHasField &&
+        fieldExistsInUpdate &&
+        (updateDto[field] === null || updateDto[field] === undefined)
+      ) {
+        console.log(`🔍 Campo ${field} está siendo eliminado`);
+        return true;
+      }
+
+      if (!fieldExistsInUpdate) {
+        return false;
+      }
+
+      const newValue = updateDto[field];
+      const hasChanged = originalValue !== newValue;
+
+      if (hasChanged) {
+        console.log(
+          `🔍 Campo ${field} ha cambiado: ${originalValue} -> ${newValue}`,
+        );
+      }
+
+      return hasChanged;
     });
   }
 
@@ -565,15 +591,17 @@ export class MembersService {
       }
 
       const initialMember = JSON.parse(JSON.stringify(member));
+      console.log('📊 Estado inicial del miembro:', {
+        dni: initialMember.dni,
+        email: initialMember.email,
+      });
 
-      if (
-        updateMemberDto.dni !== undefined &&
-        updateMemberDto.dni !== member.dni
-      ) {
-        await this.validateDni(updateMemberDto.dni);
-      }
+      const willModifyPersonalData = this.isPersonalDataBeingModified(
+        member,
+        updateMemberDto,
+      );
 
-      if (this.isPersonalDataBeingModified(member, updateMemberDto)) {
+      if (willModifyPersonalData) {
         await this.validateIfMemberCanBeModified(member.email, tenantName);
       }
 
@@ -593,6 +621,13 @@ export class MembersService {
         updateMemberDto.activeShipment = member.activeShipment;
       }
 
+      if (member.dni !== undefined && !('dni' in updateMemberDto)) {
+        console.log(
+          '🚨 DNI detectado como eliminado (no presente en updateDto)',
+        );
+        updateMemberDto.dni = undefined;
+      }
+
       Object.assign(member, updateMemberDto);
       console.log(
         '📋 Datos que se están seteando en el miembro:',
@@ -601,11 +636,8 @@ export class MembersService {
 
       if (updateMemberDto.dni === undefined) {
         member.dni = undefined;
+        console.log('🔄 DNI explícitamente eliminado del miembro');
       }
-
-      member.email = member.email.trim().toLowerCase();
-      member.firstName = member.firstName.trim();
-      member.lastName = member.lastName.trim();
 
       await member.save({ session });
 
@@ -628,37 +660,42 @@ export class MembersService {
         member.products = updatedProducts;
         await member.save({ session });
       }
-      const modified = this.isPersonalDataBeingModified(
-        initialMember,
-        updateMemberDto,
-      );
+      const modified = this.hasPersonalDataChanged(initialMember, member);
+      console.log('🔍 ¿Datos personales modificados?', modified, {
+        initialDni: initialMember.dni,
+        currentDni: member.dni,
+      });
 
       if (modified) {
         if (member.activeShipment) {
+          console.log('🔔 Emitiendo evento de actualización de dirección');
           this.eventEmitter.emit(
             EventTypes.MEMBER_ADDRESS_UPDATED,
             new MemberAddressUpdatedEvent(
               member.email,
               tenantName,
               {
-                address: initialMember.address,
-                apartment: initialMember.apartment,
-                city: initialMember.city,
-                country: initialMember.country,
-                zipCode: initialMember.zipCode,
-                phone: initialMember.phone,
-                email: initialMember.email,
-                dni: initialMember.dni?.toString(),
+                address: initialMember.address || '',
+                apartment: initialMember.apartment || '',
+                city: initialMember.city || '',
+                country: initialMember.country || '',
+                zipCode: initialMember.zipCode || '',
+                phone: initialMember.phone || '',
+                email: initialMember.email || '',
+                dni:
+                  initialMember.dni !== undefined
+                    ? initialMember.dni.toString()
+                    : '',
               },
               {
-                address: member.address,
-                apartment: member.apartment,
-                city: member.city,
-                country: member.country,
-                zipCode: member.zipCode,
-                phone: member.phone,
-                email: member.email,
-                dni: member.dni?.toString(),
+                address: member.address || '',
+                apartment: member.apartment || '',
+                city: member.city || '',
+                country: member.country || '',
+                zipCode: member.zipCode || '',
+                phone: member.phone || '',
+                email: member.email || '',
+                dni: member.dni !== undefined ? member.dni.toString() : '',
               },
               new Date(),
               userId,
@@ -872,5 +909,70 @@ export class MembersService {
         'Unexpected error, check server log',
       );
     }
+  }
+
+  // Nuevo método para comparar datos personales antes y después
+  private comparePersonalData(original: any, updated: any): boolean {
+    const sensitiveFields = [
+      'address',
+      'apartment',
+      'city',
+      'zipCode',
+      'country',
+      'dni',
+      'phone',
+      'email',
+    ];
+
+    return sensitiveFields.some((field) => {
+      const originalValue = original[field];
+      const updatedValue = updated[field];
+
+      // Detectar si un campo ha desaparecido o cambiado
+      const hasChanged = originalValue !== updatedValue;
+
+      if (hasChanged) {
+        console.log(
+          `🔄 Campo ${field} ha cambiado: ${originalValue} -> ${updatedValue}`,
+        );
+      }
+
+      return hasChanged;
+    });
+  }
+
+  // Nuevo método para verificar si los datos personales han cambiado
+  private hasPersonalDataChanged(original: any, updated: any): boolean {
+    const sensitiveFields = [
+      'address',
+      'apartment',
+      'city',
+      'zipCode',
+      'country',
+      'dni',
+      'phone',
+      'email',
+    ];
+
+    let changed = false;
+
+    sensitiveFields.forEach((field) => {
+      const originalHasField =
+        field in original && original[field] !== undefined;
+      const updatedHasField = field in updated && updated[field] !== undefined;
+
+      // Si el campo existía antes pero ahora no, o viceversa, o si el valor ha cambiado
+      if (
+        originalHasField !== updatedHasField ||
+        original[field] !== updated[field]
+      ) {
+        console.log(
+          `🔄 Campo ${field} ha cambiado: ${original[field]} -> ${updated[field]}`,
+        );
+        changed = true;
+      }
+    });
+
+    return changed;
   }
 }
