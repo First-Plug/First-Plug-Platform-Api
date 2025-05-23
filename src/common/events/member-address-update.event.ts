@@ -7,6 +7,7 @@ export interface AddressData {
   phone?: string;
   email?: string;
   dni?: string;
+  personalEmail?: string;
 }
 
 export class MemberAddressUpdatedEvent {

@@ -227,7 +227,7 @@ export class MembersController {
       tenantName,
     );
 
-    await this.membersService.softDeleteMember(id, tenantName);
+    await this.membersService.softDeleteMember(id, tenantName, true);
 
     await this.membersService.notifyOffBoarding(
       offboardingMember,

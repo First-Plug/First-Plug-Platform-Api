@@ -535,6 +535,7 @@ export class MembersService {
       'dni',
       'phone',
       'email',
+      'personalEmail',
     ];
 
     return sensitiveFields.some((field) => {
@@ -682,10 +683,12 @@ export class MembersService {
                 zipCode: initialMember.zipCode || '',
                 phone: initialMember.phone || '',
                 email: initialMember.email || '',
+
                 dni:
                   initialMember.dni !== undefined
                     ? initialMember.dni.toString()
                     : '',
+                personalEmail: initialMember.personalEmail || '',
               },
               {
                 address: member.address || '',
@@ -696,6 +699,7 @@ export class MembersService {
                 phone: member.phone || '',
                 email: member.email || '',
                 dni: member.dni !== undefined ? member.dni.toString() : '',
+                personalEmail: member.personalEmail || '',
               },
               new Date(),
               userId,
@@ -729,7 +733,11 @@ export class MembersService {
     }
   }
 
-  async softDeleteMember(id: ObjectId, tenantName) {
+  async softDeleteMember(
+    id: ObjectId,
+    tenantName: string,
+    isOffboarding = false,
+  ) {
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     const MemberModel =
@@ -742,7 +750,7 @@ export class MembersService {
       throw new NotFoundException(`Member with id "${id}" not found`);
     }
 
-    if (member.activeShipment) {
+    if (member.activeShipment && !isOffboarding) {
       throw new BadRequestException(
         'This member has an active shipment. Please complete or cancel the shipment before deleting.',
       );
@@ -798,11 +806,9 @@ export class MembersService {
     const { serialNumber, price, productCondition, fp_shipment, ...rest } =
       createProductDto;
 
-    // 📌 Definir la ubicación como Employee
     const location = 'Employee';
 
-    // 📌 Determinar el estado del producto
-    let status: Status = 'Delivered'; // Default para Employee
+    let status: Status = 'Delivered';
 
     if (fp_shipment) {
       const isComplete = !!(
@@ -917,37 +923,35 @@ export class MembersService {
     }
   }
 
-  // Nuevo método para comparar datos personales antes y después
-  private comparePersonalData(original: any, updated: any): boolean {
-    const sensitiveFields = [
-      'address',
-      'apartment',
-      'city',
-      'zipCode',
-      'country',
-      'dni',
-      'phone',
-      'email',
-    ];
+  // private comparePersonalData(original: any, updated: any): boolean {
+  //   const sensitiveFields = [
+  //     'address',
+  //     'apartment',
+  //     'city',
+  //     'zipCode',
+  //     'country',
+  //     'dni',
+  //     'phone',
+  //     'email',
+  //     'personalEmail',
+  //   ];
 
-    return sensitiveFields.some((field) => {
-      const originalValue = original[field];
-      const updatedValue = updated[field];
+  //   return sensitiveFields.some((field) => {
+  //     const originalValue = original[field];
+  //     const updatedValue = updated[field];
 
-      // Detectar si un campo ha desaparecido o cambiado
-      const hasChanged = originalValue !== updatedValue;
+  //     const hasChanged = originalValue !== updatedValue;
 
-      if (hasChanged) {
-        console.log(
-          `🔄 Campo ${field} ha cambiado: ${originalValue} -> ${updatedValue}`,
-        );
-      }
+  //     if (hasChanged) {
+  //       console.log(
+  //         `🔄 Campo ${field} ha cambiado: ${originalValue} -> ${updatedValue}`,
+  //       );
+  //     }
 
-      return hasChanged;
-    });
-  }
+  //     return hasChanged;
+  //   });
+  // }
 
-  // Nuevo método para verificar si los datos personales han cambiado
   private hasPersonalDataChanged(original: any, updated: any): boolean {
     const sensitiveFields = [
       'address',
@@ -958,6 +962,7 @@ export class MembersService {
       'dni',
       'phone',
       'email',
+      'personalEmail',
     ];
 
     let changed = false;
@@ -967,7 +972,6 @@ export class MembersService {
         field in original && original[field] !== undefined;
       const updatedHasField = field in updated && updated[field] !== undefined;
 
-      // Si el campo existía antes pero ahora no, o viceversa, o si el valor ha cambiado
       if (
         originalHasField !== updatedHasField ||
         original[field] !== updated[field]
