@@ -464,7 +464,6 @@ export class ShipmentsService {
             productId,
             connection,
             session,
-            userId,
           );
         }
         return {
@@ -558,12 +557,7 @@ export class ShipmentsService {
     // });
     await newShipment.save();
     if (shipmentStatus === 'In Preparation' && session) {
-      await this.updateProductStatusToInTransit(
-        productId,
-        connection,
-        session,
-        userId,
-      );
+      await this.updateProductStatusToInTransit(productId, connection, session);
     }
     return { shipment: newShipment, isConsolidated: false };
   }
@@ -766,7 +760,6 @@ export class ShipmentsService {
             productId.toString(),
             connection,
             session,
-            userId,
           );
         }
       }
@@ -2058,7 +2051,6 @@ export class ShipmentsService {
             productId.toString(),
             connection,
             session,
-            userId,
           );
         }
 
@@ -2089,7 +2081,6 @@ export class ShipmentsService {
             productId.toString(),
             connection,
             session,
-            userId,
           );
           if (updatedProduct) {
             updatedProducts.push(updatedProduct);
@@ -2148,7 +2139,6 @@ export class ShipmentsService {
     productId: string,
     connection: mongoose.Connection,
     session: ClientSession,
-    userId: string,
   ): Promise<ProductDocument | null> {
     const ProductModel =
       connection.models.Product || connection.model('Product', ProductSchema);
@@ -2159,25 +2149,11 @@ export class ShipmentsService {
     const product = await ProductModel.findById(productId).session(session);
 
     if (product && product.status === 'In Transit') {
-      const originalProduct = { ...product.toObject() };
       product.status = 'In Transit - Missing Data';
       await product.save({ session });
-
-      const history = await this.historyService.create({
-        actionType: 'update',
-        itemType: 'assets',
-        userId: userId,
-        changes: {
-          oldData: originalProduct,
-          newData: product.toObject(),
-        },
-      });
-      console.log('history', history);
-
       return product;
     }
 
-    // Si está en member.products
     const updateResult = await MemberModel.updateOne(
       {
         'products._id': new Types.ObjectId(productId),
@@ -2207,17 +2183,6 @@ export class ShipmentsService {
           assignedEmail: member.email,
           assignedMember: `${member.firstName} ${member.lastName}`,
         };
-
-        const historyEnMember = await this.historyService.create({
-          actionType: 'update',
-          itemType: 'assets',
-          userId,
-          changes: {
-            oldData: original,
-            newData: enrichedProduct,
-          },
-        });
-        console.log('history en member:', historyEnMember);
 
         return enrichedProduct as ProductDocument;
       }
@@ -2286,7 +2251,6 @@ export class ShipmentsService {
             productId.toString(),
             connection,
             session,
-            userId,
           );
 
           const product = await this.getProductByIdIncludingMembers(
@@ -2317,7 +2281,6 @@ export class ShipmentsService {
             productId.toString(),
             connection,
             session,
-            userId,
           );
           if (updatedProduct) {
             updatedProducts.push(updatedProduct);
@@ -2384,7 +2347,6 @@ export class ShipmentsService {
     productId: string,
     connection: mongoose.Connection,
     session: ClientSession,
-    userId: string,
   ): Promise<void> {
     try {
       const ProductModel =
@@ -2397,19 +2359,8 @@ export class ShipmentsService {
 
       if (product) {
         if (product.status === 'In Transit - Missing Data') {
-          const originalProduct = { ...product.toObject() };
           product.status = 'In Transit';
           await product.save({ session });
-
-          await this.historyService.create({
-            actionType: 'update',
-            itemType: 'assets',
-            userId: userId,
-            changes: {
-              oldData: originalProduct,
-              newData: product,
-            },
-          });
         }
         return;
       }
