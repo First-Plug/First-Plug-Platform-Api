@@ -81,11 +81,7 @@ export class RetoolWebhooksService {
     }
 
     if (shipment.shipment_status === 'Received') {
-      this.eventsGateway.notifyTenant(
-        tenantName,
-        'shipment-status-updated',
-        shipment,
-      );
+      this.eventsGateway.notifyTenant(tenantName, 'data-changed', shipment);
     }
 
     await shipment.save();
