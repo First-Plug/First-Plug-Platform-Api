@@ -26,12 +26,13 @@ export class TenantAddressUpdatedListener {
         return;
       }
       const userId = event.userId;
-
+      const ourOfficeEmail = event.ourOfficeEmail;
       await this.shipmentsService.checkAndUpdateShipmentsForOurOffice(
         event.tenantName,
         event.oldAddress,
         event.newAddress,
         userId,
+        ourOfficeEmail,
       );
 
       this.logger.debug(

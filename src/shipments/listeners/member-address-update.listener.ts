@@ -17,10 +17,12 @@ export class MemberAddressUpdatedListener {
         `Processing address update for member: ${event.memberEmail}`,
       );
       const userId = event.userId || 'system';
+      const ourOfficeEmail = event.ourOfficeEmail;
       await this.shipmentsService.checkAndUpdateShipmentsForMember(
         event.memberEmail,
         event.tenantName,
         userId,
+        ourOfficeEmail,
       );
     } catch (error) {
       this.logger.error(

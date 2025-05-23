@@ -594,6 +594,7 @@ export class ShipmentsService {
     updateDto: UpdateShipmentDto,
     tenantName: string,
     userId: string,
+    ourOfficeEmail: string,
   ): Promise<{
     message: string;
     consolidatedInto?: string;
@@ -706,7 +707,7 @@ export class ShipmentsService {
         tenantName,
         isOffboarding: false,
         status: 'Consolidated',
-        previousShipment: originalShipment,
+        ourOfficeEmail: ourOfficeEmail,
       });
       await this.slackService.sendMessage(slackMessage);
 
@@ -775,6 +776,7 @@ export class ShipmentsService {
           isOffboarding: false,
           status: 'Missing Data',
           previousShipment: originalShipment,
+          ourOfficeEmail: ourOfficeEmail,
         });
         await this.slackService.sendMessage(missingDataMessage);
       } else {
@@ -785,6 +787,7 @@ export class ShipmentsService {
           isOffboarding: false,
           status: 'Updated',
           previousShipment: originalShipment,
+          ourOfficeEmail: ourOfficeEmail,
         });
         await this.slackService.sendMessage(slackMessage);
       }
@@ -886,6 +889,7 @@ export class ShipmentsService {
     shipmentId: string,
     tenantId: string,
     userId: string,
+    ourOfficeEmail: string,
   ): Promise<ShipmentDocument> {
     console.log('🚨 [CANCEL SHIPMENT] Start for', shipmentId);
 
@@ -1018,6 +1022,7 @@ export class ShipmentsService {
       tenantName: tenantId,
       isOffboarding: false,
       status: 'Cancelled',
+      ourOfficeEmail: ourOfficeEmail,
     });
     await this.slackService.sendMessage(slackMessage);
 
@@ -1477,6 +1482,7 @@ export class ShipmentsService {
     oldAddress: AddressData,
     newAddress: AddressData,
     userId: string,
+    ourOfficeEmail: string,
   ) {
     console.log('🔄 Starting office address update:', {
       tenantName,
@@ -1600,6 +1606,7 @@ export class ShipmentsService {
                 session,
                 userId,
                 tenantName,
+                ourOfficeEmail,
               );
             }
           }
@@ -1619,6 +1626,7 @@ export class ShipmentsService {
     memberEmail: string,
     tenantName: string,
     userId: string,
+    ourOfficeEmail: string,
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
@@ -1726,6 +1734,7 @@ export class ShipmentsService {
                 session,
                 userId,
                 tenantName,
+                ourOfficeEmail,
               );
             }
           }
@@ -1988,6 +1997,7 @@ export class ShipmentsService {
     session: ClientSession,
     userId: string,
     tenantId: string,
+    ourOfficeEmail: string,
   ) {
     try {
       const originalShipment = { ...shipment.toObject() };
@@ -2123,6 +2133,7 @@ export class ShipmentsService {
           tenantName: tenantId,
           isOffboarding: false,
           status: 'Missing Data',
+          ourOfficeEmail: ourOfficeEmail,
         });
         await this.slackService.sendMessage(slackMessage);
       }
@@ -2134,6 +2145,7 @@ export class ShipmentsService {
           isOffboarding: false,
           status: 'Updated',
           previousShipment: originalShipment,
+          ourOfficeEmail: ourOfficeEmail,
         });
         await this.slackService.sendMessage(slackMessage);
       }
@@ -2208,6 +2220,7 @@ export class ShipmentsService {
     session: ClientSession,
     userId: string,
     tenantName: string,
+    ourOfficeEmail: string,
   ) {
     try {
       const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
@@ -2339,6 +2352,7 @@ export class ShipmentsService {
           tenantName: tenantName,
           isOffboarding: false,
           status: 'Missing Data',
+          ourOfficeEmail: ourOfficeEmail,
         });
         await this.slackService.sendMessage(slackMessage);
       }
@@ -2350,6 +2364,7 @@ export class ShipmentsService {
           isOffboarding: false,
           status: 'Updated',
           previousShipment: originalShipment,
+          ourOfficeEmail: ourOfficeEmail,
         });
         await this.slackService.sendMessage(slackMessage);
       }

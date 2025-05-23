@@ -6,6 +6,7 @@ export interface AddressData {
   country?: string;
   zipCode?: string;
   phone?: string;
+  ourOfficeEmail?: string;
 }
 
 export class TenantAddressUpdatedEvent {
@@ -15,5 +16,6 @@ export class TenantAddressUpdatedEvent {
     public readonly newAddress: AddressData,
     public readonly updatedAt: Date = new Date(),
     public readonly userId: string,
+    public readonly ourOfficeEmail: string,
   ) {}
 }

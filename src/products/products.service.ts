@@ -963,6 +963,7 @@ export class ProductsService {
     productsToUpdate: { id: ObjectId; product: any }[],
     tenantName: string,
     userId: string,
+    ourOfficeEmail: string,
   ) {
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
@@ -973,7 +974,13 @@ export class ProductsService {
       for (const { id, product } of productsToUpdate) {
         const updateProductDto = { ...product };
 
-        await this.update(id, { ...updateProductDto }, tenantName, userId);
+        await this.update(
+          id,
+          { ...updateProductDto },
+          tenantName,
+          userId,
+          ourOfficeEmail,
+        );
       }
 
       await session.commitTransaction();
@@ -990,11 +997,18 @@ export class ProductsService {
     updateProductDto: UpdateProductDto,
     tenantName: string,
     userId: string,
+    ourOfficeEmail: string,
   ) {
     if (updateProductDto.assignedEmail === 'none') {
       updateProductDto.assignedEmail = '';
     }
-    return this.update(id, updateProductDto, tenantName, userId);
+    return this.update(
+      id,
+      updateProductDto,
+      tenantName,
+      userId,
+      ourOfficeEmail,
+    );
   }
 
   private getUpdatedFields(
@@ -1566,6 +1580,7 @@ export class ProductsService {
       assignedMember?: string;
     },
     userId: string,
+    ourOfficeEmail: string,
   ): Promise<ShipmentDocument | null> {
     if (!updateDto.fp_shipment || !actionType) return null;
 
@@ -1641,6 +1656,7 @@ export class ProductsService {
         tenantName: tenantName,
         isOffboarding: false,
         status: 'New',
+        ourOfficeEmail: ourOfficeEmail,
       });
       await this.slackService.sendMessage(slackMessage);
     }
@@ -1653,6 +1669,7 @@ export class ProductsService {
         isOffboarding: false,
         status: 'Consolidated',
         previousShipment: oldSnapshot,
+        ourOfficeEmail: ourOfficeEmail,
       });
 
       await this.slackService.sendMessage(slackMessage);
@@ -1672,6 +1689,7 @@ export class ProductsService {
     updateProductDto: UpdateProductDto,
     tenantName: string,
     userId: string,
+    ourOfficeEmail: string,
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
@@ -1901,6 +1919,7 @@ export class ProductsService {
                     assignedMember: updateProductDto.assignedMember,
                   },
                   userId,
+                  ourOfficeEmail,
                 );
               } else {
                 updateProductDto.status = await this.determineProductStatus(
@@ -1987,6 +2006,7 @@ export class ProductsService {
                   updateProductDto.assignedMember ?? product.assignedMember,
               },
               userId,
+              ourOfficeEmail,
             );
             console.log(
               '🧪 Status después de maybeCreateShipmentAndUpdateStatus segundo:',
@@ -2085,6 +2105,7 @@ export class ProductsService {
                     memberProduct.product.assignedMember,
                 },
                 userId,
+                ourOfficeEmail,
               );
               console.log(
                 '🧪 Status después de maybeCreateShipmentAndUpdateStatus tercero:',
@@ -2141,6 +2162,7 @@ export class ProductsService {
                 assignedMember: '',
               },
               userId,
+              ourOfficeEmail,
             );
             console.log(
               '🧪 Status después de maybeCreateShipmentAndUpdateStatus cuarto:',
@@ -2199,6 +2221,7 @@ export class ProductsService {
                   memberProduct.product.assignedMember,
               },
               userId,
+              ourOfficeEmail,
             );
             console.log(
               '🧪 Status después de maybeCreateShipmentAndUpdateStatus quinto:',

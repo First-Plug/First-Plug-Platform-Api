@@ -578,6 +578,7 @@ export class MembersService {
     updateMemberDto: UpdateMemberDto,
     userId: string,
     tenantName,
+    ourOfficeEmail,
   ) {
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
@@ -703,6 +704,7 @@ export class MembersService {
               },
               new Date(),
               userId,
+              ourOfficeEmail,
             ),
           );
         } else {

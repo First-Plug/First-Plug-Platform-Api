@@ -79,9 +79,11 @@ export class TenantsController {
     @Req() request: Request,
     @Body() updateTenantInformationSchemaDto: UpdateTenantInformationSchemaDto,
   ) {
+    const ourOfficeEmail = request.user.email;
     return await this.tenantService.updateInformation(
       request.user,
       updateTenantInformationSchemaDto,
+      ourOfficeEmail,
     );
   }
 

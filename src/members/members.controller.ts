@@ -66,6 +66,7 @@ export class MembersController {
   ) {
     const tenantName = req.user.tenantName;
     const { userId } = req;
+    const ourOfficeEmail = req.user.email;
 
     const productsToUpdate: Array<{
       id: ObjectId;
@@ -217,6 +218,7 @@ export class MembersController {
         productsToUpdate,
         tenantName,
         userId,
+        ourOfficeEmail,
       );
     }
 
@@ -285,8 +287,14 @@ export class MembersController {
     @Req() req,
   ) {
     const { userId, tenantName } = req;
-
-    return this.membersService.update(id, updateMemberDto, userId, tenantName);
+    const ourOfficeEmail = req.user.email;
+    return this.membersService.update(
+      id,
+      updateMemberDto,
+      userId,
+      tenantName,
+      ourOfficeEmail,
+    );
   }
 
   @Delete(':id')

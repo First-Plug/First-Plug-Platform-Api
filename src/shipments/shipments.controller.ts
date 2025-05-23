@@ -58,10 +58,12 @@ export class ShipmentsController {
   ): Promise<ShipmentDocument> {
     const tenantId = req.user.tenantName;
     const { userId } = req;
+    const ourOfficeEmail = req.user.email;
     return this.shipmentsService.cancelShipmentAndUpdateProducts(
       shipmentId,
       tenantId,
       userId,
+      ourOfficeEmail,
     );
   }
 
@@ -77,12 +79,13 @@ export class ShipmentsController {
   }> {
     const tenantId = req.user.tenantName;
     const { userId } = req;
-    console.log('🔐 User ID in request:', userId);
+    const ourOfficeEmail = req.user.email;
     return this.shipmentsService.findConsolidateAndUpdateShipment(
       shipmentId,
       updateDto,
       tenantId,
       userId,
+      ourOfficeEmail,
     );
   }
 

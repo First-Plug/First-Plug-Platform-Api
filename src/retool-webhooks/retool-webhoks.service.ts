@@ -32,6 +32,7 @@ export class RetoolWebhooksService {
         shipmentId,
         tenantName,
         userId,
+        '',
       );
     }
 

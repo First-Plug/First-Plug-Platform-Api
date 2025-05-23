@@ -348,6 +348,7 @@ export class TenantsService {
   async updateInformation(
     user: UserJWT,
     updateTenantInformationSchemaDto: UpdateTenantInformationSchemaDto,
+    ourOfficeEmail: string,
   ) {
     // First, get the current user data before update
     const currentUser = await this.tenantRepository.findById(user._id);
@@ -415,6 +416,7 @@ export class TenantsService {
           updateFields,
           new Date(),
           user._id.toString(),
+          ourOfficeEmail,
         ),
       );
     }

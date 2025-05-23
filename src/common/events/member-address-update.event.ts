@@ -8,6 +8,7 @@ export interface AddressData {
   email?: string;
   dni?: string;
   personalEmail?: string;
+  ourOfficeEmail?: string;
 }
 
 export class MemberAddressUpdatedEvent {
@@ -18,5 +19,6 @@ export class MemberAddressUpdatedEvent {
     public readonly newAddress: AddressData,
     public readonly updatedAt: Date = new Date(),
     public readonly userId: string = 'system',
+    public readonly ourOfficeEmail: string,
   ) {}
 }
