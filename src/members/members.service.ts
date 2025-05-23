@@ -733,7 +733,11 @@ export class MembersService {
     }
   }
 
-  async softDeleteMember(id: ObjectId, tenantName) {
+  async softDeleteMember(
+    id: ObjectId,
+    tenantName: string,
+    isOffboarding = false,
+  ) {
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     const MemberModel =
@@ -746,7 +750,7 @@ export class MembersService {
       throw new NotFoundException(`Member with id "${id}" not found`);
     }
 
-    if (member.activeShipment) {
+    if (member.activeShipment && !isOffboarding) {
       throw new BadRequestException(
         'This member has an active shipment. Please complete or cancel the shipment before deleting.',
       );
