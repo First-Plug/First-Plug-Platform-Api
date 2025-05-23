@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import mongoose from 'mongoose';
+import { EventsGateway } from 'src/common/events/events.gateway';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
 import { MemberSchema } from 'src/members/schemas/member.schema';
 import { ProductSchema } from 'src/products/schemas/product.schema';
@@ -16,6 +17,7 @@ export class RetoolWebhooksService {
   constructor(
     private tenantConnectionService: TenantConnectionService,
     private readonly shipmentsService: ShipmentsService,
+    private eventsGateway: EventsGateway,
   ) {}
 
   async updateShipmentStatusWebhook(body: {
@@ -76,6 +78,14 @@ export class RetoolWebhooksService {
           shipment.origin,
         );
       }
+    }
+
+    if (shipment.shipment_status === 'Received') {
+      this.eventsGateway.notifyTenant(
+        tenantName,
+        'shipment-status-updated',
+        shipment,
+      );
     }
 
     await shipment.save();
