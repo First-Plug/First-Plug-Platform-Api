@@ -1026,6 +1026,14 @@ export class ShipmentsService {
     });
     await this.slackService.sendMessage(slackMessage);
 
+    await this.clearMemberActiveShipmentFlagIfNoOtherShipments(
+      shipment.origin,
+      tenantId,
+    );
+    await this.clearMemberActiveShipmentFlagIfNoOtherShipments(
+      shipment.destination,
+      tenantId,
+    );
     //TODO: Nahue status
     /* este es el fin del cancel de un shipment, en este punto vas a tener 
     el shipment cancelado con su status cancel + el status del producti actualizado + los flags de
@@ -1241,8 +1249,8 @@ export class ShipmentsService {
       if (embeddedProduct) {
         const newStatus = await this.productsService.determineProductStatus(
           {
-            location: 'Employee', // Force location to Employee
-            assignedEmail: embeddedProduct.assignedEmail, // Keep assigned email
+            location: 'Employee',
+            assignedEmail: embeddedProduct.assignedEmail,
             fp_shipment: false,
           },
           tenantName,
@@ -1259,8 +1267,35 @@ export class ShipmentsService {
             },
           },
         );
+
         console.log(`✅ Producto actualizado (colección Member): ${productId}`);
       }
+    }
+  }
+
+  async clearMemberActiveShipmentFlagIfNoOtherShipments(
+    memberEmail: string,
+    tenantId: string,
+  ) {
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantId);
+    const ShipmentModel = connection.model('Shipment');
+
+    const memberStillInvolved = await ShipmentModel.exists({
+      shipment_status: {
+        $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
+      },
+      $or: [{ origin: memberEmail }, { destination: memberEmail }],
+      isDeleted: { $ne: true },
+    });
+
+    if (!memberStillInvolved) {
+      const MemberModel = connection.model('Member');
+      await MemberModel.updateOne(
+        { email: memberEmail },
+        { $set: { activeShipment: false } },
+      );
+      console.log(`✅ activeShipment flag set to false for ${memberEmail}`);
     }
   }
 
