@@ -1300,7 +1300,12 @@ export class ShipmentsService {
       shipment_status: {
         $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
       },
-      $or: [{ origin: normalizedEmail }, { destination: normalizedEmail }],
+      $or: [
+        { origin: normalizedEmail },
+        { destination: normalizedEmail },
+        { 'originDetails.assignedEmail': normalizedEmail },
+        { 'destinationDetails.assignedEmail': normalizedEmail },
+      ],
       isDeleted: { $ne: true },
     });
 
@@ -1313,26 +1318,24 @@ export class ShipmentsService {
     if (!memberStillInvolved) {
       const MemberModel = connection.model('Member');
 
-      await MemberModel.updateOne(
+      const result = await MemberModel.updateOne(
         { email: normalizedEmail },
         { $set: { activeShipment: false } },
       );
 
-      // console.log(`🧾 Resultado del update para ${normalizedEmail}:`, result);
-
-      // if (result.matchedCount === 0) {
-      //   console.warn(
-      //     `⚠️ No se encontró ningún member con email: ${normalizedEmail}`,
-      //   );
-      // } else if (result.modifiedCount === 0) {
-      //   console.warn(
-      //     `ℹ️ El member con email ${normalizedEmail} ya tenía activeShipment en false`,
-      //   );
-      // } else {
-      //   console.log(
-      //     `✅ activeShipment flag set to false for ${normalizedEmail}`,
-      //   );
-      // }
+      if (result.matchedCount === 0) {
+        console.warn(
+          `⚠️ No se encontró ningún member con email: ${normalizedEmail}`,
+        );
+      } else if (result.modifiedCount === 0) {
+        console.warn(
+          `ℹ️ El member con email ${normalizedEmail} ya tenía activeShipment en false`,
+        );
+      } else {
+        console.log(
+          `✅ activeShipment flag set to false for ${normalizedEmail}`,
+        );
+      }
     }
   }
 
