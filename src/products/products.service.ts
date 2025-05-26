@@ -313,7 +313,10 @@ export class ProductsService {
             return 'In Transit - Missing Data';
           case 'Cancelled':
           case 'Received':
-            break; // se recalcula abajo
+            if (params.location === 'Employee' && params.assignedEmail) {
+              return 'Delivered';
+            }
+            break;
         }
       }
 
@@ -363,11 +366,17 @@ export class ProductsService {
       });
       return 'Available';
     }
+
     console.log('🧪 Checking delivered logic:', {
       location: params.location,
       assignedEmail: params.assignedEmail,
       condition: params.productCondition,
     });
+
+    if (params.location === 'Employee' && params.assignedEmail) {
+      return 'Delivered';
+    }
+
     return 'Available';
   }
 
