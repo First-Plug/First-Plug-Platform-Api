@@ -923,13 +923,19 @@ export class ShipmentsService {
     await shipment.save();
     console.log('✅ Shipment cancelled');
 
-    await recordShipmentHistory(
-      this.historyService,
-      'cancel',
-      userId,
-      originalShipment,
-      shipment.toObject(),
-    );
+    if (!userId) {
+      console.warn(
+        '⚠️ userId no definido, se omitirá el registro en el historial',
+      );
+    } else {
+      await recordShipmentHistory(
+        this.historyService,
+        'cancel',
+        userId,
+        originalShipment,
+        shipment.toObject(),
+      );
+    }
 
     for (const productId of shipment.products) {
       console.log('📦 Processing product:', productId.toString());
@@ -999,11 +1005,6 @@ export class ShipmentsService {
               },
             },
           );
-
-          console.log(`✅ Product updated from Member collection:`, {
-            id: embeddedProduct._id,
-            status: newStatus,
-          });
         } else {
           console.log('❌ Product not found in Member collection either');
         }
@@ -1026,14 +1027,20 @@ export class ShipmentsService {
     });
     await this.slackService.sendMessage(slackMessage);
 
-    await this.clearMemberActiveShipmentFlagIfNoOtherShipments(
-      shipment.origin,
-      tenantId,
-    );
-    await this.clearMemberActiveShipmentFlagIfNoOtherShipments(
-      shipment.destination,
-      tenantId,
-    );
+    if (shipment.originDetails?.assignedEmail) {
+      await this.clearMemberActiveShipmentFlagIfNoOtherShipments(
+        shipment.originDetails.assignedEmail,
+        tenantId,
+      );
+    }
+
+    if (shipment.destinationDetails?.assignedEmail) {
+      await this.clearMemberActiveShipmentFlagIfNoOtherShipments(
+        shipment.destinationDetails.assignedEmail,
+        tenantId,
+      );
+    }
+
     //TODO: Nahue status
     /* este es el fin del cancel de un shipment, en este punto vas a tener 
     el shipment cancelado con su status cancel + el status del producti actualizado + los flags de
