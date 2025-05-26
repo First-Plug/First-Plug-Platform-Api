@@ -1280,22 +1280,52 @@ export class ShipmentsService {
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantId);
     const ShipmentModel = connection.model('Shipment');
+    if (typeof memberEmail !== 'string') {
+      console.warn(
+        `❌ Email inválido recibido en clearMemberActiveShipmentFlagIfNoOtherShipments:`,
+        memberEmail,
+      );
+      return;
+    }
+    const normalizedEmail = memberEmail.trim().toLowerCase();
 
     const memberStillInvolved = await ShipmentModel.exists({
       shipment_status: {
         $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
       },
-      $or: [{ origin: memberEmail }, { destination: memberEmail }],
+      $or: [{ origin: normalizedEmail }, { destination: normalizedEmail }],
       isDeleted: { $ne: true },
     });
 
+    console.log(
+      `🔎 Checking active shipments for ${normalizedEmail} => ${
+        memberStillInvolved ? 'STILL INVOLVED' : 'CAN BE CLEARED'
+      }`,
+    );
+
     if (!memberStillInvolved) {
       const MemberModel = connection.model('Member');
+
       await MemberModel.updateOne(
-        { email: memberEmail },
+        { email: normalizedEmail },
         { $set: { activeShipment: false } },
       );
-      console.log(`✅ activeShipment flag set to false for ${memberEmail}`);
+
+      // console.log(`🧾 Resultado del update para ${normalizedEmail}:`, result);
+
+      // if (result.matchedCount === 0) {
+      //   console.warn(
+      //     `⚠️ No se encontró ningún member con email: ${normalizedEmail}`,
+      //   );
+      // } else if (result.modifiedCount === 0) {
+      //   console.warn(
+      //     `ℹ️ El member con email ${normalizedEmail} ya tenía activeShipment en false`,
+      //   );
+      // } else {
+      //   console.log(
+      //     `✅ activeShipment flag set to false for ${normalizedEmail}`,
+      //   );
+      // }
     }
   }
 

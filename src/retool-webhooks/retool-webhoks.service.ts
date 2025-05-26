@@ -70,7 +70,6 @@ export class RetoolWebhooksService {
         );
       }
 
-      console.log('📥 Procesando productos para status Received...');
       for (const productId of shipment.products) {
         await this.shipmentsService.updateProductOnShipmentReceived(
           productId.toString(),
@@ -89,6 +88,17 @@ export class RetoolWebhooksService {
     }
 
     await shipment.save();
+
+    if (shipment.shipment_status === 'Received') {
+      await this.shipmentsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
+        shipment.originDetails?.assignedEmail,
+        tenantName,
+      );
+      await this.shipmentsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
+        shipment.destinationDetails?.assignedEmail,
+        tenantName,
+      );
+    }
 
     return {
       message: 'Shipment actualizado correctamente',
