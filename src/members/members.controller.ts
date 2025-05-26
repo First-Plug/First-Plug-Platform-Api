@@ -20,6 +20,7 @@ import { CreateMemberArrayDto } from './dto/create-member-array.dto';
 import { AddFullNameInterceptor } from './interceptors/add-full-name.interceptor';
 import { ProductsService } from 'src/products/products.service';
 import { HistoryService } from 'src/history/history.service';
+import { ShipmentsService } from 'src/shipments/shipments.service';
 
 @Controller('members')
 @UseGuards(JwtGuard)
@@ -29,6 +30,7 @@ export class MembersController {
     private readonly membersService: MembersService,
     private readonly productService: ProductsService,
     private readonly historyService: HistoryService,
+    private readonly shipmentsService: ShipmentsService,
   ) {}
 
   @Post()
@@ -64,6 +66,7 @@ export class MembersController {
   ) {
     const tenantName = req.user.tenantName;
     const { userId } = req;
+    const ourOfficeEmail = req.user.email;
 
     const productsToUpdate: Array<{
       id: ObjectId;
@@ -89,9 +92,29 @@ export class MembersController {
       const product = element.product;
 
       switch (element.relocation) {
-        case 'New employee':
+        case 'New employee': {
           product.assignedEmail = element.newMember.email;
           product.assignedMember = element.newMember.fullName;
+
+          product.fp_shipment = element.fp_shipment;
+          product.actionType = 'offboarding';
+
+          const desirableDate = element.desirableDate;
+
+          if (typeof desirableDate === 'string') {
+            product.desirableDate = desirableDate;
+          } else if (typeof desirableDate === 'object') {
+            product.desirableDate = {
+              origin: desirableDate.origin,
+              destination: desirableDate.destination,
+            };
+          }
+          console.log('🟡 Producto recibido en offboarding:', {
+            fp_shipment: element.fp_shipment,
+            desirableDate: element.desirableDate,
+            relocation: element.relocation,
+            assignedEmail: element.newMember?.email || '',
+          });
 
           productsToUpdate.push({
             id: product._id,
@@ -106,14 +129,33 @@ export class MembersController {
             assignedMember: product.assignedMember,
           });
           break;
-
-        case 'FP warehouse':
+        }
+        case 'FP warehouse': {
           product.lastAssigned = product.assignedEmail;
           product.assignedEmail = '';
           product.assignedMember = '';
           product.location = 'FP warehouse';
           product.status = 'Available';
 
+          product.fp_shipment = element.fp_shipment;
+          product.actionType = 'offboarding';
+
+          const desirableDate = element.desirableDate;
+
+          if (typeof desirableDate === 'string') {
+            product.desirableDate = desirableDate;
+          } else if (typeof desirableDate === 'object') {
+            product.desirableDate = {
+              origin: desirableDate.origin,
+              destination: desirableDate.destination,
+            };
+          }
+          console.log('🟡 Producto recibido en offboarding:', {
+            fp_shipment: element.fp_shipment,
+            desirableDate: element.desirableDate,
+            relocation: element.relocation,
+            assignedEmail: element.newMember?.email || '',
+          });
           productsToUpdate.push({
             id: product._id,
             product,
@@ -127,14 +169,33 @@ export class MembersController {
             assignedMember: '',
           });
           break;
-
-        case 'My office':
+        }
+        case 'My office': {
           product.lastAssigned = product.assignedEmail;
           product.assignedEmail = '';
           product.assignedMember = '';
           product.location = 'Our office';
           product.status = 'Available';
 
+          product.fp_shipment = element.fp_shipment;
+          product.actionType = 'offboarding';
+
+          const desirableDate = element.desirableDate;
+
+          if (typeof desirableDate === 'string') {
+            product.desirableDate = desirableDate;
+          } else if (typeof desirableDate === 'object') {
+            product.desirableDate = {
+              origin: desirableDate.origin,
+              destination: desirableDate.destination,
+            };
+          }
+          console.log('🟡 Producto recibido en offboarding:', {
+            fp_shipment: element.fp_shipment,
+            desirableDate: element.desirableDate,
+            relocation: element.relocation,
+            assignedEmail: element.newMember?.email || '',
+          });
           productsToUpdate.push({
             id: product._id,
             product,
@@ -148,6 +209,7 @@ export class MembersController {
             assignedMember: '',
           });
           break;
+        }
       }
     });
 
@@ -156,14 +218,18 @@ export class MembersController {
         productsToUpdate,
         tenantName,
         userId,
+        ourOfficeEmail,
       );
     }
 
     const updatedProducts = productsToUpdate.map((p) => p.product);
 
-    const offboardingMember = await this.membersService.findById(id);
+    const offboardingMember = await this.membersService.findById(
+      id,
+      tenantName,
+    );
 
-    await this.membersService.softDeleteMember(id);
+    await this.membersService.softDeleteMember(id, tenantName, true);
 
     await this.membersService.notifyOffBoarding(
       offboardingMember,
@@ -209,8 +275,9 @@ export class MembersController {
   }
 
   @Get(':id')
-  findById(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.membersService.findById(id);
+  findById(@Param('id', ParseMongoIdPipe) id: ObjectId, @Req() req) {
+    const { tenantName } = req;
+    return this.membersService.findById(id, tenantName);
   }
 
   @Patch(':id')
@@ -220,15 +287,24 @@ export class MembersController {
     @Req() req,
   ) {
     const { userId, tenantName } = req;
-
-    return this.membersService.update(id, updateMemberDto, userId, tenantName);
+    const ourOfficeEmail = req.user.email;
+    return this.membersService.update(
+      id,
+      updateMemberDto,
+      userId,
+      tenantName,
+      ourOfficeEmail,
+    );
   }
 
   @Delete(':id')
   async remove(@Param('id', ParseMongoIdPipe) id: ObjectId, @Req() req) {
-    const { userId } = req;
+    const { userId, tenantName } = req;
 
-    const memberDeleted = await this.membersService.softDeleteMember(id);
+    const memberDeleted = await this.membersService.softDeleteMember(
+      id,
+      tenantName,
+    );
 
     await this.historyService.create({
       actionType: 'delete',

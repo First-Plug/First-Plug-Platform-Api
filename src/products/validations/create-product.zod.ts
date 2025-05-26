@@ -92,6 +92,17 @@ export const ProductSchemaZod = z
       )
       .optional()
       .nullable(),
+    fp_shipment: z.boolean().optional(),
+    activeShipment: z.boolean().optional(),
+    desirableDate: z
+      .union([
+        z.string(),
+        z.object({
+          origin: z.union([z.string(), z.date()]).optional(),
+          destination: z.string().optional(),
+        }),
+      ])
+      .optional(),
   })
   .superRefine((data, ctx) => {
     if (data.category === 'Merchandising' && !data.name) {
@@ -128,43 +139,56 @@ export const ProductSchemaZod = z
           path: ['status'],
         });
       }
-    } else {
-      // Validaciones para productos no "Unusable"
-      if (data.assignedMember) {
-        if (data.location !== 'Employee' || data.status !== 'Delivered') {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message:
-              'When assigned to a member, location must be Employee and status must be Delivered.',
-            path: ['status'],
-          });
-        }
-      } else if (data.assignedEmail === 'none') {
-        if (
-          !['FP warehouse', 'Our office'].includes(data.location) ||
-          data.status !== 'Available'
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message:
-              'When unassigned, location must be FP warehouse or Our office, and status must be Available.',
-            path: ['status'],
-          });
-        }
-      }
+      // } else {
+      //   if (data.fp_shipment) {
+      //     if (
+      //       typeof data.status !== 'string' ||
+      //       !['In Transit', 'In Transit - Missing Data'].includes(data.status)
+      //     ) {
+      //       ctx.addIssue({
+      //         code: z.ZodIssueCode.custom,
+      //         message:
+      //           "When FP handles the shipment, status must be 'In Transit' or 'In Transit - Missing Data'.",
+      //         path: ['status'],
+      //       });
+      //     }
+      // } else {
+      //   // Validaciones para productos no "Unusable"
+      //   if (data.assignedMember) {
+      //     if (data.location !== 'Employee' || data.status !== 'Delivered') {
+      //       ctx.addIssue({
+      //         code: z.ZodIssueCode.custom,
+      //         message:
+      //           'When assigned to a member, location must be Employee and status must be Delivered.',
+      //         path: ['status'],
+      //       });
+      //     }
+      //   } else if (data.assignedEmail === 'none') {
+      //     if (
+      //       !['FP warehouse', 'Our office'].includes(data.location) ||
+      //       data.status !== 'Available'
+      //     ) {
+      //       ctx.addIssue({
+      //         code: z.ZodIssueCode.custom,
+      //         message:
+      //           'When unassigned, location must be FP warehouse or Our office, and status must be Available.',
+      //         path: ['status'],
+      //       });
+      //     }
+      //   }
 
       // Validación de condiciones de producto para ubicaciones específicas
-      if (
-        ['Employee', 'FP warehouse', 'Our office'].includes(data.location) &&
-        !['Optimal', 'Defective'].includes(data.productCondition)
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message:
-            'Product condition must be Optimal or Defective for the selected location.',
-          path: ['productCondition'],
-        });
-      }
+      //     if (
+      //       ['Employee', 'FP warehouse', 'Our office'].includes(data.location) &&
+      //       !['Optimal', 'Defective'].includes(data.productCondition)
+      //     ) {
+      //       ctx.addIssue({
+      //         code: z.ZodIssueCode.custom,
+      //         message:
+      //           'Product condition must be Optimal or Defective for the selected location.',
+      //         path: ['productCondition'],
+      //       });
+      //     }
     }
   })
   .refine(

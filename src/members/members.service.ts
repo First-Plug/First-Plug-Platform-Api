@@ -5,11 +5,12 @@ import {
   InternalServerErrorException,
   NotFoundException,
   Logger,
+  forwardRef,
 } from '@nestjs/common';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { ClientSession, Model, ObjectId, Schema } from 'mongoose';
-import { MemberDocument } from './schemas/member.schema';
+import { MemberDocument, MemberSchema } from './schemas/member.schema';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { CreateProductDto } from 'src/products/dto';
 import { Team } from 'src/teams/schemas/team.schema';
@@ -19,6 +20,12 @@ import { InjectSlack } from 'nestjs-slack-webhook';
 import { IncomingWebhook } from '@slack/webhook';
 import { HistoryService } from 'src/history/history.service';
 import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
+import { Status } from 'src/products/interfaces/product.interface';
+import { ShipmentsService } from 'src/shipments/shipments.service';
+import { EventTypes } from 'src/common/events/types';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { MemberAddressUpdatedEvent } from 'src/common/events/member-address-update.event';
+import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
 
 export interface MemberModel
   extends Model<MemberDocument>,
@@ -36,6 +43,9 @@ export class MembersService {
     @InjectSlack() private readonly slack: IncomingWebhook,
     private readonly historyService: HistoryService,
     private readonly connectionService: TenantConnectionService,
+    @Inject(forwardRef(() => ShipmentsService))
+    private readonly shipmentsService: ShipmentsService,
+    private eventEmitter: EventEmitter2,
   ) {
     const slackOffboardingWebhookUrl =
       process.env.SLACK_WEBHOOK_URL_OFFBOARDING;
@@ -428,13 +438,57 @@ export class MembersService {
     }
   }
 
-  async findById(id: ObjectId) {
+  async findById(id: ObjectId, tenantName: string) {
     const member = await this.memberRepository.findById(id).populate('team');
 
     if (!member)
       throw new NotFoundException(`Member with id "${id}" not found`);
 
-    return member;
+    const response: any = member.toObject();
+
+    if (member.activeShipment) {
+      const connection =
+        await this.connectionService.getTenantConnection(tenantName);
+
+      const ShipmentModel =
+        connection.models.Shipment ||
+        connection.model('Shipment', ShipmentSchema, 'shipments');
+
+      const activeShipments = await ShipmentModel.find({
+        destination: `${member.firstName} ${member.lastName}`,
+        shipment_status: {
+          $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
+        },
+        isDeleted: { $ne: true },
+      }).select('origin products shipment_status');
+
+      const incomingProducts = activeShipments.flatMap((shipment) =>
+        shipment.products.map((productId) => ({
+          productId: productId.toString(),
+          origin: shipment.origin,
+          destination: `${member.firstName} ${member.lastName}`,
+          shipmentStatus: shipment.shipment_status,
+        })),
+      );
+
+      response.products = response.products.map((product) => {
+        const incoming = incomingProducts.find(
+          (p) => p.productId === product._id.toString(),
+        );
+
+        if (incoming) {
+          return {
+            ...product,
+            origin: incoming.origin,
+            shipmentStatus: incoming.shipmentStatus,
+          };
+        }
+
+        return product;
+      });
+    }
+
+    return response;
   }
 
   async findByEmail(email: string, session?: ClientSession) {
@@ -452,11 +506,79 @@ export class MembersService {
     return await this.memberRepository.findOne({ email: email });
   }
 
+  async validateIfMemberCanBeModified(memberEmail: string, tenantName: string) {
+    const shipments = await this.shipmentsService.getShipmentsByMember(
+      memberEmail,
+      tenantName,
+    );
+    const hasRestrictedStatus = shipments.some(
+      (s) => s.shipment_status === 'On The Way',
+    );
+    if (hasRestrictedStatus) {
+      throw new BadRequestException(
+        'This member is part of a shipment On The Way and cannot be modified.',
+      );
+    }
+  }
+
+  private isPersonalDataBeingModified(
+    original: MemberDocument,
+    updateDto: Partial<UpdateMemberDto>,
+  ): boolean {
+    const sensitiveFields = [
+      'address',
+      'apartment',
+      'city',
+      // 'state',
+      'zipCode',
+      'country',
+      'dni',
+      'phone',
+      'email',
+      'personalEmail',
+    ];
+
+    return sensitiveFields.some((field) => {
+      const originalHasField =
+        field in original &&
+        original[field] !== undefined &&
+        original[field] !== null;
+      const originalValue = originalHasField ? original[field] : undefined;
+
+      const fieldExistsInUpdate = field in updateDto;
+
+      if (
+        originalHasField &&
+        fieldExistsInUpdate &&
+        (updateDto[field] === null || updateDto[field] === undefined)
+      ) {
+        console.log(`🔍 Campo ${field} está siendo eliminado`);
+        return true;
+      }
+
+      if (!fieldExistsInUpdate) {
+        return false;
+      }
+
+      const newValue = updateDto[field];
+      const hasChanged = originalValue !== newValue;
+
+      if (hasChanged) {
+        console.log(
+          `🔍 Campo ${field} ha cambiado: ${originalValue} -> ${newValue}`,
+        );
+      }
+
+      return hasChanged;
+    });
+  }
+
   async update(
     id: ObjectId,
     updateMemberDto: UpdateMemberDto,
     userId: string,
     tenantName,
+    ourOfficeEmail,
   ) {
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
@@ -471,12 +593,18 @@ export class MembersService {
       }
 
       const initialMember = JSON.parse(JSON.stringify(member));
+      console.log('📊 Estado inicial del miembro:', {
+        dni: initialMember.dni,
+        email: initialMember.email,
+      });
 
-      if (
-        updateMemberDto.dni !== undefined &&
-        updateMemberDto.dni !== member.dni
-      ) {
-        await this.validateDni(updateMemberDto.dni);
+      const willModifyPersonalData = this.isPersonalDataBeingModified(
+        member,
+        updateMemberDto,
+      );
+
+      if (willModifyPersonalData) {
+        await this.validateIfMemberCanBeModified(member.email, tenantName);
       }
 
       const oldEmail = member.email.trim().toLowerCase();
@@ -491,15 +619,28 @@ export class MembersService {
         member.personalEmail = updateMemberDto.personalEmail.trim();
       }
 
+      if (updateMemberDto.activeShipment === undefined) {
+        updateMemberDto.activeShipment = member.activeShipment;
+      }
+
+      if (member.dni !== undefined && !('dni' in updateMemberDto)) {
+        console.log(
+          '🚨 DNI detectado como eliminado (no presente en updateDto)',
+        );
+        updateMemberDto.dni = undefined;
+      }
+
       Object.assign(member, updateMemberDto);
+      console.log(
+        '📋 Datos que se están seteando en el miembro:',
+        updateMemberDto,
+      );
 
       if (updateMemberDto.dni === undefined) {
         member.dni = undefined;
+        console.log('🔄 DNI explícitamente eliminado del miembro');
       }
 
-      member.email = member.email.trim().toLowerCase();
-      member.firstName = member.firstName.trim();
-      member.lastName = member.lastName.trim();
       await member.save({ session });
 
       const emailUpdated = oldEmail !== member.email;
@@ -520,6 +661,57 @@ export class MembersService {
 
         member.products = updatedProducts;
         await member.save({ session });
+      }
+      const modified = this.hasPersonalDataChanged(initialMember, member);
+      console.log('🔍 ¿Datos personales modificados?', modified, {
+        initialDni: initialMember.dni,
+        currentDni: member.dni,
+      });
+
+      if (modified) {
+        if (member.activeShipment) {
+          console.log('🔔 Emitiendo evento de actualización de dirección');
+          this.eventEmitter.emit(
+            EventTypes.MEMBER_ADDRESS_UPDATED,
+            new MemberAddressUpdatedEvent(
+              member.email,
+              tenantName,
+              {
+                address: initialMember.address || '',
+                apartment: initialMember.apartment || '',
+                city: initialMember.city || '',
+                country: initialMember.country || '',
+                zipCode: initialMember.zipCode || '',
+                phone: initialMember.phone || '',
+                email: initialMember.email || '',
+
+                dni:
+                  initialMember.dni !== undefined
+                    ? initialMember.dni.toString()
+                    : '',
+                personalEmail: initialMember.personalEmail || '',
+              },
+              {
+                address: member.address || '',
+                apartment: member.apartment || '',
+                city: member.city || '',
+                country: member.country || '',
+                zipCode: member.zipCode || '',
+                phone: member.phone || '',
+                email: member.email || '',
+                dni: member.dni !== undefined ? member.dni.toString() : '',
+                personalEmail: member.personalEmail || '',
+              },
+              new Date(),
+              userId,
+              ourOfficeEmail,
+            ),
+          );
+        } else {
+          console.log(
+            '🟨 No se emite evento: el miembro no tiene shipments activos',
+          );
+        }
       }
 
       await session.commitTransaction();
@@ -543,11 +735,27 @@ export class MembersService {
     }
   }
 
-  async softDeleteMember(id: ObjectId) {
-    const member = await this.findById(id);
+  async softDeleteMember(
+    id: ObjectId,
+    tenantName: string,
+    isOffboarding = false,
+  ) {
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const MemberModel =
+      connection.models.Member ||
+      connection.model('Member', MemberSchema, 'members');
+
+    const member = await MemberModel.findById(id);
 
     if (!member) {
       throw new NotFoundException(`Member with id "${id}" not found`);
+    }
+
+    if (member.activeShipment && !isOffboarding) {
+      throw new BadRequestException(
+        'This member has an active shipment. Please complete or cancel the shipment before deleting.',
+      );
     }
 
     const hasRecoverableProducts = member.products.some(
@@ -572,11 +780,7 @@ export class MembersService {
       });
     }
 
-    member.$isDeleted(true);
-    await member.save();
-
-    await this.memberRepository.softDelete({ _id: id });
-
+    await (MemberModel as any).softDelete({ _id: id });
     return member;
   }
 
@@ -599,26 +803,45 @@ export class MembersService {
   ) {
     const member = await this.findByEmailNotThrowError(email);
 
-    if (member) {
-      const { serialNumber, price, productCondition, ...rest } =
-        createProductDto;
+    if (!member) return null;
 
-      const productData = {
-        ...rest,
-        ...(serialNumber && serialNumber.trim() !== '' ? { serialNumber } : {}),
-        productCondition: productCondition || 'Optimal',
-        assignedMember: `${member.firstName} ${member.lastName}`,
-        assignedEmail: email,
-        ...(price?.amount !== undefined && price?.currencyCode
-          ? {
-              price: { amount: price.amount, currencyCode: price.currencyCode },
-            }
-          : {}),
-      };
+    const { serialNumber, price, productCondition, fp_shipment, ...rest } =
+      createProductDto;
 
-      member.products.push(productData);
-      await member.save({ session });
+    const location = 'Employee';
+
+    let status: Status = 'Delivered';
+
+    if (fp_shipment) {
+      const isComplete = !!(
+        member.country &&
+        member.city &&
+        member.zipCode &&
+        member.address &&
+        member.email &&
+        member.phone &&
+        member.dni
+      );
+
+      status = isComplete ? 'In Transit' : 'In Transit - Missing Data';
     }
+
+    const productData = {
+      ...rest,
+      serialNumber: serialNumber?.trim() || undefined,
+      productCondition: productCondition || 'Optimal',
+      assignedMember: `${member.firstName} ${member.lastName}`,
+      assignedEmail: email,
+      location,
+      status,
+      ...(price?.amount !== undefined && price?.currencyCode
+        ? { price: { amount: price.amount, currencyCode: price.currencyCode } }
+        : {}),
+      fp_shipment: !!fp_shipment,
+    };
+
+    member.products.push(productData);
+    await member.save({ session });
 
     return member;
   }
@@ -700,5 +923,68 @@ export class MembersService {
         'Unexpected error, check server log',
       );
     }
+  }
+
+  // private comparePersonalData(original: any, updated: any): boolean {
+  //   const sensitiveFields = [
+  //     'address',
+  //     'apartment',
+  //     'city',
+  //     'zipCode',
+  //     'country',
+  //     'dni',
+  //     'phone',
+  //     'email',
+  //     'personalEmail',
+  //   ];
+
+  //   return sensitiveFields.some((field) => {
+  //     const originalValue = original[field];
+  //     const updatedValue = updated[field];
+
+  //     const hasChanged = originalValue !== updatedValue;
+
+  //     if (hasChanged) {
+  //       console.log(
+  //         `🔄 Campo ${field} ha cambiado: ${originalValue} -> ${updatedValue}`,
+  //       );
+  //     }
+
+  //     return hasChanged;
+  //   });
+  // }
+
+  private hasPersonalDataChanged(original: any, updated: any): boolean {
+    const sensitiveFields = [
+      'address',
+      'apartment',
+      'city',
+      'zipCode',
+      'country',
+      'dni',
+      'phone',
+      'email',
+      'personalEmail',
+    ];
+
+    let changed = false;
+
+    sensitiveFields.forEach((field) => {
+      const originalHasField =
+        field in original && original[field] !== undefined;
+      const updatedHasField = field in updated && updated[field] !== undefined;
+
+      if (
+        originalHasField !== updatedHasField ||
+        original[field] !== updated[field]
+      ) {
+        console.log(
+          `🔄 Campo ${field} ha cambiado: ${original[field]} -> ${updated[field]}`,
+        );
+        changed = true;
+      }
+    });
+
+    return changed;
   }
 }

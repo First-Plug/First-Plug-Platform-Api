@@ -94,11 +94,13 @@ export class ProductsController {
   ) {
     const tenantName = req.user.tenantName;
     const { userId } = req;
+    const ourOfficeEmail = req.user.email;
     return this.productsService.reassignProduct(
       id,
       updateProductDto,
       tenantName,
       userId,
+      ourOfficeEmail,
     );
   }
 
@@ -115,11 +117,13 @@ export class ProductsController {
   ) {
     const tenantName = req.user.tenantName;
     const { userId } = req;
+    const ourOfficeEmail = req.user.email;
     return this.productsService.update(
       id,
       updateProductDto,
       tenantName,
       userId,
+      ourOfficeEmail,
     );
   }
 

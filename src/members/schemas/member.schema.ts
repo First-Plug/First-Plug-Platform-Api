@@ -67,6 +67,9 @@ export class Member {
 
   @Prop({ type: Number, min: 0, required: false, unique: true, sparse: true })
   dni?: number;
+
+  @Prop({ type: Boolean, default: false })
+  activeShipment?: boolean;
 }
 
 export const MemberSchema =

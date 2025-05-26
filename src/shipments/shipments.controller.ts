@@ -1,75 +1,123 @@
 import {
   Controller,
-  Get,
-  Post,
-  Body,
   Patch,
   Param,
-  Delete,
-  Res,
-  HttpStatus,
-  ParseArrayPipe,
   UseGuards,
+  Query,
+  Get,
+  Request,
+  Body,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { ShipmentsService } from './shipments.service';
-import { CreateShipmentDto } from './dto/create-shipment.dto';
-import { UpdateShipmentDto } from './dto/update-shipment.dto';
-import { Response } from 'express';
-import { ParseMongoIdPipe } from 'src/common/pipes/parse-mongo-id.pipe';
-import { ObjectId } from 'mongoose';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
+import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
+import { UpdateShipmentDto } from 'src/shipments/validations/update-shipment-zod';
 
 @Controller('shipments')
 @UseGuards(JwtGuard)
 export class ShipmentsController {
   constructor(private readonly shipmentsService: ShipmentsService) {}
 
-  @Post()
-  async create(
-    @Body() createShipmentDto: CreateShipmentDto,
-    @Res() res: Response,
-  ) {
-    const createdCount = await this.shipmentsService.create(createShipmentDto);
-
-    res.status(HttpStatus.CREATED).json({
-      message: `Bulk create successful: ${createdCount} documents inserted successfully.`,
-    });
-  }
-
-  @Post('/bulkcreate')
-  async bulkcreate(
-    @Body(new ParseArrayPipe({ items: CreateShipmentDto }))
-    createShipmentDto: CreateShipmentDto[],
-    @Res() res: Response,
-  ) {
-    const createdCount =
-      await this.shipmentsService.bulkCreate(createShipmentDto);
-
-    res.status(HttpStatus.CREATED).json({
-      message: `Bulk create successful: ${createdCount} documents inserted successfully out of ${createShipmentDto.length}.`,
-    });
-  }
-
   @Get()
-  findAll() {
-    return this.shipmentsService.findAll();
+  async paginatedShipments(
+    @Query('page') page: string = '1',
+    @Query('size') size: string = '10',
+    @Request() req: any,
+  ) {
+    const tenantId = req.user.tenantName;
+    const pageNumber = parseInt(page, 10) || 1;
+    const pageSize = parseInt(size, 10) || 10;
+
+    return this.shipmentsService.findAll(pageNumber, pageSize, tenantId);
   }
 
-  @Get(':id')
-  findById(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.shipmentsService.findById(id);
+  @Get('by-product/:productId')
+  async getShipmentByProductId(
+    @Param('productId') productId: string,
+    @Request() req: any,
+  ): Promise<ShipmentDocument | { message: string }> {
+    const tenantId = req.user.tenantName;
+
+    const shipment = await this.shipmentsService.getShipmentByProductId(
+      productId,
+      tenantId,
+    );
+
+    if (!shipment) {
+      return { message: `No active shipment found for product ${productId}` };
+    }
+
+    return shipment;
+  }
+
+  @Patch(':id/cancel')
+  async cancelShipment(
+    @Param('id') shipmentId: string,
+    @Request() req: any,
+  ): Promise<ShipmentDocument> {
+    const tenantId = req.user.tenantName;
+    const { userId } = req;
+    const ourOfficeEmail = req.user.email;
+    return this.shipmentsService.cancelShipmentAndUpdateProducts(
+      shipmentId,
+      tenantId,
+      userId,
+      ourOfficeEmail,
+    );
   }
 
   @Patch(':id')
-  update(
-    @Param('id', ParseMongoIdPipe) id: ObjectId,
-    @Body() updateShipmentDto: UpdateShipmentDto,
-  ) {
-    return this.shipmentsService.update(id, updateShipmentDto);
+  async updateShipment(
+    @Param('id') shipmentId: string,
+    @Body() updateDto: UpdateShipmentDto,
+    @Request() req: any,
+  ): Promise<{
+    message: string;
+    consolidatedInto?: string;
+    shipment: ShipmentDocument;
+  }> {
+    const tenantId = req.user.tenantName;
+    const { userId } = req;
+    const ourOfficeEmail = req.user.email;
+    return this.shipmentsService.findConsolidateAndUpdateShipment(
+      shipmentId,
+      updateDto,
+      tenantId,
+      userId,
+      ourOfficeEmail,
+    );
   }
 
-  @Delete(':id')
-  remove(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.shipmentsService.remove(id);
+  @Get('by-member-email/:email')
+  async getShipmentsByMemberEmail(
+    @Param('email') email: string,
+    @Query('activeOnly') activeOnly: string = 'true',
+    @Request() req: any,
+  ): Promise<ShipmentDocument[] | { message: string }> {
+    const tenantId = req.user.tenantName;
+    const isActiveOnly = activeOnly.toLowerCase() === 'true';
+
+    const shipments = await this.shipmentsService.getShipmentsByMemberEmail(
+      email,
+      tenantId,
+      isActiveOnly,
+    );
+
+    if (shipments.length === 0) {
+      return { message: `No shipments found for member with email ${email}` };
+    }
+
+    return shipments;
+  }
+
+  @Get('find-page/:shipmentId')
+  async findShipmentPage(
+    @Param('shipmentId') shipmentId: string,
+    @Query('size', ParseIntPipe) size: number,
+    @Request() req: any,
+  ) {
+    const tenantId = req.user.tenantName;
+    return this.shipmentsService.findShipmentPage(shipmentId, size, tenantId);
   }
 }

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, ObjectId } from 'mongoose';
 import { Tenant } from './schemas/tenant.schema';
@@ -9,16 +9,21 @@ import { IncomingWebhook } from '@slack/webhook';
 import { UpdateTenantInformationSchemaDto } from './dto/update-information.dto';
 import { UserJWT } from 'src/auth/interfaces/auth.interface';
 import { UpdateDashboardSchemaDto } from './dto/update-dashboard.dto';
+import { TenantAddressUpdatedEvent } from 'src/common/events/tenant-address-update.event';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EventTypes } from 'src/common/events/types';
 
 @Injectable()
 export class TenantsService {
   private slackMerchWebhook: IncomingWebhook;
   private slackShopWebhook: IncomingWebhook;
   private slackComputerUpgradeWebhook: IncomingWebhook;
+  private readonly logger = new Logger(TenantsService.name);
   constructor(
     @InjectModel(Tenant.name)
     private tenantRepository: Model<Tenant>,
     @InjectSlack() private readonly slack: IncomingWebhook,
+    private eventEmitter: EventEmitter2,
   ) {
     const slackMerchWebhookUrl = process.env.SLACK_WEBHOOK_URL_MERCH;
     const slackShopWebhookUrl = process.env.SLACK_WEBHOOK_URL_SHOP;
@@ -343,7 +348,26 @@ export class TenantsService {
   async updateInformation(
     user: UserJWT,
     updateTenantInformationSchemaDto: UpdateTenantInformationSchemaDto,
+    ourOfficeEmail: string,
   ) {
+    // First, get the current user data before update
+    const currentUser = await this.tenantRepository.findById(user._id);
+    if (!currentUser) {
+      throw new Error(`No se encontró el usuario con id: ${user._id}`);
+    }
+
+    // Store the old address data before any updates
+    const oldAddress = {
+      address: currentUser.address,
+      apartment: currentUser.apartment,
+      city: currentUser.city,
+      state: currentUser.state,
+      country: currentUser.country,
+      zipCode: currentUser.zipCode,
+      phone: currentUser.phone,
+    };
+
+    // Perform the update
     const userUpdated = await this.tenantRepository.findByIdAndUpdate(
       user._id,
       updateTenantInformationSchemaDto,
@@ -355,15 +379,16 @@ export class TenantsService {
     }
 
     const updateFields = {
-      phone: userUpdated?.phone,
-      country: userUpdated?.country,
-      city: userUpdated?.city,
-      state: userUpdated?.state,
-      zipCode: userUpdated?.zipCode,
-      address: userUpdated?.address,
-      apartment: userUpdated?.apartment,
-      image: userUpdated?.image,
+      phone: updateTenantInformationSchemaDto.phone,
+      country: updateTenantInformationSchemaDto.country,
+      city: updateTenantInformationSchemaDto.city,
+      state: updateTenantInformationSchemaDto.state,
+      zipCode: updateTenantInformationSchemaDto.zipCode,
+      address: updateTenantInformationSchemaDto.address,
+      apartment: updateTenantInformationSchemaDto.apartment,
+      image: updateTenantInformationSchemaDto.image,
     };
+
     if (userUpdated?.tenantName) {
       await this.tenantRepository.updateMany(
         { tenantName: userUpdated.tenantName, _id: { $ne: user._id } },
@@ -371,7 +396,32 @@ export class TenantsService {
       );
     }
 
-    const sanitizedUser = {
+    // Check if there are actual changes in the address fields
+    const hasAddressChanges = Object.keys(oldAddress).some(
+      (key) => oldAddress[key] !== updateFields[key],
+    );
+
+    if (hasAddressChanges) {
+      this.logger.debug('Emitting tenant address update event', {
+        tenantName: userUpdated.tenantName,
+        oldAddress,
+        newAddress: updateFields,
+      });
+
+      this.eventEmitter.emit(
+        EventTypes.TENANT_ADDRESS_UPDATED,
+        new TenantAddressUpdatedEvent(
+          userUpdated.tenantName,
+          oldAddress,
+          updateFields,
+          new Date(),
+          user._id.toString(),
+          ourOfficeEmail,
+        ),
+      );
+    }
+
+    return {
       phone: userUpdated?.phone,
       country: userUpdated?.country,
       city: userUpdated?.city,
@@ -382,8 +432,6 @@ export class TenantsService {
       image: userUpdated?.image,
       accountProvider: userUpdated?.accountProvider,
     };
-
-    return sanitizedUser;
   }
 
   async findUsersWithSameTenant(tenantName: string, createdAt: Date) {

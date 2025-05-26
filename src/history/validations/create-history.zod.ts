@@ -13,9 +13,11 @@ export const CreateHistorySchema = z.object({
     'assign',
     'reassign',
     'unassign',
+    'cancel',
+    'consolidate',
   ]),
   userId: z.string().min(1, 'User ID is required'),
-  itemType: z.enum(['members', 'teams', 'assets']),
+  itemType: z.enum(['members', 'teams', 'assets', 'shipments']),
   changes: z
     .object({
       oldData: z.union([
@@ -28,6 +30,7 @@ export const CreateHistorySchema = z.object({
         z.array(z.record(z.any())),
         z.null(),
       ]),
+      context: z.enum(['single-product', 'shipment-merge']).optional(),
     })
     .refine(
       (data) =>
