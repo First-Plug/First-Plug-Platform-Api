@@ -1241,7 +1241,8 @@ export class ShipmentsService {
       if (embeddedProduct) {
         const newStatus = await this.productsService.determineProductStatus(
           {
-            ...embeddedProduct,
+            location: 'Employee', // Force location to Employee
+            assignedEmail: embeddedProduct.assignedEmail, // Keep assigned email
             fp_shipment: false,
           },
           tenantName,

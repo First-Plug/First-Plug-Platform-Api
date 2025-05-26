@@ -373,10 +373,6 @@ export class ProductsService {
       condition: params.productCondition,
     });
 
-    if (params.location === 'Employee' && params.assignedEmail) {
-      return 'Delivered';
-    }
-
     return 'Available';
   }
 
