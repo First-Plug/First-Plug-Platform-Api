@@ -55,6 +55,7 @@ interface CreateShipmentMessageParams {
   status: Status;
   previousShipment?: Partial<ShipmentDocument> | null;
   ourOfficeEmail: string;
+  deletedShipmentOrderId?: string;
 }
 
 const getBestEmail = (
@@ -75,6 +76,7 @@ export const CreateShipmentMessageToSlack = ({
   status,
   previousShipment,
   ourOfficeEmail,
+  deletedShipmentOrderId,
 }: CreateShipmentMessageParams) => {
   const showComparison =
     (status === 'Consolidated' ||
@@ -109,7 +111,7 @@ export const CreateShipmentMessageToSlack = ({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*Shipment Order ID:* ${shipment.order_id}\n*Desirable pickup date:* ${formatDate(shipment.originDetails?.desirableDate || '')}\n*Desirable delivery date:* ${formatDate(shipment.destinationDetails?.desirableDate || '')}\n*Quantity of products:* ${shipment.snapshots?.length || 0}`,
+        text: `*Shipment Order ID:* ${shipment.order_id}\n*Deleted shipment Order ID:* ${deletedShipmentOrderId}\n*Desirable pickup date:* ${formatDate(shipment.originDetails?.desirableDate || '')}\n*Desirable delivery date:* ${formatDate(shipment.destinationDetails?.desirableDate || '')}\n*Quantity of products:* ${shipment.snapshots?.length || 0}`,
       },
     });
   }

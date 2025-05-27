@@ -708,6 +708,7 @@ export class ShipmentsService {
         isOffboarding: false,
         status: 'Consolidated',
         ourOfficeEmail: ourOfficeEmail,
+        deletedShipmentOrderId: shipment.order_id,
       });
       await this.slackService.sendMessage(slackMessage);
 
