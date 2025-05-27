@@ -1039,6 +1039,7 @@ export class ProductsService {
         {
           fp_shipment: updateProductDto.fp_shipment,
           status: updateProductDto.status,
+          activeShipment: updateProductDto.activeShipment,
         },
         null,
         2,
@@ -1058,11 +1059,22 @@ export class ProductsService {
           );
           continue;
         }
+
+        if (
+          key === 'activeShipment' &&
+          product.fp_shipment === true &&
+          updateProductDto[key] === false
+        ) {
+          console.log(
+            '⚠️ Producto en shipment activo, ignorando cambio de activeShipment a false',
+          );
+          continue;
+        }
+
         updatedFields[key] = updateProductDto[key];
       }
     }
 
-    // Asegurarse de que activeShipment solo se modifique si NO está en shipment activo
     if (
       updateProductDto.activeShipment !== undefined &&
       product.fp_shipment !== true
@@ -1075,6 +1087,12 @@ export class ProductsService {
       console.log(
         '⚠️ Ignorando override de activeShipment=false por estar en shipment activo',
       );
+
+      delete updatedFields.activeShipment;
+    }
+
+    if (product.fp_shipment === true) {
+      updatedFields.activeShipment = true;
     }
 
     console.log(
