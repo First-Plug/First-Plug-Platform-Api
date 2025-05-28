@@ -65,7 +65,14 @@ export class Member {
   @Prop({ type: Types.ObjectId, ref: 'Team' })
   team?: Types.ObjectId;
 
-  @Prop({ type: String, required: false, unique: true, sparse: true })
+  @Prop({
+    type: String,
+    required: false,
+    unique: true,
+    sparse: true,
+    get: (v: any) => (v ? String(v) : v),
+    set: (v: any) => (v ? String(v) : v),
+  })
   dni?: string;
 
   @Prop({ type: Boolean, default: false })
