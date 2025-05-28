@@ -270,8 +270,9 @@ export class MembersController {
   // }
 
   @Get()
-  findAll() {
-    return this.membersService.findAll();
+  findAll(@Req() req): Promise<any> {
+    const { tenantName } = req.user;
+    return this.membersService.findAll(tenantName);
   }
 
   @Get(':id')
