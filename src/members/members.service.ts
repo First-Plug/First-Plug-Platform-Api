@@ -27,6 +27,11 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MemberAddressUpdatedEvent } from 'src/common/events/member-address-update.event';
 import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
 
+interface MemberWithShipmentStatus extends MemberDocument {
+  shipmentStatus?: string[];
+  hasOnTheWayShipment?: boolean;
+}
+
 export interface MemberModel
   extends Model<MemberDocument>,
     SoftDeleteModel<MemberDocument> {}
@@ -425,15 +430,60 @@ export class MembersService {
     }
   }
 
-  async findAll() {
+  async findAll(
+    tenantName?: string,
+  ): Promise<MemberWithShipmentStatus[] | MemberDocument[]> {
     try {
       const members = await this.memberRepository
         .find()
         .populate('team')
         .collation({ locale: 'es', strength: 1 })
         .sort({ firstName: 1, lastName: 1 });
-      return members;
+
+      // Si no se proporciona tenantName, devolver los miembros sin información adicional
+      if (!tenantName) {
+        return members;
+      }
+
+      // Obtener la conexión al tenant para acceder a los shipments
+      const connection =
+        await this.connectionService.getTenantConnection(tenantName);
+      const ShipmentModel =
+        connection.models.Shipment ||
+        connection.model('Shipment', ShipmentSchema, 'shipments');
+
+      // Procesar cada miembro para agregar información de shipment
+      const membersWithShipmentStatus = await Promise.all(
+        members.map(async (member) => {
+          const memberObj = member.toObject() as MemberWithShipmentStatus;
+
+          // Solo buscar shipments si el miembro tiene activeShipment = true
+          if (member.activeShipment) {
+            const fullName = `${member.firstName} ${member.lastName}`;
+
+            // Buscar shipments donde el miembro es origen o destino
+            const shipments = await ShipmentModel.find({
+              $or: [{ origin: fullName }, { destination: fullName }],
+              isDeleted: { $ne: true },
+            }).select('shipment_status');
+
+            // Agregar el estado del shipment y si se puede editar
+            memberObj.shipmentStatus = shipments.map((s) => s.shipment_status);
+            memberObj.hasOnTheWayShipment = shipments.some(
+              (s) => s.shipment_status === 'On The Way',
+            );
+          } else {
+            memberObj.shipmentStatus = [];
+            memberObj.hasOnTheWayShipment = false;
+          }
+
+          return memberObj;
+        }),
+      );
+
+      return membersWithShipmentStatus;
     } catch (error) {
+      console.error('Error fetching members with shipment status:', error);
       throw new InternalServerErrorException('Error while fetching members');
     }
   }
