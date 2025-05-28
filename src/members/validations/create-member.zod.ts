@@ -51,9 +51,7 @@ export const MemberSchemaZod = z.object({
     .nullable(),
   products: z.array(ProductSchemaZod).optional(),
   team: z.string().trim().optional(),
-  dni: z
-    .union([z.number().int().positive().or(z.literal(0)), z.undefined()])
-    .optional(),
+  dni: z.string().trim().optional().or(z.undefined()).or(z.null()),
   activeShipment: z.boolean().optional(),
 });
 

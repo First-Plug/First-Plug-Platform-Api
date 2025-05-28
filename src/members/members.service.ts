@@ -173,7 +173,7 @@ export class MembersService {
     }
   }
 
-  private async validateDni(dni: number) {
+  private async validateDni(dni: string) {
     if (!dni) {
       return;
     }
