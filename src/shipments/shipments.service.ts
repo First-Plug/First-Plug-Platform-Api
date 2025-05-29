@@ -2114,6 +2114,9 @@ export class ShipmentsService {
         shipment.destination,
       );
 
+      const isNowComplete = originComplete && destinationComplete;
+      const wasInPreparation = shipment.shipment_status === 'In Preparation';
+
       if (newOrderId !== shipment.order_id && hasCodesForOrderId) {
         await ShipmentModel.updateOne(
           { _id: shipment._id },
@@ -2124,8 +2127,6 @@ export class ShipmentsService {
       }
 
       let newStatus = shipment.shipment_status;
-      const wasInPreparation = shipment.shipment_status === 'In Preparation';
-      const isNowComplete = originComplete && destinationComplete;
 
       if (
         isNowComplete &&
@@ -2204,24 +2205,32 @@ export class ShipmentsService {
       }
 
       // TODO: Status On Hold - Missing Data
-      if (newStatus === 'On Hold - Missing Data') {
-        const slackMessage = CreateShipmentMessageToSlack({
-          shipment: shipment,
-          tenantName: tenantId,
-          isOffboarding: false,
-          status: 'Missing Data',
-          ourOfficeEmail: ourOfficeEmail,
-        });
-        await this.slackService.sendMessage(slackMessage);
-      }
-
-      if (newStatus === 'In Preparation') {
+      if (
+        newStatus === 'In Preparation' &&
+        isNowComplete &&
+        !wasInPreparation
+      ) {
         const slackMessage = CreateShipmentMessageToSlack({
           shipment: shipment,
           tenantName: tenantId,
           isOffboarding: false,
           status: 'Updated',
           previousShipment: originalShipment,
+          ourOfficeEmail: ourOfficeEmail,
+        });
+        await this.slackService.sendMessage(slackMessage);
+      }
+
+      if (
+        newStatus === 'On Hold - Missing Data' &&
+        wasInPreparation &&
+        !isNowComplete
+      ) {
+        const slackMessage = CreateShipmentMessageToSlack({
+          shipment: shipment,
+          tenantName: tenantId,
+          isOffboarding: false,
+          status: 'Missing Data',
           ourOfficeEmail: ourOfficeEmail,
         });
         await this.slackService.sendMessage(slackMessage);
@@ -2423,7 +2432,10 @@ export class ShipmentsService {
       }
 
       // TODO: Status On Hold - Missing Data
-      if (newStatus === 'On Hold - Missing Data') {
+      if (
+        newStatus === 'On Hold - Missing Data' &&
+        shipment.shipment_status !== 'On Hold - Missing Data'
+      ) {
         const slackMessage = CreateShipmentMessageToSlack({
           shipment: shipment,
           tenantName: tenantName,
@@ -2434,7 +2446,10 @@ export class ShipmentsService {
         await this.slackService.sendMessage(slackMessage);
       }
 
-      if (newStatus === 'In Preparation') {
+      if (
+        newStatus === 'In Preparation' &&
+        shipment.shipment_status !== 'In Preparation'
+      ) {
         const slackMessage = CreateShipmentMessageToSlack({
           shipment: shipment,
           tenantName: tenantName,
