@@ -673,23 +673,29 @@ export class MembersService {
         updateMemberDto.activeShipment = member.activeShipment;
       }
 
-      if (member.dni !== undefined && !('dni' in updateMemberDto)) {
-        console.log(
-          '🚨 DNI detectado como eliminado (no presente en updateDto)',
-        );
-        updateMemberDto.dni = undefined;
-      }
-
       Object.assign(member, updateMemberDto);
       console.log(
         '📋 Datos que se están seteando en el miembro:',
         updateMemberDto,
       );
 
-      if (updateMemberDto.dni === undefined) {
-        member.dni = undefined;
-        console.log('🔄 DNI explícitamente eliminado del miembro');
+      if ('dni' in updateMemberDto) {
+        if (
+          updateMemberDto.dni === null ||
+          updateMemberDto.dni === '' ||
+          updateMemberDto.dni === undefined
+        ) {
+          member.dni = undefined;
+          console.log('🧹 DNI eliminado explícitamente');
+        } else {
+          member.dni = updateMemberDto.dni;
+        }
       }
+
+      // if (updateMemberDto.dni === undefined) {
+      //   member.dni = undefined;
+      //   console.log('🔄 DNI explícitamente eliminado del miembro');
+      // }
 
       await member.save({ session });
 
