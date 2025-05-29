@@ -111,12 +111,10 @@ export const CreateShipmentMessageToSlack = ({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*Shipment Order ID:* ${shipment.order_id}\n*Deleted shipment Order ID:* ${deletedShipmentOrderId}\n*Desirable pickup date:* ${formatDate(shipment.originDetails?.desirableDate || '')}\n*Desirable delivery date:* ${formatDate(shipment.destinationDetails?.desirableDate || '')}\n*Quantity of products:* ${shipment.snapshots?.length || 0}`,
+        text: `*Shipment Order ID:* ${shipment.order_id}\n${status === 'Consolidated' ? `*Deleted shipment Order ID:* ${deletedShipmentOrderId ? deletedShipmentOrderId : ''}\n` : ''}*Desirable pickup date:* ${formatDate(shipment.originDetails?.desirableDate || '')}\n*Desirable delivery date:* ${formatDate(shipment.destinationDetails?.desirableDate || '')}\n*Quantity of products:* ${shipment.snapshots?.length || 0}`,
       },
     });
   }
-
-  console.log(shipment);
 
   // Origin
   message.blocks.push({
