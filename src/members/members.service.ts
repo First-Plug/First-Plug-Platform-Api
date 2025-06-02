@@ -12,20 +12,18 @@ import { UpdateMemberDto } from './dto/update-member.dto';
 import { ClientSession, Model, ObjectId, Schema } from 'mongoose';
 import { MemberDocument, MemberSchema } from './schemas/member.schema';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
-import { CreateProductDto } from 'src/products/dto';
 import { Team } from 'src/teams/schemas/team.schema';
-import { ProductModel } from 'src/products/products.service';
 import { TeamsService } from 'src/teams/teams.service';
 import { InjectSlack } from 'nestjs-slack-webhook';
 import { IncomingWebhook } from '@slack/webhook';
 import { HistoryService } from 'src/history/history.service';
-import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
-import { Status } from 'src/products/interfaces/product.interface';
+import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { ShipmentsService } from 'src/shipments/shipments.service';
-import { EventTypes } from 'src/common/events/types';
+import { EventTypes } from 'src/infra/event-bus/types';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { MemberAddressUpdatedEvent } from 'src/common/events/member-address-update.event';
+import { MemberAddressUpdatedEvent } from 'src/infra/event-bus/member-address-update.event';
 import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
+import { AssignmentsService } from 'src/assigments/assigments.service';
 
 interface MemberWithShipmentStatus extends MemberDocument {
   shipmentStatus?: string[];
@@ -42,7 +40,6 @@ export class MembersService {
   private readonly logger = new Logger(MembersService.name);
   constructor(
     @Inject('MEMBER_MODEL') private memberRepository: MemberModel,
-    @Inject('PRODUCT_MODEL') private productRepository: ProductModel,
     @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
     private readonly teamsService: TeamsService,
     @InjectSlack() private readonly slack: IncomingWebhook,
@@ -51,6 +48,7 @@ export class MembersService {
     @Inject(forwardRef(() => ShipmentsService))
     private readonly shipmentsService: ShipmentsService,
     private eventEmitter: EventEmitter2,
+    private readonly assignmentsService: AssignmentsService,
   ) {
     const slackOffboardingWebhookUrl =
       process.env.SLACK_WEBHOOK_URL_OFFBOARDING;
@@ -65,7 +63,6 @@ export class MembersService {
   }
 
   async validateSerialNumber(serialNumber: string, productId: ObjectId) {
-    // Validar en la colección completa de members
     const isDuplicateInMembers = await this.memberRepository.exists({
       'products.serialNumber': serialNumber,
       'products._id': { $ne: productId },
@@ -184,7 +181,6 @@ export class MembersService {
     }
     const memberWithSameDni = await this.memberRepository.findOne({ dni });
     if (memberWithSameDni) {
-      // console.log('MEMBER WITH SAME DNI', memberWithSameDni);
       throw new BadRequestException(`DNI ${dni} is already in use`);
     }
   }
@@ -194,13 +190,6 @@ export class MembersService {
       .trim()
       .toLowerCase()
       .replace(/(?:^|\s|["'([{])\p{L}/gu, (char) => char.toUpperCase());
-  }
-
-  private normalizeName(name: string): string {
-    return name
-      .trim()
-      .toLowerCase()
-      .replace(/(?:^|\s)\p{L}/gu, (char) => char.toUpperCase());
   }
 
   private normalizeMemberData(member: CreateMemberDto) {
@@ -237,25 +226,26 @@ export class MembersService {
     return '';
   }
 
-  private async assignProductsToMemberByEmail(
-    memberEmail: string,
-    memberFullName: string,
-    session: ClientSession,
-  ) {
-    const productsToUpdate = await this.productRepository
-      .find({ assignedEmail: memberEmail })
-      .session(session);
+  // MOVE TO ASSIGNMENTS SERVICE
+  // private async assignProductsToMemberByEmail(
+  //   memberEmail: string,
+  //   memberFullName: string,
+  //   session: ClientSession,
+  // ) {
+  //   const productsToUpdate = await this.productRepository
+  //     .find({ assignedEmail: memberEmail })
+  //     .session(session);
 
-    for (const product of productsToUpdate) {
-      product.assignedMember = memberFullName;
-      await product.save({ session });
-      await this.productRepository
-        .deleteOne({ _id: product._id })
-        .session(session);
-    }
+  //   for (const product of productsToUpdate) {
+  //     product.assignedMember = memberFullName;
+  //     await product.save({ session });
+  //     await this.productRepository
+  //       .deleteOne({ _id: product._id })
+  //       .session(session);
+  //   }
 
-    return productsToUpdate;
-  }
+  //   return productsToUpdate;
+  // }
 
   async create(
     createMemberDto: CreateMemberDto,
@@ -278,11 +268,12 @@ export class MembersService {
       )[0];
 
       const memberFullName = this.getFullName(createdMember);
-      const assignedProducts = await this.assignProductsToMemberByEmail(
-        normalizedMember.email,
-        memberFullName,
-        session,
-      );
+      const assignedProducts =
+        await this.assignmentsService.assignProductsToMemberByEmail(
+          normalizedMember.email,
+          memberFullName,
+          session,
+        );
 
       createdMember.products.push(...assignedProducts);
       await createdMember.save({ session });
@@ -388,19 +379,13 @@ export class MembersService {
 
       for (const member of createdMembers) {
         const fullName = this.getFullName(member);
-        const productsToUpdate = await this.productRepository.find({
-          assignedEmail: member.email,
-        });
-
-        for (const product of productsToUpdate) {
-          product.assignedMember = fullName;
-          await product.save({ session });
-          await this.productRepository
-            .deleteOne({ _id: product._id })
-            .session(session);
-        }
-
-        member.products.push(...productsToUpdate);
+        const assignedProducts =
+          await this.assignmentsService.assignProductsToMemberByEmail(
+            member.email,
+            fullName,
+            session,
+          );
+        member.products.push(...assignedProducts);
         await member.save({ session });
       }
 
@@ -440,34 +425,28 @@ export class MembersService {
         .collation({ locale: 'es', strength: 1 })
         .sort({ firstName: 1, lastName: 1 });
 
-      // Si no se proporciona tenantName, devolver los miembros sin información adicional
       if (!tenantName) {
         return members;
       }
 
-      // Obtener la conexión al tenant para acceder a los shipments
       const connection =
         await this.connectionService.getTenantConnection(tenantName);
       const ShipmentModel =
         connection.models.Shipment ||
         connection.model('Shipment', ShipmentSchema, 'shipments');
 
-      // Procesar cada miembro para agregar información de shipment
       const membersWithShipmentStatus = await Promise.all(
         members.map(async (member) => {
           const memberObj = member.toObject() as MemberWithShipmentStatus;
 
-          // Solo buscar shipments si el miembro tiene activeShipment = true
           if (member.activeShipment) {
             const fullName = `${member.firstName} ${member.lastName}`;
 
-            // Buscar shipments donde el miembro es origen o destino
             const shipments = await ShipmentModel.find({
               $or: [{ origin: fullName }, { destination: fullName }],
               isDeleted: { $ne: true },
             }).select('shipment_status');
 
-            // Agregar el estado del shipment y si se puede editar
             memberObj.shipmentStatus = shipments.map((s) => s.shipment_status);
             memberObj.hasOnTheWayShipment = shipments.some(
               (s) => s.shipment_status === 'On The Way',
@@ -840,112 +819,115 @@ export class MembersService {
     return member;
   }
 
-  async findProductBySerialNumber(serialNumber: string) {
-    if (!serialNumber || serialNumber.trim() === '') {
-      return null;
-    }
-    const member = await this.memberRepository.findOne({
-      'products.serialNumber': serialNumber,
-    });
-    return member
-      ? member.products.find((product) => product.serialNumber === serialNumber)
-      : null;
-  }
+  // MOVE TO ASSIGNMENTS SERVICE
+  // async findProductBySerialNumber(serialNumber: string) {
+  //   if (!serialNumber || serialNumber.trim() === '') {
+  //     return null;
+  //   }
+  //   const member = await this.memberRepository.findOne({
+  //     'products.serialNumber': serialNumber,
+  //   });
+  //   return member
+  //     ? member.products.find((product) => product.serialNumber === serialNumber)
+  //     : null;
+  // }
 
-  async assignProduct(
-    email: string,
-    createProductDto: CreateProductDto,
-    session?: ClientSession,
-  ) {
-    const member = await this.findByEmailNotThrowError(email);
+  // MOVE TO ASSIGNMENTS SERVICE
+  // async assignProduct(
+  //   email: string,
+  //   createProductDto: CreateProductDto,
+  //   session?: ClientSession,
+  // ) {
+  //   const member = await this.findByEmailNotThrowError(email);
 
-    if (!member) return null;
+  //   if (!member) return null;
 
-    const { serialNumber, price, productCondition, fp_shipment, ...rest } =
-      createProductDto;
+  //   const { serialNumber, price, productCondition, fp_shipment, ...rest } =
+  //     createProductDto;
 
-    const location = 'Employee';
+  //   const location = 'Employee';
 
-    let status: Status = 'Delivered';
+  //   let status: Status = 'Delivered';
 
-    if (fp_shipment) {
-      const isComplete = !!(
-        member.country &&
-        member.city &&
-        member.zipCode &&
-        member.address &&
-        member.email &&
-        member.phone &&
-        member.dni
-      );
+  //   if (fp_shipment) {
+  //     const isComplete = !!(
+  //       member.country &&
+  //       member.city &&
+  //       member.zipCode &&
+  //       member.address &&
+  //       member.email &&
+  //       member.phone &&
+  //       member.dni
+  //     );
 
-      status = isComplete ? 'In Transit' : 'In Transit - Missing Data';
-    }
+  //     status = isComplete ? 'In Transit' : 'In Transit - Missing Data';
+  //   }
 
-    const productData = {
-      ...rest,
-      serialNumber: serialNumber?.trim() || undefined,
-      productCondition: productCondition || 'Optimal',
-      assignedMember: `${member.firstName} ${member.lastName}`,
-      assignedEmail: email,
-      location,
-      status,
-      ...(price?.amount !== undefined && price?.currencyCode
-        ? { price: { amount: price.amount, currencyCode: price.currencyCode } }
-        : {}),
-      fp_shipment: !!fp_shipment,
-    };
+  //   const productData = {
+  //     ...rest,
+  //     serialNumber: serialNumber?.trim() || undefined,
+  //     productCondition: productCondition || 'Optimal',
+  //     assignedMember: `${member.firstName} ${member.lastName}`,
+  //     assignedEmail: email,
+  //     location,
+  //     status,
+  //     ...(price?.amount !== undefined && price?.currencyCode
+  //       ? { price: { amount: price.amount, currencyCode: price.currencyCode } }
+  //       : {}),
+  //     fp_shipment: !!fp_shipment,
+  //   };
 
-    member.products.push(productData);
-    await member.save({ session });
+  //   member.products.push(productData);
+  //   await member.save({ session });
 
-    return member;
-  }
+  //   return member;
+  // }
 
-  async getAllProductsWithMembers() {
-    const members = await this.memberRepository.find();
+  // async getAllProductsWithMembers() {
+  //   const members = await this.memberRepository.find();
 
-    return members.flatMap((member) => member.products || []);
-  }
+  //   return members.flatMap((member) => member.products || []);
+  // }
 
-  async getProductByMembers(id: ObjectId, session?: ClientSession) {
-    const members = await this.memberRepository.find().session(session || null);
+  // async getProductByMembers(id: ObjectId, session?: ClientSession) {
+  //   const members = await this.memberRepository.find().session(session || null);
 
-    for (const member of members) {
-      const products = member.products || [];
-      const product = products.find(
-        (product) => product._id!.toString() === id.toString(),
-      );
+  //   for (const member of members) {
+  //     const products = member.products || [];
+  //     const product = products.find(
+  //       (product) => product._id!.toString() === id.toString(),
+  //     );
 
-      if (product) {
-        return { member, product };
-      }
-    }
-  }
+  //     if (product) {
+  //       return { member, product };
+  //     }
+  //   }
+  // }
 
-  async deleteProductFromMember(
-    memberId: ObjectId,
-    productId: ObjectId,
-    session?: ClientSession,
-  ) {
-    try {
-      const member = await this.memberRepository
-        .findById(memberId)
-        .session(session || null);
+  // MOVE TO ASSIGNMENTS SERVICE
+  // async deleteProductFromMember(
+  //   memberId: ObjectId,
+  //   productId: ObjectId,
+  //   session?: ClientSession,
+  // ) {
+  //   try {
+  //     const member = await this.memberRepository
+  //       .findById(memberId)
+  //       .session(session || null);
 
-      if (!member) {
-        throw new Error(`Member with id ${memberId} not found`);
-      }
+  //     if (!member) {
+  //       throw new Error(`Member with id ${memberId} not found`);
+  //     }
 
-      member.products = member.products.filter(
-        (product) => product?._id?.toString() !== productId.toString(),
-      );
+  //     member.products = member.products.filter(
+  //       (product) => product?._id?.toString() !== productId.toString(),
+  //     );
 
-      await member.save({ session });
-    } catch (error) {
-      throw error;
-    }
-  }
+  //     await member.save({ session });
+  //   } catch (error) {
+  //     throw error;
+  //   }
+  // }
 
   async findMembersByTeam(teamId: ObjectId) {
     try {
@@ -963,7 +945,7 @@ export class MembersService {
     }
   }
 
-  private handleDBExceptions(error: any) {
+  public handleDBExceptions(error: any) {
     if (error.code === 11000) {
       const duplicateKey = Object.keys(error.keyPattern)[0];
 
@@ -980,35 +962,6 @@ export class MembersService {
       );
     }
   }
-
-  // private comparePersonalData(original: any, updated: any): boolean {
-  //   const sensitiveFields = [
-  //     'address',
-  //     'apartment',
-  //     'city',
-  //     'zipCode',
-  //     'country',
-  //     'dni',
-  //     'phone',
-  //     'email',
-  //     'personalEmail',
-  //   ];
-
-  //   return sensitiveFields.some((field) => {
-  //     const originalValue = original[field];
-  //     const updatedValue = updated[field];
-
-  //     const hasChanged = originalValue !== updatedValue;
-
-  //     if (hasChanged) {
-  //       console.log(
-  //         `🔄 Campo ${field} ha cambiado: ${originalValue} -> ${updatedValue}`,
-  //       );
-  //     }
-
-  //     return hasChanged;
-  //   });
-  // }
 
   private hasPersonalDataChanged(original: any, updated: any): boolean {
     const sensitiveFields = [

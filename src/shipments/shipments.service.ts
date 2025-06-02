@@ -18,12 +18,12 @@ import {
   ShipmentDocument,
   ShipmentSchema,
 } from './schema/shipment.schema';
-import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
+import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { MembersService } from 'src/members/members.service';
 import { TenantsService } from 'src/tenants/tenants.service';
 import { ProductsService } from 'src/products/products.service';
 import { countryCodes } from 'src/shipments/helpers/countryCodes';
-import { GlobalConnectionProvider } from 'src/common/providers/global-connection.provider';
+import { GlobalConnectionProvider } from 'src/infra/db/global-connection.provider';
 import {
   Product,
   ProductDocument,
@@ -39,7 +39,7 @@ import {
   ShipmentMetadataSchema,
 } from 'src/shipments/schema/shipment-metadata.schema';
 import { OrderNumberGenerator } from 'src/shipments/helpers/order-number.util';
-import { AddressData } from 'src/common/events/tenant-address-update.event';
+import { AddressData } from 'src/infra/event-bus/tenant-address-update.event';
 import { UpdateShipmentDto } from 'src/shipments/dto/update.shipment.dto';
 import { HistoryService } from 'src/history/history.service';
 import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
@@ -354,6 +354,53 @@ export class ShipmentsService {
     };
   }
 
+  // por el momento lo pongo aca, pero despues solo en assignments
+
+  public async isAddressComplete(
+    product: Partial<Product>,
+    tenantName: string,
+  ): Promise<boolean> {
+    if (product.location === 'FP warehouse') {
+      return true;
+    }
+
+    if (product.location === 'Employee') {
+      const member = await this.membersService.findByEmailNotThrowError(
+        product.assignedEmail!,
+      );
+      if (!member) return false;
+
+      return !!(
+        member.country &&
+        member.city &&
+        member.zipCode &&
+        member.address &&
+        // member.apartment &&
+        member.personalEmail &&
+        member.phone &&
+        member.dni
+      );
+    }
+
+    if (product.location === 'Our office') {
+      const tenant = await this.tenantsService.getByTenantName(tenantName);
+
+      if (!tenant) return false;
+
+      return !!(
+        tenant.country &&
+        tenant.city &&
+        tenant.state &&
+        tenant.zipCode &&
+        tenant.address &&
+        // tenant.apartment &&
+        tenant.phone
+      );
+    }
+
+    return false;
+  }
+
   async findOrCreateShipment(
     productId: string,
     actionType: string,
@@ -475,12 +522,12 @@ export class ShipmentsService {
       return { shipment: existingShipment, isConsolidated: true };
     }
 
-    const destinationComplete = await this.productsService.isAddressComplete(
+    const destinationComplete = await this.isAddressComplete(
       { ...product, location: destinationLocation, assignedEmail },
       tenantId,
     );
 
-    const originComplete = await this.productsService.isAddressComplete(
+    const originComplete = await this.isAddressComplete(
       {
         ...product,
         location: originLocation,

@@ -19,11 +19,15 @@ import { Response } from 'express';
 import { ObjectId } from 'mongoose';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { CreateProductArrayDto } from './dto/create-product-array.dto';
+import { AssignmentsService } from 'src/assigments/assigments.service';
 
 @Controller('products')
 @UseGuards(JwtGuard)
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    private readonly productsService: ProductsService,
+    private readonly assignmentsService: AssignmentsService,
+  ) {}
 
   @Post()
   create(@Body() createProductDto: CreateProductDto, @Request() req: any) {
@@ -73,12 +77,12 @@ export class ProductsController {
 
   @Get('/assign/:id')
   getProductForAssign(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.productsService.getProductForAssign(id);
+    return this.assignmentsService.getProductForAssign(id);
   }
 
   @Get('/reassign/:id')
   getProductForReassign(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.productsService.getProductForReassign(id);
+    return this.assignmentsService.getProductForReassign(id);
   }
 
   @Get('/export-csv')

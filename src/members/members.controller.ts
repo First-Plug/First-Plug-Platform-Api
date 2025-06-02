@@ -18,9 +18,9 @@ import { ParseMongoIdPipe } from '../common/pipes/parse-mongo-id.pipe';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { CreateMemberArrayDto } from './dto/create-member-array.dto';
 import { AddFullNameInterceptor } from './interceptors/add-full-name.interceptor';
-import { ProductsService } from 'src/products/products.service';
 import { HistoryService } from 'src/history/history.service';
 import { ShipmentsService } from 'src/shipments/shipments.service';
+import { AssignmentsService } from 'src/assigments/assigments.service';
 
 @Controller('members')
 @UseGuards(JwtGuard)
@@ -28,7 +28,7 @@ import { ShipmentsService } from 'src/shipments/shipments.service';
 export class MembersController {
   constructor(
     private readonly membersService: MembersService,
-    private readonly productService: ProductsService,
+    private readonly assignmentsService: AssignmentsService,
     private readonly historyService: HistoryService,
     private readonly shipmentsService: ShipmentsService,
   ) {}
@@ -213,14 +213,12 @@ export class MembersController {
       }
     });
 
-    if (productsToUpdate.length > 0) {
-      await this.productService.updateMultipleProducts(
-        productsToUpdate,
-        tenantName,
-        userId,
-        ourOfficeEmail,
-      );
-    }
+    await this.assignmentsService.processOffboardingProducts(
+      productsToUpdate,
+      tenantName,
+      userId,
+      ourOfficeEmail,
+    );
 
     const updatedProducts = productsToUpdate.map((p) => p.product);
 

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { EventTypes } from 'src/common/events/types';
-import { ProductUpdatedEvent } from 'src/common/events/product-updated.event';
+import { EventTypes } from 'src/infra/event-bus/types';
+import { ProductUpdatedEvent } from 'src/infra/event-bus/product-updated.event';
 import { ShipmentsService } from '../shipments.service';
 
 @Injectable()

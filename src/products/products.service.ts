@@ -16,7 +16,7 @@ import {
 import { CreateProductDto, UpdateProductDto } from './dto';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { BadRequestException } from '@nestjs/common';
-import { MembersService } from 'src/members/members.service';
+// import { MembersService } from 'src/members/members.service';
 import { TenantsService } from 'src/tenants/tenants.service';
 import { Attribute, Condition, Status } from './interfaces/product.interface';
 import {
@@ -27,14 +27,16 @@ import { Response } from 'express';
 import { Parser } from 'json2csv';
 import { HistoryService } from 'src/history/history.service';
 import { updateProductPrice } from './helpers/update-price.helper';
-import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
+import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { ShipmentsService } from 'src/shipments/shipments.service';
 import { ModuleRef } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EventTypes } from 'src/common/events/types';
+// import { EventTypes } from 'src/infra/event-bus/types';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
 import { CreateShipmentMessageToSlack } from 'src/shipments/helpers/create-message-to-slack';
 import { SlackService } from 'src/slack/slack.service';
+import { AssignmentsService } from 'src/assigments/assigments.service';
+import { EventTypes } from 'src/infra/event-bus/types';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -46,7 +48,7 @@ export class ProductsService {
   constructor(
     @Inject('PRODUCT_MODEL')
     private readonly productRepository: ProductModel,
-    private readonly memberService: MembersService,
+    // private readonly memberService: MembersService,
     private tenantsService: TenantsService,
     private readonly historyService: HistoryService,
     private readonly connectionService: TenantConnectionService,
@@ -56,6 +58,7 @@ export class ProductsService {
     private readonly moduleRef: ModuleRef,
     private readonly eventEmitter: EventEmitter2,
     private readonly slackService: SlackService,
+    private readonly assignmentsService: AssignmentsService,
   ) {}
 
   onModuleInit() {
@@ -91,7 +94,7 @@ export class ProductsService {
       serialNumber,
     });
     const memberProductWithSameSerialNumber =
-      await this.memberService.findProductBySerialNumber(serialNumber);
+      await this.assignmentsService.findProductBySerialNumber(serialNumber);
 
     if (productWithSameSerialNumber || memberProductWithSameSerialNumber) {
       throw new BadRequestException('Serial Number already exists');
@@ -245,50 +248,51 @@ export class ProductsService {
     return actionType === 'create' || actionType === 'bulkCreate';
   }
 
-  public async isAddressComplete(
-    product: Partial<Product>,
-    tenantName: string,
-  ): Promise<boolean> {
-    if (product.location === 'FP warehouse') {
-      return true;
-    }
+  // MOVE TO ASSIGMENTS SERVICE
+  // public async isAddressComplete(
+  //   product: Partial<Product>,
+  //   tenantName: string,
+  // ): Promise<boolean> {
+  //   if (product.location === 'FP warehouse') {
+  //     return true;
+  //   }
 
-    if (product.location === 'Employee') {
-      const member = await this.memberService.findByEmailNotThrowError(
-        product.assignedEmail!,
-      );
-      if (!member) return false;
+  //   if (product.location === 'Employee') {
+  //     const member = await this.memberService.findByEmailNotThrowError(
+  //       product.assignedEmail!,
+  //     );
+  //     if (!member) return false;
 
-      return !!(
-        member.country &&
-        member.city &&
-        member.zipCode &&
-        member.address &&
-        // member.apartment &&
-        member.personalEmail &&
-        member.phone &&
-        member.dni
-      );
-    }
+  //     return !!(
+  //       member.country &&
+  //       member.city &&
+  //       member.zipCode &&
+  //       member.address &&
+  //       // member.apartment &&
+  //       member.personalEmail &&
+  //       member.phone &&
+  //       member.dni
+  //     );
+  //   }
 
-    if (product.location === 'Our office') {
-      const tenant = await this.tenantsService.getByTenantName(tenantName);
+  //   if (product.location === 'Our office') {
+  //     const tenant = await this.tenantsService.getByTenantName(tenantName);
 
-      if (!tenant) return false;
+  //     if (!tenant) return false;
 
-      return !!(
-        tenant.country &&
-        tenant.city &&
-        tenant.state &&
-        tenant.zipCode &&
-        tenant.address &&
-        // tenant.apartment &&
-        tenant.phone
-      );
-    }
+  //     return !!(
+  //       tenant.country &&
+  //       tenant.city &&
+  //       tenant.state &&
+  //       tenant.zipCode &&
+  //       tenant.address &&
+  //       // tenant.apartment &&
+  //       tenant.phone
+  //     );
+  //   }
 
-    return false;
-  }
+  //   return false;
+  // }
 
   public async determineProductStatus(
     params: {
@@ -303,7 +307,6 @@ export class ProductsService {
   ): Promise<Status> {
     console.log('📦 determineProductStatus inputs:', params);
     if (params.fp_shipment === true) {
-      // Si hay status explícito del shipment, usarlo
       if (shipmentStatus) {
         switch (shipmentStatus) {
           case 'In Preparation':
@@ -320,9 +323,8 @@ export class ProductsService {
         }
       }
 
-      // Cálculo manual según destino
       if (params.location === 'Employee' && params.assignedEmail) {
-        const member = await this.memberService.findByEmailNotThrowError(
+        const member = await this.assignmentsService.findByEmailNotThrowError(
           params.assignedEmail,
         );
         if (
@@ -425,7 +427,7 @@ export class ProductsService {
     let assignedMember = '';
     console.log('createData before assigning:', createData);
     if (assignedEmail) {
-      const member = await this.memberService.assignProduct(
+      const member = await this.assignmentsService.assignProduct(
         assignedEmail,
         createData,
       );
@@ -551,9 +553,10 @@ export class ProductsService {
       const assignProductPromises = productsWithAssignedEmail.map(
         async (product) => {
           if (product.assignedEmail) {
-            const member = await this.memberService.findByEmailNotThrowError(
-              product.assignedEmail,
-            );
+            const member =
+              await this.assignmentsService.findByEmailNotThrowError(
+                product.assignedEmail,
+              );
 
             if (member) {
               const productDocument = new this.productRepository(
@@ -630,7 +633,7 @@ export class ProductsService {
     });
 
     const productsFromMembers =
-      await this.memberService.getAllProductsWithMembers();
+      await this.assignmentsService.getAllProductsWithMembers();
 
     const allProducts = [...productsFromRepository, ...productsFromMembers];
 
@@ -867,7 +870,7 @@ export class ProductsService {
     return sortedResult;
   }
 
-  async findById(id: ObjectId) {
+  async findById(id: ObjectId): Promise<Product | ProductDocument> {
     await new Promise((resolve) => process.nextTick(resolve));
     const product = await this.productRepository.findById(id);
 
@@ -879,7 +882,7 @@ export class ProductsService {
       return product;
     }
 
-    const memberProduct = await this.memberService.getProductByMembers(id);
+    const memberProduct = await this.assignmentsService.getProductByMembers(id);
 
     if (memberProduct?.product) {
       if (memberProduct?.product.isDeleted) {
@@ -892,77 +895,88 @@ export class ProductsService {
     throw new NotFoundException(`Product with id "${id}" not found`);
   }
 
-  private filterMembers(
-    members: MemberDocument[],
-    currentEmail: string | null,
-    includeNone: boolean = false,
-  ) {
-    const filteredMembers = members
-      .filter((member) => member.email !== currentEmail && !member.$isDeleted())
-      .map((member) => ({
-        email: member.email,
-        name: `${member.firstName} ${member.lastName}`,
-        team: member.team,
-      }));
-    if (includeNone) {
-      filteredMembers.push({
-        email: 'none',
-        name: 'None',
-        team: undefined as Types.ObjectId | undefined,
-      });
-    }
-    return filteredMembers;
+  async updateOne(filter: any, update: any, options: any) {
+    return this.productRepository.updateOne(filter, update, options);
   }
 
-  async getProductForReassign(productId: ObjectId) {
-    let product: ProductDocument | null =
-      await this.productRepository.findById(productId);
-    let currentMember: MemberDocument | null = null;
-    let isUnknownEmail = false;
-
-    if (!product) {
-      const memberProduct =
-        await this.memberService.getProductByMembers(productId);
-      if (!memberProduct) {
-        throw new NotFoundException(`Product with id "${productId}" not found`);
-      }
-      product = memberProduct.product as ProductDocument;
-      currentMember = memberProduct.member as MemberDocument;
-    } else {
-      if (product.assignedEmail) {
-        currentMember = await this.memberService.findByEmailNotThrowError(
-          product.assignedEmail,
-        );
-        if (!currentMember) {
-          isUnknownEmail = true;
-        }
-      }
-    }
-
-    const members = await this.memberService.findAll();
-    let options;
-
-    if (isUnknownEmail) {
-      options = this.filterMembers(members, null);
-    } else {
-      options = this.filterMembers(members, product?.assignedEmail || null);
-    }
-
-    return { product, options, currentMember };
+  async findByIdAndDelete(id: ObjectId, options?: any) {
+    return this.productRepository.findByIdAndDelete(id, options);
   }
 
-  async getProductForAssign(productId: ObjectId) {
-    const product = await this.productRepository.findById(productId);
-    if (!product) {
-      throw new NotFoundException(`Product with id "${productId}" not found`);
-    }
+  // MOVE TO ASSIGMENTS SERVICE
+  // public filterMembers(
+  //   members: MemberDocument[],
+  //   currentEmail: string | null,
+  //   includeNone: boolean = false,
+  // ) {
+  //   const filteredMembers = members
+  //     .filter((member) => member.email !== currentEmail && !member.$isDeleted())
+  //     .map((member) => ({
+  //       email: member.email,
+  //       name: `${member.firstName} ${member.lastName}`,
+  //       team: member.team,
+  //     }));
+  //   if (includeNone) {
+  //     filteredMembers.push({
+  //       email: 'none',
+  //       name: 'None',
+  //       team: undefined as Types.ObjectId | undefined,
+  //     });
+  //   }
+  //   return filteredMembers;
+  // }
 
-    const members = await this.memberService.findAll();
+  // MOVE TO ASSIGMENTS SERVICE
+  // async getProductForReassign(productId: ObjectId) {
+  //   let product: ProductDocument | null =
+  //     await this.productRepository.findById(productId);
+  //   let currentMember: MemberDocument | null = null;
+  //   let isUnknownEmail = false;
 
-    const options = this.filterMembers(members, null);
+  //   if (!product) {
+  //     const memberProduct =
+  //       await this.assignmentsService.getProductByMembers(productId);
+  //     if (!memberProduct) {
+  //       throw new NotFoundException(`Product with id "${productId}" not found`);
+  //     }
+  //     product = memberProduct.product as ProductDocument;
+  //     currentMember = memberProduct.member as MemberDocument;
+  //   } else {
+  //     if (product.assignedEmail) {
+  //       currentMember = await this.memberService.findByEmailNotThrowError(
+  //         product.assignedEmail,
+  //       );
+  //       if (!currentMember) {
+  //         isUnknownEmail = true;
+  //       }
+  //     }
+  //   }
 
-    return { product, options };
-  }
+  //   const members = await this.memberService.findAll();
+  //   let options;
+
+  //   if (isUnknownEmail) {
+  //     options = this.filterMembers(members, null);
+  //   } else {
+  //     options = this.filterMembers(members, product?.assignedEmail || null);
+  //   }
+
+  //   return { product, options, currentMember };
+  // }
+
+  // MOVE TO ASSIGMENTS SERVICE
+  // async getProductForAssign(productId: ObjectId) {
+  //   const product = await this.productRepository.findById(productId);
+  //   if (!product) {
+  //     throw new NotFoundException(`Product with id "${productId}" not found`);
+  //   }
+
+  //   const members = await this.memberService.findAll();
+
+  //   const options = this.filterMembers(members, null);
+
+  //   return { product, options };
+  // }
 
   async updateMultipleProducts(
     productsToUpdate: { id: ObjectId; product: any }[],
@@ -1016,7 +1030,7 @@ export class ProductsService {
     );
   }
 
-  private getUpdatedFields(
+  public getUpdatedFields(
     product: ProductDocument,
     updateProductDto: UpdateProductDto,
   ) {
@@ -1095,65 +1109,63 @@ export class ProductsService {
       updatedFields.activeShipment = true;
     }
 
-    console.log(
-      '📦 Campos a actualizar:',
-      JSON.stringify(updatedFields, null, 2),
-    );
     return updatedFields;
   }
-
+  // MOVE TO ASSIGNMENTS SERVICE
   // Método específico para manejar el caso de mover un producto con email desconocido a un miembro
-  private async handleUnknownEmailToMemberUpdate(
-    session: any,
-    product: ProductDocument,
-    updateProductDto: UpdateProductDto,
-  ) {
-    const newMember = await this.memberService.findByEmailNotThrowError(
-      updateProductDto.assignedEmail!,
-    );
+  // private async handleUnknownEmailToMemberUpdate(
+  //   session: any,
+  //   product: ProductDocument,
+  //   updateProductDto: UpdateProductDto,
+  // ) {
+  //   const newMember = await this.memberService.findByEmailNotThrowError(
+  //     updateProductDto.assignedEmail!,
+  //   );
 
-    if (!newMember) {
-      throw new NotFoundException(
-        `Member with email "${updateProductDto.assignedEmail}" not found`,
-      );
-    }
+  //   if (!newMember) {
+  //     throw new NotFoundException(
+  //       `Member with email "${updateProductDto.assignedEmail}" not found`,
+  //     );
+  //   }
 
-    await this.moveToMemberCollection(
-      session,
-      product,
-      newMember,
-      updateProductDto,
-      product.assignedEmail || '',
-    );
+  //   await this.moveToMemberCollection(
+  //     session,
+  //     product,
+  //     newMember,
+  //     updateProductDto,
+  //     product.assignedEmail || '',
+  //   );
 
-    return newMember;
-  }
+  //   return newMember;
+  // }
 
+  // MOVE TO ASSIGNMENTS SERVICE
   // Método específico para manejar actualizaciones de emails desconocidos
-  private async handleUnknownEmailUpdate(
-    session: any,
-    product: ProductDocument,
-    updateProductDto: UpdateProductDto,
-    // tenantName: string,
-  ) {
-    const updatedFields = this.getUpdatedFields(product, updateProductDto);
+  // private async handleUnknownEmailUpdate(
+  //   session: any,
+  //   product: ProductDocument,
+  //   updateProductDto: UpdateProductDto,
+  //   // tenantName: string,
+  // ) {
+  //   const updatedFields = this.getUpdatedFields(product, updateProductDto);
 
-    if (updatedFields.assignedEmail === '') {
-      updatedFields.lastAssigned = product.assignedEmail;
-    }
+  //   if (updatedFields.assignedEmail === '') {
+  //     updatedFields.lastAssigned = product.assignedEmail;
+  //   }
 
-    updatedFields.fp_shipment =
-      updateProductDto.fp_shipment ?? product.fp_shipment;
+  //   updatedFields.fp_shipment =
+  //     updateProductDto.fp_shipment ?? product.fp_shipment;
 
-    await this.productRepository.updateOne(
-      { _id: product._id },
-      { $set: updatedFields },
-      { session, runValidators: true, new: true, omitUndefined: true },
-    );
+  //   await this.productRepository.updateOne(
+  //     { _id: product._id },
+  //     { $set: updatedFields },
+  //     { session, runValidators: true, new: true, omitUndefined: true },
+  //   );
 
-    return updatedFields;
-  }
+  //   return updatedFields;
+  // }
 
+  // MOVE TO ASSIGNMENTS SERVICE
   // Método para eliminar un producto de un miembro
   private async removeProductFromMember(
     session: any,
@@ -1161,7 +1173,7 @@ export class ProductsService {
     memberEmail: string,
   ) {
     const member =
-      await this.memberService.findByEmailNotThrowError(memberEmail);
+      await this.assignmentsService.findByEmailNotThrowError(memberEmail);
     if (member) {
       const productIndex = member.products.findIndex(
         (prod) => prod._id!.toString() === product._id!.toString(),
@@ -1173,162 +1185,165 @@ export class ProductsService {
     }
   }
 
+  // MOVE TO ASSIGNMENTS SERVICE
   // Método para mover un producto de la colección de products al array de products de un miembro
-  private async moveToMemberCollection(
-    session: any,
-    product: ProductDocument,
-    newMember: MemberDocument,
-    updateProductDto: UpdateProductDto,
-    lastAssigned: string,
-    // tenantName?: string,
-  ) {
-    if (product.assignedEmail) {
-      await this.removeProductFromMember(
-        session,
-        product,
-        product.assignedEmail,
-      );
-    }
+  // private async moveToMemberCollection(
+  //   session: any,
+  //   product: ProductDocument,
+  //   newMember: MemberDocument,
+  //   updateProductDto: UpdateProductDto,
+  //   lastAssigned: string,
+  //   // tenantName?: string,
+  // ) {
+  //   if (product.assignedEmail) {
+  //     await this.removeProductFromMember(
+  //       session,
+  //       product,
+  //       product.assignedEmail,
+  //     );
+  //   }
 
-    const updateData = {
-      _id: product._id,
-      name: updateProductDto.name || product.name,
-      category: product.category,
-      attributes: updateProductDto.attributes || product.attributes,
-      status: updateProductDto.status ?? product.status,
-      // recoverable: product.recoverable,
-      recoverable:
-        updateProductDto.recoverable !== undefined
-          ? updateProductDto.recoverable
-          : product.recoverable,
-      serialNumber: updateProductDto.serialNumber || product.serialNumber,
-      assignedEmail: updateProductDto.assignedEmail,
-      assignedMember: updateProductDto.assignedMember,
-      acquisitionDate:
-        updateProductDto.acquisitionDate || product.acquisitionDate,
-      location: updateProductDto.location || product.location,
-      additionalInfo: updateProductDto.additionalInfo || product.additionalInfo,
-      productCondition:
-        updateProductDto.productCondition !== undefined
-          ? updateProductDto.productCondition
-          : product.productCondition,
-      fp_shipment: updateProductDto.fp_shipment ?? product.fp_shipment,
-      activeShipment: updateProductDto.fp_shipment ?? product.fp_shipment,
-      isDeleted: product.isDeleted,
-      lastAssigned: lastAssigned,
-    };
+  //   const updateData = {
+  //     _id: product._id,
+  //     name: updateProductDto.name || product.name,
+  //     category: product.category,
+  //     attributes: updateProductDto.attributes || product.attributes,
+  //     status: updateProductDto.status ?? product.status,
+  //     // recoverable: product.recoverable,
+  //     recoverable:
+  //       updateProductDto.recoverable !== undefined
+  //         ? updateProductDto.recoverable
+  //         : product.recoverable,
+  //     serialNumber: updateProductDto.serialNumber || product.serialNumber,
+  //     assignedEmail: updateProductDto.assignedEmail,
+  //     assignedMember: updateProductDto.assignedMember,
+  //     acquisitionDate:
+  //       updateProductDto.acquisitionDate || product.acquisitionDate,
+  //     location: updateProductDto.location || product.location,
+  //     additionalInfo: updateProductDto.additionalInfo || product.additionalInfo,
+  //     productCondition:
+  //       updateProductDto.productCondition !== undefined
+  //         ? updateProductDto.productCondition
+  //         : product.productCondition,
+  //     fp_shipment: updateProductDto.fp_shipment ?? product.fp_shipment,
+  //     activeShipment: updateProductDto.fp_shipment ?? product.fp_shipment,
+  //     isDeleted: product.isDeleted,
+  //     lastAssigned: lastAssigned,
+  //   };
 
-    newMember.products.push(updateData);
+  //   newMember.products.push(updateData);
 
-    if (updateProductDto.fp_shipment) {
-      newMember.activeShipment = true;
-    }
-    await newMember.save({ session });
+  //   if (updateProductDto.fp_shipment) {
+  //     newMember.activeShipment = true;
+  //   }
+  //   await newMember.save({ session });
 
-    await this.productRepository
-      .findByIdAndDelete(product._id)
-      .session(session);
-  }
+  //   await this.productRepository
+  //     .findByIdAndDelete(product._id)
+  //     .session(session);
+  // }
 
-  // Metodo para mover un producto de un miembro a la colección de productos
-  private async moveToProductsCollection(
-    session: any,
-    product: ProductDocument,
-    member: MemberDocument,
-    updateProductDto: UpdateProductDto,
-    // tenantName?: string,
-  ) {
-    const productIndex = member.products.findIndex(
-      (prod) => prod._id!.toString() === product._id!.toString(),
-    );
-    if (productIndex !== -1) {
-      member.products.splice(productIndex, 1);
-      await member.save({ session });
-    } else {
-      throw new Error('Product not found in member collection');
-    }
-    console.log(
-      '🧪 Status seteado en moveToMemberCollection:',
-      updateProductDto.status,
-    );
-    const updateData = {
-      _id: product._id,
-      name: updateProductDto.name || product.name,
-      category: product.category,
-      attributes: updateProductDto.attributes || product.attributes,
-      status: updateProductDto.status,
-      // recoverable: product.recoverable,
-      recoverable:
-        updateProductDto.recoverable !== undefined
-          ? updateProductDto.recoverable
-          : product.recoverable,
-      serialNumber: updateProductDto.serialNumber || product.serialNumber,
-      assignedEmail: '',
-      assignedMember: '',
-      lastAssigned: member.email,
-      acquisitionDate:
-        updateProductDto.acquisitionDate || product.acquisitionDate,
-      location: updateProductDto.location || product.location,
-      productCondition:
-        updateProductDto.productCondition !== undefined
-          ? updateProductDto.productCondition
-          : product.productCondition,
-      fp_shipment: updateProductDto.fp_shipment ?? product.fp_shipment,
-      activeShipment: updateProductDto.fp_shipment ?? product.fp_shipment,
-      isDeleted: product.isDeleted,
-    };
-    const createdProducts = await this.productRepository.create([updateData], {
-      session,
-    });
+  // // Metodo para mover un producto de un miembro a la colección de productos
+  // private async moveToProductsCollection(
+  //   session: any,
+  //   product: ProductDocument,
+  //   member: MemberDocument,
+  //   updateProductDto: UpdateProductDto,
+  //   // tenantName?: string,
+  // ) {
+  //   const productIndex = member.products.findIndex(
+  //     (prod) => prod._id!.toString() === product._id!.toString(),
+  //   );
+  //   if (productIndex !== -1) {
+  //     member.products.splice(productIndex, 1);
+  //     await member.save({ session });
+  //   } else {
+  //     throw new Error('Product not found in member collection');
+  //   }
+  //   console.log(
+  //     '🧪 Status seteado en moveToMemberCollection:',
+  //     updateProductDto.status,
+  //   );
+  //   const updateData = {
+  //     _id: product._id,
+  //     name: updateProductDto.name || product.name,
+  //     category: product.category,
+  //     attributes: updateProductDto.attributes || product.attributes,
+  //     status: updateProductDto.status,
+  //     // recoverable: product.recoverable,
+  //     recoverable:
+  //       updateProductDto.recoverable !== undefined
+  //         ? updateProductDto.recoverable
+  //         : product.recoverable,
+  //     serialNumber: updateProductDto.serialNumber || product.serialNumber,
+  //     assignedEmail: '',
+  //     assignedMember: '',
+  //     lastAssigned: member.email,
+  //     acquisitionDate:
+  //       updateProductDto.acquisitionDate || product.acquisitionDate,
+  //     location: updateProductDto.location || product.location,
+  //     productCondition:
+  //       updateProductDto.productCondition !== undefined
+  //         ? updateProductDto.productCondition
+  //         : product.productCondition,
+  //     fp_shipment: updateProductDto.fp_shipment ?? product.fp_shipment,
+  //     activeShipment: updateProductDto.fp_shipment ?? product.fp_shipment,
+  //     isDeleted: product.isDeleted,
+  //   };
+  //   const createdProducts = await this.productRepository.create([updateData], {
+  //     session,
+  //   });
 
-    return createdProducts;
-  }
+  //   return createdProducts;
+  // }
 
-  public emitProductUpdatedEvent(productId: string, tenantName: string) {
-    console.log(
-      `🔔 Emitiendo evento de actualización para producto ${productId} en tenant ${tenantName}`,
-    );
-    this.eventEmitter.emit(EventTypes.PRODUCT_ADDRESS_UPDATED, {
-      productId,
-      tenantName,
-    });
-  }
+  // public emitProductUpdatedEvent(productId: string, tenantName: string) {
+  //   console.log(
+  //     `🔔 Emitiendo evento de actualización para producto ${productId} en tenant ${tenantName}`,
+  //   );
+  //   this.eventEmitter.emit(EventTypes.PRODUCT_ADDRESS_UPDATED, {
+  //     productId,
+  //     tenantName,
+  //   });
+  // }
 
+  // MOVE TO ASSIGNMENTS SERVICE
   // Método para actualizar los atributos del producto
-  private async updateProductAttributes(
-    session: any,
-    product: ProductDocument,
-    updateProductDto: UpdateProductDto,
-    currentLocation: 'products' | 'members',
-    member?: MemberDocument,
-    // tenantName?: string,
-  ) {
-    const updatedFields = this.getUpdatedFields(product, updateProductDto);
-    updatedFields.status = updateProductDto.status ?? product.status;
+  // private async updateProductAttributes(
+  //   session: any,
+  //   product: ProductDocument,
+  //   updateProductDto: UpdateProductDto,
+  //   currentLocation: 'products' | 'members',
+  //   member?: MemberDocument,
+  //   // tenantName?: string,
+  // ) {
+  //   const updatedFields = this.getUpdatedFields(product, updateProductDto);
+  //   updatedFields.status = updateProductDto.status ?? product.status;
 
-    if (currentLocation === 'products') {
-      await this.productRepository.updateOne(
-        { _id: product._id },
-        { $set: updatedFields },
-        { session, runValidators: true, new: true, omitUndefined: true },
-      );
-    } else if (currentLocation === 'members' && member) {
-      const productIndex = member.products.findIndex(
-        (prod) => prod._id!.toString() === product._id!.toString(),
-      );
-      if (
-        product.fp_shipment === true &&
-        updatedFields.activeShipment === false
-      ) {
-        delete updatedFields.activeShipment;
-      }
-      if (productIndex !== -1) {
-        Object.assign(member.products[productIndex], updatedFields);
-        await member.save({ session });
-      }
-    }
-  }
+  //   if (currentLocation === 'products') {
+  //     await this.productRepository.updateOne(
+  //       { _id: product._id },
+  //       { $set: updatedFields },
+  //       { session, runValidators: true, new: true, omitUndefined: true },
+  //     );
+  //   } else if (currentLocation === 'members' && member) {
+  //     const productIndex = member.products.findIndex(
+  //       (prod) => prod._id!.toString() === product._id!.toString(),
+  //     );
+  //     if (
+  //       product.fp_shipment === true &&
+  //       updatedFields.activeShipment === false
+  //     ) {
+  //       delete updatedFields.activeShipment;
+  //     }
+  //     if (productIndex !== -1) {
+  //       Object.assign(member.products[productIndex], updatedFields);
+  //       await member.save({ session });
+  //     }
+  //   }
+  // }
 
+  // REFACTOR UNA PARTE TIENE QUE IR A ASSIGNMENTS SERVICE
   async updateEntity(
     id: ObjectId,
     updateProductDto: UpdateProductDto,
@@ -1477,47 +1492,48 @@ export class ProductsService {
       throw new InternalServerErrorException('Unexpected error occurred.');
     }
   }
+  // MOVE TO ASSIGNMENTS SERVICE
+  // async validateProductAvailability(productId: string) {
+  //   const id = new Types.ObjectId(
+  //     productId,
+  //   ) as unknown as Schema.Types.ObjectId;
+  //   const found = await this.findProductById(id);
 
-  async validateProductAvailability(productId: string) {
-    const id = new Types.ObjectId(
-      productId,
-    ) as unknown as Schema.Types.ObjectId;
-    const found = await this.findProductById(id);
+  //   const product =
+  //     found.product ||
+  //     found.member?.products.find(
+  //       (p) => p._id?.toString() === productId.toString(),
+  //     );
 
-    const product =
-      found.product ||
-      found.member?.products.find(
-        (p) => p._id?.toString() === productId.toString(),
-      );
+  //   if (!product) throw new NotFoundException('Product not found');
 
-    if (!product) throw new NotFoundException('Product not found');
+  //   if (product.activeShipment) {
+  //     throw new BadRequestException(
+  //       'This product is part of an active shipment and cannot be moved or modified.',
+  //     );
+  //   }
+  // }
 
-    if (product.activeShipment) {
-      throw new BadRequestException(
-        'This product is part of an active shipment and cannot be moved or modified.',
-      );
-    }
-  }
-
-  private async handleProductUpdateByActionType(
-    session: ClientSession,
-    product: ProductDocument,
-    updateDto: UpdateProductDto,
-    tenantName: string,
-    userId: string,
-    actionType?: string,
-  ) {
-    switch (actionType) {
-      case 'assign':
-      case 'reassign':
-      case 'relocate':
-      case 'return':
-      case 'offboarding':
-        if (!product._id) throw new BadRequestException('Product ID missing');
-        await this.validateProductAvailability(product._id.toString());
-        break;
-    }
-  }
+  // MOVE TO ASSIGNMENTS SERVICE
+  // private async handleProductUpdateByActionType(
+  //   session: ClientSession,
+  //   product: ProductDocument,
+  //   updateDto: UpdateProductDto,
+  //   tenantName: string,
+  //   userId: string,
+  //   actionType?: string,
+  // ) {
+  //   switch (actionType) {
+  //     case 'assign':
+  //     case 'reassign':
+  //     case 'relocate':
+  //     case 'return':
+  //     case 'offboarding':
+  //       if (!product._id) throw new BadRequestException('Product ID missing');
+  //       await this.validateProductAvailability(product._id.toString());
+  //       break;
+  //   }
+  // }
 
   private async maybeCreateShipmentAndUpdateStatus(
     product: ProductDocument,
@@ -1634,6 +1650,10 @@ export class ProductsService {
     return shipment;
   }
 
+  // TODO: Este método debe dividirse en submétodos.
+  // - Desacoplar responsabilidad: asignación, shipment, updates parciales
+  // - Separar lógica por tipo de producto (en products vs en members)
+  // - Reducir side effects cruzados (slack, history, etc)
   async update(
     id: ObjectId,
     updateProductDto: UpdateProductDto,
@@ -1656,7 +1676,8 @@ export class ProductsService {
         currentFpShipment = existingProduct.fp_shipment === true;
         console.log('🚢 fp_shipment actual:', currentFpShipment);
       } else {
-        const memberProduct = await this.memberService.getProductByMembers(id);
+        const memberProduct =
+          await this.assignmentsService.getProductByMembers(id);
         if (memberProduct?.product) {
           console.log('✅ Producto encontrado en colección Members');
           currentFpShipment = memberProduct.product.fp_shipment === true;
@@ -1677,7 +1698,8 @@ export class ProductsService {
 
         updateProductDto.fp_shipment = true;
       } else {
-        const memberProduct = await this.memberService.getProductByMembers(id);
+        const memberProduct =
+          await this.assignmentsService.getProductByMembers(id);
         if (
           memberProduct?.product &&
           memberProduct.product.fp_shipment === true &&
@@ -1705,7 +1727,7 @@ export class ProductsService {
             'This product is currently part of an active shipment and cannot be modified.',
           );
         }
-        await this.handleProductUpdateByActionType(
+        await this.assignmentsService.handleProductUpdateByActionType(
           session,
           product,
           updateProductDto,
@@ -1764,7 +1786,7 @@ export class ProductsService {
 
         if (
           product.assignedEmail &&
-          !(await this.memberService.findByEmailNotThrowError(
+          !(await this.assignmentsService.findByEmailNotThrowError(
             product.assignedEmail,
           ))
         ) {
@@ -1772,15 +1794,16 @@ export class ProductsService {
             !updateProductDto.assignedEmail ||
             updateProductDto.assignedEmail === product.assignedEmail
           ) {
-            const updateProduct = await this.handleUnknownEmailUpdate(
-              session,
-              product,
-              {
-                ...updateProductDto,
-                recoverable: isRecoverable,
-              },
-              // tenantName,
-            );
+            const updateProduct =
+              await this.assignmentsService.handleUnknownEmailUpdate(
+                session,
+                product,
+                {
+                  ...updateProductDto,
+                  recoverable: isRecoverable,
+                },
+                // tenantName,
+              );
 
             if (actionType) {
               await this.historyService.create({
@@ -1801,14 +1824,15 @@ export class ProductsService {
             updateProductDto.assignedEmail &&
             updateProductDto.assignedEmail !== 'none'
           ) {
-            const newMember = await this.handleUnknownEmailToMemberUpdate(
-              session,
-              product,
-              {
-                ...updateProductDto,
-                recoverable: isRecoverable,
-              },
-            );
+            const newMember =
+              await this.assignmentsService.handleUnknownEmailToMemberUpdate(
+                session,
+                product,
+                {
+                  ...updateProductDto,
+                  recoverable: isRecoverable,
+                },
+              );
 
             if (actionType) {
               await this.historyService.create({
@@ -1827,7 +1851,7 @@ export class ProductsService {
               });
             }
           } else {
-            await this.updateProductAttributes(
+            await this.assignmentsService.updateProductAttributes(
               session,
               product,
               { ...updateProductDto, recoverable: isRecoverable },
@@ -1842,9 +1866,10 @@ export class ProductsService {
             updateProductDto.assignedEmail !== 'none' &&
             updateProductDto.assignedEmail !== product.assignedEmail
           ) {
-            const newMember = await this.memberService.findByEmailNotThrowError(
-              updateProductDto.assignedEmail,
-            );
+            const newMember =
+              await this.assignmentsService.findByEmailNotThrowError(
+                updateProductDto.assignedEmail,
+              );
             console.log(
               `🔄 Cambio de assignedEmail detectado: ${product.assignedEmail} ➡️ ${updateProductDto.assignedEmail}`,
             );
@@ -1892,7 +1917,7 @@ export class ProductsService {
                 status: updateProductDto.status ?? product.status,
               };
 
-              await this.moveToMemberCollection(
+              await this.assignmentsService.moveToMemberCollection(
                 session,
                 product,
                 newMember,
@@ -1963,7 +1988,7 @@ export class ProductsService {
               updateProductDto.status,
             );
           } else {
-            await this.updateProductAttributes(
+            await this.assignmentsService.updateProductAttributes(
               session,
               product,
               { ...updateProductDto, recoverable: isRecoverable },
@@ -1981,7 +2006,7 @@ export class ProductsService {
           shipment: finalShipment,
         };
       } else {
-        const memberProduct = await this.memberService.getProductByMembers(
+        const memberProduct = await this.assignmentsService.getProductByMembers(
           id,
           session,
         );
@@ -2027,9 +2052,10 @@ export class ProductsService {
             updateProductDto.assignedEmail &&
             updateProductDto.assignedEmail !== member.email
           ) {
-            const newMember = await this.memberService.findByEmailNotThrowError(
-              updateProductDto.assignedEmail,
-            );
+            const newMember =
+              await this.assignmentsService.findByEmailNotThrowError(
+                updateProductDto.assignedEmail,
+              );
             if (newMember) {
               const lastMember = member.email;
 
@@ -2062,7 +2088,7 @@ export class ProductsService {
                 updateProductDto.status,
               );
 
-              await this.moveToMemberCollection(
+              await this.assignmentsService.moveToMemberCollection(
                 session,
                 memberProduct.product as ProductDocument,
                 newMember,
@@ -2140,7 +2166,7 @@ export class ProductsService {
               });
             }
           } else {
-            await this.updateProductAttributes(
+            await this.assignmentsService.updateProductAttributes(
               session,
               memberProduct.product as ProductDocument,
               { ...updateProductDto, recoverable: isRecoverable },
@@ -2212,6 +2238,18 @@ export class ProductsService {
     }
   }
 
+  public emitProductUpdatedEvent(productId: string, tenantName: string) {
+    console.log(
+      `🔔 Emitiendo evento de actualización para producto ${productId} en tenant ${tenantName}`,
+    );
+    this.eventEmitter.emit(EventTypes.PRODUCT_ADDRESS_UPDATED, {
+      productId,
+      tenantName,
+    });
+  }
+
+  // TODO: Este método podría moverse a AssignmentsService
+  // si se logra desacoplar completamente products <-> members.
   // Nueva función para manejar la desasignación del producto
   private async handleProductUnassignment(
     session: any,
@@ -2221,7 +2259,7 @@ export class ProductsService {
     // tenantName?: string,
   ) {
     if (currentMember) {
-      return await this.moveToProductsCollection(
+      return await this.assignmentsService.moveToProductsCollection(
         session,
         product,
         currentMember,
@@ -2229,7 +2267,7 @@ export class ProductsService {
         // tenantName,
       );
     } else {
-      await this.updateProductAttributes(
+      await this.assignmentsService.updateProductAttributes(
         session,
         product,
         updateProductDto,
@@ -2240,6 +2278,8 @@ export class ProductsService {
     }
   }
 
+  // TODO: extraer lógica de recuperación desde miembros y limpieza a AssignmentsService
+  // TODO: dividir en helpers internos para mayor trazabilidad y testeabilidad
   async softDelete(id: ObjectId, userId: string, tenantName: string) {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
@@ -2272,7 +2312,7 @@ export class ProductsService {
           changes.oldData = product;
         } else {
           const memberProduct =
-            await this.memberService.getProductByMembers(id);
+            await this.assignmentsService.getProductByMembers(id);
 
           if (memberProduct && memberProduct.product) {
             await this.productRepository.create(
@@ -2300,7 +2340,7 @@ export class ProductsService {
             await this.productRepository.softDelete({ _id: id }, { session });
 
             const memberId = memberProduct.member._id;
-            await this.memberService.deleteProductFromMember(
+            await this.assignmentsService.deleteProductFromMember(
               memberId,
               id,
               session,
@@ -2449,7 +2489,7 @@ export class ProductsService {
       const product = await this.productRepository.findById(id);
 
       if (!product) {
-        const member = await this.memberService.getProductByMembers(id);
+        const member = await this.assignmentsService.getProductByMembers(id);
 
         if (!member) {
           throw new NotFoundException(`Product with id "${id}" not found`);

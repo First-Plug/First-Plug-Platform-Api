@@ -3,7 +3,7 @@ import { HistoryService } from './history.service';
 import { HistoryController } from './history.controller';
 import { TenantsModule } from 'src/tenants/tenants.module';
 import { JwtService } from '@nestjs/jwt';
-import { tenantModels } from 'src/common/providers/tenant-models-provider';
+import { tenantModels } from 'src/infra/db/tenant-models-provider';
 import { TenantsMiddleware } from 'src/common/middlewares/tenants.middleware';
 
 @Module({
