@@ -14,11 +14,13 @@ import { SlackService } from 'src/slack/slack.service';
 import { ClientSession, ObjectId } from 'mongoose';
 import { CreateProductDto } from 'src/products/dto/create-product.dto';
 import { MembersService } from 'src/members/members.service';
-import { Status } from 'src/products/interfaces/product.interface';
+import { CONDITION, Status } from 'src/products/interfaces/product.interface';
 import { ProductsService } from 'src/products/products.service';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { UpdateProductDto } from 'src/products/dto';
 import { TenantsService } from 'src/tenants/tenants.service';
+import { HistoryActionType } from 'src/history/validations/create-history.zod';
+import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
 
 @Injectable()
 export class AssignmentsService {
@@ -375,6 +377,7 @@ export class AssignmentsService {
     lastAssigned: string,
     // tenantName?: string,
   ) {
+    await this.productsService.findByIdAndDelete(product._id!, { session });
     if (product.assignedEmail) {
       await this.removeProductFromMember(
         session,
@@ -555,5 +558,385 @@ export class AssignmentsService {
 
   async findByEmailNotThrowError(email: string) {
     return await this.membersService.findByEmailNotThrowError(email);
+  }
+
+  // llamo a este metodo en update entity para los productos en la coleccion de members
+  async updateEmbeddedProduct(
+    member: MemberDocument,
+    productId: ObjectId,
+    updatedFields: Partial<ProductDocument>,
+  ): Promise<ProductDocument | Product> {
+    const index = member.products.findIndex(
+      (p) => p._id!.toString() === productId.toString(),
+    );
+    if (index === -1) {
+      throw new NotFoundException('Product not found in member');
+    }
+
+    Object.assign(member.products[index], updatedFields);
+    await member.save();
+
+    return member.products[index];
+  }
+
+  async handleProductFromProductsCollection(
+    product: ProductDocument,
+    updateDto: UpdateProductDto,
+    tenantName: string,
+    userId: string,
+    ourOfficeEmail: string,
+    session: ClientSession,
+  ): Promise<{ shipment?: ShipmentDocument }> {
+    if (product.activeShipment) {
+      throw new BadRequestException(
+        'This product is currently part of an active shipment and cannot be modified.',
+      );
+    }
+
+    const productCopy = { ...product.toObject() };
+    const isRecoverable = this.productsService.getEffectiveRecoverableValue(
+      updateDto,
+      product.recoverable ?? false,
+    );
+
+    this.productsService.updatePriceIfProvided(product, updateDto);
+
+    if (
+      updateDto.productCondition !== ('Unusable' as (typeof CONDITION)[number])
+    ) {
+      updateDto.status = 'Unavailable';
+    } else if (updateDto.fp_shipment !== true) {
+      if (updateDto.assignedEmail && updateDto.assignedEmail !== 'none') {
+        updateDto.location = 'Employee';
+        updateDto.status = 'Delivered';
+      } else if (
+        updateDto.assignedEmail === 'none' &&
+        updateDto.productCondition !== 'Unusable'
+      ) {
+        if (
+          !['FP warehouse', 'Our office'].includes(updateDto.location || '')
+        ) {
+          throw new BadRequestException(
+            'When unassigned, location must be FP warehouse or Our office.',
+          );
+        }
+        updateDto.status = 'Available';
+      }
+    }
+
+    // 🧩 CASO: Email inválido
+    const memberExists = product.assignedEmail
+      ? await this.findByEmailNotThrowError(product.assignedEmail)
+      : null;
+
+    if (
+      product.assignedEmail &&
+      !memberExists &&
+      (!updateDto.assignedEmail ||
+        updateDto.assignedEmail === product.assignedEmail)
+    ) {
+      const updated = await this.handleUnknownEmailUpdate(session, product, {
+        ...updateDto,
+        recoverable: isRecoverable,
+      });
+
+      await this.recordAssetHistoryIfNeeded(
+        updateDto.actionType,
+        productCopy,
+        updated,
+        userId,
+      );
+
+      return {};
+    }
+
+    // 🧩 CASO: asignar a nuevo miembro
+    if (
+      updateDto.assignedEmail &&
+      updateDto.assignedEmail !== 'none' &&
+      updateDto.assignedEmail !== product.assignedEmail
+    ) {
+      const newMember = await this.findByEmailNotThrowError(
+        updateDto.assignedEmail,
+      );
+
+      if (!newMember) {
+        throw new NotFoundException(
+          `Member with email "${updateDto.assignedEmail}" not found`,
+        );
+      }
+
+      let shipment: ShipmentDocument | null = null;
+
+      if (updateDto.fp_shipment) {
+        shipment = await this.productsService.tryCreateShipmentIfNeeded(
+          product,
+          updateDto,
+          tenantName,
+          session,
+          userId,
+          ourOfficeEmail,
+        );
+      } else {
+        updateDto.status = await this.productsService.determineProductStatus(
+          {
+            fp_shipment: false,
+            location: updateDto.location || product.location,
+            assignedEmail: updateDto.assignedEmail,
+            productCondition:
+              updateDto.productCondition || product.productCondition,
+          },
+          tenantName,
+        );
+      }
+
+      await this.moveToMemberCollection(
+        session,
+        product,
+        newMember,
+        { ...updateDto, recoverable: isRecoverable },
+        product.assignedEmail || '',
+      );
+
+      await this.recordAssetHistoryIfNeeded(
+        updateDto.actionType,
+        productCopy,
+        {
+          ...product.toObject(),
+          assignedEmail: newMember.email,
+          assignedMember: `${newMember.firstName} ${newMember.lastName}`,
+          status: updateDto.status,
+        },
+        userId,
+      );
+
+      return { shipment: shipment ?? undefined };
+    }
+
+    // 🧩 CASO: actualización normal (mismo dueño)
+    await this.updateProductAttributes(
+      session,
+      product,
+      { ...updateDto, recoverable: isRecoverable },
+      'products',
+    );
+
+    return {};
+  }
+
+  private async recordAssetHistoryIfNeeded(
+    actionType: HistoryActionType | undefined,
+    oldData: any,
+    newData: any,
+    userId: string,
+  ) {
+    if (!actionType) return;
+
+    await this.historyService.create({
+      actionType,
+      itemType: 'assets',
+      userId,
+      changes: {
+        oldData,
+        newData,
+      },
+    });
+  }
+
+  async handleProductFromMemberCollection(
+    id: ObjectId,
+    updateProductDto: UpdateProductDto,
+    tenantName: string,
+    userId: string,
+    ourOfficeEmail: string,
+    session: ClientSession,
+  ): Promise<{ shipment?: ShipmentDocument }> {
+    const memberProduct = await this.getProductByMembers(id, session);
+    if (!memberProduct?.product) {
+      throw new NotFoundException(`Product with id "${id}" not found`);
+    }
+
+    const productCopy = { ...memberProduct.product };
+    const isRecoverable = this.productsService.getEffectiveRecoverableValue(
+      updateProductDto,
+      memberProduct.product.recoverable ?? false,
+    );
+
+    await this.productsService.updatePriceIfProvided(
+      memberProduct.product as ProductDocument,
+      updateProductDto,
+    );
+
+    if (updateProductDto.productCondition === 'Unusable') {
+      updateProductDto.status = 'Unavailable';
+    }
+
+    if (updateProductDto.fp_shipment !== true) {
+      await this.productsService.setNonShipmentStatus(updateProductDto);
+    }
+
+    return await this.handleMemberProductAssignmentChanges(
+      memberProduct,
+      updateProductDto,
+      tenantName,
+      userId,
+      ourOfficeEmail,
+      session,
+      isRecoverable,
+      productCopy,
+    );
+  }
+
+  async handleMemberProductAssignmentChanges(
+    memberProduct: {
+      member: MemberDocument;
+      product: Product;
+    },
+    updateDto: UpdateProductDto,
+    tenantName: string,
+    userId: string,
+    ourOfficeEmail: string,
+    session: ClientSession,
+    isRecoverable: boolean,
+    oldProductData: Partial<ProductDocument>,
+  ): Promise<{ shipment?: ShipmentDocument }> {
+    const product = memberProduct.product;
+    const member = memberProduct.member;
+
+    // 🧩 Caso: Reasignación a otro miembro
+    if (
+      updateDto.assignedEmail &&
+      updateDto.assignedEmail !== product.assignedEmail &&
+      updateDto.assignedEmail !== 'none'
+    ) {
+      const newMember = await this.findByEmailNotThrowError(
+        updateDto.assignedEmail,
+      );
+      if (!newMember) {
+        throw new NotFoundException(
+          `Member with email "${updateDto.assignedEmail}" not found`,
+        );
+      }
+
+      let shipment: ShipmentDocument | null = null;
+
+      if (updateDto.fp_shipment) {
+        shipment = await this.productsService.tryCreateShipmentIfNeeded(
+          product as ProductDocument,
+          updateDto,
+          tenantName,
+          session,
+          userId,
+          ourOfficeEmail,
+        );
+      } else {
+        updateDto.status = await this.productsService.determineProductStatus(
+          {
+            fp_shipment: false,
+            location: updateDto.location || product.location,
+            assignedEmail: updateDto.assignedEmail,
+            productCondition:
+              updateDto.productCondition || product.productCondition,
+          },
+          tenantName,
+        );
+      }
+
+      await this.moveToMemberCollection(
+        session,
+        product as ProductDocument,
+        newMember,
+        { ...updateDto, recoverable: isRecoverable },
+        product.assignedEmail || '',
+      );
+
+      await this.recordAssetHistoryIfNeeded(
+        updateDto.actionType,
+        oldProductData,
+        {
+          ...product,
+          assignedEmail: newMember.email,
+          assignedMember: `${newMember.firstName} ${newMember.lastName}`,
+          status: updateDto.status,
+        },
+        userId,
+      );
+
+      return { shipment: shipment ?? undefined };
+    }
+
+    // 🧩 Caso: Return a Our office o FP warehouse
+    if (
+      updateDto.actionType === 'return' &&
+      (!updateDto.assignedEmail || updateDto.assignedEmail === 'none') &&
+      ['Our office', 'FP warehouse'].includes(updateDto.location || '')
+    ) {
+      await this.moveToProductsCollection(
+        session,
+        product as ProductDocument,
+        member,
+        { ...updateDto, recoverable: isRecoverable },
+      );
+
+      product.assignedEmail = undefined;
+      product.assignedMember = undefined;
+      product.lastAssigned = member.email;
+
+      await this.recordAssetHistoryIfNeeded(
+        updateDto.actionType,
+        oldProductData,
+        {
+          ...product,
+          status: updateDto.status,
+          location: updateDto.location,
+        },
+        userId,
+      );
+
+      return {};
+    }
+
+    // 🧩 Caso: Actualización sin cambio de dueño
+    const updated = await this.updateEmbeddedProduct(member, product._id!, {
+      ...updateDto,
+      recoverable: isRecoverable,
+    } as Partial<ProductDocument>);
+
+    await this.recordAssetHistoryIfNeeded(
+      updateDto.actionType,
+      oldProductData,
+      updated,
+      userId,
+    );
+
+    return {};
+  }
+
+  // Nueva función para manejar la desasignación del producto
+  private async handleProductUnassignment(
+    session: any,
+    product: ProductDocument,
+    updateProductDto: UpdateProductDto,
+    currentMember?: MemberDocument,
+    // tenantName?: string,
+  ) {
+    if (currentMember) {
+      return await this.moveToProductsCollection(
+        session,
+        product,
+        currentMember,
+        updateProductDto,
+        // tenantName,
+      );
+    } else {
+      await this.updateProductAttributes(
+        session,
+        product,
+        updateProductDto,
+        'products',
+        undefined,
+        // tenantName,
+      );
+    }
   }
 }
