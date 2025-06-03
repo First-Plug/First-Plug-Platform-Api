@@ -999,7 +999,7 @@ export class ProductsService {
     }
   }
 
-  private async maybeCreateShipmentAndUpdateStatus(
+  public async maybeCreateShipmentAndUpdateStatus(
     product: ProductDocument,
     updateDto: UpdateProductDto,
     tenantName: string,

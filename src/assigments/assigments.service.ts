@@ -803,6 +803,10 @@ export class AssignmentsService {
     const product = memberProduct.product;
     const member = memberProduct.member;
 
+    console.log('📦 Producto inicial', product);
+    console.log('📍 Datos previos (oldProductData)', oldProductData);
+    console.log('🛠 Update DTO recibido:', updateDto);
+
     // 🧩 Caso: Reasignación a otro miembro
     if (
       updateDto.assignedEmail &&
@@ -821,6 +825,7 @@ export class AssignmentsService {
       let shipment: ShipmentDocument | null = null;
 
       if (updateDto.fp_shipment) {
+        console.log('🚚 Intentando crear shipment por reasignación...');
         shipment = await this.productsService.tryCreateShipmentIfNeeded(
           product as ProductDocument,
           updateDto,
@@ -850,6 +855,8 @@ export class AssignmentsService {
         product.assignedEmail || '',
       );
 
+      console.log('📦 Producto después de moveToMemberCollection:', product);
+
       await this.recordAssetHistoryIfNeeded(
         updateDto.actionType,
         oldProductData,
@@ -871,22 +878,71 @@ export class AssignmentsService {
       (!updateDto.assignedEmail || updateDto.assignedEmail === 'none') &&
       ['Our office', 'FP warehouse'].includes(updateDto.location || '')
     ) {
-      await this.moveToProductsCollection(
+      console.log('🔁 Caso: Return a', updateDto.location);
+      const updatedProduct = await this.handleProductUnassignment(
         session,
-        product as ProductDocument,
-        member,
+        memberProduct.product as ProductDocument,
         { ...updateDto, recoverable: isRecoverable },
+        member,
+      );
+      console.log(
+        '📤 Producto después de handleProductUnassignment',
+        updatedProduct,
       );
 
-      product.assignedEmail = undefined;
-      product.assignedMember = undefined;
-      product.lastAssigned = member.email;
+      let shipment: ShipmentDocument | null = null;
+
+      if (updateDto.fp_shipment) {
+        await this.memberModel.updateOne(
+          { email: member.email },
+          { $set: { activeShipment: true } },
+          { session },
+        );
+
+        console.log('🧾 Enviando datos a maybeCreateShipmentAndUpdateStatus:', {
+          oldData: {
+            location: oldProductData.location,
+            assignedEmail: oldProductData.assignedEmail,
+            assignedMember: oldProductData.assignedMember,
+          },
+          newData: {
+            location: updateDto.location,
+            assignedEmail: updateDto.assignedEmail,
+            assignedMember: updateDto.assignedMember,
+          },
+        });
+
+        shipment =
+          await this.productsService.maybeCreateShipmentAndUpdateStatus(
+            updatedProduct?.[0] as ProductDocument,
+            updateDto,
+            tenantName,
+            updateDto.actionType!,
+            session,
+            {
+              location: oldProductData.location || product.location,
+              assignedEmail:
+                oldProductData.assignedEmail || product.assignedEmail,
+              assignedMember:
+                oldProductData.assignedMember || product.assignedMember,
+            },
+            {
+              location: updateDto.location,
+              assignedEmail: updateDto.assignedEmail,
+              assignedMember: updateDto.assignedMember,
+            },
+            userId,
+            ourOfficeEmail,
+          );
+
+        return { shipment: shipment ?? undefined };
+      }
 
       await this.recordAssetHistoryIfNeeded(
         updateDto.actionType,
         oldProductData,
         {
-          ...product,
+          ...updatedProduct,
           status: updateDto.status,
           location: updateDto.location,
         },
@@ -901,6 +957,11 @@ export class AssignmentsService {
       ...updateDto,
       recoverable: isRecoverable,
     } as Partial<ProductDocument>);
+
+    console.log(
+      '🛠 Actualización sin cambio de dueño, producto resultante:',
+      updated,
+    );
 
     await this.recordAssetHistoryIfNeeded(
       updateDto.actionType,
