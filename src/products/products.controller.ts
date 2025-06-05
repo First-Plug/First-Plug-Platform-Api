@@ -72,8 +72,8 @@ export class ProductsController {
   // }
 
   @Get('/table')
-  getProductsTable() {
-    return this.productsService.tableGrouping();
+  getProductsTable(tenantName: string) {
+    return this.productsService.tableGrouping(tenantName);
   }
 
   @Get('/assign/:id')
@@ -87,8 +87,8 @@ export class ProductsController {
   }
 
   @Get('/export-csv')
-  async exportProductsCsv(@Res() res: Response) {
-    await this.productsService.exportProductsCsv(res);
+  async exportProductsCsv(@Res() res: Response, @Request() req: any) {
+    await this.productsService.exportProductsCsv(res, req.user.tenantName);
   }
 
   @Patch('/reassign/:id')

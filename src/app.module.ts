@@ -14,6 +14,7 @@ import { ShipmentsModule } from 'src/shipments/shipments.module';
 import { CommonModule } from 'src/common/common.module';
 import { RetoolWebhooksModule } from 'src/retool-webhooks/retool-webhooks.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { TenantDbModule } from 'src/infra/db/tenant-db.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
       }),
       inject: [ConfigService],
     }),
+    TenantDbModule,
     TenantsModule,
     ProductsModule,
     forwardRef(() => MembersModule),

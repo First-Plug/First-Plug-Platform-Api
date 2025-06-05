@@ -14,7 +14,7 @@ import { SlackService } from 'src/slack/slack.service';
 import { ClientSession, ObjectId } from 'mongoose';
 import { CreateProductDto } from 'src/products/dto/create-product.dto';
 import { MembersService } from 'src/members/members.service';
-import { CONDITION, Status } from 'src/products/interfaces/product.interface';
+import { Status } from 'src/products/interfaces/product.interface';
 import { ProductsService } from 'src/products/products.service';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { UpdateProductDto } from 'src/products/dto';
@@ -486,6 +486,9 @@ export class AssignmentsService {
     member?: MemberDocument,
     // tenantName?: string,
   ) {
+    console.log('🧪 updateProductAttributes');
+    console.log('🧪 updateProductDto:', updateProductDto);
+
     const updatedFields = this.productsService.getUpdatedFields(
       product,
       updateProductDto,
@@ -513,6 +516,9 @@ export class AssignmentsService {
         await member.save({ session });
       }
     }
+    console.log(
+      '🧾 Fin de updateProductAttributes — no se registró history acá',
+    );
   }
 
   async validateProductAvailability(productId: string) {
@@ -586,7 +592,10 @@ export class AssignmentsService {
     userId: string,
     ourOfficeEmail: string,
     session: ClientSession,
-  ): Promise<{ shipment?: ShipmentDocument }> {
+  ): Promise<{
+    shipment?: ShipmentDocument;
+    updatedProduct?: ProductDocument;
+  }> {
     if (product.activeShipment) {
       throw new BadRequestException(
         'This product is currently part of an active shipment and cannot be modified.',
@@ -601,28 +610,16 @@ export class AssignmentsService {
 
     this.productsService.updatePriceIfProvided(product, updateDto);
 
-    if (
-      updateDto.productCondition !== ('Unusable' as (typeof CONDITION)[number])
-    ) {
-      updateDto.status = 'Unavailable';
-    } else if (updateDto.fp_shipment !== true) {
-      if (updateDto.assignedEmail && updateDto.assignedEmail !== 'none') {
-        updateDto.location = 'Employee';
-        updateDto.status = 'Delivered';
-      } else if (
-        updateDto.assignedEmail === 'none' &&
-        updateDto.productCondition !== 'Unusable'
-      ) {
-        if (
-          !['FP warehouse', 'Our office'].includes(updateDto.location || '')
-        ) {
-          throw new BadRequestException(
-            'When unassigned, location must be FP warehouse or Our office.',
-          );
-        }
-        updateDto.status = 'Available';
-      }
-    }
+    // updateDto.status = await this.productsService.determineProductStatus(
+    //   {
+    //     fp_shipment: updateDto.fp_shipment ?? product.fp_shipment,
+    //     location: updateDto.location || product.location,
+    //     assignedEmail: updateDto.assignedEmail,
+    //     productCondition:
+    //       updateDto.productCondition || product.productCondition,
+    //   },
+    //   tenantName,
+    // );
 
     // 🧩 CASO: Email inválido
     const memberExists = product.assignedEmail
@@ -647,17 +644,20 @@ export class AssignmentsService {
         userId,
       );
 
-      return {};
+      return {
+        updatedProduct: updated,
+      };
     }
 
     // 🧩 CASO: asignar a nuevo miembro
-    if (
+    const isReassignment =
       updateDto.assignedEmail &&
       updateDto.assignedEmail !== 'none' &&
-      updateDto.assignedEmail !== product.assignedEmail
-    ) {
+      updateDto.assignedEmail !== product.assignedEmail;
+
+    if (isReassignment) {
       const newMember = await this.findByEmailNotThrowError(
-        updateDto.assignedEmail,
+        updateDto.assignedEmail!,
       );
 
       if (!newMember) {
@@ -676,17 +676,6 @@ export class AssignmentsService {
           session,
           userId,
           ourOfficeEmail,
-        );
-      } else {
-        updateDto.status = await this.productsService.determineProductStatus(
-          {
-            fp_shipment: false,
-            location: updateDto.location || product.location,
-            assignedEmail: updateDto.assignedEmail,
-            productCondition:
-              updateDto.productCondition || product.productCondition,
-          },
-          tenantName,
         );
       }
 
@@ -710,10 +699,23 @@ export class AssignmentsService {
         userId,
       );
 
-      return { shipment: shipment ?? undefined };
+      return {
+        shipment: shipment ?? undefined,
+        updatedProduct: product,
+      };
     }
 
     // 🧩 CASO: actualización normal (mismo dueño)
+    updateDto.status = await this.productsService.determineProductStatus(
+      {
+        fp_shipment: updateDto.fp_shipment ?? product.fp_shipment,
+        location: updateDto.location || product.location,
+        assignedEmail: updateDto.assignedEmail,
+        productCondition:
+          updateDto.productCondition || product.productCondition,
+      },
+      tenantName,
+    );
     await this.updateProductAttributes(
       session,
       product,
@@ -721,7 +723,9 @@ export class AssignmentsService {
       'products',
     );
 
-    return {};
+    return {
+      updatedProduct: product,
+    };
   }
 
   private async recordAssetHistoryIfNeeded(
@@ -730,6 +734,10 @@ export class AssignmentsService {
     newData: any,
     userId: string,
   ) {
+    console.log('📜 recordAssetHistoryIfNeeded → userId:', userId);
+    if (!userId) {
+      throw new Error('❌ userId is missing in recordAssetHistoryIfNeeded');
+    }
     if (!actionType) return;
 
     await this.historyService.create({
@@ -750,7 +758,10 @@ export class AssignmentsService {
     userId: string,
     ourOfficeEmail: string,
     session: ClientSession,
-  ): Promise<{ shipment?: ShipmentDocument }> {
+  ): Promise<{
+    shipment?: ShipmentDocument;
+    updatedProduct?: ProductDocument;
+  }> {
     const memberProduct = await this.getProductByMembers(id, session);
     if (!memberProduct?.product) {
       throw new NotFoundException(`Product with id "${id}" not found`);
@@ -799,8 +810,11 @@ export class AssignmentsService {
     session: ClientSession,
     isRecoverable: boolean,
     oldProductData: Partial<ProductDocument>,
-  ): Promise<{ shipment?: ShipmentDocument }> {
-    const product = memberProduct.product;
+  ): Promise<{
+    shipment?: ShipmentDocument;
+    updatedProduct?: ProductDocument;
+  }> {
+    const product = memberProduct.product as ProductDocument;
     const member = memberProduct.member;
 
     console.log('📦 Producto inicial', product);
@@ -825,7 +839,6 @@ export class AssignmentsService {
       let shipment: ShipmentDocument | null = null;
 
       if (updateDto.fp_shipment) {
-        console.log('🚚 Intentando crear shipment por reasignación...');
         shipment = await this.productsService.tryCreateShipmentIfNeeded(
           product as ProductDocument,
           updateDto,
@@ -855,8 +868,6 @@ export class AssignmentsService {
         product.assignedEmail || '',
       );
 
-      console.log('📦 Producto después de moveToMemberCollection:', product);
-
       await this.recordAssetHistoryIfNeeded(
         updateDto.actionType,
         oldProductData,
@@ -869,7 +880,7 @@ export class AssignmentsService {
         userId,
       );
 
-      return { shipment: shipment ?? undefined };
+      return { shipment: shipment ?? undefined, updatedProduct: product };
     }
 
     // 🧩 Caso: Return a Our office o FP warehouse
@@ -879,42 +890,25 @@ export class AssignmentsService {
       ['Our office', 'FP warehouse'].includes(updateDto.location || '')
     ) {
       console.log('🔁 Caso: Return a', updateDto.location);
-      const updatedProduct = await this.handleProductUnassignment(
+      if (!userId)
+        throw new Error(
+          '❌ userId is undefined antes de mllamar a handleProductUnassignment',
+        );
+      const unassigned = await this.handleProductUnassignment(
         session,
-        memberProduct.product as ProductDocument,
+        product,
         { ...updateDto, recoverable: isRecoverable },
         member,
       );
-      console.log(
-        '📤 Producto después de handleProductUnassignment',
-        updatedProduct,
-      );
+      const updatedProduct = unassigned?.[0];
+      if (!updatedProduct) throw new Error('Failed to unassign product');
 
       let shipment: ShipmentDocument | null = null;
 
-      if (updateDto.fp_shipment) {
-        await this.memberModel.updateOne(
-          { email: member.email },
-          { $set: { activeShipment: true } },
-          { session },
-        );
-
-        console.log('🧾 Enviando datos a maybeCreateShipmentAndUpdateStatus:', {
-          oldData: {
-            location: oldProductData.location,
-            assignedEmail: oldProductData.assignedEmail,
-            assignedMember: oldProductData.assignedMember,
-          },
-          newData: {
-            location: updateDto.location,
-            assignedEmail: updateDto.assignedEmail,
-            assignedMember: updateDto.assignedMember,
-          },
-        });
-
+      if (updateDto.fp_shipment && updatedProduct) {
         shipment =
           await this.productsService.maybeCreateShipmentAndUpdateStatus(
-            updatedProduct?.[0] as ProductDocument,
+            updatedProduct,
             updateDto,
             tenantName,
             updateDto.actionType!,
@@ -934,10 +928,13 @@ export class AssignmentsService {
             userId,
             ourOfficeEmail,
           );
-
-        return { shipment: shipment ?? undefined };
       }
-
+      console.log(
+        '🧾 Llamando a historyService.create con userId en handleProductsassigmentsChage:',
+        userId,
+      );
+      if (!userId)
+        throw new Error('❌ userId is undefined antes de crear history');
       await this.recordAssetHistoryIfNeeded(
         updateDto.actionType,
         oldProductData,
@@ -949,7 +946,10 @@ export class AssignmentsService {
         userId,
       );
 
-      return {};
+      return {
+        shipment: shipment ?? undefined,
+        updatedProduct,
+      };
     }
 
     // 🧩 Caso: Actualización sin cambio de dueño
@@ -970,7 +970,9 @@ export class AssignmentsService {
       userId,
     );
 
-    return {};
+    return {
+      updatedProduct: updated as ProductDocument,
+    };
   }
 
   // Nueva función para manejar la desasignación del producto
@@ -981,16 +983,22 @@ export class AssignmentsService {
     currentMember?: MemberDocument,
     // tenantName?: string,
   ) {
+    console.log('🧪 Entrando en handleProductUnassignment');
+    console.log('🧪 DTO recibido:', updateProductDto);
+
     if (currentMember) {
-      return await this.moveToProductsCollection(
+      console.log('🔁 Llamando a moveToProductsCollection...');
+      const created = await this.moveToProductsCollection(
         session,
         product,
         currentMember,
         updateProductDto,
         // tenantName,
       );
+      return created;
     } else {
-      await this.updateProductAttributes(
+      console.log('🔁 Llamando a updateProductAttributes...');
+      const updated = await this.updateProductAttributes(
         session,
         product,
         updateProductDto,
@@ -998,6 +1006,135 @@ export class AssignmentsService {
         undefined,
         // tenantName,
       );
+      return [updated];
+    }
+  }
+
+  async offboardMember(
+    memberId: ObjectId,
+    data: Array<{
+      product: any;
+      relocation: 'New employee' | 'FP warehouse' | 'My office';
+      newMember?: { email: string; fullName: string };
+      desirableDate: string | { origin?: string; destination?: string };
+      fp_shipment?: boolean;
+    }>,
+    userId: string,
+    tenantName: string,
+    ourOfficeEmail: string,
+  ): Promise<{ message: string }> {
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const session = await connection.startSession();
+    session.startTransaction();
+
+    try {
+      const member = await this.membersService.findById(memberId, tenantName);
+      if (!member)
+        throw new NotFoundException(`Member with id ${memberId} not found`);
+
+      const updatedProducts: any[] = [];
+      const historyNewData: any[] = [];
+
+      for (const item of data) {
+        const product = item.product;
+
+        let actionType: 'assign' | 'reassign' | 'return' | 'relocate';
+        let location: 'Employee' | 'FP warehouse' | 'Our office';
+
+        if (item.relocation === 'New employee') {
+          actionType = 'reassign';
+          location = 'Employee';
+        } else {
+          actionType = 'return';
+          location =
+            item.relocation === 'My office' ? 'Our office' : 'FP warehouse';
+        }
+
+        const status = await this.productsService.determineProductStatus(
+          {
+            fp_shipment: item.fp_shipment,
+            location,
+            assignedEmail: item.newMember?.email ?? '',
+            productCondition: product.productCondition,
+          },
+          tenantName,
+        );
+
+        const updateDto: UpdateProductDto = {
+          name: product.name,
+          serialNumber: product.serialNumber,
+          assignedEmail: '',
+          assignedMember: '',
+          desirableDate: item.desirableDate,
+          fp_shipment: item.fp_shipment,
+          actionType,
+          recoverable: product.recoverable,
+          productCondition: product.productCondition,
+          location,
+          status,
+          attributes: product.attributes,
+          category: product.category,
+        };
+
+        if (item.relocation === 'New employee' && item.newMember) {
+          updateDto.assignedEmail = item.newMember.email;
+          updateDto.assignedMember = item.newMember.fullName;
+        }
+
+        console.log('🧪 En offboardMember → userId:', userId);
+        const result = await this.productsService.update(
+          product._id,
+          updateDto,
+          tenantName,
+          userId,
+          ourOfficeEmail,
+        );
+
+        updatedProducts.push(result.updatedProduct);
+        historyNewData.push({
+          productId: product._id,
+          newLocation: updateDto.location,
+          assignedEmail: updateDto.assignedEmail,
+          assignedMember: updateDto.assignedMember,
+        });
+      }
+
+      await this.membersService.softDeleteMember(memberId, tenantName, true);
+      await this.membersService.notifyOffBoarding(member, data, tenantName);
+
+      const assignedEmail = member.email;
+
+      await this.historyService.create({
+        actionType: 'offboarding',
+        itemType: 'members',
+        userId,
+        changes: {
+          oldData: {
+            ...(typeof member.toObject === 'function'
+              ? member.toObject()
+              : member),
+            products: [
+              ...member.products.map((p) => ({
+                ...p,
+                lastAssigned: assignedEmail,
+              })),
+              ...updatedProducts,
+            ],
+          },
+          newData: {
+            products: historyNewData,
+          },
+        },
+      });
+
+      await session.commitTransaction();
+      return { message: 'Offboarding completed successfully' };
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
     }
   }
 }

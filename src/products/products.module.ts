@@ -5,16 +5,16 @@ import { tenantModels } from '../infra/db/tenant-models-provider';
 import { TenantsMiddleware } from '../common/middlewares/tenants.middleware';
 import { TenantsModule } from '../tenants/tenants.module';
 import { JwtService } from '@nestjs/jwt';
-// import { MembersModule } from 'src/members/members.module';
 import { HistoryModule } from 'src/history/history.module';
 import { ShipmentsModule } from '../shipments/shipments.module';
 import { SlackModule } from 'src/slack/slack.module';
 import { AssignmentsModule } from 'src/assigments/assigments.module';
+import { TenantDbModule } from 'src/infra/db/tenant-db.module';
 
 @Module({
   imports: [
     TenantsModule,
-    // MembersModule,
+    TenantDbModule,
     forwardRef(() => AssignmentsModule),
     forwardRef(() => ShipmentsModule),
     HistoryModule,

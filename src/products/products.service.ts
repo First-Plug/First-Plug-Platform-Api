@@ -28,6 +28,7 @@ import { CreateShipmentMessageToSlack } from 'src/shipments/helpers/create-messa
 import { SlackService } from 'src/slack/slack.service';
 import { AssignmentsService } from 'src/assigments/assigments.service';
 import { EventTypes } from 'src/infra/event-bus/types';
+import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -42,6 +43,8 @@ export class ProductsService {
     private tenantsService: TenantsService,
     private readonly historyService: HistoryService,
     private readonly connectionService: TenantConnectionService,
+
+    private readonly tenantModelRegistry: TenantModelRegistry,
 
     @Inject(forwardRef(() => ShipmentsService))
     private readonly shipmentsService: ShipmentsService,
@@ -75,12 +78,13 @@ export class ProductsService {
     return '';
   }
 
-  private async validateSerialNumber(serialNumber: string) {
+  private async validateSerialNumber(serialNumber: string, tenantName: string) {
     if (!serialNumber || serialNumber.trim() === '') {
       return;
     }
-
-    const productWithSameSerialNumber = await this.productRepository.findOne({
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
+    const productWithSameSerialNumber = await ProductModel.findOne({
       serialNumber,
     });
     const memberProductWithSameSerialNumber =
@@ -128,7 +132,6 @@ export class ProductsService {
     actionType?: string,
     shipmentStatus?: string,
   ): Promise<Status> {
-    console.log('📦 determineProductStatus inputs:', params);
     if (params.fp_shipment === true) {
       if (shipmentStatus) {
         switch (shipmentStatus) {
@@ -206,6 +209,8 @@ export class ProductsService {
     tenantName: string,
     userId: string,
   ) {
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
     const normalizedProduct = this.normalizeProductData(createProductDto);
     const { assignedEmail, serialNumber, price, productCondition, ...rest } =
       normalizedProduct;
@@ -219,7 +224,7 @@ export class ProductsService {
         : recoverableConfig.get(createProductDto.category) ?? false;
 
     if (serialNumber && serialNumber.trim() !== '') {
-      await this.validateSerialNumber(serialNumber);
+      await this.validateSerialNumber(serialNumber, tenantName);
     }
 
     let location = rest.location || createProductDto.location;
@@ -272,14 +277,14 @@ export class ProductsService {
       }
     }
 
-    const newProduct = await this.productRepository.create({
+    const newProduct = await ProductModel.create({
       ...createData,
       assignedEmail,
       assignedMember: assignedMember || this.getFullName(createProductDto),
       recoverable: isRecoverable,
       productCondition: createData.productCondition,
     });
-    console.log('newProduct', newProduct);
+
     await this.historyService.create({
       actionType: 'create',
       itemType: 'assets',
@@ -299,9 +304,9 @@ export class ProductsService {
     userId: string,
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
-    const connection =
-      await this.connectionService.getTenantConnection(tenantName);
-    const session = await connection.startSession();
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
+    const session = await ProductModel.db.startSession();
     session.startTransaction();
 
     try {
@@ -345,7 +350,7 @@ export class ProductsService {
         product.recoverable = isRecoverable;
 
         if (serialNumber && serialNumber.trim() !== '') {
-          await this.validateSerialNumber(serialNumber);
+          await this.validateSerialNumber(serialNumber, tenantName);
         }
       }
 
@@ -382,28 +387,27 @@ export class ProductsService {
               );
 
             if (member) {
-              const productDocument = new this.productRepository(
+              const productDocument = new ProductModel(
                 product,
               ) as ProductDocument;
               productDocument.assignedMember = this.getFullName(member);
               member.products.push(productDocument);
               await member.save({ session });
-              await this.productRepository
-                .deleteOne({ _id: product._id })
-                .session(session);
+              await ProductModel.deleteOne({ _id: product._id }).session(
+                session,
+              );
               createdProducts.push(productDocument);
             } else {
-              const createdProduct = await this.productRepository.create(
-                [product],
-                { session },
-              );
+              const createdProduct = await ProductModel.create([product], {
+                session,
+              });
               createdProducts.push(...createdProduct);
             }
           }
         },
       );
 
-      const insertManyPromise = this.productRepository.insertMany(
+      const insertManyPromise = ProductModel.insertMany(
         productsWithoutAssignedEmail,
         { session },
       );
@@ -449,9 +453,12 @@ export class ProductsService {
     }
   }
 
-  async tableGrouping() {
+  async tableGrouping(tenantName: string) {
     await new Promise((resolve) => process.nextTick(resolve));
-    const productsFromRepository = await this.productRepository.find({
+
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
+    const productsFromRepository = await ProductModel.find({
       isDeleted: false,
     });
 
@@ -913,7 +920,10 @@ export class ProductsService {
         updateProductDto.serialNumber &&
         updateProductDto.serialNumber !== product.serialNumber
       ) {
-        await this.validateSerialNumber(updateProductDto.serialNumber);
+        await this.validateSerialNumber(
+          updateProductDto.serialNumber,
+          tenantName,
+        );
       }
 
       const updatedFields = this.getUpdatedFields(product as ProductDocument, {
@@ -966,7 +976,9 @@ export class ProductsService {
           updatedFields,
         );
       }
-
+      console.log('🧾 Llamando a historyService.create con userId:', userId);
+      if (!userId)
+        throw new Error('❌ userId is undefined antes de crear history');
       await this.historyService.create({
         actionType: 'update',
         itemType: 'assets',
@@ -1073,6 +1085,13 @@ export class ProductsService {
       providedProducts: [product],
     });
 
+    console.log('[HISTORY DEBUG]', {
+      actionType: isConsolidated ? 'consolidate' : 'create',
+      userId,
+      oldSnapshot,
+      newData: shipment,
+    });
+
     await this.historyService.create({
       actionType: isConsolidated ? 'consolidate' : 'create',
       itemType: 'shipments',
@@ -1158,6 +1177,7 @@ export class ProductsService {
       return {
         message: `Product with id "${id}" updated successfully`,
         shipment: result.shipment ?? null,
+        updatedProduct: result.updatedProduct ?? null,
       };
     } catch (error) {
       await session.abortTransaction();
@@ -1269,594 +1289,6 @@ export class ProductsService {
       ourOfficeEmail,
     );
   }
-
-  // TODO: Este método debe dividirse en submétodos.
-  // - Desacoplar responsabilidad: asignación, shipment, updates parciales
-  // - Separar lógica por tipo de producto (en products vs en members)
-  // - Reducir side effects cruzados (slack, history, etc)
-  // async update(
-  //   id: ObjectId,
-  //   updateProductDto: UpdateProductDto,
-  //   tenantName: string,
-  //   userId: string,
-  //   ourOfficeEmail: string,
-  // ) {
-  //   await new Promise((resolve) => process.nextTick(resolve));
-  //   const connection =
-  //     await this.connectionService.getTenantConnection(tenantName);
-  //   const session = await connection.startSession();
-  //   session.startTransaction();
-  //   let finalShipment: ShipmentDocument | null = null;
-
-  //   if (updateProductDto.fp_shipment === undefined) {
-  //     const existingProduct = await this.productRepository.findById(id);
-  //     let currentFpShipment = false;
-  //     if (existingProduct) {
-  //       console.log('✅ Producto encontrado en colección Products');
-  //       currentFpShipment = existingProduct.fp_shipment === true;
-  //       console.log('🚢 fp_shipment actual:', currentFpShipment);
-  //     } else {
-  //       const memberProduct =
-  //         await this.assignmentsService.getProductByMembers(id);
-  //       if (memberProduct?.product) {
-  //         console.log('✅ Producto encontrado en colección Members');
-  //         currentFpShipment = memberProduct.product.fp_shipment === true;
-  //         console.log('🚢 fp_shipment actual:', currentFpShipment);
-  //       }
-  //     }
-  //     updateProductDto.fp_shipment = currentFpShipment;
-  //   } else {
-  //     const existingProduct = await this.productRepository.findById(id);
-  //     if (
-  //       existingProduct &&
-  //       existingProduct.fp_shipment === true &&
-  //       updateProductDto.fp_shipment === false
-  //     ) {
-  //       console.log(
-  //         '⚠️ Producto en shipment activo, verificando si se puede cambiar fp_shipment a false',
-  //       );
-
-  //       updateProductDto.fp_shipment = true;
-  //     } else {
-  //       const memberProduct =
-  //         await this.assignmentsService.getProductByMembers(id);
-  //       if (
-  //         memberProduct?.product &&
-  //         memberProduct.product.fp_shipment === true &&
-  //         updateProductDto.fp_shipment === false
-  //       ) {
-  //         console.log(
-  //           '⚠️ Producto en shipment activo (en miembro), verificando si se puede cambiar fp_shipment a false',
-  //         );
-
-  //         updateProductDto.fp_shipment = true;
-  //       }
-  //     }
-  //   }
-
-  //   const { actionType } = updateProductDto;
-
-  //   try {
-  //     const product = await this.productRepository
-  //       .findById(id)
-  //       .session(session);
-
-  //     if (product) {
-  //       if (product.activeShipment) {
-  //         throw new BadRequestException(
-  //           'This product is currently part of an active shipment and cannot be modified.',
-  //         );
-  //       }
-  //       await this.assignmentsService.handleProductUpdateByActionType(
-  //         session,
-  //         product,
-  //         updateProductDto,
-  //         tenantName,
-  //         userId,
-  //         actionType,
-  //       );
-  //       await this.getRecoverableConfigForTenant(tenantName);
-
-  //       const isRecoverable =
-  //         updateProductDto.recoverable !== undefined
-  //           ? updateProductDto.recoverable
-  //           : product.recoverable;
-
-  //       const productCopy = { ...product.toObject() };
-
-  //       if (updateProductDto.productCondition === 'Unusable') {
-  //         updateProductDto.status = 'Unavailable';
-  //       } else if (updateProductDto.fp_shipment !== true) {
-  //         // Solo calculamos estos si NO se va a generar un shipment
-  //         if (
-  //           updateProductDto.assignedEmail &&
-  //           updateProductDto.assignedEmail !== 'none'
-  //         ) {
-  //           updateProductDto.location = 'Employee';
-  //           updateProductDto.status = 'Delivered';
-  //         } else if (
-  //           updateProductDto.assignedEmail === 'none' &&
-  //           (updateProductDto.productCondition as Condition) !== 'Unusable'
-  //         ) {
-  //           if (
-  //             !['FP warehouse', 'Our office'].includes(
-  //               updateProductDto.location,
-  //             )
-  //           ) {
-  //             throw new BadRequestException(
-  //               'When unassigned, location must be FP warehouse or Our office.',
-  //             );
-  //           }
-  //           updateProductDto.status = 'Available';
-  //         }
-  //       }
-
-  //       if (
-  //         updateProductDto.price?.amount !== undefined &&
-  //         updateProductDto.price?.currencyCode !== undefined
-  //       ) {
-  //         product.price = {
-  //           amount: updateProductDto.price.amount,
-  //           currencyCode: updateProductDto.price.currencyCode,
-  //         };
-  //       } else if (product.price && !updateProductDto.price) {
-  //       } else {
-  //         product.price = undefined;
-  //       }
-
-  //       if (
-  //         product.assignedEmail &&
-  //         !(await this.assignmentsService.findByEmailNotThrowError(
-  //           product.assignedEmail,
-  //         ))
-  //       ) {
-  //         if (
-  //           !updateProductDto.assignedEmail ||
-  //           updateProductDto.assignedEmail === product.assignedEmail
-  //         ) {
-  //           const updateProduct =
-  //             await this.assignmentsService.handleUnknownEmailUpdate(
-  //               session,
-  //               product,
-  //               {
-  //                 ...updateProductDto,
-  //                 recoverable: isRecoverable,
-  //               },
-  //               // tenantName,
-  //             );
-
-  //           if (actionType) {
-  //             await this.historyService.create({
-  //               actionType: actionType,
-  //               itemType: 'assets',
-  //               userId: userId,
-  //               changes: {
-  //                 oldData: {
-  //                   ...product,
-  //                 },
-  //                 newData: {
-  //                   ...updateProduct,
-  //                 },
-  //               },
-  //             });
-  //           }
-  //         } else if (
-  //           updateProductDto.assignedEmail &&
-  //           updateProductDto.assignedEmail !== 'none'
-  //         ) {
-  //           const newMember =
-  //             await this.assignmentsService.handleUnknownEmailToMemberUpdate(
-  //               session,
-  //               product,
-  //               {
-  //                 ...updateProductDto,
-  //                 recoverable: isRecoverable,
-  //               },
-  //             );
-
-  //           if (actionType) {
-  //             await this.historyService.create({
-  //               actionType: actionType,
-  //               itemType: 'assets',
-  //               userId: userId,
-  //               changes: {
-  //                 oldData: {
-  //                   ...product,
-  //                 },
-  //                 newData: {
-  //                   assignedEmail: newMember.email,
-  //                   assignedMember: `${newMember.firstName} ${newMember.lastName}`,
-  //                 },
-  //               },
-  //             });
-  //           }
-  //         } else {
-  //           await this.assignmentsService.updateProductAttributes(
-  //             session,
-  //             product,
-  //             { ...updateProductDto, recoverable: isRecoverable },
-  //             'products',
-  //             undefined,
-  //             // tenantName,
-  //           );
-  //         }
-  //       } else {
-  //         if (
-  //           updateProductDto.assignedEmail &&
-  //           updateProductDto.assignedEmail !== 'none' &&
-  //           updateProductDto.assignedEmail !== product.assignedEmail
-  //         ) {
-  //           const newMember =
-  //             await this.assignmentsService.findByEmailNotThrowError(
-  //               updateProductDto.assignedEmail,
-  //             );
-  //           console.log(
-  //             `🔄 Cambio de assignedEmail detectado: ${product.assignedEmail} ➡️ ${updateProductDto.assignedEmail}`,
-  //           );
-  //           if (newMember) {
-  //             const lastMember = product.assignedEmail;
-  //             // let shipment: ShipmentDocument | null = null;
-  //             if (updateProductDto.fp_shipment === true) {
-  //               finalShipment = await this.maybeCreateShipmentAndUpdateStatus(
-  //                 product,
-  //                 updateProductDto,
-  //                 tenantName,
-  //                 actionType!,
-  //                 session,
-  //                 {
-  //                   location: product.location,
-  //                   assignedEmail: product.assignedEmail,
-  //                   assignedMember: product.assignedMember,
-  //                 },
-  //                 {
-  //                   location: updateProductDto.location,
-  //                   assignedEmail: updateProductDto.assignedEmail,
-  //                   assignedMember: updateProductDto.assignedMember,
-  //                 },
-  //                 userId,
-  //                 ourOfficeEmail,
-  //               );
-  //             } else {
-  //               updateProductDto.status = await this.determineProductStatus(
-  //                 {
-  //                   fp_shipment: false,
-  //                   location: updateProductDto.location || product.location,
-  //                   assignedEmail:
-  //                     updateProductDto.assignedEmail || product.assignedEmail,
-  //                   productCondition:
-  //                     updateProductDto.productCondition ||
-  //                     product.productCondition,
-  //                 },
-  //                 tenantName,
-  //               );
-  //             }
-
-  //             const fixedUpdateDto = {
-  //               ...updateProductDto,
-  //               recoverable: isRecoverable,
-  //               status: updateProductDto.status ?? product.status,
-  //             };
-
-  //             await this.assignmentsService.moveToMemberCollection(
-  //               session,
-  //               product,
-  //               newMember,
-  //               {
-  //                 ...fixedUpdateDto,
-  //               },
-  //               product.assignedEmail || '',
-  //               // tenantName,
-  //             );
-
-  //             // Registrar reassign & assign
-  //             if (actionType) {
-  //               await this.historyService.create({
-  //                 actionType: actionType,
-  //                 itemType: 'assets',
-  //                 userId: userId,
-  //                 changes: {
-  //                   oldData: productCopy,
-  //                   newData: {
-  //                     ...product.toObject(),
-  //                     assignedEmail: newMember.email,
-  //                     assignedMember:
-  //                       newMember.firstName + ' ' + newMember.lastName,
-  //                     location: updateProductDto.location,
-  //                     status: updateProductDto.status,
-  //                     lastAssigned: lastMember,
-  //                   },
-  //                 },
-  //               });
-  //             }
-  //           } else {
-  //             throw new NotFoundException(
-  //               `Member with email "${updateProductDto.assignedEmail}" not found`,
-  //             );
-  //           }
-  //         } else if (
-  //           updateProductDto.assignedEmail === '' &&
-  //           product.assignedEmail !== ''
-  //         ) {
-  //           await this.handleProductUnassignment(session, product, {
-  //             ...updateProductDto,
-  //             recoverable: isRecoverable,
-  //           });
-
-  //           finalShipment = await this.maybeCreateShipmentAndUpdateStatus(
-  //             product,
-  //             updateProductDto,
-  //             tenantName,
-  //             actionType!,
-  //             session,
-  //             {
-  //               location: product.location,
-  //               assignedEmail: product.assignedEmail,
-  //               assignedMember: product.assignedMember,
-  //             },
-  //             {
-  //               location: updateProductDto.location ?? product.location,
-  //               assignedEmail:
-  //                 updateProductDto.assignedEmail ?? product.assignedEmail,
-  //               assignedMember:
-  //                 updateProductDto.assignedMember ?? product.assignedMember,
-  //             },
-  //             userId,
-  //             ourOfficeEmail,
-  //           );
-  //           console.log(
-  //             '🧪 Status después de maybeCreateShipmentAndUpdateStatus segundo:',
-  //             updateProductDto.status,
-  //           );
-  //         } else {
-  //           await this.assignmentsService.updateProductAttributes(
-  //             session,
-  //             product,
-  //             { ...updateProductDto, recoverable: isRecoverable },
-  //             'products',
-  //             undefined,
-  //             // tenantName,
-  //           );
-  //         }
-  //       }
-
-  //       await session.commitTransaction();
-  //       session.endSession();
-  //       return {
-  //         message: `Product with id "${id}" updated successfully`,
-  //         shipment: finalShipment,
-  //       };
-  //     } else {
-  //       const memberProduct = await this.assignmentsService.getProductByMembers(
-  //         id,
-  //         session,
-  //       );
-
-  //       if (memberProduct?.product) {
-  //         const member = memberProduct.member;
-  //         await this.getRecoverableConfigForTenant(tenantName);
-
-  //         const isRecoverable =
-  //           updateProductDto.recoverable !== undefined
-  //             ? updateProductDto.recoverable
-  //             : memberProduct.product.recoverable;
-
-  //         const productCopy = { ...memberProduct.product };
-
-  //         if (updateProductDto.productCondition === 'Unusable') {
-  //           updateProductDto.status = 'Unavailable';
-  //         } else if (
-  //           updateProductDto.assignedEmail &&
-  //           updateProductDto.assignedEmail !== 'none'
-  //         ) {
-  //           updateProductDto.location = 'Employee';
-  //           if (!updateProductDto.fp_shipment) {
-  //             updateProductDto.status = 'Delivered';
-  //           }
-  //         } else if (
-  //           updateProductDto.assignedEmail === 'none' &&
-  //           (updateProductDto.productCondition as Condition) !== 'Unusable'
-  //         ) {
-  //           if (
-  //             !['FP warehouse', 'Our office'].includes(
-  //               updateProductDto.location,
-  //             )
-  //           ) {
-  //             throw new BadRequestException(
-  //               'When unassigned, location must be FP warehouse or Our office.',
-  //             );
-  //           }
-  //           updateProductDto.status = 'Available';
-  //         }
-
-  //         if (
-  //           updateProductDto.assignedEmail &&
-  //           updateProductDto.assignedEmail !== member.email
-  //         ) {
-  //           const newMember =
-  //             await this.assignmentsService.findByEmailNotThrowError(
-  //               updateProductDto.assignedEmail,
-  //             );
-  //           if (newMember) {
-  //             const lastMember = member.email;
-
-  //             finalShipment = await this.maybeCreateShipmentAndUpdateStatus(
-  //               memberProduct.product as ProductDocument,
-  //               updateProductDto,
-  //               tenantName,
-  //               actionType!,
-  //               session,
-  //               {
-  //                 location: memberProduct.product.location,
-  //                 assignedEmail: memberProduct.product.assignedEmail,
-  //                 assignedMember: memberProduct.product.assignedMember,
-  //               },
-  //               {
-  //                 location:
-  //                   updateProductDto.location ?? memberProduct.product.location,
-  //                 assignedEmail:
-  //                   updateProductDto.assignedEmail ??
-  //                   memberProduct.product.assignedEmail,
-  //                 assignedMember:
-  //                   updateProductDto.assignedMember ??
-  //                   memberProduct.product.assignedMember,
-  //               },
-  //               userId,
-  //               ourOfficeEmail,
-  //             );
-  //             console.log(
-  //               '🧪 Status después de maybeCreateShipmentAndUpdateStatus tercero:',
-  //               updateProductDto.status,
-  //             );
-
-  //             await this.assignmentsService.moveToMemberCollection(
-  //               session,
-  //               memberProduct.product as ProductDocument,
-  //               newMember,
-  //               { ...updateProductDto, recoverable: isRecoverable },
-  //               member.email,
-  //               // tenantName,
-  //             );
-
-  //             // Registrar relocate
-  //             if (actionType) {
-  //               await this.historyService.create({
-  //                 actionType: actionType,
-  //                 itemType: 'assets',
-  //                 userId: userId,
-  //                 changes: {
-  //                   oldData: productCopy,
-  //                   newData: {
-  //                     ...memberProduct.product,
-  //                     assignedEmail: newMember.email,
-  //                     assignedMember:
-  //                       newMember.firstName + ' ' + newMember.lastName,
-  //                     lastAssigned: lastMember,
-  //                   },
-  //                 },
-  //               });
-  //             }
-  //           } else {
-  //             throw new NotFoundException(
-  //               `Member with email "${updateProductDto.assignedEmail}" not found`,
-  //             );
-  //           }
-  //         } else if (updateProductDto.assignedEmail === '') {
-  //           finalShipment = await this.maybeCreateShipmentAndUpdateStatus(
-  //             memberProduct.product as ProductDocument,
-  //             updateProductDto,
-  //             tenantName,
-  //             actionType!,
-  //             session,
-  //             {
-  //               location: 'Employee',
-  //               assignedEmail: member.email,
-  //               assignedMember: `${member.firstName} ${member.lastName}`,
-  //             },
-  //             {
-  //               location: updateProductDto.location || 'FP warehouse',
-  //               assignedEmail: '',
-  //               assignedMember: '',
-  //             },
-  //             userId,
-  //             ourOfficeEmail,
-  //           );
-  //           console.log(
-  //             '🧪 Status después de maybeCreateShipmentAndUpdateStatus cuarto:',
-  //             updateProductDto.status,
-  //           );
-
-  //           const updateProduct = await this.handleProductUnassignment(
-  //             session,
-  //             memberProduct.product as ProductDocument,
-  //             { ...updateProductDto, recoverable: isRecoverable },
-  //             member,
-  //             // tenantName,
-  //           );
-
-  //           // Registrar return
-  //           if (actionType) {
-  //             await this.historyService.create({
-  //               actionType: actionType,
-  //               itemType: 'assets',
-  //               userId: userId,
-  //               changes: {
-  //                 oldData: productCopy,
-  //                 newData: updateProduct?.length ? updateProduct[0] : {},
-  //               },
-  //             });
-  //           }
-  //         } else {
-  //           await this.assignmentsService.updateProductAttributes(
-  //             session,
-  //             memberProduct.product as ProductDocument,
-  //             { ...updateProductDto, recoverable: isRecoverable },
-  //             'members',
-  //             member,
-  //             // tenantName,
-  //           );
-
-  //           finalShipment = await this.maybeCreateShipmentAndUpdateStatus(
-  //             memberProduct.product as ProductDocument,
-  //             updateProductDto,
-  //             tenantName,
-  //             actionType!,
-  //             session,
-  //             {
-  //               location: memberProduct.product.location,
-  //               assignedEmail: memberProduct.product.assignedEmail,
-  //               assignedMember: memberProduct.product.assignedMember,
-  //             },
-  //             {
-  //               location:
-  //                 updateProductDto.location ?? memberProduct.product.location,
-  //               assignedEmail:
-  //                 updateProductDto.assignedEmail ??
-  //                 memberProduct.product.assignedEmail,
-  //               assignedMember:
-  //                 updateProductDto.assignedMember ??
-  //                 memberProduct.product.assignedMember,
-  //             },
-  //             userId,
-  //             ourOfficeEmail,
-  //           );
-  //           console.log(
-  //             '🧪 Status después de maybeCreateShipmentAndUpdateStatus quinto:',
-  //             updateProductDto.status,
-  //           );
-  //         }
-  //         console.log(
-  //           '✅ Actualización completada, fp_shipment final:',
-  //           updateProductDto.fp_shipment,
-  //         );
-
-  //         // if (
-  //         //   updateProductDto.fp_shipment === true &&
-  //         //   tenantName &&
-  //         //   memberProduct.product.activeShipment === true
-  //         // ) {
-  //         //   console.log(
-  //         //     '🔔 Emitiendo evento para producto con fp_shipment=true',
-  //         //   );
-  //         //   this.emitProductUpdatedEvent(id.toString(), tenantName);
-  //         // }
-  //         await session.commitTransaction();
-  //         session.endSession();
-  //         console.log('Final shipment:', finalShipment);
-  //         return {
-  //           message: `Product with id "${id}" updated successfully`,
-  //           shipment: finalShipment,
-  //         };
-  //         console.log('Final shipment:', finalShipment);
-  //       } else {
-  //         throw new NotFoundException(`Product with id "${id}" not found`);
-  //       }
-  //     }
-  //   } catch (error) {
-  //     await session.abortTransaction();
-  //     session.endSession();
-  //     throw error;
-  //   }
-  // }
 
   public emitProductUpdatedEvent(productId: string, tenantName: string) {
     console.log(
@@ -2001,8 +1433,8 @@ export class ProductsService {
     });
   }
 
-  async exportProductsCsv(res: Response) {
-    const allProducts = (await this.tableGrouping()) as {
+  async exportProductsCsv(res: Response, tenantName: string) {
+    const allProducts = (await this.tableGrouping(tenantName)) as {
       products: ProductDocument[];
     }[];
 
