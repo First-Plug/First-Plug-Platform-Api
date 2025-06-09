@@ -10,7 +10,7 @@ import { TeamsService } from 'src/teams/teams.service';
 import { HistoryModule } from 'src/history/history.module';
 import { ShipmentsModule } from 'src/shipments/shipments.module';
 import { SlackModule } from 'src/slack/slack.module';
-import { AssignmentsModule } from 'src/assigments/assigments.module';
+import { AssignmentsModule } from 'src/assigments/assignments.module';
 
 @Module({
   imports: [

@@ -23,7 +23,7 @@ import { EventTypes } from 'src/infra/event-bus/types';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MemberAddressUpdatedEvent } from 'src/infra/event-bus/member-address-update.event';
 import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
-import { AssignmentsService } from 'src/assigments/assigments.service';
+import { AssignmentsService } from 'src/assignments/assignments.service';
 
 interface MemberWithShipmentStatus extends MemberDocument {
   shipmentStatus?: string[];
@@ -753,6 +753,7 @@ export class MembersService {
     id: ObjectId,
     tenantName: string,
     isOffboarding = false,
+    session?: ClientSession,
   ) {
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
@@ -794,7 +795,7 @@ export class MembersService {
       });
     }
 
-    await (MemberModel as any).softDelete({ _id: id });
+    await (MemberModel as any).softDelete({ _id: id }, { session });
     return member;
   }
 

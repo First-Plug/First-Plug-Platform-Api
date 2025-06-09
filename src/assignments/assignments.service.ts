@@ -8,10 +8,10 @@ import {
 } from '@nestjs/common';
 import { Product, ProductDocument } from 'src/products/schemas/product.schema';
 import { Member, MemberDocument } from 'src/members/schemas/member.schema';
-import { Model, Schema, Types } from 'mongoose';
+import mongoose, { Model, Schema, Types, ObjectId } from 'mongoose';
 import { HistoryService } from 'src/history/history.service';
 import { SlackService } from 'src/slack/slack.service';
-import { ClientSession, ObjectId } from 'mongoose';
+import { ClientSession } from 'mongoose';
 import { CreateProductDto } from 'src/products/dto/create-product.dto';
 import { MembersService } from 'src/members/members.service';
 import { Status } from 'src/products/interfaces/product.interface';
@@ -21,6 +21,7 @@ import { UpdateProductDto } from 'src/products/dto';
 import { TenantsService } from 'src/tenants/tenants.service';
 import { HistoryActionType } from 'src/history/validations/create-history.zod';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
+import { BulkReassignDto } from 'src/assigments/dto/bulk-reassign.dto';
 
 @Injectable()
 export class AssignmentsService {
@@ -1130,6 +1131,54 @@ export class AssignmentsService {
 
       await session.commitTransaction();
       return { message: 'Offboarding completed successfully' };
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
+  }
+
+  async bulkReassignProducts(
+    items: BulkReassignDto['items'],
+    userId: string,
+    tenantName: string,
+    ourOfficeEmail: string,
+  ) {
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const session = await connection.startSession();
+    session.startTransaction();
+
+    try {
+      console.log('🛠️ bulkReassignProducts received', items.length, 'items');
+      for (const item of items) {
+        const { productId, actionType, ...rest } = item;
+        const objectId = new mongoose.Types.ObjectId(productId);
+
+        const updateDto: any = {
+          ...rest,
+          actionType,
+        };
+
+        if (actionType === 'return') {
+          updateDto.assignedEmail = '';
+          updateDto.assignedMember = '';
+          updateDto.location = rest.newLocation;
+        }
+
+        await this.productsService.updateWithinTransaction(
+          objectId,
+          updateDto,
+          tenantName,
+          userId,
+          ourOfficeEmail,
+          session,
+        );
+      }
+
+      await session.commitTransaction();
+      return { message: 'Bulk reassign completed successfully' };
     } catch (error) {
       await session.abortTransaction();
       throw error;

@@ -8,7 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { HistoryModule } from 'src/history/history.module';
 import { ShipmentsModule } from '../shipments/shipments.module';
 import { SlackModule } from 'src/slack/slack.module';
-import { AssignmentsModule } from 'src/assigments/assigments.module';
+import { AssignmentsModule } from 'src/assigments/assignments.module';
 import { TenantDbModule } from 'src/infra/db/tenant-db.module';
 
 @Module({

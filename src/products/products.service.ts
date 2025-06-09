@@ -7,7 +7,13 @@ import {
   forwardRef,
   // forwardRef,
 } from '@nestjs/common';
-import { ClientSession, Model, ObjectId, Schema, Types } from 'mongoose';
+import mongoose, {
+  ClientSession,
+  Model,
+  ObjectId,
+  Schema,
+  Types,
+} from 'mongoose';
 import { Product, ProductDocument } from './schemas/product.schema';
 import { CreateProductDto, UpdateProductDto } from './dto';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
@@ -26,7 +32,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
 import { CreateShipmentMessageToSlack } from 'src/shipments/helpers/create-message-to-slack';
 import { SlackService } from 'src/slack/slack.service';
-import { AssignmentsService } from 'src/assigments/assigments.service';
+import { AssignmentsService } from 'src/assignments/assignments.service';
 import { EventTypes } from 'src/infra/event-bus/types';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 
@@ -1513,5 +1519,51 @@ export class ProductsService {
     } catch (error) {
       throw error;
     }
+  }
+
+  async updateWithinTransaction(
+    id: string | mongoose.Types.ObjectId,
+    updateProductDto: UpdateProductDto,
+    tenantName: string,
+    userId: string,
+    ourOfficeEmail: string,
+    session: ClientSession,
+  ) {
+    console.log('✏️ Updating product:', id.toString());
+    const objectId =
+      typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id;
+
+    await this.normalizeFpShipmentFlag(
+      objectId as unknown as mongoose.Schema.Types.ObjectId,
+      updateProductDto,
+    );
+
+    const product = await this.productRepository
+      .findById(objectId)
+      .session(session);
+
+    const result = product
+      ? await this.assignmentsService.handleProductFromProductsCollection(
+          product,
+          updateProductDto,
+          tenantName,
+          userId,
+          ourOfficeEmail,
+          session,
+        )
+      : await this.assignmentsService.handleProductFromMemberCollection(
+          objectId as unknown as mongoose.Schema.Types.ObjectId,
+          updateProductDto,
+          tenantName,
+          userId,
+          ourOfficeEmail,
+          session,
+        );
+
+    return {
+      message: `Product with id "${id}" updated successfully`,
+      shipment: result.shipment ?? null,
+      updatedProduct: result.updatedProduct ?? null,
+    };
   }
 }
