@@ -11,7 +11,7 @@ import { BulkReassignDto } from 'src/assignments/dto/bulk-reassign.dto';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { AddFullNameInterceptor } from 'src/members/interceptors/add-full-name.interceptor';
 
-@Controller('assigments')
+@Controller('assignments')
 @UseGuards(JwtGuard)
 @UseInterceptors(AddFullNameInterceptor)
 export class AssignmentsController {

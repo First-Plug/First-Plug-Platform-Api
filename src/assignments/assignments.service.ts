@@ -21,7 +21,7 @@ import { UpdateProductDto } from 'src/products/dto';
 import { TenantsService } from 'src/tenants/tenants.service';
 import { HistoryActionType } from 'src/history/validations/create-history.zod';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
-import { BulkReassignDto } from 'src/assigments/dto/bulk-reassign.dto';
+import { BulkReassignDto } from 'src/assignments/dto/bulk-reassign.dto';
 
 @Injectable()
 export class AssignmentsService {
@@ -931,7 +931,7 @@ export class AssignmentsService {
           );
       }
       console.log(
-        '🧾 Llamando a historyService.create con userId en handleProductsassigmentsChage:',
+        '🧾 Llamando a historyService.create con userId en handleProductsassignmentsChage:',
         userId,
       );
       if (!userId)

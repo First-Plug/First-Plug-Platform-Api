@@ -8,6 +8,7 @@ import { SlackModule } from 'src/slack/slack.module';
 import { tenantModels } from 'src/infra/db/tenant-models-provider';
 import { TenantsModule } from 'src/tenants/tenants.module';
 import { AssignmentsController } from './assignments.controller';
+import { JwtService } from '@nestjs/jwt';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AssignmentsController } from './assignments.controller';
     AssignmentsService,
     tenantModels.productModel,
     tenantModels.memberModel,
+    JwtService,
   ],
   exports: [AssignmentsService],
 })

@@ -19,7 +19,7 @@ import { Response } from 'express';
 import { ObjectId } from 'mongoose';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { CreateProductArrayDto } from './dto/create-product-array.dto';
-import { AssignmentsService } from 'src/assigments/assignments.service';
+import { AssignmentsService } from 'src/assignments/assignments.service';
 
 @Controller('products')
 @UseGuards(JwtGuard)

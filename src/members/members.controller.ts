@@ -20,7 +20,7 @@ import { CreateMemberArrayDto } from './dto/create-member-array.dto';
 import { AddFullNameInterceptor } from './interceptors/add-full-name.interceptor';
 import { HistoryService } from 'src/history/history.service';
 import { ShipmentsService } from 'src/shipments/shipments.service';
-import { AssignmentsService } from 'src/assigments/assignments.service';
+import { AssignmentsService } from 'src/assignments/assignments.service';
 
 @Controller('members')
 @UseGuards(JwtGuard)
