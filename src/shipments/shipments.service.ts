@@ -404,7 +404,7 @@ export class ShipmentsService {
   async findOrCreateShipment(
     productId: string,
     actionType: string,
-    tenantId: string,
+    tenantName: string,
     userId: string,
     session?: ClientSession | null,
     desirableDestinationDate?: string | Date,
@@ -424,6 +424,10 @@ export class ShipmentsService {
     isConsolidated: boolean;
     oldSnapshot?: Partial<ShipmentDocument>;
   }> {
+    console.log('findorcreateshipment called with userId:', userId);
+    if (!userId) {
+      throw new Error('❌ User ID is required');
+    }
     const originDate =
       desirableOriginDate instanceof Date
         ? desirableOriginDate.toISOString()
@@ -436,6 +440,7 @@ export class ShipmentsService {
 
     const found = await this.productsService.findProductById(
       new Types.ObjectId(productId) as unknown as Schema.Types.ObjectId,
+      tenantName,
     );
     if (!found?.product) {
       throw new NotFoundException(`Product ${productId} not found.`);
@@ -456,7 +461,7 @@ export class ShipmentsService {
       destinationLocation,
     } = await this.getProductLocationDataFromSnapshots(
       productId,
-      tenantId,
+      tenantName,
       actionType,
       oldData,
       newData,
@@ -468,7 +473,7 @@ export class ShipmentsService {
       ? undefined
       : await this.getLocationInfo(
           originLocation,
-          tenantId,
+          tenantName,
           oldData?.assignedEmail || '',
           oldData?.assignedMember || '',
           originDate,
@@ -476,14 +481,14 @@ export class ShipmentsService {
 
     const destinationDetails = await this.getLocationInfo(
       destinationLocation,
-      tenantId,
+      tenantName,
       newData?.assignedEmail || '',
       newData?.assignedMember || '',
       destinationDate,
     ).then((res) => res.details);
 
     const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantId);
+      await this.tenantConnectionService.getTenantConnection(tenantName);
     const ShipmentModel = this.getShipmentModel(connection);
 
     const existingShipment = await ShipmentModel.findOne({
@@ -524,7 +529,7 @@ export class ShipmentsService {
 
     const destinationComplete = await this.isAddressComplete(
       { ...product, location: destinationLocation, assignedEmail },
-      tenantId,
+      tenantName,
     );
 
     const originComplete = await this.isAddressComplete(
@@ -533,7 +538,7 @@ export class ShipmentsService {
         location: originLocation,
         assignedEmail: oldData?.assignedEmail || '',
       },
-      tenantId,
+      tenantName,
     );
 
     const shipmentStatus =
@@ -554,7 +559,7 @@ export class ShipmentsService {
 
     const newShipment = await ShipmentModel.create({
       order_id,
-      tenant: tenantId,
+      tenant: tenantName,
       quantity_products: 1,
       shipment_status: shipmentStatus,
       shipment_type: 'TBC',
@@ -578,7 +583,7 @@ export class ShipmentsService {
     ) {
       await this.markActiveShipmentTargets(
         productId,
-        tenantId,
+        tenantName,
         origin,
         destination,
         originEmail,

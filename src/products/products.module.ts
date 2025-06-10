@@ -19,6 +19,7 @@ import { TenantDbModule } from 'src/infra/db/tenant-db.module';
     forwardRef(() => ShipmentsModule),
     HistoryModule,
     SlackModule,
+    TenantDbModule,
   ],
   controllers: [ProductsController],
   providers: [ProductsService, tenantModels.productModel, JwtService],

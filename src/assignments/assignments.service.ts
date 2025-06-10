@@ -6,9 +6,17 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Product, ProductDocument } from 'src/products/schemas/product.schema';
-import { Member, MemberDocument } from 'src/members/schemas/member.schema';
-import mongoose, { Model, Schema, Types, ObjectId } from 'mongoose';
+import {
+  Product,
+  ProductDocument,
+  ProductSchema,
+} from 'src/products/schemas/product.schema';
+import {
+  Member,
+  MemberDocument,
+  MemberSchema,
+} from 'src/members/schemas/member.schema';
+import mongoose, { Model, Schema, Types, ObjectId, Connection } from 'mongoose';
 import { HistoryService } from 'src/history/history.service';
 import { SlackService } from 'src/slack/slack.service';
 import { ClientSession } from 'mongoose';
@@ -22,6 +30,7 @@ import { TenantsService } from 'src/tenants/tenants.service';
 import { HistoryActionType } from 'src/history/validations/create-history.zod';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
 import { BulkReassignDto } from 'src/assignments/dto/bulk-reassign.dto';
+import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 
 @Injectable()
 export class AssignmentsService {
@@ -40,6 +49,7 @@ export class AssignmentsService {
     private readonly productsService: ProductsService,
     @Inject('PRODUCT_MODEL')
     private readonly productRepository: Model<Product>,
+    private readonly tenantModelRegistry: TenantModelRegistry,
   ) {}
 
   public async assignProductsToMemberByEmail(
@@ -124,25 +134,79 @@ export class AssignmentsService {
     return member;
   }
 
-  async getAllProductsWithMembers() {
-    const members = await this.memberModel.find();
+  async getAllProductsWithMembers(
+    connection: Connection,
+  ): Promise<ProductDocument[]> {
+    try {
+      const MemberModel = connection.model<MemberDocument>(
+        'Member',
+        MemberSchema,
+      );
+      const members = await MemberModel.find({ isDeleted: false });
+      console.log('Members found:', members.length);
 
-    return members.flatMap((member) => member.products || []);
+      const productsFromMembers = members.flatMap((member) => {
+        if (!member.products || !Array.isArray(member.products)) {
+          console.log(
+            `Member ${member.email} has no products or products is not an array`,
+          );
+          return [];
+        }
+
+        return (member.products || []).map((p: any) => ({
+          ...JSON.parse(JSON.stringify(p)),
+          assignedEmail: member.email,
+          assignedMember: `${member.firstName} ${member.lastName}`,
+        }));
+      });
+
+      return productsFromMembers;
+    } catch (error) {
+      console.error('Error in getAllProductsWithMembers:', error);
+      return [];
+    }
   }
 
-  async getProductByMembers(id: ObjectId, session?: ClientSession) {
-    const members = await this.memberModel.find().session(session || null);
+  // async getProductByMembers(
+  //   id: ObjectId,
+  //   connection: Connection,
+  //   session?: ClientSession,
+  // ) {
+  //   const MemberModel = connection.model(Member.name, MemberSchema);
+  //   const members = await MemberModel.find().session(session || null);
 
-    for (const member of members) {
-      const products = member.products || [];
-      const product = products.find(
-        (product) => product._id!.toString() === id.toString(),
-      );
+  //   for (const member of members) {
+  //     const products = member.products || [];
+  //     const product = products.find(
+  //       (product) => product._id!.toString() === id.toString(),
+  //     );
 
-      if (product) {
-        return { member, product };
-      }
-    }
+  //     if (product) {
+  //       return { member, product };
+  //     }
+  //   }
+  // }
+
+  async getProductByMembers(
+    id: ObjectId,
+    connection: Connection,
+    session?: ClientSession,
+  ) {
+    const MemberModel = connection.model(Member.name, MemberSchema);
+
+    const member = await MemberModel.findOne({ 'products._id': id }).session(
+      session || null,
+    );
+
+    if (!member) return null;
+
+    const product = (
+      member.products as mongoose.Types.DocumentArray<ProductDocument>
+    ).id(id);
+
+    if (!product) return null;
+
+    return { member, product };
   }
 
   async deleteProductFromMember(
@@ -250,18 +314,28 @@ export class AssignmentsService {
     return filteredMembers;
   }
 
-  async getProductForReassign(productId: ObjectId) {
+  async getProductForReassign(
+    productId: ObjectId,
+    tenantName: string,
+    connection: Connection,
+    session?: ClientSession,
+  ) {
     let product: Product | ProductDocument | null =
-      await this.productsService.findById(productId);
+      await this.productsService.findById(productId, tenantName);
     let currentMember: MemberDocument | null = null;
     let isUnknownEmail = false;
-
+    console.log('🔍 Buscando producto en products:', productId);
     if (!product) {
-      const memberProduct = await this.getProductByMembers(productId);
+      console.log('🔍 Buscando producto en members:', productId);
+      const memberProduct = await this.getProductByMembers(
+        productId,
+        connection,
+        session,
+      );
       if (!memberProduct) {
         throw new NotFoundException(`Product with id "${productId}" not found`);
       }
-      product = await this.productsService.findById(productId);
+      product = await this.productsService.findById(productId, tenantName);
       currentMember = memberProduct.member as MemberDocument;
     } else {
       if (product.assignedEmail) {
@@ -286,8 +360,8 @@ export class AssignmentsService {
     return { product, options, currentMember };
   }
 
-  async getProductForAssign(productId: ObjectId) {
-    const product = await this.productsService.findById(productId);
+  async getProductForAssign(productId: ObjectId, tenantName: string) {
+    const product = await this.productsService.findById(productId, tenantName);
     if (!product) {
       throw new NotFoundException(`Product with id "${productId}" not found`);
     }
@@ -303,6 +377,7 @@ export class AssignmentsService {
     session: any,
     product: ProductDocument,
     updateProductDto: UpdateProductDto,
+    tenantName: string,
   ) {
     const newMember = await this.membersService.findByEmailNotThrowError(
       updateProductDto.assignedEmail!,
@@ -320,6 +395,7 @@ export class AssignmentsService {
       newMember,
       updateProductDto,
       product.assignedEmail || '',
+      tenantName,
     );
 
     return newMember;
@@ -329,7 +405,7 @@ export class AssignmentsService {
     session: any,
     product: ProductDocument,
     updateProductDto: UpdateProductDto,
-    // tenantName: string,
+    tenantName: string,
   ) {
     const updatedFields = this.productsService.getUpdatedFields(
       product,
@@ -344,6 +420,7 @@ export class AssignmentsService {
       updateProductDto.fp_shipment ?? product.fp_shipment;
 
     await this.productsService.updateOne(
+      tenantName,
       { _id: product._id },
       { $set: updatedFields },
       { session, runValidators: true, new: true, omitUndefined: true },
@@ -376,9 +453,15 @@ export class AssignmentsService {
     newMember: MemberDocument,
     updateProductDto: UpdateProductDto,
     lastAssigned: string,
-    // tenantName?: string,
+    tenantName?: string,
   ) {
-    await this.productsService.findByIdAndDelete(product._id!, { session });
+    if (!tenantName) {
+      throw new Error('tenantName is required to find and delete a product');
+    }
+
+    await this.productsService.findByIdAndDelete(tenantName, product._id!, {
+      session,
+    });
     if (product.assignedEmail) {
       await this.removeProductFromMember(
         session,
@@ -422,7 +505,9 @@ export class AssignmentsService {
     }
     await newMember.save({ session });
 
-    await this.productsService.findByIdAndDelete(product._id!, { session });
+    await this.productsService.findByIdAndDelete(tenantName, product._id!, {
+      session,
+    });
   }
 
   // Metodo para mover un producto de un miembro a la colección de productos
@@ -432,6 +517,7 @@ export class AssignmentsService {
     member: MemberDocument,
     updateProductDto: UpdateProductDto,
     // tenantName?: string,
+    connection: Connection,
   ) {
     const productIndex = member.products.findIndex(
       (prod) => prod._id!.toString() === product._id!.toString(),
@@ -442,10 +528,7 @@ export class AssignmentsService {
     } else {
       throw new Error('Product not found in member collection');
     }
-    console.log(
-      '🧪 Status seteado en moveToMemberCollection:',
-      updateProductDto.status,
-    );
+
     const updateData = {
       _id: product._id,
       name: updateProductDto.name || product.name,
@@ -472,7 +555,8 @@ export class AssignmentsService {
       activeShipment: updateProductDto.fp_shipment ?? product.fp_shipment,
       isDeleted: product.isDeleted,
     };
-    const createdProducts = await this.productRepository.create([updateData], {
+    const productModel = connection.model(Product.name, ProductSchema);
+    const createdProducts = await productModel.create([updateData], {
       session,
     });
 
@@ -485,10 +569,13 @@ export class AssignmentsService {
     updateProductDto: UpdateProductDto,
     currentLocation: 'products' | 'members',
     member?: MemberDocument,
-    // tenantName?: string,
+    tenantName?: string,
   ) {
     console.log('🧪 updateProductAttributes');
     console.log('🧪 updateProductDto:', updateProductDto);
+    if (!tenantName) {
+      throw new Error('tenantName is required to find and delete a product');
+    }
 
     const updatedFields = this.productsService.getUpdatedFields(
       product,
@@ -498,6 +585,7 @@ export class AssignmentsService {
 
     if (currentLocation === 'products') {
       await this.productsService.updateOne(
+        tenantName,
         { _id: product._id },
         { $set: updatedFields },
         { session, runValidators: true, new: true, omitUndefined: true },
@@ -522,11 +610,11 @@ export class AssignmentsService {
     );
   }
 
-  async validateProductAvailability(productId: string) {
+  async validateProductAvailability(productId: string, tenantName: string) {
     const id = new Types.ObjectId(
       productId,
     ) as unknown as Schema.Types.ObjectId;
-    const found = await this.productsService.findProductById(id);
+    const found = await this.productsService.findProductById(id, tenantName);
 
     const product =
       found.product ||
@@ -549,6 +637,7 @@ export class AssignmentsService {
     updateDto: UpdateProductDto,
     tenantName: string,
     userId: string,
+    tenantname: string,
     actionType?: string,
   ) {
     switch (actionType) {
@@ -558,13 +647,37 @@ export class AssignmentsService {
       case 'return':
       case 'offboarding':
         if (!product._id) throw new BadRequestException('Product ID missing');
-        await this.validateProductAvailability(product._id.toString());
+        await this.validateProductAvailability(
+          product._id.toString(),
+          tenantName,
+        );
         break;
     }
   }
 
-  async findByEmailNotThrowError(email: string) {
-    return await this.membersService.findByEmailNotThrowError(email);
+  async findByEmailNotThrowError(
+    email: string,
+    connection?: Connection,
+    session?: ClientSession,
+    tenantName?: string,
+  ): Promise<MemberDocument | null> {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Caso preferido: con connection
+    if (connection) {
+      const MemberModel = connection.model(Member.name, MemberSchema);
+      const query = MemberModel.findOne({ email: normalizedEmail });
+      return session ? query.session(session) : query;
+    }
+
+    // Fallback: solo tenantName
+    if (tenantName) {
+      const MemberModel =
+        await this.tenantModelRegistry.getMemberModel(tenantName);
+      return MemberModel.findOne({ email: normalizedEmail });
+    }
+
+    throw new Error('Missing connection or tenantName to resolve MemberModel');
   }
 
   // llamo a este metodo en update entity para los productos en la coleccion de members
@@ -611,17 +724,6 @@ export class AssignmentsService {
 
     this.productsService.updatePriceIfProvided(product, updateDto);
 
-    // updateDto.status = await this.productsService.determineProductStatus(
-    //   {
-    //     fp_shipment: updateDto.fp_shipment ?? product.fp_shipment,
-    //     location: updateDto.location || product.location,
-    //     assignedEmail: updateDto.assignedEmail,
-    //     productCondition:
-    //       updateDto.productCondition || product.productCondition,
-    //   },
-    //   tenantName,
-    // );
-
     // 🧩 CASO: Email inválido
     const memberExists = product.assignedEmail
       ? await this.findByEmailNotThrowError(product.assignedEmail)
@@ -633,10 +735,15 @@ export class AssignmentsService {
       (!updateDto.assignedEmail ||
         updateDto.assignedEmail === product.assignedEmail)
     ) {
-      const updated = await this.handleUnknownEmailUpdate(session, product, {
-        ...updateDto,
-        recoverable: isRecoverable,
-      });
+      const updated = await this.handleUnknownEmailUpdate(
+        session,
+        product,
+        {
+          ...updateDto,
+          recoverable: isRecoverable,
+        },
+        tenantName,
+      );
 
       await this.recordAssetHistoryIfNeeded(
         updateDto.actionType,
@@ -659,6 +766,9 @@ export class AssignmentsService {
     if (isReassignment) {
       const newMember = await this.findByEmailNotThrowError(
         updateDto.assignedEmail!,
+        undefined,
+        session,
+        tenantName,
       );
 
       if (!newMember) {
@@ -686,6 +796,7 @@ export class AssignmentsService {
         newMember,
         { ...updateDto, recoverable: isRecoverable },
         product.assignedEmail || '',
+        tenantName,
       );
 
       await this.recordAssetHistoryIfNeeded(
@@ -759,14 +870,24 @@ export class AssignmentsService {
     userId: string,
     ourOfficeEmail: string,
     session: ClientSession,
+    connection: Connection,
   ): Promise<{
     shipment?: ShipmentDocument;
     updatedProduct?: ProductDocument;
   }> {
-    const memberProduct = await this.getProductByMembers(id, session);
-    if (!memberProduct?.product) {
+    console.log(
+      '📌 handleProductFromMemberCollection: checking model connection',
+    );
+    const memberProduct = await this.getProductByMembers(
+      id,
+      connection,
+      session,
+    );
+
+    if (!memberProduct) {
       throw new NotFoundException(`Product with id "${id}" not found`);
     }
+    const { product, member } = memberProduct;
 
     const productCopy = { ...memberProduct.product };
     const isRecoverable = this.productsService.getEffectiveRecoverableValue(
@@ -788,7 +909,8 @@ export class AssignmentsService {
     }
 
     return await this.handleMemberProductAssignmentChanges(
-      memberProduct,
+      product as ProductDocument,
+      member,
       updateProductDto,
       tenantName,
       userId,
@@ -796,14 +918,13 @@ export class AssignmentsService {
       session,
       isRecoverable,
       productCopy,
+      connection,
     );
   }
 
   async handleMemberProductAssignmentChanges(
-    memberProduct: {
-      member: MemberDocument;
-      product: Product;
-    },
+    product: ProductDocument,
+    member: MemberDocument,
     updateDto: UpdateProductDto,
     tenantName: string,
     userId: string,
@@ -811,17 +932,11 @@ export class AssignmentsService {
     session: ClientSession,
     isRecoverable: boolean,
     oldProductData: Partial<ProductDocument>,
+    connection: Connection,
   ): Promise<{
     shipment?: ShipmentDocument;
     updatedProduct?: ProductDocument;
   }> {
-    const product = memberProduct.product as ProductDocument;
-    const member = memberProduct.member;
-
-    console.log('📦 Producto inicial', product);
-    console.log('📍 Datos previos (oldProductData)', oldProductData);
-    console.log('🛠 Update DTO recibido:', updateDto);
-
     // 🧩 Caso: Reasignación a otro miembro
     if (
       updateDto.assignedEmail &&
@@ -830,6 +945,8 @@ export class AssignmentsService {
     ) {
       const newMember = await this.findByEmailNotThrowError(
         updateDto.assignedEmail,
+        connection,
+        session,
       );
       if (!newMember) {
         throw new NotFoundException(
@@ -848,6 +965,7 @@ export class AssignmentsService {
           userId,
           ourOfficeEmail,
         );
+        updateDto.status = product.status;
       } else {
         updateDto.status = await this.productsService.determineProductStatus(
           {
@@ -867,6 +985,7 @@ export class AssignmentsService {
         newMember,
         { ...updateDto, recoverable: isRecoverable },
         product.assignedEmail || '',
+        tenantName,
       );
 
       await this.recordAssetHistoryIfNeeded(
@@ -885,20 +1004,36 @@ export class AssignmentsService {
     }
 
     // 🧩 Caso: Return a Our office o FP warehouse
-    if (
-      updateDto.actionType === 'return' &&
+    const isReturnOrReassignToGeneral =
+      ['return', 'reassign'].includes(updateDto.actionType || '') &&
       (!updateDto.assignedEmail || updateDto.assignedEmail === 'none') &&
-      ['Our office', 'FP warehouse'].includes(updateDto.location || '')
-    ) {
-      console.log('🔁 Caso: Return a', updateDto.location);
+      ['Our office', 'FP warehouse'].includes(updateDto.location || '');
+
+    if (isReturnOrReassignToGeneral) {
+      console.log('🔁 Caso: Return o Reassign a', updateDto.location);
+
       if (!userId)
         throw new Error(
           '❌ userId is undefined antes de mllamar a handleProductUnassignment',
         );
+      const calculatedStatus =
+        await this.productsService.determineProductStatus(
+          {
+            fp_shipment: updateDto.fp_shipment,
+            location: updateDto.location,
+            assignedEmail: updateDto.assignedEmail,
+            productCondition: product.productCondition,
+          },
+          tenantName,
+          updateDto.actionType,
+          updateDto.status,
+        );
+
       const unassigned = await this.handleProductUnassignment(
         session,
         product,
-        { ...updateDto, recoverable: isRecoverable },
+        { ...updateDto, recoverable: isRecoverable, status: calculatedStatus },
+        connection,
         member,
       );
       const updatedProduct = unassigned?.[0];
@@ -930,10 +1065,26 @@ export class AssignmentsService {
             ourOfficeEmail,
           );
       }
+
       console.log(
-        '🧾 Llamando a historyService.create con userId en handleProductsassignmentsChage:',
+        '✅ Producto después de maybeCreateShipmentAndUpdateStatus →',
+        {
+          id: updatedProduct._id,
+          status: updatedProduct.status,
+        },
+      );
+
+      if (!updatedProduct.status) {
+        throw new Error(
+          '❌ updatedProduct.status está undefined después del shipment logic',
+        );
+      }
+
+      console.log(
+        '🧾 Llamando a historyService.create con userId en handleProductsAssignmentsChange:',
         userId,
       );
+
       if (!userId)
         throw new Error('❌ userId is undefined antes de crear history');
       await this.recordAssetHistoryIfNeeded(
@@ -981,6 +1132,7 @@ export class AssignmentsService {
     session: any,
     product: ProductDocument,
     updateProductDto: UpdateProductDto,
+    connection: Connection,
     currentMember?: MemberDocument,
     // tenantName?: string,
   ) {
@@ -995,6 +1147,7 @@ export class AssignmentsService {
         currentMember,
         updateProductDto,
         // tenantName,
+        connection,
       );
       return created;
     } else {
@@ -1145,13 +1298,27 @@ export class AssignmentsService {
     tenantName: string,
     ourOfficeEmail: string,
   ) {
+    await new Promise((resolve) => process.nextTick(resolve));
+
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     const session = await connection.startSession();
     session.startTransaction();
 
     try {
-      console.log('🛠️ bulkReassignProducts received', items.length, 'items');
+      // const ProductModel = connection.model('Product');
+      // const MemberModel = connection.model('Member');
+      // const HistoryModel = connection.model('History');
+      // const ShipmentModel = connection.model('Shipment');
+
+      // Registra las conexiones y sesiones para depuración
+      console.log(
+        `📊 Connection info: ${connection.name}, readyState: ${connection.readyState}`,
+      );
+      console.log(
+        `📊 Session info: ${session.id}, inTransaction: ${session.inTransaction()}`,
+      );
+
       for (const item of items) {
         const { productId, actionType, ...rest } = item;
         const objectId = new mongoose.Types.ObjectId(productId);
@@ -1167,6 +1334,7 @@ export class AssignmentsService {
           updateDto.location = rest.newLocation;
         }
 
+        // Asegúrate de pasar la conexión correcta
         await this.productsService.updateWithinTransaction(
           objectId,
           updateDto,
@@ -1174,6 +1342,7 @@ export class AssignmentsService {
           userId,
           ourOfficeEmail,
           session,
+          connection,
         );
       }
 

@@ -6,6 +6,6 @@ import { TenantsModule } from 'src/tenants/tenants.module';
 @Module({
   imports: [TenantsModule],
   providers: [tenantConnectionProvider, TenantModelRegistry],
-  exports: [TenantModelRegistry],
+  exports: [TenantModelRegistry, tenantConnectionProvider],
 })
 export class TenantDbModule {}

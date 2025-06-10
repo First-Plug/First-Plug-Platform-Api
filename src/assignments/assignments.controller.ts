@@ -19,11 +19,9 @@ export class AssignmentsController {
 
   @Post('bulk-reassign')
   async bulkReassign(@Body() body: BulkReassignDto, @Request() req: any) {
-    console.log('🧾 User:', req.user);
-    console.log('bulk-reassign → body:', JSON.stringify(body, null, 2));
     const tenantName = req.user.tenantName;
-    const userId = req.user.userId;
-    const ourOfficeEmail = req.user.email;
+    const userId = req.user?._id;
+    const ourOfficeEmail = req.user?.email;
 
     return this.assignmentsService.bulkReassignProducts(
       body.items,

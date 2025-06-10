@@ -10,6 +10,7 @@ import {
   Res,
   UseGuards,
   Request,
+  NotFoundException,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -20,6 +21,7 @@ import { ObjectId } from 'mongoose';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { CreateProductArrayDto } from './dto/create-product-array.dto';
 import { AssignmentsService } from 'src/assignments/assignments.service';
+import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 
 @Controller('products')
 @UseGuards(JwtGuard)
@@ -27,6 +29,7 @@ export class ProductsController {
   constructor(
     private readonly productsService: ProductsService,
     private readonly assignmentsService: AssignmentsService,
+    private readonly tenantModelRegistry: TenantModelRegistry,
   ) {}
 
   @Post()
@@ -72,18 +75,32 @@ export class ProductsController {
   // }
 
   @Get('/table')
-  getProductsTable(tenantName: string) {
+  getProductsTable(@Request() req: any) {
+    const tenantName = req.user.tenantName;
+    console.log('get Products caller wth tenantName:', tenantName);
     return this.productsService.tableGrouping(tenantName);
   }
 
   @Get('/assign/:id')
-  getProductForAssign(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.assignmentsService.getProductForAssign(id);
+  getProductForAssign(
+    @Param('id', ParseMongoIdPipe) id: ObjectId,
+    tenantName: string,
+  ) {
+    return this.assignmentsService.getProductForAssign(id, tenantName);
   }
 
   @Get('/reassign/:id')
-  getProductForReassign(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.assignmentsService.getProductForReassign(id);
+  async getProductForReassign(
+    @Param('id', ParseMongoIdPipe) id: ObjectId,
+    @Request() req: any,
+  ) {
+    const tenantName = req.user.tenantName;
+    const connection = await this.tenantModelRegistry.getConnection(tenantName);
+    return this.assignmentsService.getProductForReassign(
+      id,
+      tenantName,
+      connection,
+    );
   }
 
   @Get('/export-csv')
@@ -110,8 +127,13 @@ export class ProductsController {
   }
 
   @Get(':id')
-  findById(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.productsService.findById(id);
+  async getById(@Param('id') id: ObjectId, @Request() req: any) {
+    const tenantName = req.user.tenantName;
+    const product = await this.productsService.findById(id, tenantName);
+    if (!product) {
+      throw new NotFoundException(`Product with id "${id}" not found`);
+    }
+    return product;
   }
 
   @Patch(':id')

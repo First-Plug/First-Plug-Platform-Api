@@ -15,6 +15,7 @@ import { CommonModule } from 'src/common/common.module';
 import { RetoolWebhooksModule } from 'src/retool-webhooks/retool-webhooks.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TenantDbModule } from 'src/infra/db/tenant-db.module';
+import { AssignmentsModule } from 'src/assignments/assignments.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { TenantDbModule } from 'src/infra/db/tenant-db.module';
     HistoryModule,
     ShipmentsModule,
     RetoolWebhooksModule,
+    AssignmentsModule,
   ],
   controllers: [],
   providers: [],

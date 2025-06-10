@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
-import { ClientSession, Model, ObjectId, Schema } from 'mongoose';
+import { ClientSession, Connection, Model, ObjectId, Schema } from 'mongoose';
 import { MemberDocument, MemberSchema } from './schemas/member.schema';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { Team } from 'src/teams/schemas/team.schema';
@@ -510,8 +510,10 @@ export class MembersService {
     return member;
   }
 
-  async findByEmailNotThrowError(email: string) {
-    return await this.memberRepository.findOne({ email: email });
+  async findByEmailNotThrowError(email: string, connection?: Connection) {
+    return await this.memberRepository.findOne({ email: email }, null, {
+      connection,
+    });
   }
 
   async validateIfMemberCanBeModified(memberEmail: string, tenantName: string) {

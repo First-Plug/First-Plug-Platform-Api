@@ -9,12 +9,17 @@ import {
 } from '@nestjs/common';
 import mongoose, {
   ClientSession,
+  Connection,
   Model,
   ObjectId,
   Schema,
   Types,
 } from 'mongoose';
-import { Product, ProductDocument } from './schemas/product.schema';
+import {
+  Product,
+  ProductDocument,
+  ProductSchema,
+} from './schemas/product.schema';
 import { CreateProductDto, UpdateProductDto } from './dto';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { BadRequestException } from '@nestjs/common';
@@ -29,7 +34,11 @@ import { TenantConnectionService } from 'src/infra/db/tenant-connection.service'
 import { ShipmentsService } from 'src/shipments/shipments.service';
 import { ModuleRef } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
+import {
+  // Shipment,
+  ShipmentDocument,
+  // ShipmentSchema,
+} from 'src/shipments/schema/shipment.schema';
 import { CreateShipmentMessageToSlack } from 'src/shipments/helpers/create-message-to-slack';
 import { SlackService } from 'src/slack/slack.service';
 import { AssignmentsService } from 'src/assignments/assignments.service';
@@ -44,13 +53,13 @@ export interface ProductModel
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
   constructor(
-    @Inject('PRODUCT_MODEL')
-    private readonly productRepository: ProductModel,
+    // @Inject('PRODUCT_MODEL')
+    // private readonly productRepository: ProductModel,
+
+    private readonly tenantModelRegistry: TenantModelRegistry,
     private tenantsService: TenantsService,
     private readonly historyService: HistoryService,
     private readonly connectionService: TenantConnectionService,
-
-    private readonly tenantModelRegistry: TenantModelRegistry,
 
     @Inject(forwardRef(() => ShipmentsService))
     private readonly shipmentsService: ShipmentsService,
@@ -215,6 +224,7 @@ export class ProductsService {
     tenantName: string,
     userId: string,
   ) {
+    await new Promise((resolve) => process.nextTick(resolve));
     const ProductModel =
       await this.tenantModelRegistry.getProductModel(tenantName);
     const normalizedProduct = this.normalizeProductData(createProductDto);
@@ -464,12 +474,14 @@ export class ProductsService {
 
     const ProductModel =
       await this.tenantModelRegistry.getProductModel(tenantName);
+    const tenantConnection = ProductModel.db;
+
     const productsFromRepository = await ProductModel.find({
       isDeleted: false,
     });
 
     const productsFromMembers =
-      await this.assignmentsService.getAllProductsWithMembers();
+      await this.assignmentsService.getAllProductsWithMembers(tenantConnection);
 
     const allProducts = [...productsFromRepository, ...productsFromMembers];
 
@@ -504,13 +516,14 @@ export class ProductsService {
         let shipmentDestination: string | null = null;
         let shipmentId: string | null = null;
 
-        if (activeShipment) {
-          const tenantConnection = this.productRepository.db;
+        if (activeShipment && _id) {
+          const tenantConnection =
+            await this.connectionService.getTenantConnection(tenantName);
           const ShipmentModel =
             this.shipmentsService.getShipmentModel(tenantConnection);
 
           const shipment = await ShipmentModel.findOne({
-            products: _id,
+            products: new mongoose.Types.ObjectId(_id.toString()),
             shipment_status: {
               $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
             },
@@ -706,13 +719,21 @@ export class ProductsService {
     return sortedResult;
   }
 
-  async findProductAndLocationById(id: ObjectId): Promise<{
+  async findProductAndLocationById(
+    id: ObjectId,
+    tenantName: string,
+  ): Promise<{
     product: Product | ProductDocument;
     location: 'products' | 'members';
     member?: MemberDocument;
+    tenantName: string;
   }> {
     await new Promise((resolve) => process.nextTick(resolve));
-    const product = await this.productRepository.findById(id);
+
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
+
+    const product = await ProductModel.findById(id);
     if (product?.isDeleted) {
       throw new NotFoundException(`Product with id "${id}" not found`);
     }
@@ -721,10 +742,15 @@ export class ProductsService {
       if (product.isDeleted) {
         throw new NotFoundException(`Product with id "${id}" not found`);
       }
-      return { product, location: 'products' };
+      return { product, location: 'products', tenantName };
     }
 
-    const memberProduct = await this.assignmentsService.getProductByMembers(id);
+    const connection = await this.tenantModelRegistry.getConnection(tenantName);
+
+    const memberProduct = await this.assignmentsService.getProductByMembers(
+      id,
+      connection,
+    );
 
     if (memberProduct?.product.isDeleted) {
       throw new NotFoundException(`Product with id "${id}" not found`);
@@ -735,23 +761,31 @@ export class ProductsService {
         product: memberProduct.product,
         location: 'members',
         member: memberProduct.member,
+        tenantName,
       };
     }
 
     throw new NotFoundException(`Product with id "${id}" not found`);
   }
 
-  async findById(id: ObjectId): Promise<Product | ProductDocument> {
-    const { product } = await this.findProductAndLocationById(id);
+  async findById(
+    id: ObjectId,
+    tenantName: string,
+  ): Promise<Product | ProductDocument> {
+    const { product } = await this.findProductAndLocationById(id, tenantName);
     return product;
   }
 
-  async updateOne(filter: any, update: any, options: any) {
-    return this.productRepository.updateOne(filter, update, options);
+  async updateOne(tenantName: string, filter: any, update: any, options: any) {
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
+    return ProductModel.updateOne(filter, update, options);
   }
 
-  async findByIdAndDelete(id: ObjectId, options?: any) {
-    return this.productRepository.findByIdAndDelete(id, options);
+  async findByIdAndDelete(tenantName: string, id: ObjectId, options?: any) {
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
+    return ProductModel.findByIdAndDelete(id, options);
   }
 
   async updateMultipleProducts(
@@ -775,6 +809,8 @@ export class ProductsService {
           tenantName,
           userId,
           ourOfficeEmail,
+          session,
+          connection,
         );
       }
 
@@ -869,11 +905,14 @@ export class ProductsService {
     config: { tenantName: string; userId: string },
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
+    const ProductModel = await this.tenantModelRegistry.getProductModel(
+      config.tenantName,
+    );
     const { tenantName, userId } = config;
 
     try {
       const { member, product, location } =
-        await this.findProductAndLocationById(id);
+        await this.findProductAndLocationById(id, tenantName);
       const productCopy = JSON.parse(JSON.stringify(product));
       const isInActiveShipment = product.fp_shipment === true;
 
@@ -902,7 +941,7 @@ export class ProductsService {
           : product.recoverable;
 
       if (updateProductDto.price === null) {
-        await this.productRepository.updateOne(
+        await ProductModel.updateOne(
           { _id: product._id },
           { $unset: { price: '' } },
         );
@@ -915,7 +954,7 @@ export class ProductsService {
       }
 
       if (updateProductDto.serialNumber === '' && location === 'products') {
-        await this.productRepository.updateOne(
+        await ProductModel.updateOne(
           { _id: product._id },
           { $unset: { serialNumber: '' } },
         );
@@ -965,7 +1004,7 @@ export class ProductsService {
       let productUpdated;
 
       if (location === 'products') {
-        productUpdated = await this.productRepository.findOneAndUpdate(
+        productUpdated = await ProductModel.findOneAndUpdate(
           { _id: product._id },
           { $set: updatedFields },
           { runValidators: true, new: true, omitUndefined: true },
@@ -1036,6 +1075,10 @@ export class ProductsService {
     userId: string,
     ourOfficeEmail: string,
   ): Promise<ShipmentDocument | null> {
+    console.log(
+      'called user id from maybeCreateShipmentAndUpdateStatus',
+      userId,
+    );
     if (!updateDto.fp_shipment || !actionType) return null;
 
     const desirableDateOrigin =
@@ -1145,19 +1188,35 @@ export class ProductsService {
     tenantName: string,
     userId: string,
     ourOfficeEmail: string,
+    session?: ClientSession,
+    connection?: Connection,
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
-    const connection =
-      await this.connectionService.getTenantConnection(tenantName);
-    const session = await connection.startSession();
-    session.startTransaction();
+
+    const internalConnection =
+      connection ??
+      (await this.connectionService.getTenantConnection(tenantName));
+    const internalSession =
+      session ?? (await internalConnection.startSession());
+
+    const startedTransaction = !session;
+    if (startedTransaction) {
+      internalSession.startTransaction();
+    }
 
     try {
-      await this.normalizeFpShipmentFlag(id, updateProductDto);
+      await this.normalizeFpShipmentFlag(
+        id,
+        updateProductDto,
+        internalConnection,
+        internalSession,
+        tenantName,
+      );
 
-      const product = await this.productRepository
-        .findById(id)
-        .session(session);
+      const ProductModel =
+        await this.tenantModelRegistry.getProductModel(tenantName);
+
+      const product = await ProductModel.findById(id).session(internalSession);
 
       const result = product
         ? await this.assignmentsService.handleProductFromProductsCollection(
@@ -1166,7 +1225,7 @@ export class ProductsService {
             tenantName,
             userId,
             ourOfficeEmail,
-            session,
+            internalSession,
           )
         : await this.assignmentsService.handleProductFromMemberCollection(
             id,
@@ -1174,11 +1233,14 @@ export class ProductsService {
             tenantName,
             userId,
             ourOfficeEmail,
-            session,
+            internalSession,
+            internalConnection,
           );
 
-      await session.commitTransaction();
-      session.endSession();
+      if (startedTransaction) {
+        await internalSession.commitTransaction();
+        internalSession.endSession();
+      }
 
       return {
         message: `Product with id "${id}" updated successfully`,
@@ -1186,35 +1248,49 @@ export class ProductsService {
         updatedProduct: result.updatedProduct ?? null,
       };
     } catch (error) {
-      await session.abortTransaction();
-      session.endSession();
+      if (startedTransaction) {
+        await internalSession.abortTransaction();
+        internalSession.endSession();
+      }
       throw error;
     }
   }
 
-  private async normalizeFpShipmentFlag(
+  public async normalizeFpShipmentFlag(
     productId: ObjectId,
     updateProductDto: UpdateProductDto,
+    connection: Connection,
+    session: ClientSession,
+    tenantName: string,
   ): Promise<void> {
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
+
     if (updateProductDto.fp_shipment === undefined) {
-      const existingProduct = await this.productRepository.findById(productId);
+      const existingProduct = await ProductModel.findById(productId);
 
       if (existingProduct) {
         updateProductDto.fp_shipment = existingProduct.fp_shipment === true;
       } else {
-        const memberProduct =
-          await this.assignmentsService.getProductByMembers(productId);
+        const memberProduct = await this.assignmentsService.getProductByMembers(
+          productId,
+          connection,
+          session,
+        );
         updateProductDto.fp_shipment =
           memberProduct?.product?.fp_shipment === true;
       }
     } else if (updateProductDto.fp_shipment === false) {
-      const existingProduct = await this.productRepository.findById(productId);
+      const existingProduct = await ProductModel.findById(productId);
 
       if (existingProduct?.fp_shipment === true) {
         updateProductDto.fp_shipment = true;
       } else {
-        const memberProduct =
-          await this.assignmentsService.getProductByMembers(productId);
+        const memberProduct = await this.assignmentsService.getProductByMembers(
+          productId,
+          connection,
+          session,
+        );
         if (memberProduct?.product?.fp_shipment === true) {
           updateProductDto.fp_shipment = true;
         }
@@ -1275,6 +1351,7 @@ export class ProductsService {
     userId: string,
     ourOfficeEmail: string,
   ): Promise<ShipmentDocument | null> {
+    console.log('tryCreateShipmentIfNeeded called with userId:', userId);
     return await this.maybeCreateShipmentAndUpdateStatus(
       product,
       updateDto,
@@ -1319,10 +1396,10 @@ export class ProductsService {
     while (retries < maxRetries) {
       try {
         session.startTransaction();
-
-        const product = await this.productRepository
-          .findById(id)
-          .session(session);
+        const ProductModel = (await this.tenantModelRegistry.getProductModel(
+          tenantName,
+        )) as any;
+        const product = await ProductModel.findById(id).session(session);
         const changes: {
           oldData: Product | null;
           newData: Product | null;
@@ -1335,15 +1412,19 @@ export class ProductsService {
           product.status = 'Deprecated';
           product.isDeleted = true;
           await product.save();
-          await this.productRepository.softDelete({ _id: id }, { session });
+          await ProductModel.softDelete({ _id: id }, { session });
 
           changes.oldData = product;
         } else {
           const memberProduct =
-            await this.assignmentsService.getProductByMembers(id);
+            await this.assignmentsService.getProductByMembers(
+              id,
+              connection,
+              session,
+            );
 
           if (memberProduct && memberProduct.product) {
-            await this.productRepository.create(
+            await ProductModel.create(
               [
                 {
                   _id: memberProduct.product._id,
@@ -1365,7 +1446,7 @@ export class ProductsService {
               { session },
             );
 
-            await this.productRepository.softDelete({ _id: id }, { session });
+            await ProductModel.softDelete({ _id: id }, { session });
 
             const memberId = memberProduct.member._id;
             await this.assignmentsService.deleteProductFromMember(
@@ -1432,8 +1513,11 @@ export class ProductsService {
     return `${day}/${month}/${year}`;
   }
 
-  async getDeprecatedProducts(): Promise<ProductDocument[]> {
-    return this.productRepository.find({
+  async getDeprecatedProducts(tenantName: string): Promise<ProductDocument[]> {
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
+
+    return ProductModel.find({
       status: 'Deprecated',
       isDeleted: true,
     });
@@ -1444,7 +1528,7 @@ export class ProductsService {
       products: ProductDocument[];
     }[];
 
-    const deprecatedProducts = await this.getDeprecatedProducts();
+    const deprecatedProducts = await this.getDeprecatedProducts(tenantName);
 
     const products = allProducts
       .map((group) => group.products)
@@ -1512,9 +1596,12 @@ export class ProductsService {
     res.send(csvData);
   }
 
-  async findProductById(id: Schema.Types.ObjectId) {
+  async findProductById(id: Schema.Types.ObjectId, tenantName: string) {
     try {
-      const { product, member } = await this.findProductAndLocationById(id);
+      const { product, member } = await this.findProductAndLocationById(
+        id,
+        tenantName,
+      );
       return { product, member };
     } catch (error) {
       throw error;
@@ -1528,19 +1615,32 @@ export class ProductsService {
     userId: string,
     ourOfficeEmail: string,
     session: ClientSession,
+    connection: Connection,
   ) {
-    console.log('✏️ Updating product:', id.toString());
+    console.log(
+      `🔄 updateWithinTransaction for product ${id} with session ${session.id}`,
+    );
+
+    const productModel = connection.model(Product.name, ProductSchema);
     const objectId =
       typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id;
 
     await this.normalizeFpShipmentFlag(
       objectId as unknown as mongoose.Schema.Types.ObjectId,
       updateProductDto,
+      connection,
+      session,
+      tenantName,
     );
 
-    const product = await this.productRepository
-      .findById(objectId)
-      .session(session);
+    console.log(
+      `📊 Using connection: ${connection.name}, readyState: ${connection.readyState}`,
+    );
+    console.log(
+      `📊 Session info: ${session.id}, inTransaction: ${session.inTransaction()}`,
+    );
+
+    const product = await productModel.findById(objectId).session(session);
 
     const result = product
       ? await this.assignmentsService.handleProductFromProductsCollection(
@@ -1558,6 +1658,7 @@ export class ProductsService {
           userId,
           ourOfficeEmail,
           session,
+          connection,
         );
 
     return {

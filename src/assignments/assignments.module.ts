@@ -9,6 +9,7 @@ import { tenantModels } from 'src/infra/db/tenant-models-provider';
 import { TenantsModule } from 'src/tenants/tenants.module';
 import { AssignmentsController } from './assignments.controller';
 import { JwtService } from '@nestjs/jwt';
+import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { JwtService } from '@nestjs/jwt';
   ],
   controllers: [AssignmentsController],
   providers: [
+    TenantModelRegistry,
     AssignmentsService,
     tenantModels.productModel,
     tenantModels.memberModel,
