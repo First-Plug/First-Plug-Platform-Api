@@ -400,6 +400,9 @@ export class ProductsService {
             const member =
               await this.assignmentsService.findByEmailNotThrowError(
                 product.assignedEmail,
+                ProductModel.db,
+                session,
+                tenantName,
               );
 
             if (member) {
