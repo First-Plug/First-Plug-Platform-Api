@@ -143,7 +143,6 @@ export class AssignmentsService {
         MemberSchema,
       );
       const members = await MemberModel.find({ isDeleted: false });
-      console.log('Members found:', members.length);
 
       const productsFromMembers = members.flatMap((member) => {
         if (!member.products || !Array.isArray(member.products)) {
@@ -166,26 +165,6 @@ export class AssignmentsService {
       return [];
     }
   }
-
-  // async getProductByMembers(
-  //   id: ObjectId,
-  //   connection: Connection,
-  //   session?: ClientSession,
-  // ) {
-  //   const MemberModel = connection.model(Member.name, MemberSchema);
-  //   const members = await MemberModel.find().session(session || null);
-
-  //   for (const member of members) {
-  //     const products = member.products || [];
-  //     const product = products.find(
-  //       (product) => product._id!.toString() === id.toString(),
-  //     );
-
-  //     if (product) {
-  //       return { member, product };
-  //     }
-  //   }
-  // }
 
   async getProductByMembers(
     id: ObjectId,
@@ -1066,24 +1045,11 @@ export class AssignmentsService {
           );
       }
 
-      console.log(
-        '✅ Producto después de maybeCreateShipmentAndUpdateStatus →',
-        {
-          id: updatedProduct._id,
-          status: updatedProduct.status,
-        },
-      );
-
       if (!updatedProduct.status) {
         throw new Error(
           '❌ updatedProduct.status está undefined después del shipment logic',
         );
       }
-
-      console.log(
-        '🧾 Llamando a historyService.create con userId en handleProductsAssignmentsChange:',
-        userId,
-      );
 
       if (!userId)
         throw new Error('❌ userId is undefined antes de crear history');
@@ -1110,11 +1076,6 @@ export class AssignmentsService {
       recoverable: isRecoverable,
     } as Partial<ProductDocument>);
 
-    console.log(
-      '🛠 Actualización sin cambio de dueño, producto resultante:',
-      updated,
-    );
-
     await this.recordAssetHistoryIfNeeded(
       updateDto.actionType,
       oldProductData,
@@ -1136,9 +1097,6 @@ export class AssignmentsService {
     currentMember?: MemberDocument,
     // tenantName?: string,
   ) {
-    console.log('🧪 Entrando en handleProductUnassignment');
-    console.log('🧪 DTO recibido:', updateProductDto);
-
     if (currentMember) {
       console.log('🔁 Llamando a moveToProductsCollection...');
       const created = await this.moveToProductsCollection(
@@ -1151,7 +1109,6 @@ export class AssignmentsService {
       );
       return created;
     } else {
-      console.log('🔁 Llamando a updateProductAttributes...');
       const updated = await this.updateProductAttributes(
         session,
         product,
@@ -1255,7 +1212,7 @@ export class AssignmentsService {
       }
 
       await this.membersService.softDeleteMember(memberId, tenantName, true);
-      await this.membersService.notifyOffBoarding(member, data, tenantName);
+      await this.slackService.sendOffboardingMessage(member, data, tenantName);
 
       const assignedEmail = member.email;
 
@@ -1306,11 +1263,6 @@ export class AssignmentsService {
     session.startTransaction();
 
     try {
-      // const ProductModel = connection.model('Product');
-      // const MemberModel = connection.model('Member');
-      // const HistoryModel = connection.model('History');
-      // const ShipmentModel = connection.model('Shipment');
-
       // Registra las conexiones y sesiones para depuración
       console.log(
         `📊 Connection info: ${connection.name}, readyState: ${connection.readyState}`,
@@ -1354,5 +1306,29 @@ export class AssignmentsService {
     } finally {
       session.endSession();
     }
+  }
+
+  async updateProductsMetadataForMember(
+    member: MemberDocument,
+    oldEmail: string,
+    oldFullName: string,
+    session: ClientSession,
+  ): Promise<void> {
+    const newEmail = member.email;
+    const newFullName = `${member.firstName} ${member.lastName}`;
+
+    const updatedProducts = member.products.map((product) => {
+      if (
+        product.assignedEmail === oldEmail &&
+        product.assignedMember === oldFullName
+      ) {
+        product.assignedEmail = newEmail;
+        product.assignedMember = newFullName;
+      }
+      return product;
+    });
+
+    member.products = updatedProducts;
+    await member.save({ session });
   }
 }

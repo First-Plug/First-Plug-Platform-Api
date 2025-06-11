@@ -167,6 +167,9 @@ export class ProductsService {
       if (params.location === 'Employee' && params.assignedEmail) {
         const member = await this.assignmentsService.findByEmailNotThrowError(
           params.assignedEmail,
+          undefined,
+          undefined,
+          tenantId,
         );
         if (
           member?.address &&
