@@ -642,6 +642,10 @@ export class AssignmentsService {
   ): Promise<MemberDocument | null> {
     const normalizedEmail = email.trim().toLowerCase();
 
+    if (session && !connection) {
+      throw new Error('Cannot use session without explicit connection');
+    }
+
     // Caso preferido: con connection
     if (connection) {
       const MemberModel = connection.model(Member.name, MemberSchema);
@@ -650,7 +654,7 @@ export class AssignmentsService {
     }
 
     // Fallback: solo tenantName
-    if (tenantName) {
+    if (tenantName && !session) {
       const MemberModel =
         await this.tenantModelRegistry.getMemberModel(tenantName);
       return MemberModel.findOne({ email: normalizedEmail }).exec();

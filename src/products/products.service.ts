@@ -323,9 +323,9 @@ export class ProductsService {
     userId: string,
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
-    const ProductModel =
-      await this.tenantModelRegistry.getProductModel(tenantName);
-    const session = await ProductModel.db.startSession();
+    const connection = await this.tenantModelRegistry.getConnection(tenantName);
+    const ProductModel = connection.model(Product.name, ProductSchema);
+    const session = await connection.startSession();
     session.startTransaction();
 
     try {
@@ -397,47 +397,38 @@ export class ProductsService {
 
       const createdProducts: ProductDocument[] = [];
 
-      const assignProductPromises = productsWithAssignedEmail.map(
-        async (product) => {
-          if (product.assignedEmail) {
-            const member =
-              await this.assignmentsService.findByEmailNotThrowError(
-                product.assignedEmail,
-                ProductModel.db,
-                session,
-                tenantName,
-              );
+      for (const product of productsWithAssignedEmail) {
+        if (product.assignedEmail) {
+          const member = await this.assignmentsService.findByEmailNotThrowError(
+            product.assignedEmail,
+            connection,
+            session,
+            tenantName,
+          );
 
-            if (member) {
-              const productDocument = new ProductModel(
-                product,
-              ) as ProductDocument;
-              productDocument.assignedMember = this.getFullName(member);
-              member.products.push(productDocument);
-              await member.save({ session });
-              await ProductModel.deleteOne({ _id: product._id }).session(
-                session,
-              );
-              createdProducts.push(productDocument);
-            } else {
-              const createdProduct = await ProductModel.create([product], {
-                session,
-              });
-              createdProducts.push(...createdProduct);
-            }
+          if (member) {
+            const productDocument = new ProductModel(
+              product,
+            ) as ProductDocument;
+            productDocument.assignedMember = this.getFullName(member);
+            member.products.push(productDocument);
+            await member.save({ session });
+            await ProductModel.deleteOne({ _id: product._id }).session(session);
+            createdProducts.push(productDocument);
+          } else {
+            const createdProduct = await ProductModel.create([product], {
+              session,
+            });
+            createdProducts.push(...createdProduct);
           }
-        },
-      );
+        }
+      }
 
-      const insertManyPromise = ProductModel.insertMany(
+      const inserted = await ProductModel.insertMany(
         productsWithoutAssignedEmail,
         { session },
       );
-
-      const createdProductsWithoutAssignedEmail = await insertManyPromise;
-      createdProducts.push(...createdProductsWithoutAssignedEmail);
-
-      await Promise.all(assignProductPromises);
+      createdProducts.push(...inserted);
 
       await session.commitTransaction();
 
@@ -452,26 +443,20 @@ export class ProductsService {
         },
       });
 
-      session.endSession();
+      // session.endSession();
 
       return createdProducts;
     } catch (error) {
-      console.log(error);
-
-      await session.abortTransaction();
-
-      session.endSession();
+      console.error('💥 Error en bulkCreate:', error);
+      if (session.inTransaction()) await session.abortTransaction();
 
       if (error instanceof BadRequestException) {
-        throw new BadRequestException(`Serial Number already exists`);
+        throw new BadRequestException('Serial Number already exists');
       } else {
         throw new InternalServerErrorException();
       }
     } finally {
-      if (session.inTransaction()) {
-        await session.abortTransaction();
-      }
-      session.endSession();
+      await session.endSession();
     }
   }
 

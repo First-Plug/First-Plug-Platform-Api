@@ -10,7 +10,7 @@ import {
   Res,
   UseGuards,
   Request,
-  NotFoundException,
+  // NotFoundException,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -127,12 +127,12 @@ export class ProductsController {
   }
 
   @Get(':id')
-  async getById(@Param('id') id: ObjectId, @Request() req: any) {
+  async getById(
+    @Param('id', ParseMongoIdPipe) id: ObjectId,
+    @Request() req: any,
+  ) {
     const tenantName = req.user.tenantName;
     const product = await this.productsService.findById(id, tenantName);
-    if (!product) {
-      throw new NotFoundException(`Product with id "${id}" not found`);
-    }
     return product;
   }
 
