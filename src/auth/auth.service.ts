@@ -196,6 +196,7 @@ export class AuthService {
       accountProvider: user.accountProvider,
       isRecoverableConfig: user.isRecoverableConfig,
       computerExpiration: user.computerExpiration,
+      widgets: user.widgets,
     };
   }
 }
