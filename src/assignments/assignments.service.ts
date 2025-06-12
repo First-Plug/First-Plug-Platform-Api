@@ -646,14 +646,14 @@ export class AssignmentsService {
     if (connection) {
       const MemberModel = connection.model(Member.name, MemberSchema);
       const query = MemberModel.findOne({ email: normalizedEmail });
-      return session ? query.session(session) : query;
+      return session ? query.session(session).exec() : query.exec();
     }
 
     // Fallback: solo tenantName
     if (tenantName) {
       const MemberModel =
         await this.tenantModelRegistry.getMemberModel(tenantName);
-      return MemberModel.findOne({ email: normalizedEmail });
+      return MemberModel.findOne({ email: normalizedEmail }).exec();
     }
 
     throw new Error('Missing connection or tenantName to resolve MemberModel');
