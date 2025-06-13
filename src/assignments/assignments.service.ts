@@ -56,17 +56,20 @@ export class AssignmentsService {
     memberEmail: string,
     memberFullName: string,
     session: ClientSession,
+    tenantName: string,
   ): Promise<ProductDocument[]> {
-    const productsToUpdate = await this.productRepository
-      .find({ assignedEmail: memberEmail })
-      .session(session);
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const ProductModel = connection.model(Product.name, ProductSchema);
+
+    const productsToUpdate = await ProductModel.find({
+      assignedEmail: memberEmail,
+    }).session(session);
 
     for (const product of productsToUpdate) {
       product.assignedMember = memberFullName;
       await product.save({ session });
-      await this.productRepository
-        .deleteOne({ _id: product._id })
-        .session(session);
+      await ProductModel.deleteOne({ _id: product._id }).session(session);
     }
 
     return productsToUpdate;

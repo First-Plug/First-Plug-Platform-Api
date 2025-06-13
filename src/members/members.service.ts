@@ -133,6 +133,7 @@ export class MembersService {
           normalizedMember.email,
           memberFullName,
           session,
+          tenantName,
         );
 
       createdMember.products.push(...assignedProducts);
@@ -244,6 +245,7 @@ export class MembersService {
             member.email,
             fullName,
             session,
+            tenantName,
           );
         member.products.push(...assignedProducts);
         await member.save({ session });
