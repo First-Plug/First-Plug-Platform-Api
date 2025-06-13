@@ -66,11 +66,21 @@ export class AssignmentsService {
       assignedEmail: memberEmail,
     }).session(session);
 
-    for (const product of productsToUpdate) {
-      product.assignedMember = memberFullName;
-      await product.save({ session });
-      await ProductModel.deleteOne({ _id: product._id }).session(session);
-    }
+    if (!productsToUpdate.length) return [];
+
+    const productIds = productsToUpdate.map((p) => p._id);
+
+    // Actualiza los nombres (si necesitás conservarlos para snapshot/historial)
+    await ProductModel.updateMany(
+      { _id: { $in: productIds } },
+      { $set: { assignedMember: memberFullName } },
+      { session },
+    );
+
+    // Elimina los productos de la colección general
+    await ProductModel.deleteMany({ _id: { $in: productIds } }).session(
+      session,
+    );
 
     return productsToUpdate;
   }
