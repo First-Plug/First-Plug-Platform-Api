@@ -22,6 +22,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MemberAddressUpdatedEvent } from 'src/infra/event-bus/member-address-update.event';
 import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
 import { AssignmentsService } from 'src/assignments/assignments.service';
+import { ProductDocument } from 'src/products/schemas/product.schema';
 
 interface MemberWithShipmentStatus extends MemberDocument {
   shipmentStatus?: string[];
@@ -233,12 +234,14 @@ export class MembersService {
         return member;
       });
 
-      const createdMembers = await this.memberRepository.insertMany(
-        membersToCreate,
-        { session },
-      );
+      // const createdMembers = await this.memberRepository.insertMany(
+      //   membersToCreate,
+      //   { session },
+      // );
 
-      for (const member of createdMembers) {
+      const assignedProductsMap = new Map<string, ProductDocument[]>();
+
+      for (const member of membersToCreate) {
         const fullName = this.getFullName(member);
         const assignedProducts =
           await this.assignmentsService.assignProductsToMemberByEmail(
@@ -247,9 +250,15 @@ export class MembersService {
             session,
             tenantName,
           );
-        member.products.push(...assignedProducts);
-        await member.save({ session });
+        assignedProductsMap.set(member.email, assignedProducts);
+        // agregamos los productos ya asignados directamente en el objeto
+        member.products = assignedProducts.map((p) => p.toObject());
       }
+
+      const createdMembers = await this.memberRepository.insertMany(
+        membersToCreate,
+        { session },
+      );
 
       await this.historyService.create({
         actionType: 'bulk-create',
