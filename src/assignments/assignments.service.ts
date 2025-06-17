@@ -99,24 +99,43 @@ export class AssignmentsService {
 
     if (!products.length) return [];
 
+    console.log(`🧪 Found ${products.length} products to assign...`);
+
+    const reassignedProducts: ProductDocument[] = [];
+
+    for (const product of products) {
+      const productData = product.toObject() as Record<string, any>;
+      const cloned = new ProductModel({
+        ...productData,
+        assignedMember: fullName,
+      });
+
+      reassignedProducts.push(cloned);
+
+      const alreadyExists = member.products.some(
+        (p) => p._id && p._id.toString() === product._id.toString(),
+      );
+
+      if (!alreadyExists) {
+        member.products.push(cloned);
+      }
+    }
+
+    await member.save({ session });
+
     const productIds = products.map((p) => p._id);
 
     console.log(
-      `🧪 Updating assignedMember for ${products.length} products...`,
+      `✅ Member updated. Deleting ${productIds.length} products from pool...`,
     );
-    await ProductModel.updateMany(
-      { _id: { $in: productIds } },
-      { $set: { assignedMember: fullName } },
-      { session },
-    );
-    console.log(`✅ Assigned member updated. Proceeding to delete...`);
 
     await ProductModel.deleteMany({ _id: { $in: productIds } }).session(
       session,
     );
+
     console.log(`✅ Products deleted from pool.`);
 
-    return products;
+    return reassignedProducts;
   }
 
   async findProductBySerialNumber(serialNumber: string) {

@@ -241,14 +241,13 @@ export class MembersService {
 
       for (const member of createdMembers) {
         const fullName = this.getFullName(member);
-        const products =
-          await this.assignmentsService.assignAndDetachProductsFromPool(
-            member,
-            fullName,
-            session,
-            tenantName,
-          );
-        member.products.push(...products);
+        await this.assignmentsService.assignAndDetachProductsFromPool(
+          member,
+          fullName,
+          session,
+          tenantName,
+        );
+        // member.products.push(...products);
         await member.save({ session });
       }
 
