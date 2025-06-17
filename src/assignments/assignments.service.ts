@@ -97,11 +97,19 @@ export class AssignmentsService {
       assignedEmail: member.email,
     }).session(session);
 
-    for (const product of products) {
-      product.assignedMember = fullName;
-      await product.save({ session });
-      await ProductModel.deleteOne({ _id: product._id }).session(session);
-    }
+    if (!products.length) return [];
+
+    const productIds = products.map((p) => p._id);
+
+    await ProductModel.updateMany(
+      { _id: { $in: productIds } },
+      { $set: { assignedMember: fullName } },
+      { session },
+    );
+
+    await ProductModel.deleteMany({ _id: { $in: productIds } }).session(
+      session,
+    );
 
     return products;
   }
