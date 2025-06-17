@@ -168,6 +168,7 @@ export class MembersService {
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     const session = await connection.startSession();
+    await new Promise((resolve) => process.nextTick(resolve));
     session.startTransaction();
 
     try {

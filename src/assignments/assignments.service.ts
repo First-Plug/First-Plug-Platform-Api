@@ -101,15 +101,20 @@ export class AssignmentsService {
 
     const productIds = products.map((p) => p._id);
 
+    console.log(
+      `🧪 Updating assignedMember for ${products.length} products...`,
+    );
     await ProductModel.updateMany(
       { _id: { $in: productIds } },
       { $set: { assignedMember: fullName } },
       { session },
     );
+    console.log(`✅ Assigned member updated. Proceeding to delete...`);
 
     await ProductModel.deleteMany({ _id: { $in: productIds } }).session(
       session,
     );
+    console.log(`✅ Products deleted from pool.`);
 
     return products;
   }
