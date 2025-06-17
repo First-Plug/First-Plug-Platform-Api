@@ -55,7 +55,7 @@ export class AssignmentsService {
   public async assignProductsToMemberByEmail(
     memberEmail: string,
     memberFullName: string,
-    session: ClientSession | null,
+    session: ClientSession,
     tenantName: string,
   ): Promise<ProductDocument[]> {
     const connection =
@@ -64,24 +64,46 @@ export class AssignmentsService {
 
     const productsToUpdate = await ProductModel.find({
       assignedEmail: memberEmail,
-    });
+    }).session(session);
 
     if (!productsToUpdate.length) return [];
 
     const productIds = productsToUpdate.map((p) => p._id);
 
-    const updateQuery = ProductModel.updateMany(
+    await ProductModel.updateMany(
       { _id: { $in: productIds } },
       { $set: { assignedMember: memberFullName } },
+      { session },
     );
-    if (session) updateQuery.session(session);
-    await updateQuery;
 
-    const deleteQuery = ProductModel.deleteMany({ _id: { $in: productIds } });
-    if (session) deleteQuery.session(session);
-    await deleteQuery;
+    await ProductModel.deleteMany({ _id: { $in: productIds } }).session(
+      session,
+    );
 
     return productsToUpdate;
+  }
+
+  public async assignAndDetachProductsFromPool(
+    member: MemberDocument,
+    fullName: string,
+    session: ClientSession,
+    tenantName: string,
+  ): Promise<ProductDocument[]> {
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const ProductModel = connection.model(Product.name, ProductSchema);
+
+    const products = await ProductModel.find({
+      assignedEmail: member.email,
+    }).session(session);
+
+    for (const product of products) {
+      product.assignedMember = fullName;
+      await product.save({ session });
+      await ProductModel.deleteOne({ _id: product._id }).session(session);
+    }
+
+    return products;
   }
 
   async findProductBySerialNumber(serialNumber: string) {

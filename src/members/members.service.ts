@@ -238,19 +238,16 @@ export class MembersService {
         { session },
       );
 
-      await session.commitTransaction();
-      session.endSession();
-
       for (const member of createdMembers) {
         const fullName = this.getFullName(member);
-        const assignedProducts =
-          await this.assignmentsService.assignProductsToMemberByEmail(
-            member.email,
+        const products =
+          await this.assignmentsService.assignAndDetachProductsFromPool(
+            member,
             fullName,
-            null,
+            session,
             tenantName,
           );
-        member.products.push(...assignedProducts);
+        member.products.push(...products);
         await member.save({ session });
       }
 
@@ -263,6 +260,9 @@ export class MembersService {
           newData: createdMembers,
         },
       });
+
+      await session.commitTransaction();
+      session.endSession();
 
       return createdMembers;
     } catch (error) {
