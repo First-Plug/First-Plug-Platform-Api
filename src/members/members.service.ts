@@ -22,7 +22,6 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MemberAddressUpdatedEvent } from 'src/infra/event-bus/member-address-update.event';
 import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
 import { AssignmentsService } from 'src/assignments/assignments.service';
-import { ProductDocument } from 'src/products/schemas/product.schema';
 
 interface MemberWithShipmentStatus extends MemberDocument {
   shipmentStatus?: string[];
@@ -234,31 +233,26 @@ export class MembersService {
         return member;
       });
 
-      // const createdMembers = await this.memberRepository.insertMany(
-      //   membersToCreate,
-      //   { session },
-      // );
+      const createdMembers = await this.memberRepository.insertMany(
+        membersToCreate,
+        { session },
+      );
 
-      const assignedProductsMap = new Map<string, ProductDocument[]>();
+      await session.commitTransaction();
+      session.endSession();
 
-      for (const member of membersToCreate) {
+      for (const member of createdMembers) {
         const fullName = this.getFullName(member);
         const assignedProducts =
           await this.assignmentsService.assignProductsToMemberByEmail(
             member.email,
             fullName,
-            session,
+            null,
             tenantName,
           );
-        assignedProductsMap.set(member.email, assignedProducts);
-        // agregamos los productos ya asignados directamente en el objeto
-        member.products = assignedProducts.map((p) => p.toObject());
+        member.products.push(...assignedProducts);
+        await member.save({ session });
       }
-
-      const createdMembers = await this.memberRepository.insertMany(
-        membersToCreate,
-        { session },
-      );
 
       await this.historyService.create({
         actionType: 'bulk-create',
@@ -269,9 +263,6 @@ export class MembersService {
           newData: createdMembers,
         },
       });
-
-      await session.commitTransaction();
-      session.endSession();
 
       return createdMembers;
     } catch (error) {

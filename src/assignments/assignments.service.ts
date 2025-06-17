@@ -55,7 +55,7 @@ export class AssignmentsService {
   public async assignProductsToMemberByEmail(
     memberEmail: string,
     memberFullName: string,
-    session: ClientSession,
+    session: ClientSession | null,
     tenantName: string,
   ): Promise<ProductDocument[]> {
     const connection =
@@ -64,23 +64,22 @@ export class AssignmentsService {
 
     const productsToUpdate = await ProductModel.find({
       assignedEmail: memberEmail,
-    }).session(session);
+    });
 
     if (!productsToUpdate.length) return [];
 
     const productIds = productsToUpdate.map((p) => p._id);
 
-    // Actualiza los nombres (si necesitás conservarlos para snapshot/historial)
-    await ProductModel.updateMany(
+    const updateQuery = ProductModel.updateMany(
       { _id: { $in: productIds } },
       { $set: { assignedMember: memberFullName } },
-      { session },
     );
+    if (session) updateQuery.session(session);
+    await updateQuery;
 
-    // Elimina los productos de la colección general
-    await ProductModel.deleteMany({ _id: { $in: productIds } }).session(
-      session,
-    );
+    const deleteQuery = ProductModel.deleteMany({ _id: { $in: productIds } });
+    if (session) deleteQuery.session(session);
+    await deleteQuery;
 
     return productsToUpdate;
   }
