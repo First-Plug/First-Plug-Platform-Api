@@ -755,6 +755,7 @@ export class AssignmentsService {
     userId: string,
     ourOfficeEmail: string,
     session: ClientSession,
+    connection: Connection,
   ): Promise<{
     shipment?: ShipmentDocument;
     updatedProduct?: ProductDocument;
@@ -815,7 +816,7 @@ export class AssignmentsService {
     if (isReassignment) {
       const newMember = await this.findByEmailNotThrowError(
         updateDto.assignedEmail!,
-        undefined,
+        connection,
         session,
         tenantName,
       );

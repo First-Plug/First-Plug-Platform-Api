@@ -1222,6 +1222,7 @@ export class ProductsService {
             userId,
             ourOfficeEmail,
             internalSession,
+            internalConnection,
           )
         : await this.assignmentsService.handleProductFromMemberCollection(
             id,
@@ -1646,6 +1647,7 @@ export class ProductsService {
           userId,
           ourOfficeEmail,
           session,
+          connection,
         )
       : await this.assignmentsService.handleProductFromMemberCollection(
           objectId as unknown as mongoose.Schema.Types.ObjectId,
