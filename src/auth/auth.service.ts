@@ -157,7 +157,11 @@ export class AuthService {
       salt: userFound?.salt,
     };
 
-    await this.validatePassword(userPassword, changePasswordDto.oldPassword);
+    await this.validatePassword(
+      userPassword,
+      changePasswordDto.oldPassword,
+      false,
+    );
 
     const salt = await genSalt(10);
     const hashedPassword = await hash(changePasswordDto.newPassword, salt);
