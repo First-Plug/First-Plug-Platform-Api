@@ -11,6 +11,7 @@ import { HistoryModule } from 'src/history/history.module';
 import { ShipmentsModule } from 'src/shipments/shipments.module';
 import { SlackModule } from 'src/slack/slack.module';
 import { AssignmentsModule } from 'src/assignments/assignments.module';
+import { LogisticsModule } from 'src/logistics/logistics.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { AssignmentsModule } from 'src/assignments/assignments.module';
     forwardRef(() => ShipmentsModule),
     HistoryModule,
     SlackModule,
+    LogisticsModule,
   ],
   controllers: [MembersController],
   providers: [
