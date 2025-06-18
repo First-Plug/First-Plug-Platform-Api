@@ -22,6 +22,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MemberAddressUpdatedEvent } from 'src/infra/event-bus/member-address-update.event';
 import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
 import { AssignmentsService } from 'src/assignments/assignments.service';
+import { chunkArray } from './helpers/chunkArray';
 
 interface MemberWithShipmentStatus extends MemberDocument {
   shipmentStatus?: string[];
@@ -133,6 +134,7 @@ export class MembersService {
           normalizedMember.email,
           memberFullName,
           session,
+          tenantName,
         );
 
       createdMember.products.push(...assignedProducts);
@@ -167,6 +169,7 @@ export class MembersService {
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     const session = await connection.startSession();
+    await new Promise((resolve) => process.nextTick(resolve));
     session.startTransaction();
 
     try {
@@ -237,16 +240,34 @@ export class MembersService {
         { session },
       );
 
-      for (const member of createdMembers) {
-        const fullName = this.getFullName(member);
-        const assignedProducts =
-          await this.assignmentsService.assignProductsToMemberByEmail(
-            member.email,
-            fullName,
-            session,
-          );
-        member.products.push(...assignedProducts);
-        await member.save({ session });
+      await session.commitTransaction();
+      session.endSession();
+
+      const memberChunks = chunkArray(createdMembers, 10);
+
+      for (const chunk of memberChunks) {
+        const batchSession = await connection.startSession();
+        batchSession.startTransaction();
+
+        try {
+          for (const member of chunk) {
+            const fullName = this.getFullName(member);
+            await this.assignmentsService.assignAndDetachProductsFromPool(
+              member,
+              fullName,
+              batchSession,
+              tenantName,
+            );
+            await member.save({ session: batchSession });
+          }
+
+          await batchSession.commitTransaction();
+          await batchSession.endSession();
+        } catch (error) {
+          await batchSession.abortTransaction();
+          batchSession.endSession();
+          throw error;
+        }
       }
 
       await this.historyService.create({
@@ -258,9 +279,6 @@ export class MembersService {
           newData: createdMembers,
         },
       });
-
-      await session.commitTransaction();
-      session.endSession();
 
       return createdMembers;
     } catch (error) {

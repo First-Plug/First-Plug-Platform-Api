@@ -56,20 +56,86 @@ export class AssignmentsService {
     memberEmail: string,
     memberFullName: string,
     session: ClientSession,
+    tenantName: string,
   ): Promise<ProductDocument[]> {
-    const productsToUpdate = await this.productRepository
-      .find({ assignedEmail: memberEmail })
-      .session(session);
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const ProductModel = connection.model(Product.name, ProductSchema);
 
-    for (const product of productsToUpdate) {
-      product.assignedMember = memberFullName;
-      await product.save({ session });
-      await this.productRepository
-        .deleteOne({ _id: product._id })
-        .session(session);
-    }
+    const productsToUpdate = await ProductModel.find({
+      assignedEmail: memberEmail,
+    }).session(session);
+
+    if (!productsToUpdate.length) return [];
+
+    const productIds = productsToUpdate.map((p) => p._id);
+
+    await ProductModel.updateMany(
+      { _id: { $in: productIds } },
+      { $set: { assignedMember: memberFullName } },
+      { session },
+    );
+
+    await ProductModel.deleteMany({ _id: { $in: productIds } }).session(
+      session,
+    );
 
     return productsToUpdate;
+  }
+
+  public async assignAndDetachProductsFromPool(
+    member: MemberDocument,
+    fullName: string,
+    session: ClientSession,
+    tenantName: string,
+  ): Promise<ProductDocument[]> {
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const ProductModel = connection.model(Product.name, ProductSchema);
+
+    const products = await ProductModel.find({
+      assignedEmail: member.email,
+    }).session(session);
+
+    if (!products.length) return [];
+
+    console.log(`🧪 Found ${products.length} products to assign...`);
+
+    const reassignedProducts: ProductDocument[] = [];
+
+    for (const product of products) {
+      const productData = product.toObject() as Record<string, any>;
+      const cloned = new ProductModel({
+        ...productData,
+        assignedMember: fullName,
+      });
+
+      reassignedProducts.push(cloned);
+
+      const alreadyExists = member.products.some(
+        (p) => p._id && p._id.toString() === product._id.toString(),
+      );
+
+      if (!alreadyExists) {
+        member.products.push(cloned);
+      }
+    }
+
+    await member.save({ session });
+
+    const productIds = products.map((p) => p._id);
+
+    console.log(
+      `✅ Member updated. Deleting ${productIds.length} products from pool...`,
+    );
+
+    await ProductModel.deleteMany({ _id: { $in: productIds } }).session(
+      session,
+    );
+
+    console.log(`✅ Products deleted from pool.`);
+
+    return reassignedProducts;
   }
 
   async findProductBySerialNumber(serialNumber: string) {
@@ -689,6 +755,7 @@ export class AssignmentsService {
     userId: string,
     ourOfficeEmail: string,
     session: ClientSession,
+    connection: Connection,
   ): Promise<{
     shipment?: ShipmentDocument;
     updatedProduct?: ProductDocument;
@@ -749,7 +816,7 @@ export class AssignmentsService {
     if (isReassignment) {
       const newMember = await this.findByEmailNotThrowError(
         updateDto.assignedEmail!,
-        undefined,
+        connection,
         session,
         tenantName,
       );

@@ -397,12 +397,10 @@ export class ProductsService {
 
       const createdProducts: ProductDocument[] = [];
 
-      for (const product of productsWithAssignedEmail) {
-        if (product.assignedEmail) {
-          const member = await this.assignmentsService.findByEmailNotThrowError(
-            product.assignedEmail,
-            connection,
-            session,
+      const assignProductPromises = productsWithAssignedEmail.map(
+        async (product) => {
+          const member = await this.simpleFindByEmail(
+            product.assignedEmail!,
             tenantName,
           );
 
@@ -421,14 +419,15 @@ export class ProductsService {
             });
             createdProducts.push(...createdProduct);
           }
-        }
-      }
+        },
+      );
 
       const inserted = await ProductModel.insertMany(
         productsWithoutAssignedEmail,
         { session },
       );
       createdProducts.push(...inserted);
+      await Promise.all(assignProductPromises);
 
       await session.commitTransaction();
 
@@ -458,6 +457,12 @@ export class ProductsService {
     } finally {
       await session.endSession();
     }
+  }
+
+  async simpleFindByEmail(email: string, tenantName: string) {
+    const MemberModel =
+      await this.tenantModelRegistry.getMemberModel(tenantName);
+    return MemberModel.findOne({ email: email.trim().toLowerCase() });
   }
 
   async tableGrouping(tenantName: string) {
@@ -1217,6 +1222,7 @@ export class ProductsService {
             userId,
             ourOfficeEmail,
             internalSession,
+            internalConnection,
           )
         : await this.assignmentsService.handleProductFromMemberCollection(
             id,
@@ -1641,6 +1647,7 @@ export class ProductsService {
           userId,
           ourOfficeEmail,
           session,
+          connection,
         )
       : await this.assignmentsService.handleProductFromMemberCollection(
           objectId as unknown as mongoose.Schema.Types.ObjectId,
