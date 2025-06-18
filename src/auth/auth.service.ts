@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { LoginDto } from './dto/auth.dto';
 import { TenantsService } from 'src/tenants/tenants.service';
 import { genSalt, hash } from 'bcrypt';
@@ -167,12 +171,19 @@ export class AuthService {
   async validatePassword(
     user: { salt?: string; password?: string },
     password: string,
+    throwError: boolean = true,
   ) {
     const hashedPassword = await hash(password, user.salt!);
 
     if (user.password !== hashedPassword) {
-      throw new UnauthorizedException(
-        `The credentials are not valid, please try again.`,
+      if (throwError) {
+        throw new UnauthorizedException(
+          `The credentials are not valid, please try again.`,
+        );
+      }
+
+      throw new BadRequestException(
+        'The password provided is not valid, please try again.',
       );
     }
 
