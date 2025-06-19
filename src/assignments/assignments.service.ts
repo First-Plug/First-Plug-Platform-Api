@@ -1217,6 +1217,7 @@ export class AssignmentsService {
 
       const updatedProducts: any[] = [];
       const historyNewData: any[] = [];
+      const initialMember = JSON.parse(JSON.stringify(member));
 
       for (const item of data) {
         const product = item.product;
@@ -1293,16 +1294,11 @@ export class AssignmentsService {
         userId,
         changes: {
           oldData: {
-            ...(typeof member.toObject === 'function'
-              ? member.toObject()
-              : member),
-            products: [
-              ...member.products.map((p) => ({
-                ...p,
-                lastAssigned: assignedEmail,
-              })),
-              ...updatedProducts,
-            ],
+            ...initialMember,
+            products: initialMember.products.map((p) => ({
+              ...p,
+              lastAssigned: assignedEmail,
+            })),
           },
           newData: {
             products: historyNewData,
