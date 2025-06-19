@@ -58,10 +58,12 @@ export class MembersService {
   }
 
   private async validateDni(dni: string) {
-    if (!dni) {
-      return;
-    }
-    const memberWithSameDni = await this.memberRepository.findOne({ dni });
+    const trimmedDni = dni.trim();
+    if (!trimmedDni) return;
+
+    const memberWithSameDni = await this.memberRepository.findOne({
+      dni: trimmedDni,
+    });
     if (memberWithSameDni) {
       throw new BadRequestException(`DNI ${dni} is already in use`);
     }
@@ -120,8 +122,12 @@ export class MembersService {
 
     try {
       const normalizedMember = this.normalizeMemberData(createMemberDto);
-      if (normalizedMember.dni) {
-        await this.validateDni(normalizedMember.dni);
+      const dni = normalizedMember.dni?.trim();
+      if (dni) {
+        await this.validateDni(dni);
+        normalizedMember.dni = dni;
+      } else {
+        delete normalizedMember.dni;
       }
 
       const createdMember = (
@@ -176,7 +182,7 @@ export class MembersService {
       const normalizedMembers = createMemberDtos.map(this.normalizeMemberData);
 
       for (const member of normalizedMembers) {
-        if (member.dni) {
+        if (member.dni?.trim()) {
           await this.validateDni(member.dni);
         }
       }

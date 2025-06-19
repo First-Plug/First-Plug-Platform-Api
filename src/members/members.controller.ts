@@ -36,7 +36,6 @@ export class MembersController {
   @Post()
   async create(@Body() createMemberDto: CreateMemberDto, @Req() req) {
     const { userId, tenantName } = req;
-
     return await this.membersService.create(
       createMemberDto,
       userId,
