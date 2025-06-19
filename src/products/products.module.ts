@@ -10,6 +10,7 @@ import { ShipmentsModule } from '../shipments/shipments.module';
 import { SlackModule } from 'src/slack/slack.module';
 import { AssignmentsModule } from 'src/assignments/assignments.module';
 import { TenantDbModule } from 'src/infra/db/tenant-db.module';
+import { LogisticsModule } from 'src/logistics/logistics.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { TenantDbModule } from 'src/infra/db/tenant-db.module';
     forwardRef(() => ShipmentsModule),
     HistoryModule,
     SlackModule,
+    LogisticsModule,
   ],
   controllers: [ProductsController],
   providers: [ProductsService, tenantModels.productModel, JwtService],

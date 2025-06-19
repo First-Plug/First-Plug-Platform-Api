@@ -14,6 +14,7 @@ import { ProductUpdatedListener } from 'src/shipments/listeners/product-updated.
 import { HistoryModule } from 'src/history/history.module';
 import { TenantsMiddleware } from 'src/common/middlewares/tenants.middleware';
 import { SlackModule } from '../slack/slack.module';
+import { LogisticsModule } from 'src/logistics/logistics.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { SlackModule } from '../slack/slack.module';
     forwardRef(() => ProductsModule),
     forwardRef(() => HistoryModule),
     SlackModule,
+    forwardRef(() => LogisticsModule),
   ],
   controllers: [ShipmentsController],
   providers: [

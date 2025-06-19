@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
   Logger,
+  forwardRef,
 } from '@nestjs/common';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
@@ -40,7 +41,9 @@ export class MembersService {
     private readonly historyService: HistoryService,
     private readonly connectionService: TenantConnectionService,
     private eventEmitter: EventEmitter2,
+    @Inject(forwardRef(() => AssignmentsService))
     private readonly assignmentsService: AssignmentsService,
+    @Inject(forwardRef(() => LogisticsService))
     private readonly logisticsService: LogisticsService,
   ) {}
 
@@ -416,21 +419,6 @@ export class MembersService {
       connection,
     });
   }
-
-  // async validateIfMemberCanBeModified(memberEmail: string, tenantName: string) {
-  //   const shipments = await this.shipmentsService.getShipmentsByMember(
-  //     memberEmail,
-  //     tenantName,
-  //   );
-  //   const hasRestrictedStatus = shipments.some(
-  //     (s) => s.shipment_status === 'On The Way',
-  //   );
-  //   if (hasRestrictedStatus) {
-  //     throw new BadRequestException(
-  //       'This member is part of a shipment On The Way and cannot be modified.',
-  //     );
-  //   }
-  // }
 
   private isPersonalDataBeingModified(
     original: MemberDocument,

@@ -31,13 +31,13 @@ import { HistoryActionType } from 'src/history/validations/create-history.zod';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
 import { BulkReassignDto } from 'src/assignments/dto/bulk-reassign.dto';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
+import { LogisticsService } from 'src/logistics/logistics.sevice';
 
 @Injectable()
 export class AssignmentsService {
   private readonly logger = new Logger(AssignmentsService.name);
 
   constructor(
-    // @Inject('PRODUCT_MODEL') private readonly productModel: Model<Product>,
     @Inject('MEMBER_MODEL') private readonly memberModel: Model<Member>,
     private readonly connectionService: TenantConnectionService,
     private readonly tenantsService: TenantsService,
@@ -50,6 +50,7 @@ export class AssignmentsService {
     @Inject('PRODUCT_MODEL')
     private readonly productRepository: Model<Product>,
     private readonly tenantModelRegistry: TenantModelRegistry,
+    private readonly logisticsService: LogisticsService,
   ) {}
 
   public async assignProductsToMemberByEmail(
@@ -830,7 +831,7 @@ export class AssignmentsService {
       let shipment: ShipmentDocument | null = null;
 
       if (updateDto.fp_shipment) {
-        shipment = await this.productsService.tryCreateShipmentIfNeeded(
+        shipment = await this.logisticsService.tryCreateShipmentIfNeeded(
           product,
           updateDto,
           tenantName,
@@ -1007,7 +1008,7 @@ export class AssignmentsService {
       let shipment: ShipmentDocument | null = null;
 
       if (updateDto.fp_shipment) {
-        shipment = await this.productsService.tryCreateShipmentIfNeeded(
+        shipment = await this.logisticsService.tryCreateShipmentIfNeeded(
           product as ProductDocument,
           updateDto,
           tenantName,
@@ -1093,7 +1094,7 @@ export class AssignmentsService {
 
       if (updateDto.fp_shipment && updatedProduct) {
         shipment =
-          await this.productsService.maybeCreateShipmentAndUpdateStatus(
+          await this.logisticsService.maybeCreateShipmentAndUpdateStatus(
             updatedProduct,
             updateDto,
             tenantName,
