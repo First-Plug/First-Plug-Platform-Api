@@ -11,7 +11,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EventTypes } from 'src/infra/event-bus/types';
 import { MemberAddressUpdatedEvent } from 'src/infra/event-bus/member-address-update.event';
 import { MemberDocument } from 'src/members/schemas/member.schema';
-import mongoose, { ClientSession } from 'mongoose';
+import mongoose, { ClientSession, Types } from 'mongoose';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
 import { UpdateProductDto } from 'src/products/dto';
 import { ProductDocument } from 'src/products/schemas/product.schema';
@@ -533,5 +533,141 @@ export class LogisticsService {
       originComplete,
       assignedEmail,
     };
+  }
+
+  async findProductAcrossCollections(
+    tenantName: string,
+    productId: string,
+    session?: ClientSession,
+  ): Promise<Product | ProductDocument | null> {
+    const connection = await this.tenantModels.getConnection(tenantName);
+    const ProductModel =
+      this.tenantModels.getProductModelFromConnection(connection);
+    const MemberModel =
+      this.tenantModels.getMemberModelFromConnection(connection);
+
+    const product = await ProductModel.findById(productId).session(
+      session || null,
+    );
+    if (product) return product;
+
+    const member = await MemberModel.findOne({
+      'products._id': productId,
+    }).session(session || null);
+    const memberProduct = member?.products?.find(
+      (p: any) => p._id.toString() === productId,
+    );
+
+    return memberProduct || null;
+  }
+
+  async addProductsAndSnapshotsToShipment(
+    shipment: ShipmentDocument,
+    productIds: Types.ObjectId[] | string[],
+    tenantName: string,
+  ): Promise<void> {
+    const existingSnapshotIds =
+      shipment.snapshots?.map((s) => s._id.toString()) || [];
+
+    for (const rawId of productIds) {
+      const productId = rawId.toString();
+      const objectId = new Types.ObjectId(productId);
+
+      // Evitar duplicados en shipment.products
+      if (!shipment.products.some((p) => p.equals(objectId))) {
+        shipment.products.push(objectId);
+      } else {
+        console.log(`🔁 Producto ${productId} ya estaba en shipment`);
+      }
+
+      const product = await this.findProductAcrossCollections(
+        tenantName,
+        productId,
+      );
+
+      if (!product) {
+        console.warn(`⚠️ Producto ${productId} no encontrado`);
+        continue;
+      }
+
+      if (!product._id) {
+        console.warn(`⚠️ Producto ${productId} no tiene _id, se omite`);
+        continue;
+      }
+
+      // Agregar snapshot solo si no existe
+      if (!existingSnapshotIds.includes(product._id.toString())) {
+        const snapshot = this.shipmentsService.buildSnapshot(
+          product as ProductDocument & { _id: Types.ObjectId },
+        );
+
+        shipment.snapshots = shipment.snapshots || [];
+        shipment.snapshots.push(snapshot);
+      } else {
+        console.log(`📸 Snapshot ya existe para producto ${product._id}`);
+      }
+    }
+  }
+
+  async isShipmentDetailsComplete(
+    shipment: ShipmentDocument,
+  ): Promise<boolean> {
+    const originComplete = this.areShipmentDetailsComplete(
+      shipment.originDetails,
+      shipment.origin,
+    );
+
+    const destinationComplete = this.areShipmentDetailsComplete(
+      shipment.destinationDetails,
+      shipment.destination,
+    );
+
+    return originComplete && destinationComplete;
+  }
+
+  public areShipmentDetailsComplete(
+    details?: Record<string, string>,
+    locationName?: string,
+  ): boolean {
+    if (!details) return false;
+
+    if (locationName === 'FP warehouse') return true;
+
+    if (locationName === 'Our office') {
+      const requiredFields = [
+        'address',
+        'city',
+        'state',
+        'country',
+        'zipCode',
+        'phone',
+      ];
+      const result = requiredFields.every((field) => !!details[field]);
+      if (!result) {
+        console.log('🛑 Origin (Our office) está incompleto:', {
+          missing: requiredFields.filter((f) => !details[f]),
+          details,
+        });
+      }
+      return result;
+    }
+
+    const requiredFields = [
+      'address',
+      'city',
+      'country',
+      'zipCode',
+      'phone',
+      'personalEmail',
+      'dni',
+    ];
+    const result = requiredFields.every((field) => !!details[field]);
+    if (!result) {
+      console.log('🛑 Destination (Employee) está incompleto:', {
+        missing: requiredFields.filter((f) => !details[f]),
+        details,
+      });
+    }
+    return result;
   }
 }

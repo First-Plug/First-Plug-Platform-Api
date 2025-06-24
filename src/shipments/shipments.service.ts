@@ -485,33 +485,6 @@ export class ShipmentsService {
     return { shipment: newShipment, isConsolidated: false };
   }
 
-  async getProductByIdIncludingMembers(
-    connection: Connection,
-    productId: string,
-    session?: ClientSession,
-  ): Promise<ProductDocument | null> {
-    const ProductModel =
-      connection.models.Product ||
-      connection.model('Product', ProductSchema, 'products');
-
-    const product = await ProductModel.findById(productId).session(
-      session || null,
-    );
-    if (product) return product;
-
-    const MemberModel =
-      connection.models.Member ||
-      connection.model('Member', MemberSchema, 'members');
-
-    const member = await MemberModel.findOne({
-      'products._id': productId,
-    }).session(session || null);
-    const memberProduct = member?.products?.find(
-      (p: any) => p._id.toString() === productId,
-    );
-    return memberProduct || null;
-  }
-
   async findConsolidateAndUpdateShipment(
     shipmentId: string,
     updateDto: UpdateShipmentDto,
@@ -566,48 +539,11 @@ export class ShipmentsService {
       const productIds = shipment.products.map((p) => p.toString());
       console.log('🔍 Productos en el shipment a consolidar:', productIds);
 
-      const existingSnapshotIds =
-        consolidable.snapshots?.map((s) => s._id.toString()) || [];
-
-      for (const productId of shipment.products) {
-        const objectId = new Types.ObjectId(productId);
-
-        if (!consolidable.products.some((p) => p.equals(objectId))) {
-          consolidable.products.push(objectId);
-        } else {
-          console.log(
-            `🔁 Producto ${productId} ya estaba en shipment consolidable`,
-          );
-        }
-
-        const product = await this.getProductByIdIncludingMembers(
-          connection,
-          productId.toString(),
-        );
-
-        if (!product) {
-          console.log(
-            `⚠️ Producto ${productId} no encontrado ni en products ni en miembros`,
-          );
-          continue;
-        }
-        if (!product._id) {
-          console.warn(`⚠️ Producto ${productId} no tiene _id, se omite`);
-          continue;
-        }
-
-        if (!existingSnapshotIds.includes(product._id.toString())) {
-          const snapshot = this.buildSnapshot(
-            product as ProductDocument & { _id: Types.ObjectId },
-          );
-          consolidable.snapshots = consolidable.snapshots || [];
-          consolidable.snapshots.push(snapshot);
-        } else {
-          console.log(
-            `📸 Snapshot ya existe para producto ${product._id}, no se duplica`,
-          );
-        }
-      }
+      await this.logisticsService.addProductsAndSnapshotsToShipment(
+        consolidable,
+        shipment.products,
+        tenantName,
+      );
 
       consolidable.markModified('snapshots');
       consolidable.quantity_products = consolidable.products.length;
@@ -651,14 +587,7 @@ export class ShipmentsService {
     }
     if (wasModified) {
       const isReady =
-        this.areShipmentDetailsComplete(
-          shipment.originDetails,
-          shipment.origin,
-        ) &&
-        this.areShipmentDetailsComplete(
-          shipment.destinationDetails,
-          shipment.destination,
-        );
+        await this.logisticsService.isShipmentDetailsComplete(shipment);
 
       const oldStatus = shipment.shipment_status;
       shipment.shipment_status = isReady
@@ -726,13 +655,6 @@ export class ShipmentsService {
       shipment,
     };
   }
-  //TODO: Nahue status
-  /* aca es el fin del update de un shipment, 
-  a esta altura tener el shipment actualizado, por lo que si las fechas cambiaron en un shipment que
-  estaba in preparation, calculo que tenes que reenviar el mensaje de slack.
-  tambien se consolida un shipment con otro cuando se cambian fechas y coincide con otro.
-  Por lo tanto tendras que avisar si el shipment estaba in preparation y ahora se le sumo un nuevo producto
-  tambien es donde se borra el shipment que se consolido con el otro */
 
   buildSnapshot(product: ProductDocument & { _id: Types.ObjectId }) {
     return {
@@ -753,52 +675,6 @@ export class ShipmentsService {
       productCondition: product.productCondition,
       fp_shipment: product.fp_shipment,
     };
-  }
-
-  private areShipmentDetailsComplete(
-    details?: Record<string, string>,
-    locationName?: string,
-  ): boolean {
-    if (!details) return false;
-
-    if (locationName === 'FP warehouse') return true;
-
-    if (locationName === 'Our office') {
-      const requiredFields = [
-        'address',
-        'city',
-        'state',
-        'country',
-        'zipCode',
-        'phone',
-      ];
-      const result = requiredFields.every((field) => !!details[field]);
-      if (!result) {
-        console.log('🛑 Origin (Our office) está incompleto:', {
-          missing: requiredFields.filter((f) => !details[f]),
-          details,
-        });
-      }
-      return result;
-    }
-
-    const requiredFields = [
-      'address',
-      'city',
-      'country',
-      'zipCode',
-      'phone',
-      'personalEmail',
-      'dni',
-    ];
-    const result = requiredFields.every((field) => !!details[field]);
-    if (!result) {
-      console.log('🛑 Destination (Employee) está incompleto:', {
-        missing: requiredFields.filter((f) => !details[f]),
-        details,
-      });
-    }
-    return result;
   }
 
   private getProductModel(connection: Connection): Model<ProductDocument> {
@@ -2028,14 +1904,15 @@ export class ShipmentsService {
       const hasCodesForOrderId =
         originCode !== 'XX' && destinationCode !== 'XX';
 
-      const originComplete = this.areShipmentDetailsComplete(
+      const originComplete = this.logisticsService.areShipmentDetailsComplete(
         shipment.originDetails,
         shipment.origin,
       );
-      const destinationComplete = this.areShipmentDetailsComplete(
-        shipment.destinationDetails,
-        shipment.destination,
-      );
+      const destinationComplete =
+        this.logisticsService.areShipmentDetailsComplete(
+          shipment.destinationDetails,
+          shipment.destination,
+        );
 
       const isNowComplete = originComplete && destinationComplete;
       const wasInPreparation = shipment.shipment_status === 'In Preparation';
@@ -2258,14 +2135,15 @@ export class ShipmentsService {
         );
       }
 
-      const originComplete = this.areShipmentDetailsComplete(
+      const originComplete = this.logisticsService.areShipmentDetailsComplete(
         shipment.originDetails,
         shipment.origin,
       );
-      const destinationComplete = this.areShipmentDetailsComplete(
-        shipment.destinationDetails,
-        shipment.destination,
-      );
+      const destinationComplete =
+        this.logisticsService.areShipmentDetailsComplete(
+          shipment.destinationDetails,
+          shipment.destination,
+        );
       const wasInPreparation = shipment.shipment_status === 'In Preparation';
       const isNowComplete = originComplete && destinationComplete;
 
@@ -2286,14 +2164,15 @@ export class ShipmentsService {
             session,
           );
 
-          const product = await this.getProductByIdIncludingMembers(
-            connection,
-            productId.toString(),
-            session,
-          );
+          const product =
+            await this.logisticsService.findProductAcrossCollections(
+              tenantName,
+              productId.toString(),
+              session,
+            );
 
           if (product) {
-            updatedProducts.push(product);
+            updatedProducts.push(product as ProductDocument);
           }
         }
 
