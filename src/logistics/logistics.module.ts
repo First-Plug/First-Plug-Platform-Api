@@ -7,12 +7,14 @@ import { SlackModule } from 'src/slack/slack.module';
 import { HistoryModule } from 'src/history/history.module';
 import { JwtService } from '@nestjs/jwt';
 import { MembersModule } from 'src/members/members.module';
+import { TenantsModule } from 'src/tenants/tenants.module';
 
 @Module({
   imports: [
     TenantDbModule,
     forwardRef(() => ShipmentsModule),
     forwardRef(() => MembersModule),
+    forwardRef(() => TenantsModule),
     SlackModule,
     HistoryModule,
   ],

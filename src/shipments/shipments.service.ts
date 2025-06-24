@@ -6,13 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import mongoose, {
-  ClientSession,
-  Connection,
-  Model,
-  Schema,
-  Types,
-} from 'mongoose';
+import mongoose, { ClientSession, Connection, Model, Types } from 'mongoose';
 import {
   Shipment,
   ShipmentDocument,
@@ -45,6 +39,7 @@ import { HistoryService } from 'src/history/history.service';
 import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
 import { CreateShipmentMessageToSlack } from './helpers/create-message-to-slack';
 import { SlackService } from '../slack/slack.service';
+import { LogisticsService } from 'src/logistics/logistics.sevice';
 
 @Injectable()
 export class ShipmentsService {
@@ -61,6 +56,8 @@ export class ShipmentsService {
     private readonly shipmentMetadataRepository: Model<ShipmentMetadata>,
     private readonly historyService: HistoryService,
     private readonly slackService: SlackService,
+    @Inject(forwardRef(() => LogisticsService))
+    private readonly logisticsService: LogisticsService,
   ) {}
 
   async findShipmentPage(
@@ -188,37 +185,11 @@ export class ShipmentsService {
         !['Our office', 'FP warehouse'].includes(location)) &&
       assignedEmail
     ) {
-      const connection =
-        await this.tenantConnectionService.getTenantConnection(tenantId);
-
-      const MemberModel =
-        connection.models.Member ||
-        connection.model('Member', MemberSchema, 'members');
-
-      const member = await MemberModel.findOne({
-        email: assignedEmail.trim().toLowerCase(),
-      });
-
-      if (!member)
-        throw new NotFoundException(`Member ${assignedEmail} not found`);
-
-      return {
-        name: `${member.firstName} ${member.lastName}`,
-        code: this.getCountryCode(member.country || ''),
-        details: {
-          address: member.address || '',
-          city: member.city || '',
-          country: member.country || '',
-          zipCode: member.zipCode || '',
-          apartment: member.apartment || '',
-          contactName: `${member.firstName} ${member.lastName}`,
-          phone: member.phone || '',
-          personalEmail: member.personalEmail || '',
-          assignedEmail: member.email,
-          dni: `${member.dni || ''}`,
-          desirableDate: desirableDate || '',
-        },
-      };
+      return this.logisticsService.getMemberLocationInfo(
+        tenantId,
+        assignedEmail,
+        desirableDate,
+      );
     }
     const countryCode = this.getCountryCode(location);
     if (countryCode !== 'XX') {
@@ -308,7 +279,7 @@ export class ShipmentsService {
     return ShipmentModel.findById(shipmentId).exec();
   }
 
-  private async getProductLocationDataFromSnapshots(
+  public async getProductLocationDataFromSnapshots(
     productId: string,
     tenantId: string,
     actionType: string,
@@ -354,53 +325,6 @@ export class ShipmentsService {
     };
   }
 
-  // por el momento lo pongo aca, pero despues solo en assignments
-
-  public async isAddressComplete(
-    product: Partial<Product>,
-    tenantName: string,
-  ): Promise<boolean> {
-    if (product.location === 'FP warehouse') {
-      return true;
-    }
-
-    if (product.location === 'Employee') {
-      const member = await this.membersService.findByEmailNotThrowError(
-        product.assignedEmail!,
-      );
-      if (!member) return false;
-
-      return !!(
-        member.country &&
-        member.city &&
-        member.zipCode &&
-        member.address &&
-        // member.apartment &&
-        member.personalEmail &&
-        member.phone &&
-        member.dni
-      );
-    }
-
-    if (product.location === 'Our office') {
-      const tenant = await this.tenantsService.getByTenantName(tenantName);
-
-      if (!tenant) return false;
-
-      return !!(
-        tenant.country &&
-        tenant.city &&
-        tenant.state &&
-        tenant.zipCode &&
-        tenant.address &&
-        // tenant.apartment &&
-        tenant.phone
-      );
-    }
-
-    return false;
-  }
-
   async findOrCreateShipment(
     productId: string,
     actionType: string,
@@ -424,7 +348,6 @@ export class ShipmentsService {
     isConsolidated: boolean;
     oldSnapshot?: Partial<ShipmentDocument>;
   }> {
-    console.log('findorcreateshipment called with userId:', userId);
     if (!userId) {
       throw new Error('❌ User ID is required');
     }
@@ -438,58 +361,34 @@ export class ShipmentsService {
         ? desirableDestinationDate.toISOString()
         : desirableDestinationDate;
 
-    const found = await this.productsService.findProductById(
-      new Types.ObjectId(productId) as unknown as Schema.Types.ObjectId,
-      tenantName,
-    );
-    if (!found?.product) {
-      throw new NotFoundException(`Product ${productId} not found.`);
-    }
-    const product = found.product;
-    const assignedEmail =
-      newData?.assignedEmail ||
-      found.member?.email ||
-      product.assignedEmail ||
-      '';
-
     const {
       origin,
       destination,
       orderOrigin,
       orderDestination,
-      originLocation,
-      destinationLocation,
-    } = await this.getProductLocationDataFromSnapshots(
+      originDetails,
+      destinationDetails,
+      destinationComplete,
+      originComplete,
+    } = await this.logisticsService.getShipmentPreparationData(
       productId,
       tenantName,
       actionType,
-      oldData,
-      newData,
       originDate,
       destinationDate,
+      oldData,
+      newData,
     );
 
-    const originDetails = ['create', 'bulkCreate'].includes(actionType)
-      ? undefined
-      : await this.getLocationInfo(
-          originLocation,
-          tenantName,
-          oldData?.assignedEmail || '',
-          oldData?.assignedMember || '',
-          originDate,
-        ).then((res) => res.details);
-
-    const destinationDetails = await this.getLocationInfo(
-      destinationLocation,
-      tenantName,
-      newData?.assignedEmail || '',
-      newData?.assignedMember || '',
-      destinationDate,
-    ).then((res) => res.details);
+    const shipmentStatus =
+      destinationComplete && originComplete
+        ? 'In Preparation'
+        : 'On Hold - Missing Data';
 
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
     const ShipmentModel = this.getShipmentModel(connection);
+    const productObjectId = new mongoose.Types.ObjectId(productId);
 
     const existingShipment = await ShipmentModel.findOne({
       origin,
@@ -500,8 +399,6 @@ export class ShipmentsService {
         destinationDetails?.desirableDate || null,
       isDeleted: { $ne: true },
     }).session(session || null);
-
-    const productObjectId = new mongoose.Types.ObjectId(productId);
 
     if (existingShipment) {
       if (!existingShipment.products.includes(productObjectId)) {
@@ -526,25 +423,6 @@ export class ShipmentsService {
       }
       return { shipment: existingShipment, isConsolidated: true };
     }
-
-    const destinationComplete = await this.isAddressComplete(
-      { ...product, location: destinationLocation, assignedEmail },
-      tenantName,
-    );
-
-    const originComplete = await this.isAddressComplete(
-      {
-        ...product,
-        location: originLocation,
-        assignedEmail: oldData?.assignedEmail || '',
-      },
-      tenantName,
-    );
-
-    const shipmentStatus =
-      destinationComplete && originComplete
-        ? 'In Preparation'
-        : 'On Hold - Missing Data';
 
     const orderNumberGenerator = await this.initializeOrderNumberGenerator(
       connection,
@@ -598,19 +476,12 @@ export class ShipmentsService {
       session ?? undefined,
     );
 
-    // await this.historyService.create({
-    //   actionType: 'create',
-    //   itemType: 'shipments',
-    //   userId: userId,
-    //   changes: {
-    //     oldData: null,
-    //     newData: newShipment,
-    //   },
-    // });
     await newShipment.save();
+
     if (shipmentStatus === 'In Preparation' && session) {
       await this.updateProductStatusToInTransit(productId, connection, session);
     }
+
     return { shipment: newShipment, isConsolidated: false };
   }
 

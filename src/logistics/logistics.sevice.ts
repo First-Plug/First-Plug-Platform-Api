@@ -1,4 +1,10 @@
-import { Injectable, Logger, forwardRef, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  forwardRef,
+  Inject,
+  NotFoundException,
+} from '@nestjs/common';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { BadRequestException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -14,6 +20,9 @@ import { SlackService } from 'src/slack/slack.service';
 import { ShipmentsService } from 'src/shipments/shipments.service';
 import { HistoryService } from 'src/history/history.service';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
+import { countryCodes } from 'src/shipments/helpers/countryCodes';
+import { Product } from 'src/products/schemas/product.schema';
+import { TenantsService } from 'src/tenants/tenants.service';
 
 @Injectable()
 export class LogisticsService {
@@ -27,6 +36,7 @@ export class LogisticsService {
     private readonly shipmentsService: ShipmentsService,
     private readonly historyService: HistoryService,
     private readonly slackService: SlackService,
+    private readonly tenantsService: TenantsService,
   ) {}
 
   async validateIfMemberCanBeModified(memberEmail: string, tenantName: string) {
@@ -318,5 +328,210 @@ export class LogisticsService {
       userId,
       ourOfficeEmail,
     );
+  }
+
+  async getMemberLocationInfo(
+    tenantId: string,
+    assignedEmail: string,
+    desirableDate?: string,
+  ): Promise<{
+    name: string;
+    code: string;
+    details: Record<string, string>;
+  }> {
+    const memberModel = await this.tenantModels.getMemberModel(tenantId);
+
+    const member = await memberModel.findOne({
+      email: assignedEmail.trim().toLowerCase(),
+    });
+
+    if (!member) {
+      throw new NotFoundException(`Member ${assignedEmail} not found`);
+    }
+
+    const fullName = `${member.firstName} ${member.lastName}`;
+    const countryCode = this.getCountryCode(member.country || '');
+
+    return {
+      name: fullName,
+      code: countryCode,
+      details: {
+        address: member.address || '',
+        city: member.city || '',
+        country: member.country || '',
+        zipCode: member.zipCode || '',
+        apartment: member.apartment || '',
+        contactName: fullName,
+        phone: member.phone || '',
+        personalEmail: member.personalEmail || '',
+        assignedEmail: member.email,
+        dni: `${member.dni || ''}`,
+        desirableDate: desirableDate || '',
+      },
+    };
+  }
+
+  public getCountryCode(country: string): string {
+    if (country === 'Our office') {
+      return 'OO';
+    }
+
+    return countryCodes[country] || 'XX';
+  }
+
+  public async isLocationDataComplete(
+    product: Partial<Product>,
+    tenantName: string,
+  ): Promise<boolean> {
+    if (product.location === 'FP warehouse') {
+      return true;
+    }
+
+    if (product.location === 'Employee') {
+      const MemberModel = await this.tenantModels.getMemberModel(tenantName);
+      const member = await MemberModel.findOne({
+        email: product.assignedEmail?.trim().toLowerCase(),
+      });
+      if (!member) return false;
+
+      return !!(
+        member.country &&
+        member.city &&
+        member.zipCode &&
+        member.address &&
+        // member.apartment &&
+        member.personalEmail &&
+        member.phone &&
+        member.dni
+      );
+    }
+
+    if (product.location === 'Our office') {
+      const tenant = await this.tenantsService.getByTenantName(tenantName);
+
+      if (!tenant) return false;
+
+      return !!(
+        tenant.country &&
+        tenant.city &&
+        tenant.state &&
+        tenant.zipCode &&
+        tenant.address &&
+        // tenant.apartment &&
+        tenant.phone
+      );
+    }
+
+    return false;
+  }
+
+  async getShipmentPreparationData(
+    productId: string,
+    tenantName: string,
+    actionType: string,
+    originDate?: string,
+    destinationDate?: string,
+    oldData?: {
+      location?: string;
+      assignedEmail?: string;
+      assignedMember?: string;
+    },
+    newData?: {
+      location?: string;
+      assignedEmail?: string;
+      assignedMember?: string;
+    },
+  ): Promise<{
+    product: Product;
+    origin: string;
+    destination: string;
+    orderOrigin: string;
+    orderDestination: string;
+    originLocation: string;
+    destinationLocation: string;
+    originDetails?: Record<string, string>;
+    destinationDetails?: Record<string, string>;
+    destinationComplete: boolean;
+    originComplete: boolean;
+    assignedEmail: string;
+  }> {
+    const found = await this.tenantModels
+      .getProductModel(tenantName)
+      .then((ProductModel) => ProductModel.findById(productId).lean());
+
+    if (!found) {
+      throw new NotFoundException(`Product ${productId} not found.`);
+    }
+
+    const product = found;
+    const assignedEmail = newData?.assignedEmail || product.assignedEmail || '';
+
+    const {
+      origin,
+      destination,
+      orderOrigin,
+      orderDestination,
+      originLocation,
+      destinationLocation,
+    } = await this.shipmentsService.getProductLocationDataFromSnapshots(
+      productId,
+      tenantName,
+      actionType,
+      oldData,
+      newData,
+      originDate,
+      destinationDate,
+    );
+
+    const originDetails = ['create', 'bulkCreate'].includes(actionType)
+      ? undefined
+      : await this.shipmentsService
+          .getLocationInfo(
+            originLocation,
+            tenantName,
+            oldData?.assignedEmail || '',
+            oldData?.assignedMember || '',
+            originDate,
+          )
+          .then((res) => res.details);
+
+    const destinationDetails = await this.shipmentsService
+      .getLocationInfo(
+        destinationLocation,
+        tenantName,
+        newData?.assignedEmail || '',
+        newData?.assignedMember || '',
+        destinationDate,
+      )
+      .then((res) => res.details);
+
+    const destinationComplete = await this.isLocationDataComplete(
+      { ...product, location: destinationLocation, assignedEmail },
+      tenantName,
+    );
+
+    const originComplete = await this.isLocationDataComplete(
+      {
+        ...product,
+        location: originLocation,
+        assignedEmail: oldData?.assignedEmail || '',
+      },
+      tenantName,
+    );
+
+    return {
+      product,
+      origin,
+      destination,
+      orderOrigin,
+      orderDestination,
+      originLocation,
+      destinationLocation,
+      originDetails,
+      destinationDetails,
+      destinationComplete,
+      originComplete,
+      assignedEmail,
+    };
   }
 }
