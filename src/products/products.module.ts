@@ -20,7 +20,7 @@ import { LogisticsModule } from 'src/logistics/logistics.module';
     forwardRef(() => ShipmentsModule),
     HistoryModule,
     SlackModule,
-    LogisticsModule,
+    forwardRef(() => LogisticsModule),
   ],
   controllers: [ProductsController],
   providers: [ProductsService, tenantModels.productModel, JwtService],

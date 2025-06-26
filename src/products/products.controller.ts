@@ -10,7 +10,6 @@ import {
   Res,
   UseGuards,
   Request,
-  // NotFoundException,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -142,6 +141,12 @@ export class ProductsController {
     @Body() updateProductDto: UpdateProductDto,
     @Request() req: any,
   ) {
+    console.log(
+      '🛬 PATCH recibido:',
+      id.toString(),
+      new Date().toISOString(),
+      JSON.stringify(updateProductDto, null, 2),
+    );
     const tenantName = req.user.tenantName;
     const { userId } = req;
     const ourOfficeEmail = req.user.email;

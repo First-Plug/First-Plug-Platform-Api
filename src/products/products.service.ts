@@ -3,6 +3,8 @@ import {
   InternalServerErrorException,
   NotFoundException,
   Logger,
+  forwardRef,
+  Inject,
 } from '@nestjs/common';
 import mongoose, {
   ClientSession,
@@ -48,11 +50,11 @@ export class ProductsService {
     private tenantsService: TenantsService,
     private readonly historyService: HistoryService,
     private readonly connectionService: TenantConnectionService,
-
     private readonly moduleRef: ModuleRef,
     private readonly eventEmitter: EventEmitter2,
     private readonly slackService: SlackService,
     private readonly assignmentsService: AssignmentsService,
+    @Inject(forwardRef(() => LogisticsService))
     private readonly logisticsService: LogisticsService,
   ) {}
 
@@ -729,20 +731,28 @@ export class ProductsService {
 
     const ProductModel =
       await this.tenantModelRegistry.getProductModel(tenantName);
-
+    console.log('[🔍] Buscando producto por ID:', id, 'en ProductModel');
     const product = await ProductModel.findById(id);
+    console.log('[✅] Resultado en ProductModel:', product?._id?.toString());
     if (product?.isDeleted) {
       throw new NotFoundException(`Product with id "${id}" not found`);
     }
 
     if (product) {
       if (product.isDeleted) {
+        console.warn('[⚠️] Producto encontrado pero marcado como eliminado');
         throw new NotFoundException(`Product with id "${id}" not found`);
       }
       return { product, location: 'products', tenantName };
     }
 
     const connection = await this.tenantModelRegistry.getConnection(tenantName);
+    console.log(
+      '🪵 ID recibido en Logistics antes de getProductByMembers desde findProductAndLocationById:',
+      id,
+      typeof id,
+      id instanceof Types.ObjectId,
+    );
 
     const memberProduct = await this.assignmentsService.getProductByMembers(
       id,
@@ -1202,6 +1212,8 @@ export class ProductsService {
     }
 
     try {
+      console.log('🔄 [update] ID recibido:', id.toString());
+      console.log('🔄 [update] DTO recibido:', updateProductDto);
       await this.normalizeFpShipmentFlag(
         id,
         updateProductDto,
@@ -1209,10 +1221,15 @@ export class ProductsService {
         internalSession,
         tenantName,
       );
+      console.log('🧩 Buscando producto por ID en ProductModel...');
 
       const ProductModel =
         await this.tenantModelRegistry.getProductModel(tenantName);
-
+      console.log('🧩 Obtenido ProductModel para tenant:', tenantName);
+      console.error(
+        '❌ Producto no encontrado en ProductModel con id:',
+        id.toString(),
+      );
       const product = await ProductModel.findById(id).session(internalSession);
 
       const result = product
@@ -1250,6 +1267,7 @@ export class ProductsService {
         await internalSession.abortTransaction();
         internalSession.endSession();
       }
+      console.error('❌ Error en update:', error.message, error.stack);
       throw error;
     }
   }
@@ -1270,6 +1288,13 @@ export class ProductsService {
       if (existingProduct) {
         updateProductDto.fp_shipment = existingProduct.fp_shipment === true;
       } else {
+        console.log(
+          '🪵 ID recibido en Logistics antes de getProductByMembers desde normalizeFpShipmentFlag:',
+          productId,
+          typeof productId,
+          productId instanceof Types.ObjectId,
+        );
+
         const memberProduct = await this.assignmentsService.getProductByMembers(
           productId,
           connection,
@@ -1284,6 +1309,13 @@ export class ProductsService {
       if (existingProduct?.fp_shipment === true) {
         updateProductDto.fp_shipment = true;
       } else {
+        console.log(
+          '🪵 ID recibido en Logistics antes de getProductByMembers desde normalizeFpShipmentFlag dos:',
+          productId,
+          typeof productId,
+          productId instanceof Types.ObjectId,
+        );
+
         const memberProduct = await this.assignmentsService.getProductByMembers(
           productId,
           connection,
@@ -1384,6 +1416,12 @@ export class ProductsService {
 
           changes.oldData = product;
         } else {
+          console.log(
+            '🪵 ID recibido en Logistics antes de getProductByMembers desde softDelete:',
+            id,
+            typeof id,
+            id instanceof Types.ObjectId,
+          );
           const memberProduct =
             await this.assignmentsService.getProductByMembers(
               id,

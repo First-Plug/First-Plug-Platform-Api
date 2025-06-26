@@ -8,6 +8,7 @@ import { HistoryModule } from 'src/history/history.module';
 import { JwtService } from '@nestjs/jwt';
 import { MembersModule } from 'src/members/members.module';
 import { TenantsModule } from 'src/tenants/tenants.module';
+import { ProductsModule } from 'src/products/products.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { TenantsModule } from 'src/tenants/tenants.module';
     forwardRef(() => ShipmentsModule),
     forwardRef(() => MembersModule),
     forwardRef(() => TenantsModule),
+    forwardRef(() => ProductsModule),
     SlackModule,
     HistoryModule,
   ],

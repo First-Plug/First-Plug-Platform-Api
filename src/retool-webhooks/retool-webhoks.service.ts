@@ -11,6 +11,8 @@ import { ProductSchema } from 'src/products/schemas/product.schema';
 import { SHIPMENT_STATUS } from 'src/shipments/interface/shipment.interface';
 import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
 import { ShipmentsService } from 'src/shipments/shipments.service';
+import { forwardRef, Inject } from '@nestjs/common';
+import { LogisticsService } from 'src/logistics/logistics.sevice';
 
 @Injectable()
 export class RetoolWebhooksService {
@@ -18,6 +20,8 @@ export class RetoolWebhooksService {
     private tenantConnectionService: TenantConnectionService,
     private readonly shipmentsService: ShipmentsService,
     private eventsGateway: EventsGateway,
+    @Inject(forwardRef(() => LogisticsService))
+    private readonly logisticsService: LogisticsService,
   ) {}
 
   async updateShipmentStatusWebhook(body: {
@@ -71,13 +75,13 @@ export class RetoolWebhooksService {
       }
 
       for (const productId of shipment.products) {
-        await this.shipmentsService.updateProductOnShipmentReceived(
+        await this.logisticsService.updateProductOnShipmentReceived(
           productId.toString(),
           tenantName,
           shipment.origin,
         );
       }
-      await this.shipmentsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
+      await this.logisticsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
         shipment.products.map((p) => p.toString()),
         tenantName,
       );
@@ -90,11 +94,11 @@ export class RetoolWebhooksService {
     await shipment.save();
 
     if (shipment.shipment_status === 'Received') {
-      await this.shipmentsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
+      await this.logisticsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
         shipment.originDetails?.assignedEmail,
         tenantName,
       );
-      await this.shipmentsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
+      await this.logisticsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
         shipment.destinationDetails?.assignedEmail,
         tenantName,
       );
