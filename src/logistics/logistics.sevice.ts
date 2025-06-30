@@ -294,7 +294,7 @@ export class LogisticsService {
     }
 
     //TODO: Status consolidate
-    if (isConsolidated) {
+    if (isConsolidated && shipment.shipment_status === 'In Preparation') {
       const slackMessage = CreateShipmentMessageToSlack({
         shipment: shipment,
         tenantName: tenantName,
@@ -305,6 +305,10 @@ export class LogisticsService {
       });
 
       await this.slackService.sendMessage(slackMessage);
+    } else if (isConsolidated) {
+      console.log(
+        `🔇 Consolidated shipment has status "${shipment.shipment_status}", skipping Slack notification.`,
+      );
     }
 
     return shipment;

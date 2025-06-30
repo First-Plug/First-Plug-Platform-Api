@@ -9,10 +9,14 @@ import { TenantConnectionService } from 'src/infra/db/tenant-connection.service'
 import { MemberSchema } from 'src/members/schemas/member.schema';
 import { ProductSchema } from 'src/products/schemas/product.schema';
 import { SHIPMENT_STATUS } from 'src/shipments/interface/shipment.interface';
-import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
+import {
+  ShipmentSchema,
+  // ShipmentDocument,
+} from 'src/shipments/schema/shipment.schema';
 import { ShipmentsService } from 'src/shipments/shipments.service';
 import { forwardRef, Inject } from '@nestjs/common';
 import { LogisticsService } from 'src/logistics/logistics.sevice';
+// import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
 
 @Injectable()
 export class RetoolWebhooksService {
@@ -33,8 +37,8 @@ export class RetoolWebhooksService {
     const { tenantName, shipmentId, newStatus, userId } = body;
 
     if (newStatus === 'Cancelled') {
-      console.log('🚨 Ejecutando cancelShipmentAndUpdateProducts...');
-      return this.shipmentsService.cancelShipmentAndUpdateProducts(
+      console.log('🚨 Ejecutando cancelShipmentWithConsequences...');
+      return this.logisticsService.cancelShipmentWithConsequences(
         shipmentId,
         tenantName,
         userId,

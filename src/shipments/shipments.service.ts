@@ -670,14 +670,6 @@ export class ShipmentsService {
     };
   }
 
-  private getProductModel(connection: Connection): Model<ProductDocument> {
-    if (connection.models.Product) {
-      return connection.models.Product;
-    }
-
-    return connection.model<ProductDocument>('Product', ProductSchema);
-  }
-
   async cancel(
     shipmentId: string,
     tenantName: string,
@@ -705,89 +697,6 @@ export class ShipmentsService {
 
     return shipment;
   }
-
-  // async cancelShipmentAndUpdateProducts(
-  //   shipmentId: string,
-  //   tenantId: string,
-  //   userId: string,
-  //   ourOfficeEmail: string,
-  // ): Promise<ShipmentDocument> {
-  //   await new Promise((resolve) => process.nextTick(resolve));
-
-  //   const connection =
-  //     await this.tenantConnectionService.getTenantConnection(tenantId);
-  //   const ShipmentModel = this.getShipmentModel(connection);
-
-  //   const shipment = await ShipmentModel.findById(shipmentId);
-  //   if (!shipment) {
-  //     throw new NotFoundException(`Shipment ${shipmentId} not found`);
-  //   }
-
-  //   const originalShipment = { ...shipment.toObject() };
-
-  //   if (
-  //     shipment.shipment_status !== 'In Preparation' &&
-  //     shipment.shipment_status !== 'On Hold - Missing Data'
-  //   ) {
-  //     console.log(
-  //       '❌ Shipment status invalid for cancellation:',
-  //       shipment.shipment_status,
-  //     );
-  //     throw new BadRequestException(
-  //       `Cannot cancel shipment with status: ${shipment.shipment_status}`,
-  //     );
-  //   }
-
-  //   shipment.shipment_status = 'Cancelled';
-  //   await shipment.save();
-  //   console.log('✅ Shipment cancelled');
-
-  //   if (userId) {
-  //     await recordShipmentHistory(
-  //       this.historyService,
-  //       'cancel',
-  //       userId,
-  //       originalShipment,
-  //       shipment.toObject(),
-  //     );
-  //   } else {
-  //     console.warn(
-  //       '⚠️ userId no definido, se omitirá el registro en el historial',
-  //     );
-  //   }
-
-  //   await this.logisticsService.cancelAllProductsInShipment(
-  //     shipment.products,
-  //     tenantId,
-  //     // userId,
-  //   );
-
-  //   //TODO: Status cancel
-  //   const slackMessage = CreateShipmentMessageToSlack({
-  //     shipment,
-  //     tenantName: tenantId,
-  //     isOffboarding: false,
-  //     status: 'Cancelled',
-  //     ourOfficeEmail: ourOfficeEmail,
-  //   });
-  //   await this.slackService.sendMessage(slackMessage);
-
-  //   if (shipment.originDetails?.assignedEmail) {
-  //     await this.logisticsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
-  //       shipment.originDetails.assignedEmail,
-  //       tenantId,
-  //     );
-  //   }
-
-  //   if (shipment.destinationDetails?.assignedEmail) {
-  //     await this.logisticsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
-  //       shipment.destinationDetails.assignedEmail,
-  //       tenantId,
-  //     );
-  //   }
-
-  //   return shipment;
-  // }
 
   async getShipments(tenantName: string) {
     await new Promise((resolve) => process.nextTick(resolve));
