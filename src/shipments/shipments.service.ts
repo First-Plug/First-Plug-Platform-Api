@@ -998,7 +998,6 @@ export class ShipmentsService {
       const product = await ProductModel.findById(productId);
 
       let newStatus: Status;
-      let embeddedProduct: Product | undefined;
       if (product) {
         product.fp_shipment = false;
 
@@ -1068,31 +1067,33 @@ export class ShipmentsService {
       await this.clearActiveShipmentFlagsIfNoOtherShipments(
         productId.toString(),
         tenantId,
-        product?.assignedEmail || embeddedProduct?.assignedEmail,
+        // product?.assignedEmail || embeddedProduct?.assignedEmail,
       );
     }
 
     //TODO: Status cancel
-    const slackMessage = CreateShipmentMessageToSlack({
-      shipment,
-      tenantName: tenantId,
-      isOffboarding: false,
-      status: 'Cancelled',
-      ourOfficeEmail: ourOfficeEmail,
-    });
-    await this.slackService.sendMessage(slackMessage);
+    if (originalShipment.shipment_status === 'In Preparation') {
+      const slackMessage = CreateShipmentMessageToSlack({
+        shipment,
+        tenantName: tenantId,
+        isOffboarding: false,
+        status: 'Cancelled',
+        ourOfficeEmail: ourOfficeEmail,
+      });
+      await this.slackService.sendMessage(slackMessage);
+    }
 
     if (shipment.originDetails?.assignedEmail) {
       await this.clearMemberActiveShipmentFlagIfNoOtherShipments(
-        shipment.originDetails.assignedEmail,
         tenantId,
+        shipment.originDetails.assignedEmail,
       );
     }
 
     if (shipment.destinationDetails?.assignedEmail) {
       await this.clearMemberActiveShipmentFlagIfNoOtherShipments(
-        shipment.destinationDetails.assignedEmail,
         tenantId,
+        shipment.destinationDetails.assignedEmail,
       );
     }
 
@@ -1195,7 +1196,6 @@ export class ShipmentsService {
   private async clearActiveShipmentFlagsIfNoOtherShipments(
     productId: string,
     tenantName: string,
-    memberEmail?: string,
   ) {
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
@@ -1216,54 +1216,20 @@ export class ShipmentsService {
 
       if (updatedProduct) {
         console.log(
-          `✅ Product ${productId} - activeShipment set to false in Products collection`,
+          `✅ Product ${productId} - activeShipment: false (Product)`,
         );
       } else {
-        const updateRes = await MemberModel.updateOne(
+        const result = await MemberModel.updateOne(
           { 'products._id': new Types.ObjectId(productId) },
           { $set: { 'products.$.activeShipment': false } },
         );
         console.log(
-          `🔁 Product ${productId} - activeShipment set to false in Member`,
-          updateRes,
+          `🔁 Product ${productId} - activeShipment: false (Member)`,
+          result,
         );
       }
-    }
-
-    console.log('📬 memberEmail recibido:', memberEmail);
-
-    if (!memberEmail) {
-      const member = await MemberModel.findOne({
-        'products._id': new Types.ObjectId(productId),
-      });
-      if (member) {
-        memberEmail = member.email;
-      }
-    }
-
-    if (memberEmail) {
-      const member = await MemberModel.findOne({ email: memberEmail });
-
-      if (!member) {
-        console.log(`❌ No se encontró el member con email ${memberEmail}`);
-        return;
-      }
-
-      const fullName = `${member.firstName} ${member.lastName}`;
-
-      const activeShipmentsForMember = await ShipmentModel.countDocuments({
-        shipment_status: { $in: ['In Preparation', 'On The Way'] },
-        $or: [{ origin: fullName }, { destination: fullName }],
-      });
-
-      if (activeShipmentsForMember === 0) {
-        console.log(`✅ Setting activeShipment: false for member ${fullName}`);
-        const result = await MemberModel.updateOne(
-          { email: memberEmail },
-          { activeShipment: false },
-        );
-        console.log('🧾 Member update result:', result);
-      }
+    } else {
+      console.log(`📦 Product ${productId} still involved in active shipments`);
     }
   }
 
@@ -1336,12 +1302,13 @@ export class ShipmentsService {
   }
 
   async clearMemberActiveShipmentFlagIfNoOtherShipments(
-    memberEmail: string,
-    tenantId: string,
+    tenantName: string,
+    memberEmail?: string,
   ) {
     const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantId);
+      await this.tenantConnectionService.getTenantConnection(tenantName);
     const ShipmentModel = connection.model('Shipment');
+
     if (typeof memberEmail !== 'string') {
       console.warn(
         `❌ Email inválido recibido en clearMemberActiveShipmentFlagIfNoOtherShipments:`,
@@ -1356,8 +1323,6 @@ export class ShipmentsService {
         $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
       },
       $or: [
-        { origin: normalizedEmail },
-        { destination: normalizedEmail },
         { 'originDetails.assignedEmail': normalizedEmail },
         { 'destinationDetails.assignedEmail': normalizedEmail },
       ],
