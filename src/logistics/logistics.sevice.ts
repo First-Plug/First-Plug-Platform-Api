@@ -27,6 +27,7 @@ import { ProductsService } from 'src/products/products.service';
 import { Status } from 'src/products/interfaces/product.interface';
 import { AddressData } from 'src/infra/event-bus/tenant-address-update.event';
 import { MembersService } from 'src/members/members.service';
+import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
 
 @Injectable()
 export class LogisticsService {
@@ -1360,5 +1361,67 @@ export class LogisticsService {
     }
 
     return products;
+  }
+
+  async cancelShipmentWithConsequences(
+    shipmentId: string,
+    tenantName: string,
+    userId: string,
+    ourOfficeEmail: string,
+  ): Promise<ShipmentDocument> {
+    console.log('🚨 [CANCEL SHIPMENT] Start for', shipmentId);
+
+    await new Promise((resolve) => process.nextTick(resolve));
+
+    const shipment = await this.shipmentsService.cancel(shipmentId, tenantName);
+    const originalShipment = { ...shipment.toObject() };
+
+    if (userId) {
+      await recordShipmentHistory(
+        this.historyService,
+        'cancel',
+        userId,
+        originalShipment,
+        shipment.toObject(),
+      );
+    } else {
+      console.warn(
+        '⚠️ userId no definido, se omitirá el registro en el historial',
+      );
+    }
+
+    await this.cancelAllProductsInShipment(
+      shipment.products,
+      tenantName,
+      // userId (si lo usás internamente)
+    );
+
+    const slackMessage = CreateShipmentMessageToSlack({
+      shipment,
+      tenantName,
+      isOffboarding: false,
+      status: 'Cancelled',
+      ourOfficeEmail,
+    });
+    await this.slackService.sendMessage(slackMessage);
+
+    const originEmail = shipment.originDetails?.assignedEmail;
+    const destinationEmail = shipment.destinationDetails?.assignedEmail;
+
+    if (originEmail) {
+      await this.clearMemberActiveShipmentFlagIfNoOtherShipments(
+        originEmail,
+        tenantName,
+      );
+    }
+
+    if (destinationEmail) {
+      await this.clearMemberActiveShipmentFlagIfNoOtherShipments(
+        destinationEmail,
+        tenantName,
+      );
+    }
+
+    return shipment;
   }
 }
