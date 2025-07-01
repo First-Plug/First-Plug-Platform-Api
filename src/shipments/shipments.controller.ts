@@ -102,7 +102,7 @@ export class ShipmentsController {
     const tenantId = req.user.tenantName;
     const isActiveOnly = activeOnly.toLowerCase() === 'true';
 
-    const shipments = await this.shipmentsService.getShipmentsByMemberEmail(
+    const shipments = await this.logisticsService.getShipmentsByMemberEmail(
       email,
       tenantId,
       isActiveOnly,

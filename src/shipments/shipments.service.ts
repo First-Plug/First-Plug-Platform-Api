@@ -11,9 +11,9 @@ import { ShipmentDocument, ShipmentSchema } from './schema/shipment.schema';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { MembersService } from 'src/members/members.service';
 import { TenantsService } from 'src/tenants/tenants.service';
-import { ProductsService } from 'src/products/products.service';
+// import { ProductsService } from 'src/products/products.service';
 import { countryCodes } from 'src/shipments/helpers/countryCodes';
-import { GlobalConnectionProvider } from 'src/infra/db/global-connection.provider';
+// import { GlobalConnectionProvider } from 'src/infra/db/global-connection.provider';
 import {
   ProductDocument,
   ProductSchema,
@@ -36,13 +36,12 @@ import { LogisticsService } from 'src/logistics/logistics.sevice';
 export class ShipmentsService {
   private readonly logger = new Logger(ShipmentsService.name);
   constructor(
-    private readonly globalConnectionProvider: GlobalConnectionProvider,
     private readonly tenantConnectionService: TenantConnectionService,
     @Inject(forwardRef(() => MembersService))
     private readonly membersService: MembersService,
     private readonly tenantsService: TenantsService,
-    @Inject(forwardRef(() => ProductsService))
-    private readonly productsService: ProductsService,
+    // @Inject(forwardRef(() => ProductsService))
+    // private readonly productsService: ProductsService,
     @Inject('SHIPMENT_METADATA_MODEL')
     private readonly shipmentMetadataRepository: Model<ShipmentMetadata>,
     private readonly historyService: HistoryService,
@@ -1409,73 +1408,6 @@ export class ShipmentsService {
     }).sort({ createdAt: -1 });
 
     return shipment;
-  }
-
-  async getShipmentsByMember(memberEmail: string, tenantName: string) {
-    const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const ShipmentModel = this.getShipmentModel(connection);
-
-    const member =
-      await this.membersService.findByEmailNotThrowError(memberEmail);
-    if (!member) return [];
-
-    const fullName = `${member.firstName} ${member.lastName}`;
-
-    return ShipmentModel.find({
-      shipment_status: {
-        $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
-      },
-      $or: [{ origin: fullName }, { destination: fullName }],
-    });
-  }
-
-  async getShipmentsByMemberEmail(
-    memberEmail: string,
-    tenantName: string,
-    activeOnly: boolean = true,
-  ): Promise<ShipmentDocument[]> {
-    await new Promise((resolve) => process.nextTick(resolve));
-    const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const ShipmentModel = this.getShipmentModel(connection);
-
-    // Intentamos encontrar al miembro para obtener su nombre completo
-    const member =
-      await this.membersService.findByEmailNotThrowError(memberEmail);
-    let fullName = '';
-
-    if (member) {
-      fullName = `${member.firstName} ${member.lastName}`;
-    }
-
-    // Construimos la consulta
-    const query: any = {
-      $or: [
-        { 'originDetails.assignedEmail': memberEmail },
-        { 'destinationDetails.assignedEmail': memberEmail },
-      ],
-      isDeleted: { $ne: true },
-    };
-
-    // Si encontramos al miembro, también buscamos por su nombre completo
-    if (fullName) {
-      query.$or.push({ origin: fullName });
-      query.$or.push({ destination: fullName });
-    }
-
-    if (activeOnly) {
-      query.shipment_status = {
-        $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
-      };
-    }
-
-    console.log(
-      'Buscando shipments con query:',
-      JSON.stringify(query, null, 2),
-    );
-
-    return ShipmentModel.find(query).sort({ createdAt: -1 });
   }
 }
 

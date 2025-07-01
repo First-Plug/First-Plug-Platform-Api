@@ -1428,4 +1428,81 @@ export class LogisticsService {
 
     return shipment;
   }
+
+  async getShipmentsByMember(
+    memberEmail: string,
+    tenantName: string,
+  ): Promise<ShipmentDocument[]> {
+    const ShipmentModel = await this.tenantModels.getShipmentModel(tenantName);
+    const MemberModel = await this.tenantModels.getMemberModel(tenantName);
+
+    const member = await MemberModel.findOne({
+      email: memberEmail,
+      isDeleted: { $ne: true },
+    });
+
+    if (!member) return [];
+
+    const fullName = `${member.firstName} ${member.lastName}`;
+
+    const query = {
+      shipment_status: {
+        $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
+      },
+      $or: [{ origin: fullName }, { destination: fullName }],
+    };
+
+    return ShipmentModel.find(query);
+  }
+
+  async getShipmentsByMemberEmail(
+    memberEmail: string,
+    tenantName: string,
+    activeOnly: boolean = true,
+  ): Promise<ShipmentDocument[]> {
+    await new Promise((resolve) => process.nextTick(resolve));
+
+    const ShipmentModel = await this.tenantModels.getShipmentModel(tenantName);
+    const MemberModel = await this.tenantModels.getMemberModel(tenantName);
+
+    // Intentamos encontrar al miembro para obtener su nombre completo
+    let fullName = '';
+    try {
+      const member = await MemberModel.findOne({
+        email: memberEmail,
+        isDeleted: { $ne: true },
+      });
+      if (member) {
+        fullName = `${member.firstName} ${member.lastName}`;
+      }
+    } catch (e) {
+      console.warn(`No se pudo encontrar al miembro con email: ${memberEmail}`);
+    }
+
+    const query: any = {
+      $or: [
+        { 'originDetails.assignedEmail': memberEmail },
+        { 'destinationDetails.assignedEmail': memberEmail },
+      ],
+      isDeleted: { $ne: true },
+    };
+
+    if (fullName) {
+      query.$or.push({ origin: fullName });
+      query.$or.push({ destination: fullName });
+    }
+
+    if (activeOnly) {
+      query.shipment_status = {
+        $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
+      };
+    }
+
+    console.log(
+      '🧭 [Logistics] Buscando shipments por email con query:',
+      JSON.stringify(query, null, 2),
+    );
+
+    return ShipmentModel.find(query).sort({ createdAt: -1 });
+  }
 }
