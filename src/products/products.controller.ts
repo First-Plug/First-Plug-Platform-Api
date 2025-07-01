@@ -123,6 +123,7 @@ export class ProductsController {
     console.log(
       `🔁 Reassign PATCH - Product ID: ${id} | Tenant: ${tenantName} | User: ${userId}`,
     );
+    console.log('📦 updateProductDto recibido:', updateProductDto);
 
     return this.productsService.reassignProduct(
       id,
@@ -155,6 +156,8 @@ export class ProductsController {
     console.log(
       `PATCH - Product ID: ${id} | Tenant: ${tenantName} | User: ${userId}`,
     );
+    console.log('📦 updateProductDto recibido:', updateProductDto);
+
     return this.productsService.update(
       id,
       updateProductDto,

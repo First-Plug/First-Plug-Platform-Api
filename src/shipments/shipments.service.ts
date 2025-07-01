@@ -2121,8 +2121,8 @@ export class ShipmentsService {
 
       const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
 
-      const hasCodesForOrderId =
-        originCode !== 'XX' && destinationCode !== 'XX';
+      // const hasCodesForOrderId =
+      //   originCode !== 'XX' && destinationCode !== 'XX';
 
       const originComplete = this.areShipmentDetailsComplete(
         shipment.originDetails,
@@ -2136,7 +2136,7 @@ export class ShipmentsService {
       const isNowComplete = originComplete && destinationComplete;
       const wasInPreparation = shipment.shipment_status === 'In Preparation';
 
-      if (newOrderId !== shipment.order_id && hasCodesForOrderId) {
+      if (newOrderId !== shipment.order_id) {
         await ShipmentModel.updateOne(
           { _id: shipment._id },
           { $set: { order_id: newOrderId } },

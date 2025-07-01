@@ -14,7 +14,7 @@ import {
   CONDITION,
 } from '../interfaces/product.interface';
 
-const CURRENCY_CODES = [
+export const CURRENCY_CODES = [
   'USD',
   'ARS',
   'BOB',
@@ -34,6 +34,8 @@ const CURRENCY_CODES = [
   'UYU',
   'VES',
 ] as const;
+
+export type CurrencyCode = (typeof CURRENCY_CODES)[number];
 
 export const ProductSchemaZod = z
   .object({
