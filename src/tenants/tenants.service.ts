@@ -9,9 +9,9 @@ import { IncomingWebhook } from '@slack/webhook';
 import { UpdateTenantInformationSchemaDto } from './dto/update-information.dto';
 import { UserJWT } from 'src/auth/interfaces/auth.interface';
 import { UpdateDashboardSchemaDto } from './dto/update-dashboard.dto';
-import { TenantAddressUpdatedEvent } from 'src/common/events/tenant-address-update.event';
+import { TenantAddressUpdatedEvent } from 'src/infra/event-bus/tenant-address-update.event';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EventTypes } from 'src/common/events/types';
+import { EventTypes } from 'src/infra/event-bus/types';
 
 @Injectable()
 export class TenantsService {
@@ -272,9 +272,7 @@ export class TenantsService {
     const user = await this.findByEmail(createTenantDto.email);
 
     if (user) {
-      throw new BadRequestException(
-        'The credentials are not valid, please try again.',
-      );
+      throw new BadRequestException('Email Already in Use');
     }
 
     const userCreated = await this.tenantRepository.create(createTenantDto);

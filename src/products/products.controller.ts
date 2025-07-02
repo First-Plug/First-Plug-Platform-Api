@@ -10,6 +10,7 @@ import {
   Res,
   UseGuards,
   Request,
+  // NotFoundException,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -19,11 +20,17 @@ import { Response } from 'express';
 import { ObjectId } from 'mongoose';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { CreateProductArrayDto } from './dto/create-product-array.dto';
+import { AssignmentsService } from 'src/assignments/assignments.service';
+import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 
 @Controller('products')
 @UseGuards(JwtGuard)
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    private readonly productsService: ProductsService,
+    private readonly assignmentsService: AssignmentsService,
+    private readonly tenantModelRegistry: TenantModelRegistry,
+  ) {}
 
   @Post()
   create(@Body() createProductDto: CreateProductDto, @Request() req: any) {
@@ -57,33 +64,50 @@ export class ProductsController {
     }
   }
 
-  @Get('/migrate-price')
-  async migratePriceForAllTenant() {
-    return await this.productsService.migratePriceForAllTenant();
-  }
+  // @Get('/migrate-price')
+  // async migratePriceForAllTenant() {
+  //   return await this.productsService.migratePriceForAllTenant();
+  // }
 
-  @Get('migrate-price/:tenantName')
-  async migratePriceForTenant(@Param('tenantName') tenantName: string) {
-    return await this.productsService.migratePriceForTenant(tenantName);
-  }
+  // @Get('migrate-price/:tenantName')
+  // async migratePriceForTenant(@Param('tenantName') tenantName: string) {
+  //   return await this.productsService.migratePriceForTenant(tenantName);
+  // }
+
   @Get('/table')
-  getProductsTable() {
-    return this.productsService.tableGrouping();
+  getProductsTable(@Request() req: any) {
+    const tenantName = req.user.tenantName;
+    console.log('get Products caller wth tenantName:', tenantName);
+    return this.productsService.tableGrouping(tenantName);
   }
 
   @Get('/assign/:id')
-  getProductForAssign(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.productsService.getProductForAssign(id);
+  getProductForAssign(
+    @Param('id', ParseMongoIdPipe) id: ObjectId,
+    tenantName: string,
+  ) {
+    console.log(`📦 Assign - Product ID: ${id} | Tenant: ${tenantName}`);
+    return this.assignmentsService.getProductForAssign(id, tenantName);
   }
 
   @Get('/reassign/:id')
-  getProductForReassign(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.productsService.getProductForReassign(id);
+  async getProductForReassign(
+    @Param('id', ParseMongoIdPipe) id: ObjectId,
+    @Request() req: any,
+  ) {
+    const tenantName = req.user.tenantName;
+    const connection = await this.tenantModelRegistry.getConnection(tenantName);
+    console.log(`📦 Reassign GET - Product ID: ${id} | Tenant: ${tenantName}`);
+    return this.assignmentsService.getProductForReassign(
+      id,
+      tenantName,
+      connection,
+    );
   }
 
   @Get('/export-csv')
-  async exportProductsCsv(@Res() res: Response) {
-    await this.productsService.exportProductsCsv(res);
+  async exportProductsCsv(@Res() res: Response, @Request() req: any) {
+    await this.productsService.exportProductsCsv(res, req.user.tenantName);
   }
 
   @Patch('/reassign/:id')
@@ -95,6 +119,12 @@ export class ProductsController {
     const tenantName = req.user.tenantName;
     const { userId } = req;
     const ourOfficeEmail = req.user.email;
+
+    console.log(
+      `🔁 Reassign PATCH - Product ID: ${id} | Tenant: ${tenantName} | User: ${userId}`,
+    );
+    console.log('📦 updateProductDto recibido:', updateProductDto);
+
     return this.productsService.reassignProduct(
       id,
       updateProductDto,
@@ -105,8 +135,13 @@ export class ProductsController {
   }
 
   @Get(':id')
-  findById(@Param('id', ParseMongoIdPipe) id: ObjectId) {
-    return this.productsService.findById(id);
+  async getById(
+    @Param('id', ParseMongoIdPipe) id: ObjectId,
+    @Request() req: any,
+  ) {
+    const tenantName = req.user.tenantName;
+    const product = await this.productsService.findById(id, tenantName);
+    return product;
   }
 
   @Patch(':id')
@@ -118,6 +153,11 @@ export class ProductsController {
     const tenantName = req.user.tenantName;
     const { userId } = req;
     const ourOfficeEmail = req.user.email;
+    console.log(
+      `PATCH - Product ID: ${id} | Tenant: ${tenantName} | User: ${userId}`,
+    );
+    console.log('📦 updateProductDto recibido:', updateProductDto);
+
     return this.productsService.update(
       id,
       updateProductDto,

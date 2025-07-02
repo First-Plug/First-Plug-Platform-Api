@@ -18,12 +18,12 @@ import {
   ShipmentDocument,
   ShipmentSchema,
 } from './schema/shipment.schema';
-import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
+import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { MembersService } from 'src/members/members.service';
 import { TenantsService } from 'src/tenants/tenants.service';
 import { ProductsService } from 'src/products/products.service';
 import { countryCodes } from 'src/shipments/helpers/countryCodes';
-import { GlobalConnectionProvider } from 'src/common/providers/global-connection.provider';
+import { GlobalConnectionProvider } from 'src/infra/db/global-connection.provider';
 import {
   Product,
   ProductDocument,
@@ -39,7 +39,7 @@ import {
   ShipmentMetadataSchema,
 } from 'src/shipments/schema/shipment-metadata.schema';
 import { OrderNumberGenerator } from 'src/shipments/helpers/order-number.util';
-import { AddressData } from 'src/common/events/tenant-address-update.event';
+import { AddressData } from 'src/infra/event-bus/tenant-address-update.event';
 import { UpdateShipmentDto } from 'src/shipments/dto/update.shipment.dto';
 import { HistoryService } from 'src/history/history.service';
 import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
@@ -354,10 +354,57 @@ export class ShipmentsService {
     };
   }
 
+  // por el momento lo pongo aca, pero despues solo en assignments
+
+  public async isAddressComplete(
+    product: Partial<Product>,
+    tenantName: string,
+  ): Promise<boolean> {
+    if (product.location === 'FP warehouse') {
+      return true;
+    }
+
+    if (product.location === 'Employee') {
+      const member = await this.membersService.findByEmailNotThrowError(
+        product.assignedEmail!,
+      );
+      if (!member) return false;
+
+      return !!(
+        member.country &&
+        member.city &&
+        member.zipCode &&
+        member.address &&
+        // member.apartment &&
+        member.personalEmail &&
+        member.phone &&
+        member.dni
+      );
+    }
+
+    if (product.location === 'Our office') {
+      const tenant = await this.tenantsService.getByTenantName(tenantName);
+
+      if (!tenant) return false;
+
+      return !!(
+        tenant.country &&
+        tenant.city &&
+        tenant.state &&
+        tenant.zipCode &&
+        tenant.address &&
+        // tenant.apartment &&
+        tenant.phone
+      );
+    }
+
+    return false;
+  }
+
   async findOrCreateShipment(
     productId: string,
     actionType: string,
-    tenantId: string,
+    tenantName: string,
     userId: string,
     session?: ClientSession | null,
     desirableDestinationDate?: string | Date,
@@ -377,6 +424,10 @@ export class ShipmentsService {
     isConsolidated: boolean;
     oldSnapshot?: Partial<ShipmentDocument>;
   }> {
+    console.log('findorcreateshipment called with userId:', userId);
+    if (!userId) {
+      throw new Error('❌ User ID is required');
+    }
     const originDate =
       desirableOriginDate instanceof Date
         ? desirableOriginDate.toISOString()
@@ -389,6 +440,7 @@ export class ShipmentsService {
 
     const found = await this.productsService.findProductById(
       new Types.ObjectId(productId) as unknown as Schema.Types.ObjectId,
+      tenantName,
     );
     if (!found?.product) {
       throw new NotFoundException(`Product ${productId} not found.`);
@@ -409,7 +461,7 @@ export class ShipmentsService {
       destinationLocation,
     } = await this.getProductLocationDataFromSnapshots(
       productId,
-      tenantId,
+      tenantName,
       actionType,
       oldData,
       newData,
@@ -421,7 +473,7 @@ export class ShipmentsService {
       ? undefined
       : await this.getLocationInfo(
           originLocation,
-          tenantId,
+          tenantName,
           oldData?.assignedEmail || '',
           oldData?.assignedMember || '',
           originDate,
@@ -429,14 +481,14 @@ export class ShipmentsService {
 
     const destinationDetails = await this.getLocationInfo(
       destinationLocation,
-      tenantId,
+      tenantName,
       newData?.assignedEmail || '',
       newData?.assignedMember || '',
       destinationDate,
     ).then((res) => res.details);
 
     const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantId);
+      await this.tenantConnectionService.getTenantConnection(tenantName);
     const ShipmentModel = this.getShipmentModel(connection);
 
     const existingShipment = await ShipmentModel.findOne({
@@ -475,18 +527,18 @@ export class ShipmentsService {
       return { shipment: existingShipment, isConsolidated: true };
     }
 
-    const destinationComplete = await this.productsService.isAddressComplete(
+    const destinationComplete = await this.isAddressComplete(
       { ...product, location: destinationLocation, assignedEmail },
-      tenantId,
+      tenantName,
     );
 
-    const originComplete = await this.productsService.isAddressComplete(
+    const originComplete = await this.isAddressComplete(
       {
         ...product,
         location: originLocation,
         assignedEmail: oldData?.assignedEmail || '',
       },
-      tenantId,
+      tenantName,
     );
 
     const shipmentStatus =
@@ -507,7 +559,7 @@ export class ShipmentsService {
 
     const newShipment = await ShipmentModel.create({
       order_id,
-      tenant: tenantId,
+      tenant: tenantName,
       quantity_products: 1,
       shipment_status: shipmentStatus,
       shipment_type: 'TBC',
@@ -531,7 +583,7 @@ export class ShipmentsService {
     ) {
       await this.markActiveShipmentTargets(
         productId,
-        tenantId,
+        tenantName,
         origin,
         destination,
         originEmail,
@@ -702,15 +754,17 @@ export class ShipmentsService {
         'shipment-merge',
       );
       // Enviar mensaje a Slack para Consolidated
-      const slackMessage = CreateShipmentMessageToSlack({
-        shipment: consolidable,
-        tenantName,
-        isOffboarding: false,
-        status: 'Consolidated',
-        ourOfficeEmail: ourOfficeEmail,
-        deletedShipmentOrderId: shipment.order_id,
-      });
-      await this.slackService.sendMessage(slackMessage);
+      if (consolidable.shipment_status === 'In Preparation') {
+        const slackMessage = CreateShipmentMessageToSlack({
+          shipment: consolidable,
+          tenantName,
+          isOffboarding: false,
+          status: 'Consolidated',
+          ourOfficeEmail: ourOfficeEmail,
+          deletedShipmentOrderId: shipment.order_id,
+        });
+        await this.slackService.sendMessage(slackMessage);
+      }
 
       await recordShipmentHistory(
         this.historyService,
@@ -944,7 +998,6 @@ export class ShipmentsService {
       const product = await ProductModel.findById(productId);
 
       let newStatus: Status;
-      let embeddedProduct: Product | undefined;
       if (product) {
         product.fp_shipment = false;
 
@@ -1014,31 +1067,33 @@ export class ShipmentsService {
       await this.clearActiveShipmentFlagsIfNoOtherShipments(
         productId.toString(),
         tenantId,
-        product?.assignedEmail || embeddedProduct?.assignedEmail,
+        // product?.assignedEmail || embeddedProduct?.assignedEmail,
       );
     }
 
     //TODO: Status cancel
-    const slackMessage = CreateShipmentMessageToSlack({
-      shipment,
-      tenantName: tenantId,
-      isOffboarding: false,
-      status: 'Cancelled',
-      ourOfficeEmail: ourOfficeEmail,
-    });
-    await this.slackService.sendMessage(slackMessage);
+    if (originalShipment.shipment_status === 'In Preparation') {
+      const slackMessage = CreateShipmentMessageToSlack({
+        shipment,
+        tenantName: tenantId,
+        isOffboarding: false,
+        status: 'Cancelled',
+        ourOfficeEmail: ourOfficeEmail,
+      });
+      await this.slackService.sendMessage(slackMessage);
+    }
 
     if (shipment.originDetails?.assignedEmail) {
       await this.clearMemberActiveShipmentFlagIfNoOtherShipments(
-        shipment.originDetails.assignedEmail,
         tenantId,
+        shipment.originDetails.assignedEmail,
       );
     }
 
     if (shipment.destinationDetails?.assignedEmail) {
       await this.clearMemberActiveShipmentFlagIfNoOtherShipments(
-        shipment.destinationDetails.assignedEmail,
         tenantId,
+        shipment.destinationDetails.assignedEmail,
       );
     }
 
@@ -1141,7 +1196,6 @@ export class ShipmentsService {
   private async clearActiveShipmentFlagsIfNoOtherShipments(
     productId: string,
     tenantName: string,
-    memberEmail?: string,
   ) {
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
@@ -1162,54 +1216,20 @@ export class ShipmentsService {
 
       if (updatedProduct) {
         console.log(
-          `✅ Product ${productId} - activeShipment set to false in Products collection`,
+          `✅ Product ${productId} - activeShipment: false (Product)`,
         );
       } else {
-        const updateRes = await MemberModel.updateOne(
+        const result = await MemberModel.updateOne(
           { 'products._id': new Types.ObjectId(productId) },
           { $set: { 'products.$.activeShipment': false } },
         );
         console.log(
-          `🔁 Product ${productId} - activeShipment set to false in Member`,
-          updateRes,
+          `🔁 Product ${productId} - activeShipment: false (Member)`,
+          result,
         );
       }
-    }
-
-    console.log('📬 memberEmail recibido:', memberEmail);
-
-    if (!memberEmail) {
-      const member = await MemberModel.findOne({
-        'products._id': new Types.ObjectId(productId),
-      });
-      if (member) {
-        memberEmail = member.email;
-      }
-    }
-
-    if (memberEmail) {
-      const member = await MemberModel.findOne({ email: memberEmail });
-
-      if (!member) {
-        console.log(`❌ No se encontró el member con email ${memberEmail}`);
-        return;
-      }
-
-      const fullName = `${member.firstName} ${member.lastName}`;
-
-      const activeShipmentsForMember = await ShipmentModel.countDocuments({
-        shipment_status: { $in: ['In Preparation', 'On The Way'] },
-        $or: [{ origin: fullName }, { destination: fullName }],
-      });
-
-      if (activeShipmentsForMember === 0) {
-        console.log(`✅ Setting activeShipment: false for member ${fullName}`);
-        const result = await MemberModel.updateOne(
-          { email: memberEmail },
-          { activeShipment: false },
-        );
-        console.log('🧾 Member update result:', result);
-      }
+    } else {
+      console.log(`📦 Product ${productId} still involved in active shipments`);
     }
   }
 
@@ -1282,12 +1302,13 @@ export class ShipmentsService {
   }
 
   async clearMemberActiveShipmentFlagIfNoOtherShipments(
-    memberEmail: string,
-    tenantId: string,
+    tenantName: string,
+    memberEmail?: string,
   ) {
     const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantId);
+      await this.tenantConnectionService.getTenantConnection(tenantName);
     const ShipmentModel = connection.model('Shipment');
+
     if (typeof memberEmail !== 'string') {
       console.warn(
         `❌ Email inválido recibido en clearMemberActiveShipmentFlagIfNoOtherShipments:`,
@@ -1302,8 +1323,6 @@ export class ShipmentsService {
         $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
       },
       $or: [
-        { origin: normalizedEmail },
-        { destination: normalizedEmail },
         { 'originDetails.assignedEmail': normalizedEmail },
         { 'destinationDetails.assignedEmail': normalizedEmail },
       ],
@@ -2102,8 +2121,8 @@ export class ShipmentsService {
 
       const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
 
-      const hasCodesForOrderId =
-        originCode !== 'XX' && destinationCode !== 'XX';
+      // const hasCodesForOrderId =
+      //   originCode !== 'XX' && destinationCode !== 'XX';
 
       const originComplete = this.areShipmentDetailsComplete(
         shipment.originDetails,
@@ -2117,7 +2136,7 @@ export class ShipmentsService {
       const isNowComplete = originComplete && destinationComplete;
       const wasInPreparation = shipment.shipment_status === 'In Preparation';
 
-      if (newOrderId !== shipment.order_id && hasCodesForOrderId) {
+      if (newOrderId !== shipment.order_id) {
         await ShipmentModel.updateOne(
           { _id: shipment._id },
           { $set: { order_id: newOrderId } },

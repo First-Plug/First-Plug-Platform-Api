@@ -1,5 +1,20 @@
 import { z } from 'zod';
 
+export type HistoryActionType =
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'bulk-delete'
+  | 'bulk-create'
+  | 'offboarding'
+  | 'return'
+  | 'relocate'
+  | 'assign'
+  | 'reassign'
+  | 'unassign'
+  | 'cancel'
+  | 'consolidate';
+
 export const CreateHistorySchema = z.object({
   actionType: z.enum([
     'create',

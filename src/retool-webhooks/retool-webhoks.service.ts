@@ -4,8 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import mongoose from 'mongoose';
-import { EventsGateway } from 'src/common/events/events.gateway';
-import { TenantConnectionService } from 'src/common/providers/tenant-connection.service';
+import { EventsGateway } from 'src/infra/event-bus/events.gateway';
+import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { MemberSchema } from 'src/members/schemas/member.schema';
 import { ProductSchema } from 'src/products/schemas/product.schema';
 import { SHIPMENT_STATUS } from 'src/shipments/interface/shipment.interface';

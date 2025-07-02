@@ -1,9 +1,9 @@
 import { forwardRef, MiddlewareConsumer, Module } from '@nestjs/common';
 import { ShipmentsService } from './shipments.service';
 import { ShipmentsController } from './shipments.controller';
-import { tenantConnectionProvider } from 'src/common/providers/tenant-connection.provider';
+import { tenantConnectionProvider } from 'src/infra/db/tenant-connection.provider';
 import { TenantsModule } from '../tenants/tenants.module';
-import { tenantModels } from '../common/providers/tenant-models-provider';
+import { tenantModels } from '../infra/db/tenant-models-provider';
 import { Shipment, ShipmentSchema } from './schema/shipment.schema';
 import { JwtService } from '@nestjs/jwt';
 import { MembersModule } from 'src/members/members.module';

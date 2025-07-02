@@ -1,6 +1,6 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { GlobalConnectionProvider } from './providers/global-connection.provider';
+import { GlobalConnectionProvider } from '../infra/db/global-connection.provider';
 
 @Global()
 @Module({

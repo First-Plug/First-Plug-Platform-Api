@@ -1,7 +1,7 @@
 import { MiddlewareConsumer, Module, forwardRef } from '@nestjs/common';
 import { TeamsService } from './teams.service';
 import { TeamsController } from './teams.controller';
-import { tenantModels } from '../common/providers/tenant-models-provider';
+import { tenantModels } from '../infra/db/tenant-models-provider';
 import { TenantsModule } from 'src/tenants/tenants.module';
 import { TenantsMiddleware } from 'src/common/middlewares/tenants.middleware';
 import { JwtService } from '@nestjs/jwt';

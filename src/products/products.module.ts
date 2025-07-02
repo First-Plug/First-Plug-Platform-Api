@@ -1,23 +1,25 @@
 import { MiddlewareConsumer, Module, forwardRef } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { ProductsController } from './products.controller';
-import { tenantModels } from '../common/providers/tenant-models-provider';
+import { tenantModels } from '../infra/db/tenant-models-provider';
 import { TenantsMiddleware } from '../common/middlewares/tenants.middleware';
 import { TenantsModule } from '../tenants/tenants.module';
 import { JwtService } from '@nestjs/jwt';
-import { MembersModule } from 'src/members/members.module';
 import { HistoryModule } from 'src/history/history.module';
 import { ShipmentsModule } from '../shipments/shipments.module';
 import { SlackModule } from 'src/slack/slack.module';
+import { AssignmentsModule } from 'src/assignments/assignments.module';
+import { TenantDbModule } from 'src/infra/db/tenant-db.module';
 
 @Module({
   imports: [
     TenantsModule,
-    MembersModule,
-    forwardRef(() => MembersModule),
+    TenantDbModule,
+    forwardRef(() => AssignmentsModule),
     forwardRef(() => ShipmentsModule),
     HistoryModule,
     SlackModule,
+    TenantDbModule,
   ],
   controllers: [ProductsController],
   providers: [ProductsService, tenantModels.productModel, JwtService],

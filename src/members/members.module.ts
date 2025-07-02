@@ -3,21 +3,20 @@ import { MembersService } from './members.service';
 import { MembersController } from './members.controller';
 import { TenantsModule } from '../tenants/tenants.module';
 import { TenantsMiddleware } from '../common/middlewares/tenants.middleware';
-import { tenantModels } from '../common/providers/tenant-models-provider';
+import { tenantModels } from '../infra/db/tenant-models-provider';
 import { JwtService } from '@nestjs/jwt';
 import { TeamsModule } from 'src/teams/teams.module';
-import { ProductsModule } from 'src/products/products.module';
 import { TeamsService } from 'src/teams/teams.service';
-import { ProductsService } from 'src/products/products.service';
 import { HistoryModule } from 'src/history/history.module';
 import { ShipmentsModule } from 'src/shipments/shipments.module';
 import { SlackModule } from 'src/slack/slack.module';
+import { AssignmentsModule } from 'src/assignments/assignments.module';
 
 @Module({
   imports: [
     TenantsModule,
+    forwardRef(() => AssignmentsModule),
     forwardRef(() => TeamsModule),
-    forwardRef(() => ProductsModule),
     forwardRef(() => ShipmentsModule),
     HistoryModule,
     SlackModule,
@@ -25,7 +24,6 @@ import { SlackModule } from 'src/slack/slack.module';
   controllers: [MembersController],
   providers: [
     MembersService,
-    ProductsService,
     tenantModels.memberModel,
     JwtService,
     TeamsService,
