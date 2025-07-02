@@ -83,7 +83,10 @@ export class RetoolWebhooksService {
       );
     }
 
-    if (shipment.shipment_status === 'Received') {
+    if (
+      shipment.shipment_status === 'Received' ||
+      shipment.shipment_status === 'On The Way'
+    ) {
       this.eventsGateway.notifyTenant(tenantName, 'data-changed', shipment);
     }
 
