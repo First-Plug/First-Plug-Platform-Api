@@ -1307,7 +1307,11 @@ export class ShipmentsService {
   ) {
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
-    const ShipmentModel = connection.model('Shipment');
+    const ShipmentModel = connection.model<ShipmentDocument>(
+      'Shipment',
+      ShipmentSchema,
+      'shipments',
+    );
 
     if (typeof memberEmail !== 'string') {
       console.warn(
