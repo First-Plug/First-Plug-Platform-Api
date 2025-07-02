@@ -553,15 +553,17 @@ export class ShipmentsService {
         'shipment-merge',
       );
       // Enviar mensaje a Slack para Consolidated
-      const slackMessage = CreateShipmentMessageToSlack({
-        shipment: consolidable,
-        tenantName,
-        isOffboarding: false,
-        status: 'Consolidated',
-        ourOfficeEmail: ourOfficeEmail,
-        deletedShipmentOrderId: shipment.order_id,
-      });
-      await this.slackService.sendMessage(slackMessage);
+      if (consolidable.shipment_status === 'In Preparation') {
+        const slackMessage = CreateShipmentMessageToSlack({
+          shipment: consolidable,
+          tenantName,
+          isOffboarding: false,
+          status: 'Consolidated',
+          ourOfficeEmail: ourOfficeEmail,
+          deletedShipmentOrderId: shipment.order_id,
+        });
+        await this.slackService.sendMessage(slackMessage);
+      }
 
       await recordShipmentHistory(
         this.historyService,
