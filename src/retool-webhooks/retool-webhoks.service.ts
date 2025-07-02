@@ -77,10 +77,10 @@ export class RetoolWebhooksService {
           shipment.origin,
         );
       }
-      await this.shipmentsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
-        shipment.products.map((p) => p.toString()),
-        tenantName,
-      );
+      // await this.shipmentsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
+      //   shipment.products.map((p) => p.toString()),
+      //   tenantName,
+      // );
     }
 
     if (
@@ -94,12 +94,12 @@ export class RetoolWebhooksService {
 
     if (shipment.shipment_status === 'Received') {
       await this.shipmentsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
-        shipment.originDetails?.assignedEmail,
         tenantName,
+        shipment.originDetails?.assignedEmail,
       );
       await this.shipmentsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
-        shipment.destinationDetails?.assignedEmail,
         tenantName,
+        shipment.destinationDetails?.assignedEmail,
       );
     }
 
