@@ -85,10 +85,10 @@ export class RetoolWebhooksService {
           shipment.origin,
         );
       }
-      await this.logisticsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
-        shipment.products.map((p) => p.toString()),
-        tenantName,
-      );
+      // await this.logisticsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
+      //   product.lastAssigned,
+      //   tenantName,
+      // );
     }
 
     if (shipment.shipment_status === 'Received') {
