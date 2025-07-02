@@ -1465,7 +1465,6 @@ export class LogisticsService {
     const ShipmentModel = await this.tenantModels.getShipmentModel(tenantName);
     const MemberModel = await this.tenantModels.getMemberModel(tenantName);
 
-    // Intentamos encontrar al miembro para obtener su nombre completo
     let fullName = '';
     try {
       const member = await MemberModel.findOne({

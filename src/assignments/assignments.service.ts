@@ -33,6 +33,10 @@ import { BulkReassignDto } from 'src/assignments/dto/bulk-reassign.dto';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { LogisticsService } from 'src/logistics/logistics.sevice';
 import { ensureObjectId } from './utils/ensureObjectId';
+import {
+  CurrencyCode,
+  CURRENCY_CODES,
+} from 'src/products/validations/create-product.zod';
 
 @Injectable()
 export class AssignmentsService {
@@ -534,6 +538,19 @@ export class AssignmentsService {
       attributes: updateProductDto.attributes || product.attributes,
       status: updateProductDto.status ?? product.status,
       // recoverable: product.recoverable,
+      price:
+        updateProductDto.price?.amount != null &&
+        updateProductDto.price?.currencyCode
+          ? {
+              amount: updateProductDto.price.amount,
+              currencyCode: updateProductDto.price.currencyCode,
+            }
+          : product.price?.amount != null && product.price.currencyCode
+            ? {
+                amount: product.price.amount,
+                currencyCode: product.price.currencyCode,
+              }
+            : undefined,
       recoverable:
         updateProductDto.recoverable !== undefined
           ? updateProductDto.recoverable
@@ -616,6 +633,19 @@ export class AssignmentsService {
       fp_shipment: updateProductDto.fp_shipment ?? product.fp_shipment,
       activeShipment: updateProductDto.fp_shipment ?? product.fp_shipment,
       isDeleted: product.isDeleted,
+      price:
+        updateProductDto.price?.amount != null &&
+        updateProductDto.price?.currencyCode
+          ? {
+              amount: updateProductDto.price.amount,
+              currencyCode: updateProductDto.price.currencyCode,
+            }
+          : product.price?.amount != null && product.price.currencyCode
+            ? {
+                amount: product.price.amount,
+                currencyCode: product.price.currencyCode,
+              }
+            : undefined,
     };
     const productModel = connection.model(Product.name, ProductSchema);
     const createdProducts = await productModel.create([updateData], {
@@ -790,6 +820,20 @@ export class AssignmentsService {
     );
 
     this.productsService.updatePriceIfProvided(product, updateDto);
+    if (!('price' in updateDto) || updateDto.price == null) {
+      const price = product.price;
+      if (
+        price?.currencyCode &&
+        CURRENCY_CODES.includes(price.currencyCode as CurrencyCode)
+      ) {
+        updateDto.price = {
+          amount: price.amount,
+          currencyCode: price.currencyCode as CurrencyCode,
+        };
+      } else {
+        updateDto.price = null;
+      }
+    }
 
     // 🧩 CASO: Email inválido
     const memberExists = product.assignedEmail
@@ -847,6 +891,20 @@ export class AssignmentsService {
       let shipment: ShipmentDocument | null = null;
 
       if (updateDto.fp_shipment) {
+        if (!('price' in updateDto) || updateDto.price == null) {
+          const price = product.price;
+          if (
+            price?.amount !== undefined &&
+            price?.currencyCode &&
+            CURRENCY_CODES.includes(price.currencyCode as CurrencyCode)
+          ) {
+            updateDto.price = {
+              amount: price.amount,
+              currencyCode: price.currencyCode as CurrencyCode,
+            };
+          }
+        }
+
         shipment = await this.logisticsService.tryCreateShipmentIfNeeded(
           product,
           updateDto,
@@ -942,16 +1000,6 @@ export class AssignmentsService {
     shipment?: ShipmentDocument;
     updatedProduct?: ProductDocument;
   }> {
-    console.log(
-      '🪵 ID recibido en Logistics antes de getProductByMembers desde handleProductFromMemberCollection:',
-      id,
-      typeof id,
-      id instanceof Types.ObjectId,
-    );
-    console.log(
-      '🔍 [handleProductFromMemberCollection] Buscando producto en miembro...',
-    );
-
     const memberProduct = await this.getProductByMembers(
       id,
       connection,
@@ -962,11 +1010,7 @@ export class AssignmentsService {
       console.error('❌ Producto no encontrado en member');
       throw new NotFoundException(`Product with id "${id}" not found`);
     }
-    console.log(
-      '✅ Producto embebido encontrado:',
-      memberProduct.product._id?.toString(),
-    );
-    console.log('👤 Member:', memberProduct.member.email);
+
     const { product, member } = memberProduct;
 
     const productCopy = { ...memberProduct.product };
@@ -979,6 +1023,13 @@ export class AssignmentsService {
       memberProduct.product as ProductDocument,
       updateProductDto,
     );
+
+    if (!('price' in updateProductDto)) {
+      updateProductDto.price = {
+        amount: memberProduct.product.price?.amount,
+        currencyCode: memberProduct.product.price?.currencyCode as CurrencyCode,
+      };
+    }
 
     if (updateProductDto.productCondition === 'Unusable') {
       updateProductDto.status = 'Unavailable';
@@ -1017,12 +1068,6 @@ export class AssignmentsService {
     shipment?: ShipmentDocument;
     updatedProduct?: ProductDocument;
   }> {
-    console.log(
-      '🔁 [handleMemberProductAssignmentChanges] Iniciando cambio de asignación para producto:',
-      product._id?.toString(),
-    );
-    console.log('🎯 Nueva ubicación:', updateDto.location);
-    console.log('📦 Shipment requerido?', updateDto.fp_shipment);
     // 🧩 Caso: Reasignación a otro miembro
     if (
       updateDto.assignedEmail &&
@@ -1043,6 +1088,20 @@ export class AssignmentsService {
       let shipment: ShipmentDocument | null = null;
 
       if (updateDto.fp_shipment) {
+        if (!('price' in updateDto) || updateDto.price == null) {
+          const price = product.price;
+          if (
+            price?.amount !== undefined &&
+            price?.currencyCode &&
+            CURRENCY_CODES.includes(price.currencyCode as CurrencyCode)
+          ) {
+            updateDto.price = {
+              amount: price.amount,
+              currencyCode: price.currencyCode as CurrencyCode,
+            };
+          }
+        }
+
         shipment = await this.logisticsService.tryCreateShipmentIfNeeded(
           product as ProductDocument,
           updateDto,

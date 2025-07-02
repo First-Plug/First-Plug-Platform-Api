@@ -147,6 +147,7 @@ export class ProductsController {
       new Date().toISOString(),
       JSON.stringify(updateProductDto, null, 2),
     );
+    console.log('📦 updateProductDto recibido:', updateProductDto);
     const tenantName = req.user.tenantName;
     const { userId } = req;
     const ourOfficeEmail = req.user.email;
