@@ -1307,11 +1307,13 @@ export class ShipmentsService {
   ) {
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
-    const ShipmentModel = connection.model<ShipmentDocument>(
-      'Shipment',
-      ShipmentSchema,
-      'shipments',
-    );
+    const ShipmentModel =
+      connection.models.Shipment ||
+      connection.model('Shipment', ShipmentSchema, 'shipments');
+
+    const MemberModel =
+      connection.models.Member ||
+      connection.model('Member', MemberSchema, 'members');
 
     if (typeof memberEmail !== 'string') {
       console.warn(
@@ -1333,15 +1335,7 @@ export class ShipmentsService {
       isDeleted: { $ne: true },
     });
 
-    console.log(
-      `🔎 Checking active shipments for ${normalizedEmail} => ${
-        memberStillInvolved ? 'STILL INVOLVED' : 'CAN BE CLEARED'
-      }`,
-    );
-
     if (!memberStillInvolved) {
-      const MemberModel = connection.model('Member');
-
       const result = await MemberModel.updateOne(
         { email: normalizedEmail },
         { $set: { activeShipment: false } },
