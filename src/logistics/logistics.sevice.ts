@@ -10,11 +10,17 @@ import { BadRequestException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EventTypes } from 'src/infra/event-bus/types';
 import { MemberAddressUpdatedEvent } from 'src/infra/event-bus/member-address-update.event';
-import { MemberDocument } from 'src/members/schemas/member.schema';
+import {
+  MemberDocument,
+  MemberSchema,
+} from 'src/members/schemas/member.schema';
 import mongoose, { ClientSession, Types } from 'mongoose';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
 import { UpdateProductDto } from 'src/products/dto';
-import { ProductDocument } from 'src/products/schemas/product.schema';
+import {
+  ProductDocument,
+  ProductSchema,
+} from 'src/products/schemas/product.schema';
 import { CreateShipmentMessageToSlack } from 'src/shipments/helpers/create-message-to-slack';
 import { SlackService } from 'src/slack/slack.service';
 import { ShipmentsService } from 'src/shipments/shipments.service';
@@ -1503,5 +1509,74 @@ export class LogisticsService {
     );
 
     return ShipmentModel.find(query).sort({ createdAt: -1 });
+  }
+
+  public async updateProductStatusToMissingData(
+    productId: string,
+    connection: mongoose.Connection,
+    session: ClientSession,
+  ): Promise<ProductDocument | null> {
+    const ProductModel =
+      connection.models.Product || connection.model('Product', ProductSchema);
+
+    const MemberModel =
+      connection.models.Member || connection.model('Member', MemberSchema);
+
+    const product = await ProductModel.findById(productId).session(session);
+
+    if (product && product.status === 'In Transit') {
+      product.status = 'In Transit - Missing Data';
+      await product.save({ session });
+      return product;
+    }
+    if (!product) {
+      console.log(
+        `❌ Producto no encontrado en colección general: ${productId}`,
+      );
+    }
+    console.log('🛠 Intentando updateOne en MemberModel para', productId);
+    console.log('🛠 Query:', {
+      'products._id': productId,
+      'products.status': 'In Transit',
+    });
+    const updateResult = await MemberModel.updateOne(
+      {
+        'products._id': new Types.ObjectId(productId),
+        'products.status': 'In Transit',
+      },
+      {
+        $set: { 'products.$.status': 'In Transit - Missing Data' },
+      },
+      { session },
+    );
+    console.log(
+      '[🧪] Resultado del updateOne a member.products:',
+      updateResult,
+    );
+
+    if (updateResult.modifiedCount > 0) {
+      const member = await MemberModel.findOne({
+        'products._id': new Types.ObjectId(productId),
+      }).session(session);
+
+      const foundProduct = member?.products.find((p) =>
+        p._id.equals(productId),
+      );
+
+      if (foundProduct) {
+        const original = { ...(foundProduct.toObject?.() ?? foundProduct) };
+
+        const enrichedProduct = {
+          ...original,
+          status: 'In Transit - Missing Data',
+          assignedEmail: member.email,
+          assignedMember: `${member.firstName} ${member.lastName}`,
+        };
+
+        return enrichedProduct as ProductDocument;
+      }
+    }
+
+    return null;
   }
 }

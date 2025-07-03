@@ -971,8 +971,8 @@ export class ShipmentsService {
 
       const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
 
-      const hasCodesForOrderId =
-        originCode !== 'XX' && destinationCode !== 'XX';
+      // const hasCodesForOrderId =
+      //   originCode !== 'XX' && destinationCode !== 'XX';
 
       const originComplete = this.logisticsService.areShipmentDetailsComplete(
         shipment.originDetails,
@@ -987,7 +987,7 @@ export class ShipmentsService {
       const isNowComplete = originComplete && destinationComplete;
       const wasInPreparation = shipment.shipment_status === 'In Preparation';
 
-      if (newOrderId !== shipment.order_id && hasCodesForOrderId) {
+      if (newOrderId !== shipment.order_id) {
         await ShipmentModel.updateOne(
           { _id: shipment._id },
           { $set: { order_id: newOrderId } },
@@ -1003,13 +1003,15 @@ export class ShipmentsService {
         shipment.shipment_status === 'On Hold - Missing Data'
       ) {
         newStatus = 'In Preparation';
+        const updatedProducts: ProductDocument[] = [];
 
         for (const productId of shipment.products) {
-          await this.updateProductStatusToInTransit(
+          const updatedProduct = await this.updateProductStatusToInTransit(
             productId.toString(),
             connection,
             session,
           );
+          if (updatedProduct) updatedProducts.push(updatedProduct);
         }
 
         await session.commitTransaction();
@@ -1026,7 +1028,10 @@ export class ShipmentsService {
         });
 
         console.log('📸 Generating product snapshots...');
-        await this.createSnapshots(shipment, connection);
+        await this.createSnapshots(shipment, connection, {
+          providedProducts: updatedProducts,
+          force: true,
+        });
       }
 
       if (wasInPreparation && !isNowComplete) {
@@ -1035,11 +1040,12 @@ export class ShipmentsService {
         const updatedProducts: ProductDocument[] = [];
 
         for (const productId of shipment.products) {
-          const updatedProduct = await this.updateProductStatusToMissingData(
-            productId.toString(),
-            connection,
-            session,
-          );
+          const updatedProduct =
+            await this.logisticsService.updateProductStatusToMissingData(
+              productId.toString(),
+              connection,
+              session,
+            );
           if (updatedProduct) {
             updatedProducts.push(updatedProduct);
           }
@@ -1114,61 +1120,61 @@ export class ShipmentsService {
     }
   }
 
-  private async updateProductStatusToMissingData(
-    productId: string,
-    connection: mongoose.Connection,
-    session: ClientSession,
-  ): Promise<ProductDocument | null> {
-    const ProductModel =
-      connection.models.Product || connection.model('Product', ProductSchema);
+  // private async updateProductStatusToMissingData(
+  //   productId: string,
+  //   connection: mongoose.Connection,
+  //   session: ClientSession,
+  // ): Promise<ProductDocument | null> {
+  //   const ProductModel =
+  //     connection.models.Product || connection.model('Product', ProductSchema);
 
-    const MemberModel =
-      connection.models.Member || connection.model('Member', MemberSchema);
+  //   const MemberModel =
+  //     connection.models.Member || connection.model('Member', MemberSchema);
 
-    const product = await ProductModel.findById(productId).session(session);
+  //   const product = await ProductModel.findById(productId).session(session);
 
-    if (product && product.status === 'In Transit') {
-      product.status = 'In Transit - Missing Data';
-      await product.save({ session });
-      return product;
-    }
+  //   if (product && product.status === 'In Transit') {
+  //     product.status = 'In Transit - Missing Data';
+  //     await product.save({ session });
+  //     return product;
+  //   }
 
-    const updateResult = await MemberModel.updateOne(
-      {
-        'products._id': new Types.ObjectId(productId),
-        'products.status': 'In Transit',
-      },
-      {
-        $set: { 'products.$.status': 'In Transit - Missing Data' },
-      },
-      { session },
-    );
+  //   const updateResult = await MemberModel.updateOne(
+  //     {
+  //       'products._id': new Types.ObjectId(productId),
+  //       'products.status': 'In Transit',
+  //     },
+  //     {
+  //       $set: { 'products.$.status': 'In Transit - Missing Data' },
+  //     },
+  //     { session },
+  //   );
 
-    if (updateResult.modifiedCount > 0) {
-      const member = await MemberModel.findOne({
-        'products._id': new Types.ObjectId(productId),
-      }).session(session);
+  //   if (updateResult.modifiedCount > 0) {
+  //     const member = await MemberModel.findOne({
+  //       'products._id': new Types.ObjectId(productId),
+  //     }).session(session);
 
-      const foundProduct = member?.products.find((p) =>
-        p._id.equals(productId),
-      );
+  //     const foundProduct = member?.products.find((p) =>
+  //       p._id.equals(productId),
+  //     );
 
-      if (foundProduct) {
-        const original = { ...(foundProduct.toObject?.() ?? foundProduct) };
+  //     if (foundProduct) {
+  //       const original = { ...(foundProduct.toObject?.() ?? foundProduct) };
 
-        const enrichedProduct = {
-          ...original,
-          status: 'In Transit - Missing Data',
-          assignedEmail: member.email,
-          assignedMember: `${member.firstName} ${member.lastName}`,
-        };
+  //       const enrichedProduct = {
+  //         ...original,
+  //         status: 'In Transit - Missing Data',
+  //         assignedEmail: member.email,
+  //         assignedMember: `${member.firstName} ${member.lastName}`,
+  //       };
 
-        return enrichedProduct as ProductDocument;
-      }
-    }
+  //       return enrichedProduct as ProductDocument;
+  //     }
+  //   }
 
-    return null;
-  }
+  //   return null;
+  // }
 
   public async updateShipmentStatusOnAddressComplete(
     shipment: ShipmentDocument,
@@ -1228,6 +1234,13 @@ export class ShipmentsService {
         const updatedProducts: ProductDocument[] = [];
 
         for (const productId of shipment.products) {
+          console.log(
+            '🔎 Tipo de productId:',
+            productId,
+            '→',
+            productId.constructor.name,
+          );
+          console.log('🔎 typeof:', typeof productId);
           await this.updateProductStatusToInTransit(
             productId.toString(),
             connection,
@@ -1259,11 +1272,12 @@ export class ShipmentsService {
         const updatedProducts: ProductDocument[] = [];
 
         for (const productId of shipment.products) {
-          const updatedProduct = await this.updateProductStatusToMissingData(
-            productId.toString(),
-            connection,
-            session,
-          );
+          const updatedProduct =
+            await this.logisticsService.updateProductStatusToMissingData(
+              productId.toString(),
+              connection,
+              session,
+            );
           if (updatedProduct) {
             updatedProducts.push(updatedProduct);
           }
@@ -1348,7 +1362,7 @@ export class ShipmentsService {
     productId: string,
     connection: mongoose.Connection,
     session: ClientSession,
-  ): Promise<void> {
+  ): Promise<ProductDocument | null> {
     try {
       const ProductModel =
         connection.models.Product || connection.model('Product', ProductSchema);
@@ -1359,12 +1373,20 @@ export class ShipmentsService {
       const product = await ProductModel.findById(productId).session(session);
 
       if (product) {
+        console.log(
+          `⚠️ Producto encontrado en colección general con estado: ${product.status}`,
+        );
         if (product.status === 'In Transit - Missing Data') {
           product.status = 'In Transit';
           await product.save({ session });
+          console.log(`✅ Producto actualizado a In Transit`);
         }
-        return;
+        return product;
       }
+
+      console.log(
+        `❌ Producto no encontrado en colección general: ${productId}`,
+      );
 
       const updateResult = await MemberModel.updateOne(
         {
@@ -1381,11 +1403,34 @@ export class ShipmentsService {
         console.log(
           `✅ Updated product status in Member collection: ${productId}`,
         );
+
+        const member = await MemberModel.findOne({
+          'products._id': new Types.ObjectId(productId),
+        }).session(session);
+
+        const foundProduct = member?.products.find((p) =>
+          p._id.equals(productId),
+        );
+
+        if (foundProduct) {
+          const original = { ...(foundProduct.toObject?.() ?? foundProduct) };
+
+          const enrichedProduct = {
+            ...original,
+            status: 'In Transit',
+            assignedEmail: member.email,
+            assignedMember: `${member.firstName} ${member.lastName}`,
+          };
+
+          return enrichedProduct as ProductDocument;
+        }
       } else {
         console.log(
-          `ℹ️ Product ${productId} status was not 'In Transit - Missing Data' or not found`,
+          `ℹ️ Product ${productId} status in member was not 'In Transit - Missing Data' or not found`,
         );
       }
+
+      return null;
     } catch (error) {
       console.error(`❌ Error updating product ${productId} status:`, error);
       throw error;
