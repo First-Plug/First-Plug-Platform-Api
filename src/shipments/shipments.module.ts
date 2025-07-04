@@ -6,8 +6,8 @@ import { TenantsModule } from '../tenants/tenants.module';
 import { tenantModels } from '../infra/db/tenant-models-provider';
 import { Shipment, ShipmentSchema } from './schema/shipment.schema';
 import { JwtService } from '@nestjs/jwt';
-import { MembersModule } from 'src/members/members.module';
-import { ProductsModule } from 'src/products/products.module';
+// import { MembersModule } from 'src/members/members.module';
+// import { ProductsModule } from 'src/products/products.module';
 import { TenantAddressUpdatedListener } from 'src/shipments/listeners/tenant-address-update.listener';
 import { MemberAddressUpdatedListener } from 'src/shipments/listeners/member-address-update.listener';
 import { ProductUpdatedListener } from 'src/shipments/listeners/product-updated.listener';
@@ -19,8 +19,8 @@ import { LogisticsModule } from 'src/logistics/logistics.module';
 @Module({
   imports: [
     TenantsModule,
-    forwardRef(() => MembersModule),
-    forwardRef(() => ProductsModule),
+    // forwardRef(() => MembersModule),
+    // forwardRef(() => ProductsModule),
     forwardRef(() => HistoryModule),
     SlackModule,
     forwardRef(() => LogisticsModule),

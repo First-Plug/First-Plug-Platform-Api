@@ -15,7 +15,10 @@ import {
   MemberSchema,
 } from 'src/members/schemas/member.schema';
 import mongoose, { ClientSession, Types } from 'mongoose';
-import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
+import {
+  ShipmentDocument,
+  ShipmentSchema,
+} from 'src/shipments/schema/shipment.schema';
 import { UpdateProductDto } from 'src/products/dto';
 import {
   ProductDocument,
@@ -2047,6 +2050,143 @@ export class LogisticsService {
     } catch (error) {
       console.error('❌ Error updating shipment:', error);
       throw error;
+    }
+  }
+
+  async updateSnapshotsForProduct(
+    productId: string,
+    tenantName: string,
+  ): Promise<void> {
+    await new Promise((resolve) => process.nextTick(resolve));
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+
+    const ProductModel =
+      connection.models.Product || connection.model('Product', ProductSchema);
+    const MemberModel =
+      connection.models.Member || connection.model('Member', MemberSchema);
+
+    const product = await ProductModel.findById(productId);
+    let isActiveShipment = false;
+
+    let productData: any = null;
+
+    if (product) {
+      isActiveShipment = product.activeShipment === true;
+      productData = product;
+    } else {
+      const member = await MemberModel.findOne({
+        'products._id': new Types.ObjectId(productId),
+      });
+      if (member) {
+        const memberProduct = member.products.find(
+          (p) => p._id?.toString() === productId,
+        );
+        if (memberProduct) {
+          isActiveShipment = memberProduct.activeShipment === true;
+          productData = memberProduct;
+        }
+      }
+    }
+
+    if (!isActiveShipment) {
+      console.log(
+        `ℹ️ Product ${productId} is not part of an active shipment, skipping snapshot update`,
+      );
+      return;
+    }
+
+    if (!productData) {
+      console.log(`❌ Product data not found for ${productId}`);
+      return;
+    }
+
+    const ShipmentModel =
+      connection.models.Shipment ||
+      connection.model('Shipment', ShipmentSchema, 'shipments');
+
+    const shipments = await ShipmentModel.find({
+      products: new Types.ObjectId(productId),
+      shipment_status: { $in: ['On Hold - Missing Data', 'In Preparation'] },
+    });
+
+    if (shipments.length === 0) {
+      console.log(`ℹ️ No updatable shipments found for product ${productId}`);
+      return;
+    }
+
+    const updatedSnapshot = {
+      _id: productData._id,
+      name: productData.name || '',
+      category: productData.category || '',
+      attributes: productData.attributes || [],
+      status: productData.status || 'In Transit',
+      recoverable: productData.recoverable || false,
+      serialNumber: productData.serialNumber || '',
+      assignedEmail: productData.assignedEmail || '',
+      assignedMember: productData.assignedMember || '',
+      lastAssigned: productData.lastAssigned || '',
+      acquisitionDate: productData.acquisitionDate || '',
+      location: productData.location || '',
+      price: productData.price || { amount: null, currencyCode: 'TBC' },
+      additionalInfo: productData.additionalInfo || '',
+      productCondition: productData.productCondition || 'Optimal',
+      fp_shipment: productData.fp_shipment || false,
+    };
+
+    for (const shipment of shipments) {
+      const snapshotIndex = shipment.snapshots?.findIndex(
+        (s) => s._id.toString() === productId,
+      );
+
+      if (snapshotIndex !== undefined && snapshotIndex >= 0) {
+        const existingSnapshot = shipment.snapshots[snapshotIndex];
+        console.log('📋 Comparing old vs new snapshot:', {
+          old: existingSnapshot,
+          new: updatedSnapshot,
+        });
+        const hasChanges = this.shipmentsService.hasSnapshotChanged(
+          existingSnapshot,
+          updatedSnapshot,
+        );
+        console.log('🧪 hasSnapshotChanged result:', hasChanges);
+
+        if (hasChanges) {
+          console.log(
+            `✏️ Updating snapshot for ${productId} in shipment ${shipment._id} with:`,
+            JSON.stringify(updatedSnapshot, null, 2),
+          );
+          shipment.snapshots[snapshotIndex] = updatedSnapshot;
+          await shipment.save();
+        } else {
+          console.log(
+            `🔁 No snapshot changes for product ${productId} in shipment ${shipment._id}`,
+          );
+        }
+      } else {
+        await shipment.populate('snapshots');
+        const alreadyExists = shipment.snapshots.some(
+          (s) => s._id.toString() === productId,
+        );
+        if (!alreadyExists) {
+          console.log(
+            `➕ Pushing new snapshot for product ${productId} in shipment ${shipment._id}`,
+          );
+          if (!alreadyExists) {
+            const snapshotToPush = updatedSnapshot;
+            console.log(
+              `📦 Pushing NEW snapshot for ${productId} into shipment ${shipment._id}:`,
+              JSON.stringify(snapshotToPush, null, 2),
+            );
+            shipment.snapshots.push(updatedSnapshot);
+            await shipment.save();
+          }
+        } else {
+          console.log(
+            `⚠️ Snapshot already exists for product ${productId} in shipment ${shipment._id}, skipping push`,
+          );
+        }
+      }
     }
   }
 }
