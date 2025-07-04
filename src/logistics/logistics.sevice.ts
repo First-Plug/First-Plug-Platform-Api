@@ -1219,7 +1219,7 @@ export class LogisticsService {
 
     try {
       await session.withTransaction(async () => {
-        const member = await this.membersService.findByEmailNotThrowError(
+        let member = await this.membersService.findByEmailNotThrowError(
           memberEmail,
           connection,
           session,
@@ -1229,6 +1229,19 @@ export class LogisticsService {
           this.logger.error(`Member ${memberEmail} not found`);
           return;
         }
+
+        const refreshed = await this.membersService.findById(
+          member._id,
+          tenantName,
+        );
+        if (!refreshed) {
+          this.logger.error(
+            `Member with ID ${member._id} not found during refresh`,
+          );
+          return;
+        }
+
+        member = refreshed as NonNullable<typeof member>;
 
         const fullName = `${member.firstName} ${member.lastName}`;
         this.logger.debug(`Searching shipments for member: ${fullName}`);
@@ -1245,23 +1258,12 @@ export class LogisticsService {
         for (const shipment of shipments) {
           let updated = false;
 
-          // const memberDetails = {
-          //   address: member.address || '',
-          //   apartment: member.apartment || '',
-          //   city: member.city || '',
-          //   country: member.country || '',
-          //   zipCode: member.zipCode || '',
-          //   phone: member.phone || '',
-          //   personalEmail: member.personalEmail || '',
-          //   assignedEmail: member.email,
-          //   dni: `${member.dni || ''}`,
-          //   contactName: fullName,
-          // };
-
           const desirableDateOrigin =
             shipment.originDetails?.desirableDate || '';
           const desirableDateDest =
             shipment.destinationDetails?.desirableDate || '';
+
+          console.log('📌 DNI recibido:', member.dni, typeof member.dni);
 
           if (shipment.origin === fullName) {
             const originPatch = {
@@ -1271,20 +1273,23 @@ export class LogisticsService {
               'originDetails.zipCode': member.zipCode || '',
               'originDetails.phone': member.phone || '',
               'originDetails.personalEmail': member.personalEmail || '',
-              'originDetails.dni':
-                typeof member.dni === 'string'
-                  ? member.dni.trim() || null
-                  : member.dni ?? null,
               'originDetails.apartment': member.apartment || '',
               'originDetails.assignedEmail': member.email,
               'originDetails.contactName': fullName,
               'originDetails.desirableDate': desirableDateOrigin,
             };
 
+            if (typeof member.dni === 'string' && member.dni.trim() !== '') {
+              originPatch['originDetails.dni'] = member.dni.trim();
+            } else {
+              originPatch['originDetails.dni'] = null;
+            }
+
             console.log(
               `🛠 PATCH ORIGIN → ${shipment._id.toString()}`,
               originPatch,
             );
+
             const updatedShipment = await ShipmentModel.findOneAndUpdate(
               { _id: shipment._id },
               { $set: originPatch },
@@ -1306,15 +1311,17 @@ export class LogisticsService {
               'destinationDetails.zipCode': member.zipCode || '',
               'destinationDetails.phone': member.phone || '',
               'destinationDetails.personalEmail': member.personalEmail || '',
-              'destinationDetails.dni':
-                typeof member.dni === 'string'
-                  ? member.dni.trim() || null
-                  : member.dni ?? null,
               'destinationDetails.apartment': member.apartment || '',
               'destinationDetails.assignedEmail': member.email,
               'destinationDetails.contactName': fullName,
               'destinationDetails.desirableDate': desirableDateDest,
             };
+
+            if (typeof member.dni === 'string' && member.dni.trim() !== '') {
+              destinationPatch['destinationDetails.dni'] = member.dni.trim();
+            } else {
+              destinationPatch['destinationDetails.dni'] = null;
+            }
 
             console.log(
               `🛠 PATCH DESTINATION → ${shipment._id.toString()}`,

@@ -246,7 +246,7 @@ export class AssignmentsService {
   ) {
     const castedId = ensureObjectId(id);
     const MemberModel = connection.model(Member.name, MemberSchema);
-    console.log('🔍 [getProductByMembers] Casted ID:', castedId.toString());
+
     const member = await MemberModel.findOne({
       'products._id': castedId,
     }).session(session || null);
@@ -258,10 +258,7 @@ export class AssignmentsService {
     );
 
     if (!product) return null;
-    console.log(
-      '✅ [getProductByMembers] Producto encontrado embebido en miembro:',
-      product?._id?.toString(),
-    );
+
     return { member, product };
   }
 
