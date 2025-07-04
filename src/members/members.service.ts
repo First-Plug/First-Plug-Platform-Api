@@ -16,13 +16,11 @@ import { Team } from 'src/teams/schemas/team.schema';
 import { TeamsService } from 'src/teams/teams.service';
 import { HistoryService } from 'src/history/history.service';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
-import { ShipmentsService } from 'src/shipments/shipments.service';
-import { EventTypes } from 'src/infra/event-bus/types';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { MemberAddressUpdatedEvent } from 'src/infra/event-bus/member-address-update.event';
 import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
 import { AssignmentsService } from 'src/assignments/assignments.service';
 import { chunkArray } from './helpers/chunkArray';
+import { LogisticsService } from 'src/logistics/logistics.sevice';
 
 interface MemberWithShipmentStatus extends MemberDocument {
   shipmentStatus?: string[];
@@ -42,10 +40,11 @@ export class MembersService {
     private readonly teamsService: TeamsService,
     private readonly historyService: HistoryService,
     private readonly connectionService: TenantConnectionService,
-    @Inject(forwardRef(() => ShipmentsService))
-    private readonly shipmentsService: ShipmentsService,
     private eventEmitter: EventEmitter2,
+    @Inject(forwardRef(() => AssignmentsService))
     private readonly assignmentsService: AssignmentsService,
+    @Inject(forwardRef(() => LogisticsService))
+    private readonly logisticsService: LogisticsService,
   ) {}
 
   async validateSerialNumber(serialNumber: string, productId: ObjectId) {
@@ -415,25 +414,17 @@ export class MembersService {
     return member;
   }
 
-  async findByEmailNotThrowError(email: string, connection?: Connection) {
-    return await this.memberRepository.findOne({ email: email }, null, {
+  async findByEmailNotThrowError(
+    email: string,
+    connection?: Connection,
+    session?: ClientSession,
+  ) {
+    const query = this.memberRepository.findOne({ email: email }, null, {
       connection,
     });
-  }
 
-  async validateIfMemberCanBeModified(memberEmail: string, tenantName: string) {
-    const shipments = await this.shipmentsService.getShipmentsByMember(
-      memberEmail,
-      tenantName,
-    );
-    const hasRestrictedStatus = shipments.some(
-      (s) => s.shipment_status === 'On The Way',
-    );
-    if (hasRestrictedStatus) {
-      throw new BadRequestException(
-        'This member is part of a shipment On The Way and cannot be modified.',
-      );
-    }
+    if (session) query.session(session);
+    return await query;
   }
 
   private isPersonalDataBeingModified(
@@ -519,7 +510,10 @@ export class MembersService {
       );
 
       if (willModifyPersonalData) {
-        await this.validateIfMemberCanBeModified(member.email, tenantName);
+        await this.logisticsService.validateIfMemberCanBeModified(
+          member.email,
+          tenantName,
+        );
       }
 
       const oldEmail = member.email.trim().toLowerCase();
@@ -567,57 +561,14 @@ export class MembersService {
           session,
         );
       }
-      const modified = this.hasPersonalDataChanged(initialMember, member);
-      console.log('🔍 ¿Datos personales modificados?', modified, {
-        initialDni: initialMember.dni,
-        currentDni: member.dni,
-      });
 
-      if (modified) {
-        if (member.activeShipment) {
-          console.log('🔔 Emitiendo evento de actualización de dirección');
-          this.eventEmitter.emit(
-            EventTypes.MEMBER_ADDRESS_UPDATED,
-            new MemberAddressUpdatedEvent(
-              member.email,
-              tenantName,
-              {
-                address: initialMember.address || '',
-                apartment: initialMember.apartment || '',
-                city: initialMember.city || '',
-                country: initialMember.country || '',
-                zipCode: initialMember.zipCode || '',
-                phone: initialMember.phone || '',
-                email: initialMember.email || '',
-
-                dni:
-                  initialMember.dni !== undefined
-                    ? initialMember.dni.toString()
-                    : '',
-                personalEmail: initialMember.personalEmail || '',
-              },
-              {
-                address: member.address || '',
-                apartment: member.apartment || '',
-                city: member.city || '',
-                country: member.country || '',
-                zipCode: member.zipCode || '',
-                phone: member.phone || '',
-                email: member.email || '',
-                dni: member.dni !== undefined ? member.dni.toString() : '',
-                personalEmail: member.personalEmail || '',
-              },
-              new Date(),
-              userId,
-              ourOfficeEmail,
-            ),
-          );
-        } else {
-          console.log(
-            '🟨 No se emite evento: el miembro no tiene shipments activos',
-          );
-        }
-      }
+      await this.logisticsService.handleAddressUpdateIfShipmentActive(
+        initialMember,
+        member,
+        tenantName,
+        userId,
+        ourOfficeEmail,
+      );
 
       await session.commitTransaction();
       session.endSession();
@@ -722,39 +673,5 @@ export class MembersService {
         'Unexpected error, check server log',
       );
     }
-  }
-
-  private hasPersonalDataChanged(original: any, updated: any): boolean {
-    const sensitiveFields = [
-      'address',
-      'apartment',
-      'city',
-      'zipCode',
-      'country',
-      'dni',
-      'phone',
-      'email',
-      'personalEmail',
-    ];
-
-    let changed = false;
-
-    sensitiveFields.forEach((field) => {
-      const originalHasField =
-        field in original && original[field] !== undefined;
-      const updatedHasField = field in updated && updated[field] !== undefined;
-
-      if (
-        originalHasField !== updatedHasField ||
-        original[field] !== updated[field]
-      ) {
-        console.log(
-          `🔄 Campo ${field} ha cambiado: ${original[field]} -> ${updated[field]}`,
-        );
-        changed = true;
-      }
-    });
-
-    return changed;
   }
 }

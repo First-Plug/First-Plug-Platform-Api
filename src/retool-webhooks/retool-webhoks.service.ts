@@ -9,8 +9,14 @@ import { TenantConnectionService } from 'src/infra/db/tenant-connection.service'
 import { MemberSchema } from 'src/members/schemas/member.schema';
 import { ProductSchema } from 'src/products/schemas/product.schema';
 import { SHIPMENT_STATUS } from 'src/shipments/interface/shipment.interface';
-import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
+import {
+  ShipmentSchema,
+  // ShipmentDocument,
+} from 'src/shipments/schema/shipment.schema';
 import { ShipmentsService } from 'src/shipments/shipments.service';
+import { forwardRef, Inject } from '@nestjs/common';
+import { LogisticsService } from 'src/logistics/logistics.sevice';
+// import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
 
 @Injectable()
 export class RetoolWebhooksService {
@@ -18,6 +24,8 @@ export class RetoolWebhooksService {
     private tenantConnectionService: TenantConnectionService,
     private readonly shipmentsService: ShipmentsService,
     private eventsGateway: EventsGateway,
+    @Inject(forwardRef(() => LogisticsService))
+    private readonly logisticsService: LogisticsService,
   ) {}
 
   async updateShipmentStatusWebhook(body: {
@@ -29,8 +37,8 @@ export class RetoolWebhooksService {
     const { tenantName, shipmentId, newStatus, userId } = body;
 
     if (newStatus === 'Cancelled') {
-      console.log('🚨 Ejecutando cancelShipmentAndUpdateProducts...');
-      return this.shipmentsService.cancelShipmentAndUpdateProducts(
+      console.log('🚨 Ejecutando cancelShipmentWithConsequences...');
+      return this.logisticsService.cancelShipmentWithConsequences(
         shipmentId,
         tenantName,
         userId,
@@ -71,14 +79,15 @@ export class RetoolWebhooksService {
       }
 
       for (const productId of shipment.products) {
-        await this.shipmentsService.updateProductOnShipmentReceived(
+        await this.logisticsService.updateProductOnShipmentReceived(
           productId.toString(),
           tenantName,
           shipment.origin,
         );
       }
-      // await this.shipmentsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
-      //   shipment.products.map((p) => p.toString()),
+
+      // await this.logisticsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
+      //   product.lastAssigned,
       //   tenantName,
       // );
     }
@@ -92,14 +101,14 @@ export class RetoolWebhooksService {
 
     await shipment.save();
 
-    if (shipment.shipment_status === 'Received') {
-      await this.shipmentsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
-        tenantName,
+ if (shipment.shipment_status === 'Received') {
+      await this.logisticsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
         shipment.originDetails?.assignedEmail,
-      );
-      await this.shipmentsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
         tenantName,
+      );
+      await this.logisticsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
         shipment.destinationDetails?.assignedEmail,
+        tenantName,
       );
     }
 

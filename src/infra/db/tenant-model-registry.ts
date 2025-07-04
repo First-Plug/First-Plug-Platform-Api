@@ -10,6 +10,7 @@ import { TenantConnectionService } from 'src/infra/db/tenant-connection.service'
 import { Team, TeamSchema } from 'src/teams/schemas/team.schema';
 import { History, HistorySchema } from 'src/history/schemas/history.schema';
 import { Model } from 'mongoose';
+import { Connection } from 'mongoose';
 
 // centralizo el acceso a los modelos por tenant
 // reducir duplicacion de llamar por metodo a getTenantConnection
@@ -55,5 +56,13 @@ export class TenantModelRegistry {
 
   async getConnection(tenantName: string) {
     return this.connectionService.getTenantConnection(tenantName);
+  }
+
+  getProductModelFromConnection(connection: Connection) {
+    return connection.model(Product.name, ProductSchema);
+  }
+
+  getMemberModelFromConnection(connection: Connection) {
+    return connection.model(Member.name, MemberSchema);
   }
 }

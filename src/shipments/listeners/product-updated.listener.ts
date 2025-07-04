@@ -2,14 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { EventTypes } from 'src/infra/event-bus/types';
 import { ProductUpdatedEvent } from 'src/infra/event-bus/product-updated.event';
-import { ShipmentsService } from '../shipments.service';
+import { LogisticsService } from 'src/logistics/logistics.sevice';
 
 @Injectable()
 export class ProductUpdatedListener {
   private readonly logger = new Logger(ProductUpdatedListener.name);
   private processedEvents = new Set<string>();
 
-  constructor(private readonly shipmentsService: ShipmentsService) {}
+  constructor(private readonly logisticsService: LogisticsService) {}
 
   @OnEvent(EventTypes.PRODUCT_ADDRESS_UPDATED)
   async handleProductUpdated(event: ProductUpdatedEvent) {
@@ -28,7 +28,7 @@ export class ProductUpdatedListener {
         this.processedEvents.delete(recentEventKey);
       }, 10000);
 
-      await this.shipmentsService.updateSnapshotsForProduct(
+      await this.logisticsService.updateSnapshotsForProduct(
         event.productId,
         event.tenantName,
       );

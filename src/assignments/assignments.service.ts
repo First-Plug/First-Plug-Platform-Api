@@ -31,6 +31,8 @@ import { HistoryActionType } from 'src/history/validations/create-history.zod';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
 import { BulkReassignDto } from 'src/assignments/dto/bulk-reassign.dto';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
+import { LogisticsService } from 'src/logistics/logistics.sevice';
+import { ensureObjectId } from './utils/ensureObjectId';
 import {
   CurrencyCode,
   CURRENCY_CODES,
@@ -41,7 +43,6 @@ export class AssignmentsService {
   private readonly logger = new Logger(AssignmentsService.name);
 
   constructor(
-    // @Inject('PRODUCT_MODEL') private readonly productModel: Model<Product>,
     @Inject('MEMBER_MODEL') private readonly memberModel: Model<Member>,
     private readonly connectionService: TenantConnectionService,
     private readonly tenantsService: TenantsService,
@@ -54,6 +55,8 @@ export class AssignmentsService {
     @Inject('PRODUCT_MODEL')
     private readonly productRepository: Model<Product>,
     private readonly tenantModelRegistry: TenantModelRegistry,
+    @Inject(forwardRef(() => LogisticsService))
+    private readonly logisticsService: LogisticsService,
   ) {}
 
   public async assignProductsToMemberByEmail(
@@ -241,17 +244,18 @@ export class AssignmentsService {
     connection: Connection,
     session?: ClientSession,
   ) {
+    const castedId = ensureObjectId(id);
     const MemberModel = connection.model(Member.name, MemberSchema);
 
-    const member = await MemberModel.findOne({ 'products._id': id }).session(
-      session || null,
-    );
+    const member = await MemberModel.findOne({
+      'products._id': castedId,
+    }).session(session || null);
 
     if (!member) return null;
 
-    const product = (
-      member.products as mongoose.Types.DocumentArray<ProductDocument>
-    ).id(id);
+    const product = member.products.find(
+      (p) => p._id && p._id.toString() === castedId.toString(),
+    );
 
     if (!product) return null;
 
@@ -375,7 +379,12 @@ export class AssignmentsService {
     let isUnknownEmail = false;
     console.log('🔍 Buscando producto en products:', productId);
     if (!product) {
-      console.log('🔍 Buscando producto en members:', productId);
+      console.log(
+        '🪵 ID recibido en Logistics antes de getProductByMembers desde getProductForReassign:',
+        productId,
+        typeof productId,
+        productId instanceof Types.ObjectId,
+      );
       const memberProduct = await this.getProductByMembers(
         productId,
         connection,
@@ -581,6 +590,11 @@ export class AssignmentsService {
     // tenantName?: string,
     connection: Connection,
   ) {
+    console.log(
+      '📦 [moveToProductsCollection] Producto a mover:',
+      product._id?.toString(),
+    );
+    console.log('📍 Origen: member -> Destino: products');
     const productIndex = member.products.findIndex(
       (prod) => prod._id!.toString() === product._id!.toString(),
     );
@@ -634,7 +648,7 @@ export class AssignmentsService {
     const createdProducts = await productModel.create([updateData], {
       session,
     });
-
+    console.log('✅ Producto movido a colección de productos');
     return createdProducts;
   }
 
@@ -888,7 +902,8 @@ export class AssignmentsService {
           }
         }
 
-        shipment = await this.productsService.tryCreateShipmentIfNeeded(
+        shipment = await this.logisticsService.tryCreateShipmentIfNeeded(
+
           product,
           updateDto,
           tenantName,
@@ -983,9 +998,6 @@ export class AssignmentsService {
     shipment?: ShipmentDocument;
     updatedProduct?: ProductDocument;
   }> {
-    console.log(
-      '📌 handleProductFromMemberCollection: checking model connection',
-    );
     const memberProduct = await this.getProductByMembers(
       id,
       connection,
@@ -993,8 +1005,10 @@ export class AssignmentsService {
     );
 
     if (!memberProduct) {
+      console.error('❌ Producto no encontrado en member');
       throw new NotFoundException(`Product with id "${id}" not found`);
     }
+
     const { product, member } = memberProduct;
 
     const productCopy = { ...memberProduct.product };
@@ -1086,7 +1100,8 @@ export class AssignmentsService {
           }
         }
 
-        shipment = await this.productsService.tryCreateShipmentIfNeeded(
+        shipment = await this.logisticsService.tryCreateShipmentIfNeeded(
+
           product as ProductDocument,
           updateDto,
           tenantName,
@@ -1172,7 +1187,7 @@ export class AssignmentsService {
 
       if (updateDto.fp_shipment && updatedProduct) {
         shipment =
-          await this.productsService.maybeCreateShipmentAndUpdateStatus(
+          await this.logisticsService.maybeCreateShipmentAndUpdateStatus(
             updatedProduct,
             updateDto,
             tenantName,

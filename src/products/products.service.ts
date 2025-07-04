@@ -1,11 +1,10 @@
 import {
-  Inject,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
   Logger,
   forwardRef,
-  // forwardRef,
+  Inject,
 } from '@nestjs/common';
 import mongoose, {
   ClientSession,
@@ -31,19 +30,13 @@ import { Parser } from 'json2csv';
 import { HistoryService } from 'src/history/history.service';
 import { updateProductPrice } from './helpers/update-price.helper';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
-import { ShipmentsService } from 'src/shipments/shipments.service';
 import { ModuleRef } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import {
-  // Shipment,
-  ShipmentDocument,
-  // ShipmentSchema,
-} from 'src/shipments/schema/shipment.schema';
-import { CreateShipmentMessageToSlack } from 'src/shipments/helpers/create-message-to-slack';
 import { SlackService } from 'src/slack/slack.service';
 import { AssignmentsService } from 'src/assignments/assignments.service';
 import { EventTypes } from 'src/infra/event-bus/types';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
+import { LogisticsService } from 'src/logistics/logistics.sevice';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -53,20 +46,16 @@ export interface ProductModel
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
   constructor(
-    // @Inject('PRODUCT_MODEL')
-    // private readonly productRepository: ProductModel,
-
     private readonly tenantModelRegistry: TenantModelRegistry,
     private tenantsService: TenantsService,
     private readonly historyService: HistoryService,
     private readonly connectionService: TenantConnectionService,
-
-    @Inject(forwardRef(() => ShipmentsService))
-    private readonly shipmentsService: ShipmentsService,
     private readonly moduleRef: ModuleRef,
     private readonly eventEmitter: EventEmitter2,
     private readonly slackService: SlackService,
     private readonly assignmentsService: AssignmentsService,
+    @Inject(forwardRef(() => LogisticsService))
+    private readonly logisticsService: LogisticsService,
   ) {}
 
   onModuleInit() {
@@ -512,24 +501,38 @@ export class ProductsService {
         let shipmentDestination: string | null = null;
         let shipmentId: string | null = null;
 
+        // if (activeShipment && _id) {
+        //   const tenantConnection =
+        //     await this.connectionService.getTenantConnection(tenantName);
+        //   const ShipmentModel =
+        //     this.shipmentsService.getShipmentModel(tenantConnection);
+
+        //   const shipment = await ShipmentModel.findOne({
+        //     products: new mongoose.Types.ObjectId(_id.toString()),
+        //     shipment_status: {
+        //       $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
+        //     },
+        //     isDeleted: { $ne: true },
+        //   }).lean();
+
+        //   if (shipment) {
+        //     shipmentOrigin = shipment.origin;
+        //     shipmentDestination = shipment.destination;
+        //     shipmentId = shipment._id.toString();
+        //   }
+        // }
+
         if (activeShipment && _id) {
-          const tenantConnection =
-            await this.connectionService.getTenantConnection(tenantName);
-          const ShipmentModel =
-            this.shipmentsService.getShipmentModel(tenantConnection);
+          const shipmentSummary =
+            await this.logisticsService.getShipmentSummaryByProductId(
+              _id.toString(),
+              tenantName,
+            );
 
-          const shipment = await ShipmentModel.findOne({
-            products: new mongoose.Types.ObjectId(_id.toString()),
-            shipment_status: {
-              $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
-            },
-            isDeleted: { $ne: true },
-          }).lean();
-
-          if (shipment) {
-            shipmentOrigin = shipment.origin;
-            shipmentDestination = shipment.destination;
-            shipmentId = shipment._id.toString();
+          if (shipmentSummary) {
+            shipmentId = shipmentSummary.shipmentId;
+            shipmentOrigin = shipmentSummary.shipmentOrigin;
+            shipmentDestination = shipmentSummary.shipmentDestination;
           }
         }
 
@@ -728,20 +731,28 @@ export class ProductsService {
 
     const ProductModel =
       await this.tenantModelRegistry.getProductModel(tenantName);
-
+    console.log('[🔍] Buscando producto por ID:', id, 'en ProductModel');
     const product = await ProductModel.findById(id);
+    console.log('[✅] Resultado en ProductModel:', product?._id?.toString());
     if (product?.isDeleted) {
       throw new NotFoundException(`Product with id "${id}" not found`);
     }
 
     if (product) {
       if (product.isDeleted) {
+        console.warn('[⚠️] Producto encontrado pero marcado como eliminado');
         throw new NotFoundException(`Product with id "${id}" not found`);
       }
       return { product, location: 'products', tenantName };
     }
 
     const connection = await this.tenantModelRegistry.getConnection(tenantName);
+    console.log(
+      '🪵 ID recibido en Logistics antes de getProductByMembers desde findProductAndLocationById:',
+      id,
+      typeof id,
+      id instanceof Types.ObjectId,
+    );
 
     const memberProduct = await this.assignmentsService.getProductByMembers(
       id,
@@ -1052,136 +1063,6 @@ export class ProductsService {
     }
   }
 
-  public async maybeCreateShipmentAndUpdateStatus(
-    product: ProductDocument,
-    updateDto: UpdateProductDto,
-    tenantName: string,
-    actionType: string,
-    session: ClientSession,
-    oldData: {
-      location?: string;
-      assignedEmail?: string;
-      assignedMember?: string;
-    },
-    newData: {
-      location?: string;
-      assignedEmail?: string;
-      assignedMember?: string;
-    },
-    userId: string,
-    ourOfficeEmail: string,
-  ): Promise<ShipmentDocument | null> {
-    console.log(
-      'called user id from maybeCreateShipmentAndUpdateStatus',
-      userId,
-    );
-    if (!updateDto.fp_shipment || !actionType) return null;
-
-    const desirableDateOrigin =
-      typeof updateDto.desirableDate === 'object'
-        ? updateDto.desirableDate.origin || ''
-        : '';
-    const desirableDateDestination =
-      typeof updateDto.desirableDate === 'string'
-        ? updateDto.desirableDate
-        : updateDto.desirableDate?.destination || '';
-
-    const connection =
-      await this.connectionService.getTenantConnection(tenantName);
-
-    const { shipment, isConsolidated, oldSnapshot } =
-      await this.shipmentsService.findOrCreateShipment(
-        product._id!.toString(),
-        actionType,
-        tenantName,
-        userId,
-        session,
-        desirableDateDestination,
-        desirableDateOrigin,
-        oldData,
-        newData,
-      );
-
-    if (!shipment || !shipment._id) {
-      console.error('❌ Failed to create shipment or shipment has no ID');
-      return null;
-    }
-
-    product.activeShipment = true;
-    product.fp_shipment = true;
-    await product.save({ session });
-
-    if (session.inTransaction()) {
-      await session.commitTransaction();
-      session.startTransaction();
-    }
-
-    const newStatus =
-      shipment.shipment_status === 'On Hold - Missing Data'
-        ? 'In Transit - Missing Data'
-        : 'In Transit';
-
-    product.status = newStatus;
-    updateDto.status = newStatus;
-
-    await product.save({ session });
-
-    await this.shipmentsService.createSnapshots(shipment, connection, {
-      providedProducts: [product],
-    });
-
-    console.log('[HISTORY DEBUG]', {
-      actionType: isConsolidated ? 'consolidate' : 'create',
-      userId,
-      oldSnapshot,
-      newData: shipment,
-    });
-
-    await this.historyService.create({
-      actionType: isConsolidated ? 'consolidate' : 'create',
-      itemType: 'shipments',
-      userId,
-
-      changes: {
-        oldData: isConsolidated ? oldSnapshot ?? null : null,
-        newData: shipment,
-        context: isConsolidated ? 'single-product' : undefined,
-      },
-    });
-
-    // TODO: Status New Shipment
-    if (shipment.shipment_status === 'In Preparation' && !isConsolidated) {
-      const slackMessage = CreateShipmentMessageToSlack({
-        shipment: shipment,
-        tenantName: tenantName,
-        isOffboarding: false,
-        status: 'New',
-        ourOfficeEmail: ourOfficeEmail,
-      });
-      await this.slackService.sendMessage(slackMessage);
-    }
-
-    //TODO: Status consolidate
-    if (isConsolidated && shipment.shipment_status === 'In Preparation') {
-      const slackMessage = CreateShipmentMessageToSlack({
-        shipment: shipment,
-        tenantName: tenantName,
-        isOffboarding: false,
-        status: 'Consolidated',
-        previousShipment: oldSnapshot,
-        ourOfficeEmail: ourOfficeEmail,
-      });
-
-      await this.slackService.sendMessage(slackMessage);
-    } else if (isConsolidated) {
-      console.log(
-        `🔇 Consolidated shipment has status "${shipment.shipment_status}", skipping Slack notification.`,
-      );
-    }
-
-    return shipment;
-  }
-
   async update(
     id: ObjectId,
     updateProductDto: UpdateProductDto,
@@ -1205,6 +1086,8 @@ export class ProductsService {
     }
 
     try {
+      console.log('🔄 [update] ID recibido:', id.toString());
+      console.log('🔄 [update] DTO recibido:', updateProductDto);
       await this.normalizeFpShipmentFlag(
         id,
         updateProductDto,
@@ -1212,10 +1095,15 @@ export class ProductsService {
         internalSession,
         tenantName,
       );
+      console.log('🧩 Buscando producto por ID en ProductModel...');
 
       const ProductModel =
         await this.tenantModelRegistry.getProductModel(tenantName);
-
+      console.log('🧩 Obtenido ProductModel para tenant:', tenantName);
+      console.error(
+        '❌ Producto no encontrado en ProductModel con id:',
+        id.toString(),
+      );
       const product = await ProductModel.findById(id).session(internalSession);
 
       const result = product
@@ -1253,6 +1141,7 @@ export class ProductsService {
         await internalSession.abortTransaction();
         internalSession.endSession();
       }
+      console.error('❌ Error en update:', error.message, error.stack);
       throw error;
     }
   }
@@ -1273,6 +1162,13 @@ export class ProductsService {
       if (existingProduct) {
         updateProductDto.fp_shipment = existingProduct.fp_shipment === true;
       } else {
+        console.log(
+          '🪵 ID recibido en Logistics antes de getProductByMembers desde normalizeFpShipmentFlag:',
+          productId,
+          typeof productId,
+          productId instanceof Types.ObjectId,
+        );
+
         const memberProduct = await this.assignmentsService.getProductByMembers(
           productId,
           connection,
@@ -1287,6 +1183,13 @@ export class ProductsService {
       if (existingProduct?.fp_shipment === true) {
         updateProductDto.fp_shipment = true;
       } else {
+        console.log(
+          '🪵 ID recibido en Logistics antes de getProductByMembers desde normalizeFpShipmentFlag dos:',
+          productId,
+          typeof productId,
+          productId instanceof Types.ObjectId,
+        );
+
         const memberProduct = await this.assignmentsService.getProductByMembers(
           productId,
           connection,
@@ -1344,36 +1247,6 @@ export class ProductsService {
     }
   }
 
-  async tryCreateShipmentIfNeeded(
-    product: ProductDocument,
-    updateDto: UpdateProductDto,
-    tenantName: string,
-    session: ClientSession,
-    userId: string,
-    ourOfficeEmail: string,
-  ): Promise<ShipmentDocument | null> {
-    console.log('tryCreateShipmentIfNeeded called with userId:', userId);
-    return await this.maybeCreateShipmentAndUpdateStatus(
-      product,
-      updateDto,
-      tenantName,
-      updateDto.actionType ?? '',
-      session,
-      {
-        location: product.location,
-        assignedEmail: product.assignedEmail,
-        assignedMember: product.assignedMember,
-      },
-      {
-        location: updateDto.location,
-        assignedEmail: updateDto.assignedEmail,
-        assignedMember: updateDto.assignedMember,
-      },
-      userId,
-      ourOfficeEmail,
-    );
-  }
-
   public emitProductUpdatedEvent(productId: string, tenantName: string) {
     console.log(
       `🔔 Emitiendo evento de actualización para producto ${productId} en tenant ${tenantName}`,
@@ -1417,6 +1290,12 @@ export class ProductsService {
 
           changes.oldData = product;
         } else {
+          console.log(
+            '🪵 ID recibido en Logistics antes de getProductByMembers desde softDelete:',
+            id,
+            typeof id,
+            id instanceof Types.ObjectId,
+          );
           const memberProduct =
             await this.assignmentsService.getProductByMembers(
               id,
