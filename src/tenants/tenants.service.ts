@@ -272,9 +272,7 @@ export class TenantsService {
     const user = await this.findByEmail(createTenantDto.email);
 
     if (user) {
-      throw new BadRequestException(
-        'The credentials are not valid, please try again.',
-      );
+      throw new BadRequestException('Email Already in Use');
     }
 
     const userCreated = await this.tenantRepository.create(createTenantDto);

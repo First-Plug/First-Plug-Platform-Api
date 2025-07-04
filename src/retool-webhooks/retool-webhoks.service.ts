@@ -85,19 +85,23 @@ export class RetoolWebhooksService {
           shipment.origin,
         );
       }
+
       // await this.logisticsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
       //   product.lastAssigned,
       //   tenantName,
       // );
     }
 
-    if (shipment.shipment_status === 'Received') {
+    if (
+      shipment.shipment_status === 'Received' ||
+      shipment.shipment_status === 'On The Way'
+    ) {
       this.eventsGateway.notifyTenant(tenantName, 'data-changed', shipment);
     }
 
     await shipment.save();
 
-    if (shipment.shipment_status === 'Received') {
+ if (shipment.shipment_status === 'Received') {
       await this.logisticsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
         shipment.originDetails?.assignedEmail,
         tenantName,

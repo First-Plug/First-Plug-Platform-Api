@@ -690,7 +690,7 @@ export class ShipmentsService {
     return shipment;
   }
 
-  async getShipments(tenantName: string) {
+ async getShipments(tenantName: string) {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
@@ -712,6 +712,7 @@ export class ShipmentsService {
 
     return shipment;
   }
+
 
   public async createSnapshots(
     shipment: ShipmentDocument,
@@ -795,7 +796,6 @@ export class ShipmentsService {
 
     return fieldsToCompare.some((key) => oldSnapshot[key] !== newSnapshot[key]);
   }
-
   async getShipmentByProductId(
     productId: string,
     tenantName: string,
