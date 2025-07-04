@@ -414,10 +414,17 @@ export class MembersService {
     return member;
   }
 
-  async findByEmailNotThrowError(email: string, connection?: Connection) {
-    return await this.memberRepository.findOne({ email: email }, null, {
+  async findByEmailNotThrowError(
+    email: string,
+    connection?: Connection,
+    session?: ClientSession,
+  ) {
+    const query = this.memberRepository.findOne({ email: email }, null, {
       connection,
     });
+
+    if (session) query.session(session);
+    return await query;
   }
 
   private isPersonalDataBeingModified(
