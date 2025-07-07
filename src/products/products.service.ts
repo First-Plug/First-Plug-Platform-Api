@@ -1054,9 +1054,6 @@ export class ProductsService {
           shipmentSummary &&
           editableStatuses.includes(shipmentSummary.shipmentStatus)
         ) {
-          console.log(
-            `📦 Shipment editable (${shipmentSummary.shipmentStatus}) → Emitiendo evento`,
-          );
           this.eventEmitter.emit(EventTypes.PRODUCT_ADDRESS_UPDATED, {
             productId: product._id.toString(),
             tenantName,
