@@ -1311,7 +1311,10 @@ export class ProductsService {
 
         if (product) {
           product.status = 'Deprecated';
+          product.lastSerialNumber = product.serialNumber;
+          product.serialNumber = undefined;
           product.isDeleted = true;
+
           await product.save();
           await ProductModel.softDelete({ _id: id }, { session });
 
@@ -1345,7 +1348,8 @@ export class ProductsService {
                   isDeleted: true,
                   location: memberProduct.product.location,
                   recoverable: memberProduct.product.recoverable,
-                  serialNumber: memberProduct.product.serialNumber,
+                  serialNumber: undefined,
+                  lastSerialNumber: memberProduct.product.serialNumber,
                   lastAssigned: memberProduct.member.email,
                   status: 'Deprecated',
                 },
