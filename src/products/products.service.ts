@@ -1028,7 +1028,7 @@ export class ProductsService {
           updatedFields,
         );
       }
-      console.log('🧾 Llamando a historyService.create con userId:', userId);
+
       if (!userId)
         throw new Error('❌ userId is undefined antes de crear history');
       await this.historyService.create({
@@ -1040,6 +1040,13 @@ export class ProductsService {
           newData: productUpdated,
         },
       });
+
+      if (isInActiveShipment && product?._id) {
+        this.eventEmitter.emit(EventTypes.PRODUCT_ADDRESS_UPDATED, {
+          productId: product._id.toString(),
+          tenantName,
+        });
+      }
 
       return {
         message: `Product with id "${id}" updated successfully`,
