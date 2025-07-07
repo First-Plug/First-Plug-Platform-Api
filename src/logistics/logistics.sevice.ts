@@ -189,6 +189,7 @@ export class LogisticsService {
       shipmentId: shipment._id.toString(),
       shipmentOrigin: shipment.origin,
       shipmentDestination: shipment.destination,
+      shipmentStatus: shipment.shipment_status,
     };
   }
 
@@ -2149,13 +2150,8 @@ export class LogisticsService {
           existingSnapshot,
           updatedSnapshot,
         );
-        console.log('🧪 hasSnapshotChanged result:', hasChanges);
 
         if (hasChanges) {
-          console.log(
-            `✏️ Updating snapshot for ${productId} in shipment ${shipment._id} with:`,
-            JSON.stringify(updatedSnapshot, null, 2),
-          );
           shipment.snapshots[snapshotIndex] = updatedSnapshot;
           await shipment.save();
         } else {

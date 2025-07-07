@@ -1042,10 +1042,30 @@ export class ProductsService {
       });
 
       if (isInActiveShipment && product?._id) {
-        this.eventEmitter.emit(EventTypes.PRODUCT_ADDRESS_UPDATED, {
-          productId: product._id.toString(),
-          tenantName,
-        });
+        const shipmentSummary =
+          await this.logisticsService.getShipmentSummaryByProductId(
+            product._id.toString(),
+            tenantName,
+          );
+
+        const editableStatuses = ['In Preparation', 'On Hold - Missing Data'];
+
+        if (
+          shipmentSummary &&
+          editableStatuses.includes(shipmentSummary.shipmentStatus)
+        ) {
+          console.log(
+            `📦 Shipment editable (${shipmentSummary.shipmentStatus}) → Emitiendo evento`,
+          );
+          this.eventEmitter.emit(EventTypes.PRODUCT_ADDRESS_UPDATED, {
+            productId: product._id.toString(),
+            tenantName,
+          });
+        } else {
+          console.log(
+            '🚫 No se emitió evento: shipment no editable o inexistente',
+          );
+        }
       }
 
       return {

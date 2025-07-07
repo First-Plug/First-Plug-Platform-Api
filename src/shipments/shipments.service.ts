@@ -690,7 +690,7 @@ export class ShipmentsService {
     return shipment;
   }
 
- async getShipments(tenantName: string) {
+  async getShipments(tenantName: string) {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
@@ -712,7 +712,6 @@ export class ShipmentsService {
 
     return shipment;
   }
-
 
   public async createSnapshots(
     shipment: ShipmentDocument,
@@ -783,7 +782,7 @@ export class ShipmentsService {
   }
 
   public hasSnapshotChanged(oldSnapshot: any, newSnapshot: any): boolean {
-    const fieldsToCompare = [
+    const simpleFieldsToCompare = [
       'status',
       'location',
       'assignedEmail',
@@ -792,10 +791,31 @@ export class ShipmentsService {
       'productCondition',
       'serialNumber',
       'category',
+      'name',
+      'additionalInfo',
     ];
 
-    return fieldsToCompare.some((key) => oldSnapshot[key] !== newSnapshot[key]);
+    for (const field of simpleFieldsToCompare) {
+      const oldValue = oldSnapshot?.[field];
+      const newValue = newSnapshot?.[field];
+      if (oldValue !== newValue) {
+        return true;
+      }
+    }
+
+    const oldPrice = oldSnapshot?.price || {};
+    const newPrice = newSnapshot?.price || {};
+
+    if (
+      oldPrice.amount !== newPrice.amount ||
+      oldPrice.currencyCode !== newPrice.currencyCode
+    ) {
+      return true;
+    }
+
+    return false;
   }
+
   async getShipmentByProductId(
     productId: string,
     tenantName: string,
