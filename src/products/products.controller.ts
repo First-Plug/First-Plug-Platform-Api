@@ -85,6 +85,7 @@ export class ProductsController {
     @Param('id', ParseMongoIdPipe) id: ObjectId,
     tenantName: string,
   ) {
+    console.log(`📦 Assign - Product ID: ${id} | Tenant: ${tenantName}`);
     return this.assignmentsService.getProductForAssign(id, tenantName);
   }
 
@@ -95,6 +96,7 @@ export class ProductsController {
   ) {
     const tenantName = req.user.tenantName;
     const connection = await this.tenantModelRegistry.getConnection(tenantName);
+    console.log(`📦 Reassign GET - Product ID: ${id} | Tenant: ${tenantName}`);
     return this.assignmentsService.getProductForReassign(
       id,
       tenantName,
@@ -116,6 +118,12 @@ export class ProductsController {
     const tenantName = req.user.tenantName;
     const { userId } = req;
     const ourOfficeEmail = req.user.email;
+
+    console.log(
+      `🔁 Reassign PATCH - Product ID: ${id} | Tenant: ${tenantName} | User: ${userId}`,
+    );
+    console.log('📦 updateProductDto recibido:', updateProductDto);
+
     return this.productsService.reassignProduct(
       id,
       updateProductDto,
@@ -144,6 +152,11 @@ export class ProductsController {
     const tenantName = req.user.tenantName;
     const { userId } = req;
     const ourOfficeEmail = req.user.email;
+    console.log(
+      `PATCH - Product ID: ${id} | Tenant: ${tenantName} | User: ${userId}`,
+    );
+    console.log('📦 updateProductDto recibido:', updateProductDto);
+
     return this.productsService.update(
       id,
       updateProductDto,

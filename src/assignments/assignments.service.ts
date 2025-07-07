@@ -903,6 +903,7 @@ export class AssignmentsService {
         }
 
         shipment = await this.logisticsService.tryCreateShipmentIfNeeded(
+
           product,
           updateDto,
           tenantName,
@@ -1100,6 +1101,7 @@ export class AssignmentsService {
         }
 
         shipment = await this.logisticsService.tryCreateShipmentIfNeeded(
+
           product as ProductDocument,
           updateDto,
           tenantName,
