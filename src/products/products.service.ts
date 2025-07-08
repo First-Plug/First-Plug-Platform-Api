@@ -37,6 +37,7 @@ import { AssignmentsService } from 'src/assignments/assignments.service';
 import { EventTypes } from 'src/infra/event-bus/types';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { LogisticsService } from 'src/logistics/logistics.sevice';
+import { normalizeSerialForHistory } from './helpers/history.helper';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -1376,7 +1377,10 @@ export class ProductsService {
           actionType: 'delete',
           itemType: 'assets',
           userId,
-          changes,
+          changes: {
+            oldData: normalizeSerialForHistory(changes.oldData),
+            newData: null,
+          },
         });
 
         await session.commitTransaction();

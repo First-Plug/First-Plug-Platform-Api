@@ -41,3 +41,12 @@ export async function recordAssetHistory(
 
   await historyService.create(payload);
 }
+
+export const normalizeSerialForHistory = (product: any) => {
+  if (!product) return null;
+  const plain = product.toObject?.() ?? product;
+  return {
+    ...plain,
+    serialNumber: plain.serialNumber || plain.lastSerialNumber || null,
+  };
+};
