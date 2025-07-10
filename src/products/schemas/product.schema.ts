@@ -114,6 +114,9 @@ export class Product {
   @Prop({ type: Boolean, default: false })
   activeShipment?: boolean;
 
+  @Prop({ type: String })
+  lastSerialNumber?: string;
+
   isDeleted?: boolean;
 
   deleteAt?: string | null;

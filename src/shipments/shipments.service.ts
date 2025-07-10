@@ -617,7 +617,7 @@ export class ShipmentsService {
           ourOfficeEmail: ourOfficeEmail,
         });
         await this.slackService.sendMessage(missingDataMessage);
-      } else {
+      } else if (shipment.shipment_status === 'In Preparation') {
         //TODO: Status update
         const slackMessage = CreateShipmentMessageToSlack({
           shipment,

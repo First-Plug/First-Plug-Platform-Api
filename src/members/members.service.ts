@@ -21,6 +21,7 @@ import { ShipmentSchema } from 'src/shipments/schema/shipment.schema';
 import { AssignmentsService } from 'src/assignments/assignments.service';
 import { chunkArray } from './helpers/chunkArray';
 import { LogisticsService } from 'src/logistics/logistics.sevice';
+import { normalizeKeys } from './helpers/normalizeKeys';
 
 interface MemberWithShipmentStatus extends MemberDocument {
   shipmentStatus?: string[];
@@ -499,10 +500,6 @@ export class MembersService {
       }
 
       const initialMember = JSON.parse(JSON.stringify(member));
-      console.log('📊 Estado inicial del miembro:', {
-        dni: initialMember.dni,
-        email: initialMember.email,
-      });
 
       const willModifyPersonalData = this.isPersonalDataBeingModified(
         member,
@@ -573,13 +570,22 @@ export class MembersService {
       await session.commitTransaction();
       session.endSession();
 
+      const finalMemberData = {
+        ...(member.toObject?.() ?? member),
+        dni: 'dni' in member ? member.dni : null,
+      };
+      const [normalizedOld, normalizedNew] = normalizeKeys(
+        initialMember,
+        finalMemberData,
+      );
+
       await this.historyService.create({
         actionType: 'update',
         itemType: 'members',
         userId: userId,
         changes: {
-          oldData: initialMember,
-          newData: member,
+          oldData: normalizedOld,
+          newData: normalizedNew,
         },
       });
 

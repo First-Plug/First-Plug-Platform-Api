@@ -37,6 +37,7 @@ import { AssignmentsService } from 'src/assignments/assignments.service';
 import { EventTypes } from 'src/infra/event-bus/types';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { LogisticsService } from 'src/logistics/logistics.sevice';
+import { normalizeSerialForHistory } from './helpers/history.helper';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -1311,7 +1312,10 @@ export class ProductsService {
 
         if (product) {
           product.status = 'Deprecated';
+          product.lastSerialNumber = product.serialNumber;
+          product.serialNumber = undefined;
           product.isDeleted = true;
+
           await product.save();
           await ProductModel.softDelete({ _id: id }, { session });
 
@@ -1345,7 +1349,8 @@ export class ProductsService {
                   isDeleted: true,
                   location: memberProduct.product.location,
                   recoverable: memberProduct.product.recoverable,
-                  serialNumber: memberProduct.product.serialNumber,
+                  serialNumber: undefined,
+                  lastSerialNumber: memberProduct.product.serialNumber,
                   lastAssigned: memberProduct.member.email,
                   status: 'Deprecated',
                 },
@@ -1372,7 +1377,10 @@ export class ProductsService {
           actionType: 'delete',
           itemType: 'assets',
           userId,
-          changes,
+          changes: {
+            oldData: normalizeSerialForHistory(changes.oldData),
+            newData: null,
+          },
         });
 
         await session.commitTransaction();
