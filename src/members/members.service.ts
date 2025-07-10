@@ -570,24 +570,43 @@ export class MembersService {
       await session.commitTransaction();
       session.endSession();
 
-      const finalMemberData = {
-        ...(member.toObject?.() ?? member),
-        dni: 'dni' in member ? member.dni : null,
-      };
+      const finalMemberData = member.toObject?.() ?? member;
+
       const [normalizedOld, normalizedNew] = normalizeKeys(
         initialMember,
         finalMemberData,
       );
 
-      await this.historyService.create({
-        actionType: 'update',
-        itemType: 'members',
-        userId: userId,
-        changes: {
-          oldData: normalizedOld,
-          newData: normalizedNew,
-        },
-      });
+      const changedFields = Object.keys(normalizedNew).filter(
+        (key) => normalizedOld[key] !== normalizedNew[key],
+      );
+
+      if (changedFields.length > 0) {
+        const trimmedOld: Record<string, any> = {};
+        const trimmedNew: Record<string, any> = {};
+
+        for (const key of changedFields) {
+          trimmedOld[key] = normalizedOld[key];
+          trimmedNew[key] = normalizedNew[key];
+        }
+
+        trimmedOld.firstName = normalizedOld.firstName;
+        trimmedOld.lastName = normalizedOld.lastName;
+        trimmedOld.email = normalizedOld.email;
+        trimmedNew.firstName = normalizedNew.firstName;
+        trimmedNew.lastName = normalizedNew.lastName;
+        trimmedNew.email = normalizedNew.email;
+
+        await this.historyService.create({
+          actionType: 'update',
+          itemType: 'members',
+          userId: userId,
+          changes: {
+            oldData: trimmedOld,
+            newData: trimmedNew,
+          },
+        });
+      }
 
       return member;
     } catch (error) {
