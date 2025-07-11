@@ -1656,15 +1656,19 @@ export class LogisticsService {
       'products._id': productId,
       'products.status': 'In Transit',
     });
-    const updateResult = await MemberModel.updateOne(
-      {
-        'products._id': new Types.ObjectId(productId),
-        'products.status': 'In Transit',
-      },
-      {
-        $set: { 'products.$.status': 'In Transit - Missing Data' },
-      },
-      { session },
+    const updateResult = await this.executeWithRetry(
+      () =>
+        MemberModel.updateOne(
+          {
+            'products._id': new Types.ObjectId(productId),
+            'products.status': 'In Transit',
+          },
+          {
+            $set: { 'products.$.status': 'In Transit - Missing Data' },
+          },
+          { session },
+        ),
+      `updateProductStatusToMissingData-${productId}`,
     );
     console.log(
       '[🧪] Resultado del updateOne a member.products:',
@@ -1727,25 +1731,69 @@ export class LogisticsService {
         `❌ Producto no encontrado en colección general: ${productId}`,
       );
 
-      const updateResult = await MemberModel.updateOne(
-        {
-          'products._id': new Types.ObjectId(productId),
-          'products.status': 'In Transit - Missing Data',
-        },
-        {
-          $set: { 'products.$.status': 'In Transit' },
-        },
-        { session },
+      // Primero buscar el producto en Member para ver su status actual
+      const memberWithProduct = await MemberModel.findOne({
+        'products._id': new Types.ObjectId(productId),
+      }).session(session);
+
+      if (memberWithProduct) {
+        const embeddedProduct = memberWithProduct.products.find(
+          (p) => p._id?.toString() === productId,
+        );
+
+        if (embeddedProduct) {
+          console.log(
+            `🔍 [IN_TRANSIT] Producto encontrado en Member - Status actual: "${embeddedProduct.status}"`,
+          );
+          console.log(
+            `🔍 [IN_TRANSIT] Member: ${memberWithProduct.firstName} ${memberWithProduct.lastName} (${memberWithProduct.email})`,
+          );
+        } else {
+          console.log(
+            `❌ [IN_TRANSIT] Producto ${productId} no encontrado en products array del member`,
+          );
+        }
+      } else {
+        console.log(
+          `❌ [IN_TRANSIT] No se encontró member con producto ${productId}`,
+        );
+      }
+
+      const updateResult = await this.executeWithRetry(
+        () =>
+          MemberModel.updateOne(
+            {
+              'products._id': new Types.ObjectId(productId),
+              'products.status': 'In Transit - Missing Data',
+            },
+            {
+              $set: { 'products.$.status': 'In Transit' },
+            },
+            { session },
+          ),
+        `updateProductStatusToInTransit-${productId}`,
       );
 
       if (updateResult.modifiedCount > 0) {
         console.log(
-          `✅ Updated product status in Member collection: ${productId}`,
+          `✅ [IN_TRANSIT] Updated product status in Member collection: ${productId}`,
         );
 
+        // Verificar que realmente se actualizó
         const member = await MemberModel.findOne({
           'products._id': new Types.ObjectId(productId),
         }).session(session);
+
+        if (member) {
+          const updatedProduct = member.products.find(
+            (p) => p._id?.toString() === productId,
+          );
+          if (updatedProduct) {
+            console.log(
+              `🔍 [IN_TRANSIT] Status después de actualización: "${updatedProduct.status}"`,
+            );
+          }
+        }
 
         const foundProduct = member?.products.find((p) =>
           p._id.equals(productId),
@@ -1765,9 +1813,14 @@ export class LogisticsService {
         }
       } else {
         console.log(
-          `ℹ️ Product ${productId} status in member was not 'In Transit - Missing Data' or not found`,
+          `ℹ️ [IN_TRANSIT] Product ${productId} status in member was not 'In Transit - Missing Data' or not found`,
         );
       }
+
+      console.log(
+        `[🧪] [IN_TRANSIT] Resultado del updateOne a member.products:`,
+        updateResult,
+      );
 
       return null;
     } catch (error) {
@@ -2079,6 +2132,38 @@ export class LogisticsService {
         });
       }
 
+      // También actualizar productos si el shipment se mantiene en 'On Hold - Missing Data'
+      // pero se actualizaron los datos (para asegurar consistencia)
+      if (
+        !isNowComplete &&
+        newStatus === 'On Hold - Missing Data' &&
+        originalShipment.shipment_status === 'On Hold - Missing Data'
+      ) {
+        console.log(
+          '🔄 Shipment remains On Hold - Missing Data, ensuring product status consistency',
+        );
+
+        const updatedProducts: ProductDocument[] = [];
+
+        for (const productId of shipment.products) {
+          const updatedProduct = await this.updateProductStatusToMissingData(
+            productId.toString(),
+            connection,
+            session,
+          );
+          if (updatedProduct) {
+            updatedProducts.push(updatedProduct);
+          }
+        }
+
+        if (updatedProducts.length > 0) {
+          await this.shipmentsService.createSnapshots(shipment, connection, {
+            providedProducts: updatedProducts,
+            force: true,
+          });
+        }
+      }
+
       if (newStatus !== shipment.shipment_status) {
         await ShipmentModel.updateOne(
           { _id: shipment._id },
@@ -2149,6 +2234,27 @@ export class LogisticsService {
       }
 
       console.log('📋 Final shipment status:', newStatus);
+
+      // Debug: Verificar status final de productos embebidos
+      const MemberModel =
+        connection.models.Member || connection.model('Member', MemberSchema);
+      for (const productId of shipment.products) {
+        const finalMember = await MemberModel.findOne({
+          'products._id': new Types.ObjectId(productId),
+        }).session(session);
+
+        if (finalMember) {
+          const finalProduct = finalMember.products.find(
+            (p) => p._id?.toString() === productId.toString(),
+          );
+          if (finalProduct) {
+            console.log(
+              `🔍 [FINAL_CHECK] Producto ${productId} status final en Member: "${finalProduct.status}"`,
+            );
+          }
+        }
+      }
+
       return newStatus;
     } catch (error) {
       console.error('❌ Error updating shipment:', error);
@@ -2286,5 +2392,45 @@ export class LogisticsService {
         }
       }
     }
+  }
+
+  /**
+   * Ejecuta una operación con retry automático en caso de Write Conflicts
+   */
+  private async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    operationName: string,
+    maxRetries: number = 3,
+  ): Promise<T> {
+    let lastError: any;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        lastError = error;
+
+        // Solo reintentar en Write Conflicts
+        if (error.code === 112 || error.codeName === 'WriteConflict') {
+          if (attempt < maxRetries) {
+            const delay = Math.pow(2, attempt - 1) * 100; // 100ms, 200ms, 400ms
+            console.log(
+              `⚠️ Write Conflict en ${operationName} (intento ${attempt}/${maxRetries}). Reintentando en ${delay}ms...`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            continue;
+          } else {
+            console.error(
+              `❌ ${operationName} falló después de ${maxRetries} intentos por Write Conflicts`,
+            );
+          }
+        }
+
+        // Si no es Write Conflict o se agotaron los reintentos, lanzar error
+        throw error;
+      }
+    }
+
+    throw lastError;
   }
 }
