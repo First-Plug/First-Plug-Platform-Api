@@ -1262,6 +1262,9 @@ export class LogisticsService {
         for (const shipment of shipments) {
           let updated = false;
 
+          // Capturar datos originales ANTES de cualquier actualización
+          const originalShipmentData = { ...shipment.toObject() };
+
           const desirableDateOrigin =
             shipment.originDetails?.desirableDate || '';
           const desirableDateDest =
@@ -1356,6 +1359,7 @@ export class LogisticsService {
                 userId,
                 tenantName,
                 ourOfficeEmail,
+                originalShipmentData,
               );
             }
           }
@@ -1880,9 +1884,10 @@ export class LogisticsService {
     userId: string,
     tenantId: string,
     ourOfficeEmail: string,
+    originalShipmentData?: any,
   ) {
     try {
-      const originalShipment = { ...shipment.toObject() };
+      // const originalShipment = { ...shipment.toObject() };
       const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
 
       const freshShipment = await ShipmentModel.findById(shipment._id).session(
@@ -1893,6 +1898,9 @@ export class LogisticsService {
       }
 
       shipment = freshShipment;
+      const originalShipment = originalShipmentData || {
+        ...shipment.toObject(),
+      };
 
       const orderNumber = parseInt(shipment.order_id.slice(-4));
 
@@ -2042,6 +2050,30 @@ export class LogisticsService {
           isOffboarding: false,
           status: 'Missing Data',
           ourOfficeEmail: ourOfficeEmail,
+        });
+        await this.slackService.sendMessage(slackMessage);
+      }
+
+      shipment.shipment_status = newStatus;
+
+      const detailsChanged =
+        JSON.stringify(originalShipment.originDetails) !==
+          JSON.stringify(shipment.originDetails) ||
+        JSON.stringify(originalShipment.destinationDetails) !==
+          JSON.stringify(shipment.destinationDetails);
+
+      if (
+        originalShipment.shipment_status === 'In Preparation' &&
+        shipment.shipment_status === 'In Preparation' &&
+        detailsChanged
+      ) {
+        const slackMessage = CreateShipmentMessageToSlack({
+          shipment,
+          tenantName: tenantId,
+          isOffboarding: false,
+          status: 'Updated',
+          previousShipment: originalShipment,
+          ourOfficeEmail,
         });
         await this.slackService.sendMessage(slackMessage);
       }
