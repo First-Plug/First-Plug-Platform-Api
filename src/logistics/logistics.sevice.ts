@@ -1624,6 +1624,33 @@ export class LogisticsService {
         `❌ Producto no encontrado en colección general: ${productId}`,
       );
     }
+
+    // Primero buscar el producto en Member para ver su status actual
+    const memberWithProduct = await MemberModel.findOne({
+      'products._id': new Types.ObjectId(productId),
+    }).session(session);
+
+    if (memberWithProduct) {
+      const embeddedProduct = memberWithProduct.products.find(
+        (p) => p._id?.toString() === productId,
+      );
+
+      if (embeddedProduct) {
+        console.log(
+          `🔍 Producto encontrado en Member - Status actual: "${embeddedProduct.status}"`,
+        );
+        console.log(
+          `🔍 Member: ${memberWithProduct.firstName} ${memberWithProduct.lastName} (${memberWithProduct.email})`,
+        );
+      } else {
+        console.log(
+          `❌ Producto ${productId} no encontrado en products array del member`,
+        );
+      }
+    } else {
+      console.log(`❌ No se encontró member con producto ${productId}`);
+    }
+
     console.log('🛠 Intentando updateOne en MemberModel para', productId);
     console.log('🛠 Query:', {
       'products._id': productId,
