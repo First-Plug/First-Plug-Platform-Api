@@ -1430,15 +1430,26 @@ export class LogisticsService {
 
     await new Promise((resolve) => process.nextTick(resolve));
 
+    // Capturar el status original ANTES de cancelar
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
+    const originalShipment = await ShipmentModel.findById(shipmentId);
+
+    if (!originalShipment) {
+      throw new NotFoundException(`Shipment ${shipmentId} not found`);
+    }
+
+    const originalShipmentData = { ...originalShipment.toObject() };
+
     const shipment = await this.shipmentsService.cancel(shipmentId, tenantName);
-    const originalShipment = { ...shipment.toObject() };
 
     if (userId) {
       await recordShipmentHistory(
         this.historyService,
         'cancel',
         userId,
-        originalShipment,
+        originalShipmentData,
         shipment.toObject(),
       );
     } else {
@@ -1453,14 +1464,22 @@ export class LogisticsService {
       // userId (si lo usás internamente)
     );
 
-    const slackMessage = CreateShipmentMessageToSlack({
-      shipment,
-      tenantName,
-      isOffboarding: false,
-      status: 'Cancelled',
-      ourOfficeEmail,
-    });
-    await this.slackService.sendMessage(slackMessage);
+    // Solo enviar mensaje a Slack si el shipment estaba en 'In Preparation'
+    // Los shipments en 'On Hold - Missing Data' nunca fueron notificados a Slack
+    if (originalShipmentData.shipment_status === 'In Preparation') {
+      const slackMessage = CreateShipmentMessageToSlack({
+        shipment,
+        tenantName,
+        isOffboarding: false,
+        status: 'Cancelled',
+        ourOfficeEmail,
+      });
+      await this.slackService.sendMessage(slackMessage);
+    } else {
+      console.log(
+        `🔇 Shipment was in "${originalShipmentData.shipment_status}" status, skipping Slack notification for cancellation.`,
+      );
+    }
 
     const originEmail = shipment.originDetails?.assignedEmail;
     const destinationEmail = shipment.destinationDetails?.assignedEmail;
