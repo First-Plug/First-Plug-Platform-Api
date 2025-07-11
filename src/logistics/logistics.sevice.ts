@@ -885,7 +885,10 @@ export class LogisticsService {
 
     const activeShipmentsForProduct = await ShipmentModel.countDocuments({
       products: new Types.ObjectId(productId),
-      shipment_status: { $in: ['In Preparation', 'On The Way'] },
+      shipment_status: {
+        $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
+      },
+      isDeleted: { $ne: true },
     });
 
     if (activeShipmentsForProduct === 0) {
@@ -931,9 +934,21 @@ export class LogisticsService {
       const fullName = `${member.firstName} ${member.lastName}`;
 
       const activeShipmentsForMember = await ShipmentModel.countDocuments({
-        shipment_status: { $in: ['In Preparation', 'On The Way'] },
-        $or: [{ origin: fullName }, { destination: fullName }],
+        shipment_status: {
+          $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
+        },
+        $or: [
+          { origin: fullName },
+          { destination: fullName },
+          { 'originDetails.assignedEmail': memberEmail },
+          { 'destinationDetails.assignedEmail': memberEmail },
+        ],
+        isDeleted: { $ne: true },
       });
+
+      console.log(
+        `🔍 Active shipments for member ${fullName} (${memberEmail}): ${activeShipmentsForMember}`,
+      );
 
       if (activeShipmentsForMember === 0) {
         console.log(`✅ Setting activeShipment: false for member ${fullName}`);
@@ -1031,7 +1046,8 @@ export class LogisticsService {
     const MemberModel =
       this.tenantModels.getMemberModelFromConnection(connection);
 
-    const memberStillInvolved = await ShipmentModel.exists({
+    // Agregar logs detallados para debugging
+    const activeShipments = await ShipmentModel.find({
       shipment_status: {
         $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
       },
@@ -1044,11 +1060,19 @@ export class LogisticsService {
       isDeleted: { $ne: true },
     });
 
-    console.log(
-      `🔎 Checking active shipments for ${normalizedEmail} => ${
-        memberStillInvolved ? 'STILL INVOLVED' : 'CAN BE CLEARED'
-      }`,
-    );
+    console.log(`🔍 Active shipments found for ${normalizedEmail}:`, {
+      count: activeShipments.length,
+      shipments: activeShipments.map((s) => ({
+        id: s._id,
+        status: s.shipment_status,
+        origin: s.origin,
+        destination: s.destination,
+        originEmail: s.originDetails?.assignedEmail,
+        destinationEmail: s.destinationDetails?.assignedEmail,
+      })),
+    });
+
+    const memberStillInvolved = activeShipments.length > 0;
 
     if (!memberStillInvolved) {
       const result = await MemberModel.updateOne(
