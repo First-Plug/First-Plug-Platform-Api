@@ -1297,77 +1297,64 @@ export class LogisticsService {
           console.log('📌 DNI recibido:', member.dni, typeof member.dni);
 
           if (shipment.origin === fullName) {
-            const originPatch = {
-              'originDetails.address': member.address || '',
-              'originDetails.city': member.city || '',
-              'originDetails.country': member.country || '',
-              'originDetails.zipCode': member.zipCode || '',
-              'originDetails.phone': member.phone || '',
-              'originDetails.personalEmail': member.personalEmail || '',
-              'originDetails.apartment': member.apartment || '',
-              'originDetails.assignedEmail': member.email,
-              'originDetails.contactName': fullName,
-              'originDetails.desirableDate': desirableDateOrigin,
+            const originDetails = {
+              address: member.address || '',
+              apartment: member.apartment || '',
+              city: member.city || '',
+              country: member.country || '',
+              zipCode: member.zipCode || '',
+              phone: member.phone || '',
+              personalEmail: member.personalEmail || '',
+              assignedEmail: member.email,
+              contactName: fullName,
+              desirableDate: desirableDateOrigin,
+              dni:
+                typeof member.dni === 'string' && member.dni.trim() !== ''
+                  ? member.dni.trim()
+                  : null,
             };
-
-            if (typeof member.dni === 'string' && member.dni.trim() !== '') {
-              originPatch['originDetails.dni'] = member.dni.trim();
-            } else {
-              originPatch['originDetails.dni'] = null;
-            }
-
-            console.log(
-              `🛠 PATCH ORIGIN → ${shipment._id.toString()}`,
-              originPatch,
-            );
 
             const updatedShipment = await ShipmentModel.findOneAndUpdate(
               { _id: shipment._id },
-              { $set: originPatch },
+              { $set: { originDetails } },
               { session, new: true },
             );
 
             shipment.originDetails = updatedShipment?.originDetails;
             updated = true;
             this.logger.debug(
-              `Updated origin details for shipment ${shipment._id}`,
+              `✅ Replaced originDetails for shipment ${shipment._id}`,
             );
           }
 
           if (shipment.destination === fullName) {
-            const destinationPatch = {
-              'destinationDetails.address': member.address || '',
-              'destinationDetails.city': member.city || '',
-              'destinationDetails.country': member.country || '',
-              'destinationDetails.zipCode': member.zipCode || '',
-              'destinationDetails.phone': member.phone || '',
-              'destinationDetails.personalEmail': member.personalEmail || '',
-              'destinationDetails.apartment': member.apartment || '',
-              'destinationDetails.assignedEmail': member.email,
-              'destinationDetails.contactName': fullName,
-              'destinationDetails.desirableDate': desirableDateDest,
+            const destinationDetails = {
+              address: member.address || '',
+              apartment: member.apartment || '',
+              city: member.city || '',
+              country: member.country || '',
+              zipCode: member.zipCode || '',
+              phone: member.phone || '',
+              personalEmail: member.personalEmail || '',
+              assignedEmail: member.email,
+              contactName: fullName,
+              desirableDate: desirableDateDest,
+              dni:
+                typeof member.dni === 'string' && member.dni.trim() !== ''
+                  ? member.dni.trim()
+                  : null,
             };
 
-            if (typeof member.dni === 'string' && member.dni.trim() !== '') {
-              destinationPatch['destinationDetails.dni'] = member.dni.trim();
-            } else {
-              destinationPatch['destinationDetails.dni'] = null;
-            }
-
-            console.log(
-              `🛠 PATCH DESTINATION → ${shipment._id.toString()}`,
-              destinationPatch,
-            );
             const updatedShipment = await ShipmentModel.findOneAndUpdate(
               { _id: shipment._id },
-              { $set: destinationPatch },
+              { $set: { destinationDetails } },
               { session, new: true },
             );
 
             shipment.destinationDetails = updatedShipment?.destinationDetails;
             updated = true;
             this.logger.debug(
-              `Updated destination details for shipment ${shipment._id}`,
+              `✅ Replaced destinationDetails for shipment ${shipment._id}`,
             );
           }
 
@@ -1625,43 +1612,46 @@ export class LogisticsService {
       );
     }
 
-    // Primero buscar el producto en Member para ver su status actual
-    const memberWithProduct = await MemberModel.findOne({
-      'products._id': new Types.ObjectId(productId),
-    }).session(session);
-
-    if (memberWithProduct) {
-      const embeddedProduct = memberWithProduct.products.find(
-        (p) => p._id?.toString() === productId,
-      );
-
-      if (embeddedProduct) {
-        console.log(
-          `🔍 Producto encontrado en Member - Status actual: "${embeddedProduct.status}"`,
-        );
-        console.log(
-          `🔍 Member: ${memberWithProduct.firstName} ${memberWithProduct.lastName} (${memberWithProduct.email})`,
-        );
-      } else {
-        console.log(
-          `❌ Producto ${productId} no encontrado en products array del member`,
-        );
-      }
-    } else {
-      console.log(`❌ No se encontró member con producto ${productId}`);
-    }
-
     console.log('🛠 Intentando updateOne en MemberModel para', productId);
     console.log('🛠 Query:', {
       'products._id': productId,
       'products.status': 'In Transit',
     });
+    // Primero verificar que el producto específico tenga el status correcto
+    const memberWithProduct = await MemberModel.findOne({
+      'products._id': new Types.ObjectId(productId),
+    }).session(session);
+
+    if (!memberWithProduct) {
+      console.log(
+        `❌ [MISSING_DATA] No se encontró member con producto ${productId}`,
+      );
+      return null;
+    }
+
+    const targetProduct = memberWithProduct.products.find(
+      (p: any) => p._id?.toString() === productId,
+    );
+
+    if (!targetProduct) {
+      console.log(
+        `❌ [MISSING_DATA] Producto ${productId} no encontrado en products array`,
+      );
+      return null;
+    }
+
+    if (targetProduct.status !== 'In Transit') {
+      console.log(
+        `ℹ️ [MISSING_DATA] Producto ${productId} tiene status "${targetProduct.status}", no se actualiza`,
+      );
+      return null;
+    }
+
     const updateResult = await this.executeWithRetry(
       () =>
         MemberModel.updateOne(
           {
             'products._id': new Types.ObjectId(productId),
-            'products.status': 'In Transit',
           },
           {
             $set: { 'products.$.status': 'In Transit - Missing Data' },
@@ -1731,32 +1721,34 @@ export class LogisticsService {
         `❌ Producto no encontrado en colección general: ${productId}`,
       );
 
-      // Primero buscar el producto en Member para ver su status actual
+      // Primero verificar que el producto específico tenga el status correcto
       const memberWithProduct = await MemberModel.findOne({
         'products._id': new Types.ObjectId(productId),
       }).session(session);
 
-      if (memberWithProduct) {
-        const embeddedProduct = memberWithProduct.products.find(
-          (p) => p._id?.toString() === productId,
-        );
-
-        if (embeddedProduct) {
-          console.log(
-            `🔍 [IN_TRANSIT] Producto encontrado en Member - Status actual: "${embeddedProduct.status}"`,
-          );
-          console.log(
-            `🔍 [IN_TRANSIT] Member: ${memberWithProduct.firstName} ${memberWithProduct.lastName} (${memberWithProduct.email})`,
-          );
-        } else {
-          console.log(
-            `❌ [IN_TRANSIT] Producto ${productId} no encontrado en products array del member`,
-          );
-        }
-      } else {
+      if (!memberWithProduct) {
         console.log(
           `❌ [IN_TRANSIT] No se encontró member con producto ${productId}`,
         );
+        return null;
+      }
+
+      const targetProduct = memberWithProduct.products.find(
+        (p) => p._id?.toString() === productId,
+      );
+
+      if (!targetProduct) {
+        console.log(
+          `❌ [IN_TRANSIT] Producto ${productId} no encontrado en products array`,
+        );
+        return null;
+      }
+
+      if (targetProduct.status !== 'In Transit - Missing Data') {
+        console.log(
+          `ℹ️ [IN_TRANSIT] Producto ${productId} tiene status "${targetProduct.status}", no se actualiza`,
+        );
+        return null;
       }
 
       const updateResult = await this.executeWithRetry(
@@ -1764,7 +1756,6 @@ export class LogisticsService {
           MemberModel.updateOne(
             {
               'products._id': new Types.ObjectId(productId),
-              'products.status': 'In Transit - Missing Data',
             },
             {
               $set: { 'products.$.status': 'In Transit' },
@@ -1795,8 +1786,19 @@ export class LogisticsService {
           }
         }
 
-        const foundProduct = member?.products.find((p) =>
-          p._id.equals(productId),
+        const foundProduct = member?.products.find(
+          (p) => p._id?.toString() === productId.toString(),
+        );
+        console.log(
+          `🔍 [CHECK] Buscando producto con ID: ${productId} entre:`,
+          member?.products.map((p) => p._id?.toString()),
+        );
+        const allMatching = member?.products.filter(
+          (p) => p._id?.toString() === productId.toString(),
+        );
+        console.log(
+          `🔍 [MULTI MATCH] Productos que matchean ID ${productId}:`,
+          allMatching,
         );
 
         if (foundProduct) {
@@ -2233,25 +2235,25 @@ export class LogisticsService {
         await this.slackService.sendMessage(slackMessage);
       }
 
-      console.log('📋 Final shipment status:', newStatus);
-
       // Debug: Verificar status final de productos embebidos
       const MemberModel =
         connection.models.Member || connection.model('Member', MemberSchema);
       for (const productId of shipment.products) {
-        const finalMember = await MemberModel.findOne({
+        const member = await MemberModel.findOne({
           'products._id': new Types.ObjectId(productId),
         }).session(session);
 
-        if (finalMember) {
-          const finalProduct = finalMember.products.find(
-            (p) => p._id?.toString() === productId.toString(),
-          );
-          if (finalProduct) {
+        if (member) {
+          const p = member.products.find((pr) => pr._id.equals(productId));
+          if (p) {
             console.log(
-              `🔍 [FINAL_CHECK] Producto ${productId} status final en Member: "${finalProduct.status}"`,
+              `🔍 [FINAL_CHECK] Producto ${productId} → Status embebido en Member: "${p.status}"`,
             );
           }
+        } else {
+          console.log(
+            `❌ [FINAL_CHECK] No se encontró Member con producto ${productId}`,
+          );
         }
       }
 
