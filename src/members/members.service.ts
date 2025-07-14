@@ -110,6 +110,16 @@ export class MembersService {
     return '';
   }
 
+  private async populateTeam(
+    memberOrMembers: MemberDocument | MemberDocument[],
+  ): Promise<any> {
+    if (Array.isArray(memberOrMembers)) {
+      return this.memberRepository.populate(memberOrMembers, { path: 'team' });
+    } else {
+      return this.memberRepository.populate(memberOrMembers, { path: 'team' });
+    }
+  }
+
   async create(
     createMemberDto: CreateMemberDto,
     userId: string,
@@ -159,7 +169,8 @@ export class MembersService {
         },
       });
 
-      return createdMember;
+      const populatedMember = await this.populateTeam(createdMember);
+      return populatedMember;
     } catch (error) {
       await session.abortTransaction();
       session.endSession();
@@ -286,7 +297,8 @@ export class MembersService {
         },
       });
 
-      return createdMembers;
+      const populatedMembers = await this.populateTeam(createdMembers);
+      return populatedMembers;
     } catch (error) {
       console.log('ERROR EM MEMBERBULK ', error);
       await session.abortTransaction();
@@ -608,7 +620,9 @@ export class MembersService {
         });
       }
 
-      return member;
+      const populatedMember = await this.populateTeam(member);
+      console.log('member con team completo:', populatedMember);
+      return populatedMember;
     } catch (error) {
       await session.abortTransaction();
       session.endSession();
