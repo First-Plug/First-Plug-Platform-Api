@@ -36,6 +36,9 @@ export class Office extends Document {
   @Prop({ type: String, default: '' })
   apartment: string;
 
+  @Prop({ type: Types.ObjectId, ref: 'Tenant', required: true })
+  tenantId: Types.ObjectId;
+
   @Prop({ default: true })
   isActive: boolean;
 

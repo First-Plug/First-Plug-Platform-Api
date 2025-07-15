@@ -17,6 +17,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TenantDbModule } from 'src/infra/db/tenant-db.module';
 import { AssignmentsModule } from 'src/assignments/assignments.module';
 import { LogisticsModule } from 'src/logistics/logistics.module';
+import { UsersModule } from 'src/users/users.module';
+import { OfficesModule } from 'src/offices/offices.module';
 
 @Module({
   imports: [
@@ -56,6 +58,8 @@ import { LogisticsModule } from 'src/logistics/logistics.module';
     RetoolWebhooksModule,
     AssignmentsModule,
     LogisticsModule,
+    UsersModule,
+    OfficesModule,
   ],
   controllers: [],
   providers: [],

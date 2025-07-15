@@ -3,15 +3,14 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, ObjectId } from 'mongoose';
 import { Tenant } from './schemas/tenant.schema';
 import { CreateTenantDto, UpdateTenantDto } from './dto';
-import { CreateTenantByProvidersDto } from './dto/create-tenant-by-providers.dto';
 import { InjectSlack } from 'nestjs-slack-webhook';
 import { IncomingWebhook } from '@slack/webhook';
-import { UpdateTenantInformationSchemaDto } from './dto/update-information.dto';
-import { UserJWT } from 'src/auth/interfaces/auth.interface';
+// import { UpdateTenantInformationSchemaDto } from './dto/update-information.dto';
+// import { UserJWT } from 'src/auth/interfaces/auth.interface';
 import { UpdateDashboardSchemaDto } from './dto/update-dashboard.dto';
-import { TenantAddressUpdatedEvent } from 'src/infra/event-bus/tenant-address-update.event';
+// import { TenantAddressUpdatedEvent } from 'src/infra/event-bus/tenant-address-update.event';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EventTypes } from 'src/infra/event-bus/types';
+// import { EventTypes } from 'src/infra/event-bus/types';
 
 @Injectable()
 export class TenantsService {
@@ -268,66 +267,32 @@ export class TenantsService {
     }
   }
 
-  async create(createTenantDto: CreateTenantDto) {
-    const user = await this.findByEmail(createTenantDto.email);
+  async createTenant(
+    dto: CreateTenantDto,
+    createdBy: ObjectId,
+  ): Promise<Tenant> {
+    const exists = await this.tenantRepository.findOne({
+      tenantName: dto.tenantName,
+    });
 
-    if (user) {
-      throw new BadRequestException('Email Already in Use');
+    if (exists) {
+      throw new BadRequestException('Ya existe un tenant con ese nombre');
     }
 
-    const userCreated = await this.tenantRepository.create(createTenantDto);
+    const tenant = await this.tenantRepository.create({
+      ...dto,
+      createdBy,
+    });
 
-    this.slack.send(
-      `El usuario ${userCreated.email} se registró correctamente. Por favor habilitarlo cuanto antes y darle aviso para que pueda ingresar a la plataforma.`,
-    );
-  }
-
-  async createByProviders(
-    createTenantByProvidersDto: CreateTenantByProvidersDto,
-  ) {
-    const user = await this.findByEmail(createTenantByProvidersDto.email);
-
-    if (user) {
-      user.name = createTenantByProvidersDto.name;
-      user.image = createTenantByProvidersDto.image;
-      user.accountProvider = createTenantByProvidersDto.accountProvider;
-      await user.save();
-      return user;
-    }
-
-    const userCreated = await this.tenantRepository.create(
-      createTenantByProvidersDto,
-    );
-
-    this.slack.send(
-      `El usuario ${userCreated.email} se registró correctamente. Por favor habilitarlo cuanto antes y darle aviso para que pueda ingresar a la plataforma.`,
-    );
+    return tenant;
   }
 
   async getByTenantName(tenantName: string) {
     return await this.tenantRepository.findOne({ tenantName });
   }
+
   async getTenantById(id: string) {
-    const user = await this.tenantRepository.findOne({ _id: id });
-    user?.accountProvider;
-    return {
-      _id: user?._id,
-      phone: user?.phone,
-      country: user?.country,
-      city: user?.city,
-      state: user?.state,
-      zipCode: user?.zipCode,
-      address: user?.address,
-      apartment: user?.apartment,
-      image: user?.image,
-      tenantName: user?.tenantName,
-      name: user?.name,
-      email: user?.email,
-      accountProvider: user?.accountProvider,
-      isRecoverableConfig: user?.isRecoverableConfig,
-      computerExpiration: user?.computerExpiration,
-      widgets: user?.widgets,
-    };
+    return this.tenantRepository.findById(id);
   }
 
   async findByEmail(email: string) {
@@ -343,94 +308,94 @@ export class TenantsService {
     });
   }
 
-  async updateInformation(
-    user: UserJWT,
-    updateTenantInformationSchemaDto: UpdateTenantInformationSchemaDto,
-    ourOfficeEmail: string,
-  ) {
-    // First, get the current user data before update
-    const currentUser = await this.tenantRepository.findById(user._id);
-    if (!currentUser) {
-      throw new Error(`No se encontró el usuario con id: ${user._id}`);
-    }
+  // async updateInformation(
+  //   user: UserJWT,
+  //   updateTenantInformationSchemaDto: UpdateTenantInformationSchemaDto,
+  //   ourOfficeEmail: string,
+  // ) {
+  //   // First, get the current user data before update
+  //   const currentUser = await this.tenantRepository.findById(user._id);
+  //   if (!currentUser) {
+  //     throw new Error(`No se encontró el usuario con id: ${user._id}`);
+  //   }
 
-    // Store the old address data before any updates
-    const oldAddress = {
-      address: currentUser.address,
-      apartment: currentUser.apartment,
-      city: currentUser.city,
-      state: currentUser.state,
-      country: currentUser.country,
-      zipCode: currentUser.zipCode,
-      phone: currentUser.phone,
-    };
+  //   // Store the old address data before any updates
+  //   const oldAddress = {
+  //     address: currentUser.address,
+  //     apartment: currentUser.apartment,
+  //     city: currentUser.city,
+  //     state: currentUser.state,
+  //     country: currentUser.country,
+  //     zipCode: currentUser.zipCode,
+  //     phone: currentUser.phone,
+  //   };
 
-    // Perform the update
-    const userUpdated = await this.tenantRepository.findByIdAndUpdate(
-      user._id,
-      updateTenantInformationSchemaDto,
-      { new: true },
-    );
+  //   // Perform the update
+  //   const userUpdated = await this.tenantRepository.findByIdAndUpdate(
+  //     user._id,
+  //     updateTenantInformationSchemaDto,
+  //     { new: true },
+  //   );
 
-    if (!userUpdated) {
-      throw new Error(`No se encontró el usuario con id: ${user._id}`);
-    }
+  //   if (!userUpdated) {
+  //     throw new Error(`No se encontró el usuario con id: ${user._id}`);
+  //   }
 
-    const updateFields = {
-      phone: updateTenantInformationSchemaDto.phone,
-      country: updateTenantInformationSchemaDto.country,
-      city: updateTenantInformationSchemaDto.city,
-      state: updateTenantInformationSchemaDto.state,
-      zipCode: updateTenantInformationSchemaDto.zipCode,
-      address: updateTenantInformationSchemaDto.address,
-      apartment: updateTenantInformationSchemaDto.apartment,
-      image: updateTenantInformationSchemaDto.image,
-    };
+  //   const updateFields = {
+  //     phone: updateTenantInformationSchemaDto.phone,
+  //     country: updateTenantInformationSchemaDto.country,
+  //     city: updateTenantInformationSchemaDto.city,
+  //     state: updateTenantInformationSchemaDto.state,
+  //     zipCode: updateTenantInformationSchemaDto.zipCode,
+  //     address: updateTenantInformationSchemaDto.address,
+  //     apartment: updateTenantInformationSchemaDto.apartment,
+  //     image: updateTenantInformationSchemaDto.image,
+  //   };
 
-    if (userUpdated?.tenantName) {
-      await this.tenantRepository.updateMany(
-        { tenantName: userUpdated.tenantName, _id: { $ne: user._id } },
-        { $set: updateFields },
-      );
-    }
+  //   if (userUpdated?.tenantName) {
+  //     await this.tenantRepository.updateMany(
+  //       { tenantName: userUpdated.tenantName, _id: { $ne: user._id } },
+  //       { $set: updateFields },
+  //     );
+  //   }
 
-    // Check if there are actual changes in the address fields
-    const hasAddressChanges = Object.keys(oldAddress).some(
-      (key) => oldAddress[key] !== updateFields[key],
-    );
+  //   // Check if there are actual changes in the address fields
+  //   const hasAddressChanges = Object.keys(oldAddress).some(
+  //     (key) => oldAddress[key] !== updateFields[key],
+  //   );
 
-    if (hasAddressChanges) {
-      this.logger.debug('Emitting tenant address update event', {
-        tenantName: userUpdated.tenantName,
-        oldAddress,
-        newAddress: updateFields,
-      });
+  //   if (hasAddressChanges) {
+  //     this.logger.debug('Emitting tenant address update event', {
+  //       tenantName: userUpdated.tenantName,
+  //       oldAddress,
+  //       newAddress: updateFields,
+  //     });
 
-      this.eventEmitter.emit(
-        EventTypes.TENANT_ADDRESS_UPDATED,
-        new TenantAddressUpdatedEvent(
-          userUpdated.tenantName,
-          oldAddress,
-          updateFields,
-          new Date(),
-          user._id.toString(),
-          ourOfficeEmail,
-        ),
-      );
-    }
+  //     this.eventEmitter.emit(
+  //       EventTypes.TENANT_ADDRESS_UPDATED,
+  //       new TenantAddressUpdatedEvent(
+  //         userUpdated.tenantName,
+  //         oldAddress,
+  //         updateFields,
+  //         new Date(),
+  //         user._id.toString(),
+  //         ourOfficeEmail,
+  //       ),
+  //     );
+  //   }
 
-    return {
-      phone: userUpdated?.phone,
-      country: userUpdated?.country,
-      city: userUpdated?.city,
-      state: userUpdated?.state,
-      zipCode: userUpdated?.zipCode,
-      address: userUpdated?.address,
-      apartment: userUpdated?.apartment,
-      image: userUpdated?.image,
-      accountProvider: userUpdated?.accountProvider,
-    };
-  }
+  //   return {
+  //     phone: userUpdated?.phone,
+  //     country: userUpdated?.country,
+  //     city: userUpdated?.city,
+  //     state: userUpdated?.state,
+  //     zipCode: userUpdated?.zipCode,
+  //     address: userUpdated?.address,
+  //     apartment: userUpdated?.apartment,
+  //     image: userUpdated?.image,
+  //     accountProvider: userUpdated?.accountProvider,
+  //   };
+  // }
 
   async findUsersWithSameTenant(tenantName: string, createdAt: Date) {
     return await this.tenantRepository

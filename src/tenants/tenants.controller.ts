@@ -9,7 +9,7 @@ import {
   Param,
 } from '@nestjs/common';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
-import { UpdateTenantInformationSchemaDto } from './dto/update-information.dto';
+// import { UpdateTenantInformationSchemaDto } from './dto/update-information.dto';
 import { TenantsService } from './tenants.service';
 import { Request } from 'express';
 import { UpdateDashboardSchemaDto } from './dto/update-dashboard.dto';
@@ -74,18 +74,18 @@ export class TenantsController {
     });
   }
 
-  @Patch()
-  async update(
-    @Req() request: Request,
-    @Body() updateTenantInformationSchemaDto: UpdateTenantInformationSchemaDto,
-  ) {
-    const ourOfficeEmail = request.user.email;
-    return await this.tenantService.updateInformation(
-      request.user,
-      updateTenantInformationSchemaDto,
-      ourOfficeEmail,
-    );
-  }
+  // @Patch()
+  // async update(
+  //   @Req() request: Request,
+  //   @Body() updateTenantInformationSchemaDto: UpdateTenantInformationSchemaDto,
+  // ) {
+  //   const ourOfficeEmail = request.user.email;
+  //   return await this.tenantService.updateInformation(
+  //     request.user,
+  //     updateTenantInformationSchemaDto,
+  //     ourOfficeEmail,
+  //   );
+  // }
 
   @Patch('update-recoverable')
   async updateRecoverableConfig(

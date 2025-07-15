@@ -1,15 +1,20 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Types } from 'mongoose';
+import { genSalt, hash } from 'bcrypt';
 import { softDeletePlugin } from 'soft-delete-plugin-mongoose';
+import { HydratedDocument } from 'mongoose';
 
 export const PROVIDERS = ['credentials', 'google', 'azure-ad'] as const;
 export type Provider = (typeof PROVIDERS)[number];
+export type UserStatus = 'pending' | 'active';
+
+export type UserDocument = HydratedDocument<User>;
 
 @Schema({ timestamps: true })
-export class User extends Document {
+export class User {
   _id: Types.ObjectId;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: true, unique: true })
   email: string;
 
   @Prop({ type: String, required: false })
@@ -54,6 +59,12 @@ export class User extends Document {
   @Prop({ type: String, default: '' })
   image?: string;
 
+  @Prop({ type: Types.ObjectId, ref: 'Tenant', required: false })
+  tenantId?: Types.ObjectId;
+
+  @Prop({ type: String, enum: ['pending', 'active'], default: 'pending' })
+  status: UserStatus;
+
   @Prop({ default: true })
   isActive: boolean;
 
@@ -63,3 +74,18 @@ export class User extends Document {
 
 export const UserSchema =
   SchemaFactory.createForClass(User).plugin(softDeletePlugin);
+
+UserSchema.pre<UserDocument>('save', async function (next) {
+  if (!this.isModified('password') || !this.password) {
+    return next();
+  }
+
+  try {
+    const salt = await genSalt(10);
+    this.salt = salt;
+    this.password = await hash(this.password, salt);
+    next();
+  } catch (error) {
+    return next(error);
+  }
+});
