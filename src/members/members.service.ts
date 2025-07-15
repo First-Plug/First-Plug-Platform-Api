@@ -110,6 +110,16 @@ export class MembersService {
     return '';
   }
 
+  private async populateTeam(
+    memberOrMembers: MemberDocument | MemberDocument[],
+  ): Promise<any> {
+    if (Array.isArray(memberOrMembers)) {
+      return this.memberRepository.populate(memberOrMembers, { path: 'team' });
+    } else {
+      return this.memberRepository.populate(memberOrMembers, { path: 'team' });
+    }
+  }
+
   async create(
     createMemberDto: CreateMemberDto,
     userId: string,
@@ -159,7 +169,8 @@ export class MembersService {
         },
       });
 
-      return createdMember;
+      const populatedMember = await this.populateTeam(createdMember);
+      return populatedMember;
     } catch (error) {
       await session.abortTransaction();
       session.endSession();
@@ -286,7 +297,8 @@ export class MembersService {
         },
       });
 
-      return createdMembers;
+      const populatedMembers = await this.populateTeam(createdMembers);
+      return populatedMembers;
     } catch (error) {
       console.log('ERROR EM MEMBERBULK ', error);
       await session.abortTransaction();
@@ -570,26 +582,47 @@ export class MembersService {
       await session.commitTransaction();
       session.endSession();
 
-      const finalMemberData = {
-        ...(member.toObject?.() ?? member),
-        dni: 'dni' in member ? member.dni : null,
-      };
+      const finalMemberData = member.toObject?.() ?? member;
+
       const [normalizedOld, normalizedNew] = normalizeKeys(
         initialMember,
         finalMemberData,
       );
 
-      await this.historyService.create({
-        actionType: 'update',
-        itemType: 'members',
-        userId: userId,
-        changes: {
-          oldData: normalizedOld,
-          newData: normalizedNew,
-        },
-      });
+      const changedFields = Object.keys(normalizedNew).filter(
+        (key) => normalizedOld[key] !== normalizedNew[key],
+      );
 
-      return member;
+      if (changedFields.length > 0) {
+        const trimmedOld: Record<string, any> = {};
+        const trimmedNew: Record<string, any> = {};
+
+        for (const key of changedFields) {
+          trimmedOld[key] = normalizedOld[key];
+          trimmedNew[key] = normalizedNew[key];
+        }
+
+        trimmedOld.firstName = normalizedOld.firstName;
+        trimmedOld.lastName = normalizedOld.lastName;
+        trimmedOld.email = normalizedOld.email;
+        trimmedNew.firstName = normalizedNew.firstName;
+        trimmedNew.lastName = normalizedNew.lastName;
+        trimmedNew.email = normalizedNew.email;
+
+        await this.historyService.create({
+          actionType: 'update',
+          itemType: 'members',
+          userId: userId,
+          changes: {
+            oldData: trimmedOld,
+            newData: trimmedNew,
+          },
+        });
+      }
+
+      const populatedMember = await this.populateTeam(member);
+      console.log('member con team completo:', populatedMember);
+      return populatedMember;
     } catch (error) {
       await session.abortTransaction();
       session.endSession();
