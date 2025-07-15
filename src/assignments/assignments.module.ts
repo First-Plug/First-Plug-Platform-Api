@@ -10,12 +10,14 @@ import { TenantsModule } from 'src/tenants/tenants.module';
 import { AssignmentsController } from './assignments.controller';
 import { JwtService } from '@nestjs/jwt';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
+import { LogisticsModule } from 'src/logistics/logistics.module';
 
 @Module({
   imports: [
     forwardRef(() => MembersModule),
     forwardRef(() => ProductsModule),
     forwardRef(() => ShipmentsModule),
+    forwardRef(() => LogisticsModule),
     HistoryModule,
     SlackModule,
     TenantsModule,

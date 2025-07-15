@@ -13,11 +13,15 @@ import { ShipmentsService } from './shipments.service';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
 import { UpdateShipmentDto } from 'src/shipments/validations/update-shipment-zod';
+import { LogisticsService } from 'src/logistics/logistics.sevice';
 
 @Controller('shipments')
 @UseGuards(JwtGuard)
 export class ShipmentsController {
-  constructor(private readonly shipmentsService: ShipmentsService) {}
+  constructor(
+    private readonly shipmentsService: ShipmentsService,
+    private readonly logisticsService: LogisticsService,
+  ) {}
 
   @Get()
   async paginatedShipments(
@@ -59,7 +63,7 @@ export class ShipmentsController {
     const tenantId = req.user.tenantName;
     const { userId } = req;
     const ourOfficeEmail = req.user.email;
-    return this.shipmentsService.cancelShipmentAndUpdateProducts(
+    return this.logisticsService.cancelShipmentWithConsequences(
       shipmentId,
       tenantId,
       userId,
@@ -98,7 +102,7 @@ export class ShipmentsController {
     const tenantId = req.user.tenantName;
     const isActiveOnly = activeOnly.toLowerCase() === 'true';
 
-    const shipments = await this.shipmentsService.getShipmentsByMemberEmail(
+    const shipments = await this.logisticsService.getShipmentsByMemberEmail(
       email,
       tenantId,
       isActiveOnly,
