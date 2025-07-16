@@ -32,6 +32,7 @@ import { TenantConnectionService } from 'src/infra/db/tenant-connection.service'
 import { countryCodes } from 'src/shipments/helpers/countryCodes';
 import { Product } from 'src/products/schemas/product.schema';
 import { TenantsService } from 'src/tenants/tenants.service';
+import { TenantUserAdapterService } from 'src/common/services/tenant-user-adapter.service';
 import { ProductsService } from 'src/products/products.service';
 import { Status } from 'src/products/interfaces/product.interface';
 import { AddressData } from 'src/infra/event-bus/tenant-address-update.event';
@@ -51,6 +52,7 @@ export class LogisticsService {
     private readonly historyService: HistoryService,
     private readonly slackService: SlackService,
     private readonly tenantsService: TenantsService,
+    private readonly tenantUserAdapter: TenantUserAdapterService,
     @Inject(forwardRef(() => ProductsService))
     private readonly productsService: ProductsService,
     @Inject(forwardRef(() => MembersService))
@@ -431,7 +433,8 @@ export class LogisticsService {
     }
 
     if (product.location === 'Our office') {
-      const tenant = await this.tenantsService.getByTenantName(tenantName);
+      // Usar el adaptador para obtener datos de la oficina
+      const tenant = await this.tenantUserAdapter.getByTenantName(tenantName);
 
       if (!tenant) return false;
 

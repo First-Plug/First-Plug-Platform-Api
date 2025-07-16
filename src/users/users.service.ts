@@ -23,6 +23,11 @@ export class UsersService {
     return await this.userModel.findOne({ email });
   }
 
+  async findByTenantName(tenantName: string): Promise<User | null> {
+    // Buscar usuarios del esquema viejo que tienen tenantName directo
+    return await this.userModel.findOne({ tenantName });
+  }
+
   async findById(id: string | Types.ObjectId): Promise<User | null> {
     return await this.userModel.findById(id);
   }

@@ -11,13 +11,17 @@ import {
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 // import { UpdateTenantInformationSchemaDto } from './dto/update-information.dto';
 import { TenantsService } from './tenants.service';
+import { TenantUserAdapterService } from '../common/services/tenant-user-adapter.service';
 import { Request } from 'express';
 import { UpdateDashboardSchemaDto } from './dto/update-dashboard.dto';
 
 @UseGuards(JwtGuard)
 @Controller('user')
 export class TenantsController {
-  constructor(private readonly tenantService: TenantsService) {}
+  constructor(
+    private readonly tenantService: TenantsService,
+    private readonly tenantUserAdapter: TenantUserAdapterService,
+  ) {}
 
   @Get('migrate/:tenantName')
   async migrateRecoverable(@Param('tenantName') tenantName: string) {
@@ -136,11 +140,10 @@ export class TenantsController {
     @Req() request: Request,
     @Body() updateDashboardSchemaDto: UpdateDashboardSchemaDto,
   ) {
-    const user = await this.tenantService.update(
-      request.user,
+    // Delegar la lógica al adaptador que maneja usuarios viejos y nuevos
+    return await this.tenantUserAdapter.updateDashboard(
+      request.user._id,
       updateDashboardSchemaDto,
     );
-
-    return user?.widgets || [];
   }
 }

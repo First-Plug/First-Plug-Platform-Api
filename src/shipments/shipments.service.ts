@@ -10,6 +10,7 @@ import mongoose, { ClientSession, Connection, Model, Types } from 'mongoose';
 import { ShipmentDocument, ShipmentSchema } from './schema/shipment.schema';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { TenantsService } from 'src/tenants/tenants.service';
+import { TenantUserAdapterService } from 'src/common/services/tenant-user-adapter.service';
 import { countryCodes } from 'src/shipments/helpers/countryCodes';
 import { ProductDocument } from 'src/products/schemas/product.schema';
 import {
@@ -30,6 +31,7 @@ export class ShipmentsService {
   constructor(
     private readonly tenantConnectionService: TenantConnectionService,
     private readonly tenantsService: TenantsService,
+    private readonly tenantUserAdapter: TenantUserAdapterService,
     @Inject('SHIPMENT_METADATA_MODEL')
     private readonly shipmentMetadataRepository: Model<ShipmentMetadata>,
     private readonly historyService: HistoryService,
@@ -138,7 +140,8 @@ export class ShipmentsService {
     }
 
     if (location === 'Our office') {
-      const tenant = await this.tenantsService.getByTenantName(tenantId);
+      // Usar el adaptador para obtener datos de la oficina
+      const tenant = await this.tenantUserAdapter.getByTenantName(tenantId);
       if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
 
       return {

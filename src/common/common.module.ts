@@ -1,11 +1,15 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { GlobalConnectionProvider } from '../infra/db/global-connection.provider';
+import { TenantUserAdapterService } from './services/tenant-user-adapter.service';
+import { UsersModule } from '../users/users.module';
+import { TenantsModule } from '../tenants/tenants.module';
+import { OfficesModule } from '../offices/offices.module';
 
 @Global()
 @Module({
-  imports: [ConfigModule],
-  providers: [GlobalConnectionProvider],
-  exports: [GlobalConnectionProvider],
+  imports: [ConfigModule, UsersModule, TenantsModule, OfficesModule],
+  providers: [GlobalConnectionProvider, TenantUserAdapterService],
+  exports: [GlobalConnectionProvider, TenantUserAdapterService],
 })
 export class CommonModule {}

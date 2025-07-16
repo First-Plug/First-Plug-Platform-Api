@@ -68,6 +68,28 @@ export class User {
   @Prop({ default: true })
   isActive: boolean;
 
+  // Configuración de widgets del dashboard (nivel usuario)
+  @Prop({
+    type: [
+      {
+        id: { type: String, required: true },
+        order: { type: Number, required: true },
+      },
+    ],
+    default: [
+      { id: 'my-assets', order: 0 },
+      { id: 'computer-updates', order: 1 },
+      { id: 'upcoming-birthdays', order: 2 },
+      { id: 'members-by-country', order: 3 },
+      { id: 'latest-activity', order: 4 },
+    ],
+  })
+  widgets: { id: string; order: number }[];
+
+  // Para usuarios del esquema viejo que tienen tenantName directo
+  @Prop({ type: String, required: false })
+  tenantName?: string;
+
   @Prop({ default: false })
   isDeleted: boolean;
 }
