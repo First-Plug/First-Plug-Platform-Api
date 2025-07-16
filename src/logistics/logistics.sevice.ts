@@ -195,6 +195,23 @@ export class LogisticsService {
     };
   }
 
+  async getShipmentStatusByProductId(
+    productId: string,
+    tenantName: string,
+  ): Promise<string | null> {
+    const ShipmentModel = await this.tenantModels.getShipmentModel(tenantName);
+
+    const shipment = await ShipmentModel.findOne({
+      products: new mongoose.Types.ObjectId(productId),
+      shipment_status: {
+        $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
+      },
+      isDeleted: { $ne: true },
+    }).lean();
+
+    return shipment ? shipment.shipment_status : null;
+  }
+
   public async maybeCreateShipmentAndUpdateStatus(
     product: ProductDocument,
     updateDto: UpdateProductDto,
