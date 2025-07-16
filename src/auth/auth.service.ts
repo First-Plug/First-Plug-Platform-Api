@@ -73,7 +73,26 @@ export class AuthService {
       await this.userEnrichmentService.findEnrichedUserByEmail(loginDto.email);
 
     if (!enrichedUser) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException('Usuario no encontrado');
+    }
+
+    // Validar que el usuario tenga tenant asignado (excepto usuarios viejos)
+    const isOldUser = !enrichedUser.tenantId && enrichedUser.tenantName;
+    const isNewUser = !!enrichedUser.tenantId;
+
+    console.log('🔍 Validando tenant:', {
+      email: enrichedUser.email,
+      isOldUser,
+      isNewUser,
+      tenantName: enrichedUser.tenantName,
+      hasTenantId: !!enrichedUser.tenantId,
+    });
+
+    if (!isOldUser && !isNewUser) {
+      console.log('❌ Usuario sin tenant asignado:', enrichedUser.email);
+      throw new UnauthorizedException(
+        'Usuario sin tenant asignado. Contacte al administrador.',
+      );
     }
 
     const authorized = await this.validatePassword(
@@ -85,7 +104,7 @@ export class AuthService {
       return enrichedUser;
     }
 
-    throw new UnauthorizedException();
+    throw new UnauthorizedException('Credenciales inválidas');
   }
 
   async getTokens(createTenantByProvidersDto: CreateTenantByProvidersDto) {
