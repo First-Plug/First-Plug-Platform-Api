@@ -133,13 +133,22 @@ export class UsersService {
   ): Promise<User> {
     const user = await this.userModel.findByIdAndUpdate(
       userId,
-      { tenantId },
+      {
+        tenantId,
+        status: 'active', // Activar usuario al asignar tenant
+      },
       { new: true },
     );
 
     if (!user) {
       throw new Error(`No se encontró el usuario con id: ${userId}`);
     }
+
+    console.log('✅ Usuario activado:', {
+      email: user.email,
+      status: user.status,
+      tenantId: user.tenantId,
+    });
 
     return user;
   }
@@ -150,8 +159,13 @@ export class UsersService {
   ): Promise<{ updatedCount: number }> {
     const result = await this.userModel.updateMany(
       { _id: { $in: userIds } },
-      { $set: { tenantId } },
+      { $set: { tenantId, status: 'active' } }, // Activar usuarios al asignar tenant
     );
+
+    console.log('✅ Usuarios activados en lote:', {
+      updatedCount: result.modifiedCount,
+      tenantId,
+    });
 
     return { updatedCount: result.modifiedCount };
   }

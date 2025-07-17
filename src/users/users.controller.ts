@@ -6,6 +6,8 @@ import {
   Patch,
   Post,
   Query,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { UsersService } from './users.service';
@@ -13,10 +15,16 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { CreateUserByProviderDto } from './dto/create-user-by-provider.dto';
 import { UpdateUserConfigDto } from './dto/update-user-config.dto';
 import { AssignTenantToUsersDto } from './dto/assign-tenant-to-users.dto';
+import { TenantUserAdapterService } from '../common/services/tenant-user-adapter.service';
+import { JwtGuard } from '../auth/guard/jwt.guard';
+import { Request } from 'express';
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly tenantUserAdapter: TenantUserAdapterService,
+  ) {}
 
   @Post()
   async create(@Body() dto: CreateUserDto) {
@@ -67,5 +75,23 @@ export class UsersController {
     const userIds = dto.userIds.map((id) => new Types.ObjectId(id));
     const tenantId = new Types.ObjectId(dto.tenantId);
     return this.usersService.assignTenantToMultipleUsers(userIds, tenantId);
+  }
+
+  @UseGuards(JwtGuard)
+  @Patch('update-dashboard')
+  async updateDashboard(
+    @Req() request: Request,
+    @Body() dashboardData: { widgets: any[] },
+  ) {
+    console.log('📱 Actualizando dashboard para usuario:', {
+      userId: (request as any).user._id,
+      widgetsCount: dashboardData.widgets?.length || 0,
+    });
+
+    // Usar el adaptador para manejar usuarios viejos y nuevos
+    return await this.tenantUserAdapter.updateUserWidgets(
+      (request as any).user._id,
+      dashboardData.widgets,
+    );
   }
 }

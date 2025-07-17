@@ -24,12 +24,11 @@ export class AuthService {
     console.log('🔐 Login iniciado:', loginDto.email);
 
     const user = await this.validateUser(loginDto);
-    console.log(
-      '✅ Login exitoso:',
-      user.email,
-      '- Tipo:',
-      user.tenantId ? 'NUEVO' : 'VIEJO',
-    );
+    console.log('✅ Login exitoso:', user.email, '- Tipo:', {
+      tenantId: user.tenantId,
+      tenantName: user.tenantName,
+      tipo: user.tenantId ? 'NUEVO' : 'VIEJO',
+    });
 
     await this.checkAndPropagateTenantConfig(user);
 
@@ -76,18 +75,28 @@ export class AuthService {
       throw new UnauthorizedException('Usuario no encontrado');
     }
 
-    // Validar que el usuario tenga tenant asignado (excepto usuarios viejos)
+    // Validar permisos según el rol del usuario
     const isOldUser = !enrichedUser.tenantId && enrichedUser.tenantName;
     const isNewUser = !!enrichedUser.tenantId;
+    const isSuperAdmin = enrichedUser.role === 'superadmin';
 
-    console.log('🔍 Validando tenant:', {
+    console.log('🔍 Validando acceso:', {
       email: enrichedUser.email,
+      role: enrichedUser.role || 'user',
       isOldUser,
       isNewUser,
+      isSuperAdmin,
       tenantName: enrichedUser.tenantName,
       hasTenantId: !!enrichedUser.tenantId,
     });
 
+    // SuperAdmin no necesita tenant
+    if (isSuperAdmin) {
+      console.log('👑 SuperAdmin detectado - acceso sin tenant');
+      return enrichedUser;
+    }
+
+    // Usuarios normales necesitan tenant
     if (!isOldUser && !isNewUser) {
       console.log('❌ Usuario sin tenant asignado:', enrichedUser.email);
       throw new UnauthorizedException(
@@ -213,11 +222,13 @@ export class AuthService {
   }
 
   private createUserPayload(user: any) {
-    return {
+    const payload = {
       _id: user._id,
       email: user.email,
       name: user.name,
       image: user.image,
+      role: user.role || 'user', // Incluir rol en el JWT
+      tenantId: user.tenantId ? user.tenantId.toString() : null, // Convertir ObjectId a string
       tenantName: user.tenantName,
       address: user.address || '',
       apartment: user.apartment || '',
@@ -231,5 +242,17 @@ export class AuthService {
       computerExpiration: user.computerExpiration,
       widgets: user.widgets,
     };
+
+    console.log('📦 Payload del JWT:', {
+      email: payload.email,
+      tenantId: payload.tenantId,
+      tenantName: payload.tenantName,
+      role: payload.role,
+      widgetsCount: payload.widgets?.length || 0,
+      widgets:
+        payload.widgets?.map((w: any) => ({ id: w.id, order: w.order })) || [],
+    });
+
+    return payload;
   }
 }

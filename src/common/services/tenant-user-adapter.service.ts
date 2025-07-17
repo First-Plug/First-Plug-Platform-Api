@@ -17,6 +17,73 @@ export class TenantUserAdapterService {
   ) {}
 
   /**
+   * Obtiene widgets del usuario, adaptando entre modelo viejo y nuevo
+   */
+  async getUserWidgets(userId: string | Types.ObjectId): Promise<any[]> {
+    const user = await this.usersService.findById(userId);
+
+    if (!user) {
+      console.log('❌ Usuario no encontrado para widgets:', userId);
+      return [];
+    }
+
+    // CASO 1: Usuario nuevo (tiene tenantId) - widgets en user
+    if (user.tenantId) {
+      console.log('📱 Widgets desde usuario nuevo:', {
+        email: user.email,
+        widgetsCount: user.widgets?.length || 0,
+      });
+      return user.widgets || [];
+    }
+
+    // CASO 2: Usuario viejo (sin tenantId) - widgets en tenant
+    // Buscar en la colección tenants por email (usuario embebido)
+    const oldUserData = await this.tenantsService.findByEmail(user.email);
+    if (oldUserData) {
+      console.log('📱 Widgets desde usuario viejo embebido:', {
+        email: user.email,
+        tenantName: (oldUserData as any).tenantName,
+        widgetsCount: (oldUserData as any).widgets?.length || 0,
+      });
+      return (oldUserData as any).widgets || [];
+    }
+
+    console.log('⚠️ No se encontraron widgets para usuario:', user.email);
+    return [];
+  }
+
+  /**
+   * Actualiza widgets del usuario, adaptando entre modelo viejo y nuevo
+   */
+  async updateUserWidgets(
+    userId: string | Types.ObjectId,
+    widgets: any[],
+  ): Promise<void> {
+    const user = await this.usersService.findById(userId);
+
+    if (!user) {
+      throw new Error(`Usuario no encontrado: ${userId}`);
+    }
+
+    // CASO 1: Usuario nuevo (tiene tenantId) - actualizar widgets en user
+    if (user.tenantId) {
+      await this.usersService.updateUserConfig(user._id, { widgets });
+      console.log('📱 Widgets actualizados en usuario nuevo:', {
+        email: user.email,
+        widgetsCount: widgets.length,
+      });
+      return;
+    }
+
+    // CASO 2: Usuario viejo (sin tenantId) - actualizar widgets en tenant
+    await this.tenantsService.updateUserConfig(user._id as any, { widgets });
+    console.log('📱 Widgets actualizados en tenant viejo:', {
+      email: user.email,
+      widgetsCount: widgets.length,
+    });
+  }
+
+  /**
    * Busca un "tenant" por ID pero retorna datos combinados de user + tenant
    * para mantener compatibilidad con código que espera tenant.email
    */
@@ -76,7 +143,7 @@ export class TenantUserAdapterService {
         tenantId: user.tenantId,
         isRecoverableConfig: tenant?.isRecoverableConfig || new Map(),
         computerExpiration: tenant?.computerExpiration || 3,
-        widgets: tenant?.widgets || [],
+        widgets: user.widgets || [], // ← CORREGIDO: widgets vienen del usuario nuevo
       };
     }
 

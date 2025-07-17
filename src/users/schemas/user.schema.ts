@@ -26,7 +26,12 @@ export class User {
   @Prop({ enum: PROVIDERS, required: false })
   accountProvider: Provider;
 
-  @Prop({ required: false, default: 'user' })
+  @Prop({
+    type: String,
+    enum: ['user', 'superadmin'],
+    default: 'user',
+    required: false,
+  })
   role?: string;
 
   @Prop({ type: String, required: true })

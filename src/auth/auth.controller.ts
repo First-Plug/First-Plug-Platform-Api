@@ -4,9 +4,11 @@ import { CreateTenantDto } from '../tenants/dto';
 import { TenantsService } from '../tenants/tenants.service';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/auth.dto';
+import { TenantUserAdapterService } from '../common/services/tenant-user-adapter.service';
 import { RefreshJwtGuard } from './guard/refresh.guard';
 import { Request } from 'express';
 import { JwtGuard } from './guard/jwt.guard';
+import { SuperAdminGuard } from './guards/super-admin.guard';
 import { CreateTenantByProvidersDto } from 'src/tenants/dto/create-tenant-by-providers.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
@@ -16,11 +18,16 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly tenantService: TenantsService,
     private readonly usersService: UsersService,
+    private readonly tenantUserAdapter: TenantUserAdapterService,
   ) {}
 
   @Post('user')
   async getUserInfo(@Body() { id }: { id: string }) {
-    return await this.tenantService.getTenantById(id);
+    // Usar el adaptador para obtener información completa del usuario
+    // independientemente del modelo (viejo o nuevo)
+    const userInfo = await this.tenantUserAdapter.findTenantById(id);
+
+    return userInfo;
   }
 
   @Get('debug/tenants')
@@ -83,6 +90,7 @@ export class AuthController {
     }
   }
 
+  @UseGuards(JwtGuard, SuperAdminGuard)
   @Post('create-tenant')
   async createTenant(@Body() createTenantDto: CreateTenantDto) {
     console.log('🏢 Creando tenant:', createTenantDto.tenantName);
@@ -110,6 +118,7 @@ export class AuthController {
     }
   }
 
+  @UseGuards(JwtGuard, SuperAdminGuard)
   @Post('assign-tenant-to-user')
   async assignTenantToUser(
     @Body()

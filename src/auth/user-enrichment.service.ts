@@ -55,8 +55,10 @@ export class UserEnrichmentService {
         accountProvider: user.accountProvider,
         status: user.status,
         isActive: user.isActive,
+        role: user.role || 'user', // Incluir rol
 
         // Datos del tenant (ya embebidos en el usuario viejo)
+        tenantId: null, // Usuarios viejos no tienen tenantId
         tenantName: (user as any).tenantName,
         isRecoverableConfig: (user as any).isRecoverableConfig || new Map(),
         computerExpiration: (user as any).computerExpiration || 3,
@@ -83,7 +85,9 @@ export class UserEnrichmentService {
         accountProvider: user.accountProvider,
         status: user.status,
         isActive: user.isActive,
+        role: user.role || 'user', // Incluir rol
         // Valores por defecto para campos del tenant
+        tenantId: user.tenantId || null, // ← AGREGAR tenantId
         tenantName: null,
         isRecoverableConfig: new Map(),
         computerExpiration: 3,
@@ -94,9 +98,20 @@ export class UserEnrichmentService {
     // CASO 3: Usuario del esquema nuevo (tiene tenantId)
     if (this.isNewSchemaUser(user)) {
       // Buscar datos del tenant
+      console.log('🔍 Buscando tenant para usuario:', {
+        email: user.email,
+        tenantId: user.tenantId.toString(),
+      });
+
       const tenant = await this.tenantsService.getTenantById(
         user.tenantId.toString(),
       );
+
+      console.log('📋 Tenant encontrado:', {
+        tenantId: tenant?._id,
+        tenantName: tenant?.tenantName,
+        name: tenant?.name,
+      });
 
       // Construir el objeto "enriquecido" con la estructura que espera el sistema
       return {
@@ -123,8 +138,10 @@ export class UserEnrichmentService {
         accountProvider: user.accountProvider,
         status: user.status,
         isActive: user.isActive,
+        role: user.role || 'user', // Incluir rol
 
         // Datos del tenant (para mantener compatibilidad)
+        tenantId: user.tenantId, // ← AGREGAR tenantId
         tenantName: tenant?.tenantName || null,
         isRecoverableConfig: tenant?.isRecoverableConfig || new Map(),
         computerExpiration: tenant?.computerExpiration || 3,
@@ -188,8 +205,10 @@ export class UserEnrichmentService {
       accountProvider: oldUserData.accountProvider,
       status: 'active', // Usuarios viejos están activos
       isActive: true,
+      role: oldUserData.role || 'user', // Incluir rol (usuarios viejos son 'user' por defecto)
 
       // Datos del tenant (embebidos en el usuario viejo)
+      tenantId: null, // Usuarios viejos no tienen tenantId
       tenantName: oldUserData.tenantName,
       isRecoverableConfig: oldUserData.isRecoverableConfig || new Map(),
       computerExpiration: oldUserData.computerExpiration || 3,
