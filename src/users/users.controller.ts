@@ -8,9 +8,10 @@ import {
   Query,
   Req,
   UseGuards,
+  NotFoundException,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { UsersService } from './users.service';
+import { UsersService, UpdateUserProfileDto } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { CreateUserByProviderDto } from './dto/create-user-by-provider.dto';
 import { UpdateUserConfigDto } from './dto/update-user-config.dto';
@@ -34,6 +35,45 @@ export class UsersController {
   @Post('provider')
   async createByProvider(@Body() dto: CreateUserByProviderDto) {
     return this.usersService.createByProvider(dto);
+  }
+
+  /**
+   * Obtiene el perfil personal del usuario autenticado
+   */
+  @UseGuards(JwtGuard)
+  @Get('profile')
+  async getUserProfile(@Req() request: Request) {
+    const user = (request as any).user;
+
+    const profile = await this.usersService.getUserProfile(user._id);
+    if (!profile) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    return profile;
+  }
+
+  /**
+   * Actualiza el perfil personal del usuario autenticado
+   */
+  @UseGuards(JwtGuard)
+  @Patch('profile')
+  async updateUserProfile(
+    @Req() request: Request,
+    @Body() updateData: UpdateUserProfileDto,
+  ) {
+    const user = (request as any).user;
+
+    const updatedProfile = await this.usersService.updateUserProfile(
+      user._id,
+      updateData,
+    );
+
+    if (!updatedProfile) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    return updatedProfile;
   }
 
   @Get(':id')

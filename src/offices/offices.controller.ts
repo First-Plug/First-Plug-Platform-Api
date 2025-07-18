@@ -8,15 +8,78 @@ import {
   Delete,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { OfficesService } from './offices.service';
 import { CreateOfficeDto, UpdateOfficeDto } from './dto';
 import { NotFoundException } from '@nestjs/common';
+import { JwtGuard } from '../auth/guard/jwt.guard';
+import { Request } from 'express';
 
 @Controller('offices')
 export class OfficesController {
   constructor(private readonly officesService: OfficesService) {}
+
+  /**
+   * Configura la oficina default por primera vez
+   * Se llama cuando el usuario completa los datos de oficina por primera vez
+   */
+  @UseGuards(JwtGuard)
+  @Post('setup')
+  async setupDefaultOffice(
+    @Req() request: Request,
+    @Body() setupData: Omit<CreateOfficeDto, 'tenantId' | 'isDefault'>,
+  ) {
+    const user = (request as any).user;
+    const tenantName = user.tenantName; // Usar tenantName del JWT
+    const tenantId = new Types.ObjectId(user.tenantId); // Obtener tenantId para el esquema
+
+    return this.officesService.setupDefaultOffice(
+      tenantName,
+      tenantId,
+      setupData,
+      user._id,
+    );
+  }
+
+  /**
+   * Obtiene la oficina default del tenant del usuario
+   */
+  @UseGuards(JwtGuard)
+  @Get('default')
+  async getDefaultOffice(@Req() request: Request) {
+    const user = (request as any).user;
+    const tenantName = user.tenantName; // Usar tenantName del JWT
+
+    const office = await this.officesService.getDefaultOffice(tenantName);
+    if (!office) {
+      throw new NotFoundException(
+        'No se encontró oficina default para este tenant',
+      );
+    }
+
+    return office;
+  }
+
+  /**
+   * Actualiza la oficina default del tenant del usuario
+   */
+  @UseGuards(JwtGuard)
+  @Patch('default')
+  async updateDefaultOffice(
+    @Req() request: Request,
+    @Body() updateData: UpdateOfficeDto,
+  ) {
+    const user = (request as any).user;
+    const tenantName = user.tenantName; // Usar tenantName del JWT
+
+    return this.officesService.updateDefaultOffice(
+      tenantName,
+      updateData,
+      user._id,
+    );
+  }
 
   @Post()
   async create(@Body() createOfficeDto: CreateOfficeDto) {
@@ -43,13 +106,11 @@ export class OfficesController {
     @Req() req: any,
   ) {
     const userId = req.user?._id || 'system';
-    const ourOfficeEmail = req.user?.email || 'office@example.com';
 
     return this.officesService.update(
       new Types.ObjectId(id),
       updateOfficeDto,
       userId,
-      ourOfficeEmail,
     );
   }
 

@@ -169,4 +169,77 @@ export class UsersService {
 
     return { updatedCount: result.modifiedCount };
   }
+
+  /**
+   * Obtiene el perfil personal del usuario
+   */
+  async getUserProfile(userId: string | Types.ObjectId): Promise<User | null> {
+    console.log('👤 Obteniendo perfil de usuario:', userId);
+
+    const user = await this.userModel
+      .findById(userId)
+      .select(
+        'firstName lastName email phone address apartment city state country zipCode image accountProvider createdAt updatedAt',
+      );
+
+    if (!user) {
+      console.log('❌ Usuario no encontrado:', userId);
+      return null;
+    }
+
+    console.log('✅ Perfil obtenido:', {
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    });
+
+    return user;
+  }
+
+  /**
+   * Actualiza el perfil personal del usuario
+   */
+  async updateUserProfile(
+    userId: string | Types.ObjectId,
+    updateData: UpdateUserProfileDto,
+  ): Promise<User | null> {
+    console.log('📝 Actualizando perfil de usuario:', {
+      userId,
+      fields: Object.keys(updateData),
+    });
+
+    const updatedUser = await this.userModel
+      .findByIdAndUpdate(userId, updateData, { new: true, runValidators: true })
+      .select(
+        'firstName lastName email phone address apartment city state country zipCode image accountProvider createdAt updatedAt',
+      );
+
+    if (!updatedUser) {
+      console.log('❌ Usuario no encontrado para actualizar:', userId);
+      return null;
+    }
+
+    console.log('✅ Perfil actualizado:', {
+      email: updatedUser.email,
+      firstName: updatedUser.firstName,
+      lastName: updatedUser.lastName,
+      updatedFields: Object.keys(updateData),
+    });
+
+    return updatedUser;
+  }
+}
+
+// DTO para actualizar perfil de usuario
+export interface UpdateUserProfileDto {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  address?: string;
+  apartment?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  zipCode?: string;
+  image?: string;
 }
