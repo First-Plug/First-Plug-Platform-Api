@@ -19,7 +19,12 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "migrate:tenant": "ts-node -r tsconfig-paths/register scripts/migrate-tenant.ts",
-    "rollback:migration": "ts-node -r tsconfig-paths/register scripts/rollback-migration.ts"
+    "migrate:direct": "ts-node -r tsconfig-paths/register scripts/migrate-direct.ts",
+    "rollback:migration": "ts-node -r tsconfig-paths/register scripts/rollback-migration.ts",
+    "rollback:direct": "ts-node -r tsconfig-paths/register scripts/rollback-direct.ts",
+    "cleanup:duplicates": "ts-node -r tsconfig-paths/register scripts/cleanup-duplicates.ts",
+    "cleanup:offices": "ts-node -r tsconfig-paths/register scripts/cleanup-offices.ts",
+    "test:script": "ts-node -r tsconfig-paths/register scripts/test-simple.ts"
   },
   "dependencies": {
     "@anatine/zod-nestjs": "^2.0.8",

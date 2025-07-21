@@ -58,7 +58,7 @@ export class UserEnrichmentService {
         role: user.role || 'user', // Incluir rol
 
         // Datos del tenant (ya embebidos en el usuario viejo)
-        tenantId: null, // Usuarios viejos no tienen tenantId
+        tenantId: user._id, // Para usuarios viejos, el _id del registro es el tenantId
         tenantName: (user as any).tenantName,
         isRecoverableConfig: (user as any).isRecoverableConfig || new Map(),
         computerExpiration: (user as any).computerExpiration || 3,
@@ -208,7 +208,7 @@ export class UserEnrichmentService {
       role: oldUserData.role || 'user', // Incluir rol (usuarios viejos son 'user' por defecto)
 
       // Datos del tenant (embebidos en el usuario viejo)
-      tenantId: null, // Usuarios viejos no tienen tenantId
+      tenantId: oldUserData._id, // Para usuarios viejos, el _id del registro es el tenantId
       tenantName: oldUserData.tenantName,
       isRecoverableConfig: oldUserData.isRecoverableConfig || new Map(),
       computerExpiration: oldUserData.computerExpiration || 3,

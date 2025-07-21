@@ -12,6 +12,7 @@ import { JwtGuard } from 'src/auth/guard/jwt.guard';
 // import { UpdateTenantInformationSchemaDto } from './dto/update-information.dto';
 import { TenantsService } from './tenants.service';
 import { TenantUserAdapterService } from '../common/services/tenant-user-adapter.service';
+import { TenantEndpointsAdapterService } from '../common/services/tenant-endpoints-adapter.service';
 import { Request } from 'express';
 import { UpdateDashboardSchemaDto } from './dto/update-dashboard.dto';
 
@@ -21,6 +22,7 @@ export class TenantsController {
   constructor(
     private readonly tenantService: TenantsService,
     private readonly tenantUserAdapter: TenantUserAdapterService,
+    private readonly tenantEndpointsAdapter: TenantEndpointsAdapterService,
   ) {}
 
   @Get('migrate/:tenantName')
@@ -141,9 +143,55 @@ export class TenantsController {
     @Body() updateDashboardSchemaDto: UpdateDashboardSchemaDto,
   ) {
     // Delegar la lógica al adaptador que maneja usuarios viejos y nuevos
-    return await this.tenantUserAdapter.updateDashboard(
+    return await this.tenantEndpointsAdapter.updateDashboard(
       request.user._id,
       updateDashboardSchemaDto,
+    );
+  }
+
+  // ========== NUEVOS ENDPOINTS CON ADAPTADORES ==========
+
+  @Get('profile')
+  async getUserProfile(@Req() request: Request) {
+    // Frontend llama: GET /user/profile
+    // Backend redirige internamente a: UsersService + OfficesService + TenantsService
+    return await this.tenantEndpointsAdapter.getUserProfile(request.user._id);
+  }
+
+  @Patch('profile')
+  async updateUserProfile(@Req() request: Request, @Body() profileData: any) {
+    // Frontend llama: PATCH /user/profile
+    // Backend redirige internamente a: UsersService.updateProfile()
+    return await this.tenantEndpointsAdapter.updateUserProfile(
+      request.user._id,
+      profileData,
+    );
+  }
+
+  @Patch('office-info')
+  async updateOfficeInfo(@Req() request: Request, @Body() officeData: any) {
+    // Frontend llama: PATCH /user/office-info
+    // Backend redirige internamente a: OfficesService.updateOfficeInfo()
+    return await this.tenantEndpointsAdapter.updateOfficeInfo(
+      request.user._id,
+      officeData,
+    );
+  }
+
+  @Get('tenant-config/:tenantName')
+  async getTenantConfig(@Param('tenantName') tenantName: string) {
+    // Frontend llama: GET /user/tenant-config/:tenantName
+    // Backend redirige internamente a: TenantsService.getByTenantName()
+    return await this.tenantEndpointsAdapter.getTenantConfig(tenantName);
+  }
+
+  @Patch('tenant-config')
+  async updateTenantConfig(@Req() request: Request, @Body() configData: any) {
+    // Frontend llama: PATCH /user/tenant-config
+    // Backend redirige internamente a: TenantsService.updateConfig()
+    return await this.tenantEndpointsAdapter.updateTenantConfig(
+      request.user._id,
+      configData,
     );
   }
 }
