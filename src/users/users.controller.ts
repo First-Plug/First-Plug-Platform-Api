@@ -11,7 +11,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { UsersService, UpdateUserProfileDto } from './users.service';
+import { UsersService } from './users.service';
+
 import { CreateUserDto } from './dto/create-user.dto';
 import { CreateUserByProviderDto } from './dto/create-user-by-provider.dto';
 import { UpdateUserConfigDto } from './dto/update-user-config.dto';
@@ -37,9 +38,6 @@ export class UsersController {
     return this.usersService.createByProvider(dto);
   }
 
-  /**
-   * Obtiene el perfil personal del usuario autenticado
-   */
   @UseGuards(JwtGuard)
   @Get('profile')
   async getUserProfile(@Req() request: Request) {
@@ -53,14 +51,11 @@ export class UsersController {
     return profile;
   }
 
-  /**
-   * Actualiza el perfil personal del usuario autenticado
-   */
   @UseGuards(JwtGuard)
   @Patch('profile')
   async updateUserProfile(
     @Req() request: Request,
-    @Body() updateData: UpdateUserProfileDto,
+    @Body() updateData: UpdateUserConfigDto,
   ) {
     const user = (request as any).user;
 
@@ -118,12 +113,12 @@ export class UsersController {
   }
 
   @UseGuards(JwtGuard)
-  @Patch('update-dashboard')
-  async updateDashboard(
+  @Patch('widgets')
+  async updateWidgets(
     @Req() request: Request,
     @Body() dashboardData: { widgets: any[] },
   ) {
-    console.log('📱 Actualizando dashboard para usuario:', {
+    console.log('📱 Actualizando widgets para usuario:', {
       userId: (request as any).user._id,
       widgetsCount: dashboardData.widgets?.length || 0,
     });

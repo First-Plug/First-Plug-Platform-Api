@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { SlackModule } from 'nestjs-slack-webhook';
 import { JwtModule } from '@nestjs/jwt';
@@ -8,23 +8,20 @@ import { UserAccessService } from './access/user-access.service';
 import { User, UserSchema } from './schemas/user.schema';
 import { TenantsModule } from '../tenants/tenants.module';
 import { TenantDbModule } from '../infra/db/tenant-db.module';
-import { TenantUserAdapterService } from '../common/services/tenant-user-adapter.service';
-import { OfficesModule } from '../offices/offices.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     SlackModule,
-    TenantsModule,
+    forwardRef(() => TenantsModule), // UserAccessService necesita TenantsService
     TenantDbModule,
-    OfficesModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'default-secret',
       signOptions: { expiresIn: '48h' },
     }),
   ],
   controllers: [UsersController],
-  providers: [UsersService, UserAccessService, TenantUserAdapterService],
+  providers: [UsersService, UserAccessService],
   exports: [UsersService, UserAccessService],
 })
 export class UsersModule {}

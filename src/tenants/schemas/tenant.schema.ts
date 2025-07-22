@@ -34,8 +34,6 @@ export class Tenant extends Document {
   })
   isRecoverableConfig: Map<string, boolean>;
 
-  // Widgets movidos al esquema de User (cada usuario tiene su configuración)
-
   @Prop({ type: Types.ObjectId, ref: 'User', required: false })
   createdBy?: Types.ObjectId;
 

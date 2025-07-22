@@ -16,7 +16,7 @@ import { TenantModelRegistry } from '../infra/db/tenant-model-registry';
 export class OfficesService {
   constructor(
     @InjectModel(Office.name)
-    private officeModel: Model<Office>, // Solo para métodos genéricos
+    private officeModel: Model<Office>,
     private eventEmitter: EventEmitter2,
     private tenantModelRegistry: TenantModelRegistry,
   ) {}
@@ -36,11 +36,9 @@ export class OfficesService {
       userId,
     });
 
-    // Obtener modelo de oficina específico del tenant
     const OfficeModel =
       await this.tenantModelRegistry.getOfficeModel(tenantName);
 
-    // Verificar si ya existe una oficina default
     const existingDefault = await OfficeModel.findOne({
       isDefault: true,
       isDeleted: false,
@@ -52,10 +50,9 @@ export class OfficesService {
       );
     }
 
-    // Crear la oficina default en la DB del tenant
     const officeData = {
       ...setupData,
-      tenantId, // Agregar tenantId requerido por el esquema
+      tenantId,
       isDefault: true,
       name: setupData.name || 'Oficina Principal',
       isDeleted: false,
@@ -69,7 +66,6 @@ export class OfficesService {
       name: office.name,
     });
 
-    // Emitir evento de creación de oficina (para shipments)
     const addressData = {
       address: office.address,
       apartment: office.apartment,
@@ -84,7 +80,7 @@ export class OfficesService {
     this.eventEmitter.emit(
       EventTypes.OFFICE_ADDRESS_UPDATED,
       new OfficeAddressUpdatedEvent(
-        tenantName, // Usar tenantName en lugar de tenantId
+        tenantName,
         {}, // oldAddress vacío (primera vez)
         addressData,
         new Date(),
@@ -96,9 +92,6 @@ export class OfficesService {
     return office;
   }
 
-  /**
-   * Actualiza la oficina default
-   */
   async updateDefaultOffice(
     tenantName: string,
     updateData: UpdateOfficeDto,
@@ -109,11 +102,9 @@ export class OfficesService {
       userId,
     });
 
-    // Obtener modelo de oficina específico del tenant
     const OfficeModel =
       await this.tenantModelRegistry.getOfficeModel(tenantName);
 
-    // Buscar oficina default en la DB del tenant
     const currentOffice = await OfficeModel.findOne({
       isDefault: true,
       isDeleted: false,
@@ -125,7 +116,6 @@ export class OfficesService {
       );
     }
 
-    // Guardar datos actuales para comparación
     const oldAddress = {
       address: currentOffice.address,
       apartment: currentOffice.apartment,
@@ -137,7 +127,6 @@ export class OfficesService {
       ourOfficeEmail: currentOffice.email,
     };
 
-    // Actualizar oficina en la DB del tenant
     const updatedOffice = await OfficeModel.findByIdAndUpdate(
       currentOffice._id,
       updateData,
@@ -153,7 +142,6 @@ export class OfficesService {
       officeId: updatedOffice._id,
     });
 
-    // Verificar cambios en dirección
     const newAddress = {
       address: updatedOffice.address,
       apartment: updatedOffice.apartment,
@@ -169,7 +157,6 @@ export class OfficesService {
       (key) => oldAddress[key] !== newAddress[key],
     );
 
-    // Emitir evento si cambió la dirección
     if (hasAddressChanges) {
       console.log('📍 Dirección de oficina actualizada, emitiendo evento');
       this.eventEmitter.emit(
@@ -188,13 +175,9 @@ export class OfficesService {
     return updatedOffice;
   }
 
-  /**
-   * Obtiene la oficina default del tenant
-   */
   async getDefaultOffice(tenantName: string): Promise<Office | null> {
     console.log('🔍 Buscando oficina default:', { tenantName });
 
-    // Obtener modelo de oficina específico del tenant
     const OfficeModel =
       await this.tenantModelRegistry.getOfficeModel(tenantName);
 
@@ -262,7 +245,7 @@ export class OfficesService {
           updateOfficeDto,
           new Date(),
           userId,
-          updated.email, // Email de contacto de la oficina actualizada
+          updated.email,
         ),
       );
     }

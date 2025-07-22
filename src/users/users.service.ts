@@ -10,6 +10,7 @@ import { InjectSlack } from 'nestjs-slack-webhook';
 import { IncomingWebhook } from '@slack/webhook';
 import { CreateUserDto } from './dto/create-user.dto';
 import { CreateUserByProviderDto } from './dto/create-user-by-provider.dto';
+import { UpdateUserConfigDto } from './dto/update-user-config.dto';
 
 @Injectable()
 export class UsersService {
@@ -170,9 +171,6 @@ export class UsersService {
     return { updatedCount: result.modifiedCount };
   }
 
-  /**
-   * Obtiene el perfil personal del usuario
-   */
   async getUserProfile(userId: string | Types.ObjectId): Promise<User | null> {
     console.log('👤 Obteniendo perfil de usuario:', userId);
 
@@ -196,12 +194,9 @@ export class UsersService {
     return user;
   }
 
-  /**
-   * Actualiza el perfil personal del usuario
-   */
   async updateUserProfile(
     userId: string | Types.ObjectId,
-    updateData: UpdateUserProfileDto,
+    updateData: UpdateUserConfigDto,
   ): Promise<User | null> {
     console.log('📝 Actualizando perfil de usuario:', {
       userId,
@@ -228,18 +223,4 @@ export class UsersService {
 
     return updatedUser;
   }
-}
-
-// DTO para actualizar perfil de usuario
-export interface UpdateUserProfileDto {
-  firstName?: string;
-  lastName?: string;
-  phone?: string;
-  address?: string;
-  apartment?: string;
-  city?: string;
-  state?: string;
-  country?: string;
-  zipCode?: string;
-  image?: string;
 }

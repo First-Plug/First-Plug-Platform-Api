@@ -3,6 +3,7 @@ import { UsersService } from '../../users/users.service';
 import { TenantsService } from '../../tenants/tenants.service';
 import { OfficesService } from '../../offices/offices.service';
 import { TenantUserAdapterService } from './tenant-user-adapter.service';
+import { Types } from 'mongoose';
 
 /**
  * Adaptador específico para endpoints del controlador de tenants
@@ -49,7 +50,10 @@ export class TenantEndpointsAdapterService {
     );
 
     if (Object.keys(filteredUserFields).length > 0) {
-      await this.usersService.updateUserConfig(userId, filteredUserFields);
+      await this.usersService.updateUserConfig(
+        new Types.ObjectId(userId),
+        filteredUserFields,
+      );
       console.log('✅ [ADAPTER] Perfil de usuario actualizado');
     }
 
@@ -93,11 +97,18 @@ export class TenantEndpointsAdapterService {
     );
 
     if (Object.keys(filteredOfficeFields).length > 0) {
-      await this.officesService.updateDefaultOffice(
-        user.tenantId,
-        filteredOfficeFields,
+      // Necesitamos el tenantName, no el tenantId
+      const tenant = await this.tenantsService.getTenantById(
+        user.tenantId.toString(),
       );
-      console.log('✅ [ADAPTER] Información de oficina actualizada');
+      if (tenant) {
+        await this.officesService.updateDefaultOffice(
+          tenant.tenantName,
+          filteredOfficeFields as any,
+          userId,
+        );
+        console.log('✅ [ADAPTER] Información de oficina actualizada');
+      }
     }
 
     // Retornar datos actualizados
@@ -157,7 +168,10 @@ export class TenantEndpointsAdapterService {
     );
 
     if (Object.keys(filteredTenantFields).length > 0) {
-      await this.tenantsService.update(user.tenantId as any, filteredTenantFields);
+      await this.tenantsService.update(
+        user.tenantId as any,
+        filteredTenantFields,
+      );
       console.log('✅ [ADAPTER] Configuración de tenant actualizada');
     }
 
@@ -171,7 +185,9 @@ export class TenantEndpointsAdapterService {
    * Backend redirige a: TenantsService.getByTenantName()
    */
   async getTenantConfig(tenantName: string): Promise<any> {
-    console.log('🔄 [ADAPTER] Obteniendo configuración de tenant:', { tenantName });
+    console.log('🔄 [ADAPTER] Obteniendo configuración de tenant:', {
+      tenantName,
+    });
 
     // Usar el adaptador existente que maneja tanto usuarios viejos como nuevos
     const tenantData = await this.tenantUserAdapter.getByTenantName(tenantName);

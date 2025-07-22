@@ -32,8 +32,8 @@ export class OfficesController {
     @Body() setupData: Omit<CreateOfficeDto, 'tenantId' | 'isDefault'>,
   ) {
     const user = (request as any).user;
-    const tenantName = user.tenantName; // Usar tenantName del JWT
-    const tenantId = new Types.ObjectId(user.tenantId); // Obtener tenantId para el esquema
+    const tenantName = user.tenantName;
+    const tenantId = new Types.ObjectId(user.tenantId);
 
     return this.officesService.setupDefaultOffice(
       tenantName,
@@ -43,14 +43,11 @@ export class OfficesController {
     );
   }
 
-  /**
-   * Obtiene la oficina default del tenant del usuario
-   */
   @UseGuards(JwtGuard)
   @Get('default')
   async getDefaultOffice(@Req() request: Request) {
     const user = (request as any).user;
-    const tenantName = user.tenantName; // Usar tenantName del JWT
+    const tenantName = user.tenantName;
 
     const office = await this.officesService.getDefaultOffice(tenantName);
     if (!office) {
@@ -62,9 +59,6 @@ export class OfficesController {
     return office;
   }
 
-  /**
-   * Actualiza la oficina default del tenant del usuario
-   */
   @UseGuards(JwtGuard)
   @Patch('default')
   async updateDefaultOffice(
@@ -72,7 +66,7 @@ export class OfficesController {
     @Body() updateData: UpdateOfficeDto,
   ) {
     const user = (request as any).user;
-    const tenantName = user.tenantName; // Usar tenantName del JWT
+    const tenantName = user.tenantName;
 
     return this.officesService.updateDefaultOffice(
       tenantName,

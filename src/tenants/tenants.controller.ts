@@ -11,19 +11,12 @@ import {
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 // import { UpdateTenantInformationSchemaDto } from './dto/update-information.dto';
 import { TenantsService } from './tenants.service';
-import { TenantUserAdapterService } from '../common/services/tenant-user-adapter.service';
-import { TenantEndpointsAdapterService } from '../common/services/tenant-endpoints-adapter.service';
-import { Request } from 'express';
-import { UpdateDashboardSchemaDto } from './dto/update-dashboard.dto';
 
-@UseGuards(JwtGuard)
-@Controller('user')
+import { Request } from 'express';
+
+@Controller('tenants')
 export class TenantsController {
-  constructor(
-    private readonly tenantService: TenantsService,
-    private readonly tenantUserAdapter: TenantUserAdapterService,
-    private readonly tenantEndpointsAdapter: TenantEndpointsAdapterService,
-  ) {}
+  constructor(private readonly tenantService: TenantsService) {}
 
   @Get('migrate/:tenantName')
   async migrateRecoverable(@Param('tenantName') tenantName: string) {
@@ -37,6 +30,28 @@ export class TenantsController {
   async getRecoverableConfig(@Param('tenantName') tenantName: string) {
     const config = await this.tenantService.getRecoverableConfig(tenantName);
     return config;
+  }
+
+  @UseGuards(JwtGuard)
+  @Get('config')
+  async getTenantConfig(@Req() request: Request) {
+    const user = (request as any).user;
+    const tenantName = user.tenantName;
+
+    console.log('🏢 Obteniendo configuración de tenant:', { tenantName });
+
+    // Obtener configuración directamente del servicio
+    const tenant = await this.tenantService.getByTenantName(tenantName);
+    if (!tenant) {
+      throw new Error(`Tenant no encontrado: ${tenantName}`);
+    }
+
+    return {
+      tenantName: tenant.tenantName,
+      name: tenant.name,
+      isRecoverableConfig: tenant.isRecoverableConfig,
+      computerExpiration: tenant.computerExpiration,
+    };
   }
 
   @Post('notify-birthday-gift')
@@ -80,19 +95,6 @@ export class TenantsController {
     });
   }
 
-  // @Patch()
-  // async update(
-  //   @Req() request: Request,
-  //   @Body() updateTenantInformationSchemaDto: UpdateTenantInformationSchemaDto,
-  // ) {
-  //   const ourOfficeEmail = request.user.email;
-  //   return await this.tenantService.updateInformation(
-  //     request.user,
-  //     updateTenantInformationSchemaDto,
-  //     ourOfficeEmail,
-  //   );
-  // }
-
   @Patch('update-recoverable')
   async updateRecoverableConfig(
     @Body('tenantName') tenantName: string,
@@ -135,63 +137,5 @@ export class TenantsController {
     return {
       message: `Configuración de computerExpiration actualizada para tenant: ${tenantName}`,
     };
-  }
-
-  @Patch('update-dashboard')
-  async updateDashboard(
-    @Req() request: Request,
-    @Body() updateDashboardSchemaDto: UpdateDashboardSchemaDto,
-  ) {
-    // Delegar la lógica al adaptador que maneja usuarios viejos y nuevos
-    return await this.tenantEndpointsAdapter.updateDashboard(
-      request.user._id,
-      updateDashboardSchemaDto,
-    );
-  }
-
-  // ========== NUEVOS ENDPOINTS CON ADAPTADORES ==========
-
-  @Get('profile')
-  async getUserProfile(@Req() request: Request) {
-    // Frontend llama: GET /user/profile
-    // Backend redirige internamente a: UsersService + OfficesService + TenantsService
-    return await this.tenantEndpointsAdapter.getUserProfile(request.user._id);
-  }
-
-  @Patch('profile')
-  async updateUserProfile(@Req() request: Request, @Body() profileData: any) {
-    // Frontend llama: PATCH /user/profile
-    // Backend redirige internamente a: UsersService.updateProfile()
-    return await this.tenantEndpointsAdapter.updateUserProfile(
-      request.user._id,
-      profileData,
-    );
-  }
-
-  @Patch('office-info')
-  async updateOfficeInfo(@Req() request: Request, @Body() officeData: any) {
-    // Frontend llama: PATCH /user/office-info
-    // Backend redirige internamente a: OfficesService.updateOfficeInfo()
-    return await this.tenantEndpointsAdapter.updateOfficeInfo(
-      request.user._id,
-      officeData,
-    );
-  }
-
-  @Get('tenant-config/:tenantName')
-  async getTenantConfig(@Param('tenantName') tenantName: string) {
-    // Frontend llama: GET /user/tenant-config/:tenantName
-    // Backend redirige internamente a: TenantsService.getByTenantName()
-    return await this.tenantEndpointsAdapter.getTenantConfig(tenantName);
-  }
-
-  @Patch('tenant-config')
-  async updateTenantConfig(@Req() request: Request, @Body() configData: any) {
-    // Frontend llama: PATCH /user/tenant-config
-    // Backend redirige internamente a: TenantsService.updateConfig()
-    return await this.tenantEndpointsAdapter.updateTenantConfig(
-      request.user._id,
-      configData,
-    );
   }
 }
