@@ -34,6 +34,8 @@ import { Product } from 'src/products/schemas/product.schema';
 import { TenantsService } from 'src/tenants/tenants.service';
 import { TenantUserAdapterService } from 'src/common/services/tenant-user-adapter.service';
 import { ProductsService } from 'src/products/products.service';
+import { OfficesService } from '../offices/offices.service';
+import { UsersService } from '../users/users.service';
 import { Status } from 'src/products/interfaces/product.interface';
 import { AddressData } from 'src/infra/event-bus/tenant-address-update.event';
 import { MembersService } from 'src/members/members.service';
@@ -57,7 +59,39 @@ export class LogisticsService {
     private readonly productsService: ProductsService,
     @Inject(forwardRef(() => MembersService))
     private readonly membersService: MembersService,
+    private readonly officesService: OfficesService,
+    private readonly usersService: UsersService,
   ) {}
+
+  /**
+   * Obtiene información del usuario para incluir en mensajes de Slack
+   */
+  private async getUserInfoFromUserId(userId: string): Promise<
+    | {
+        userName: string;
+        userEmail: string;
+        userPhone: string;
+      }
+    | undefined
+  > {
+    try {
+      const user = await this.usersService.findById(userId);
+      if (!user) {
+        console.log('⚠️ Usuario no encontrado para Slack:', { userId });
+        return undefined;
+      }
+
+      return {
+        userName:
+          `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Usuario',
+        userEmail: user.email || '',
+        userPhone: user.phone || '',
+      };
+    } catch (error) {
+      console.error('❌ Error obteniendo info de usuario para Slack:', error);
+      return undefined;
+    }
+  }
 
   async validateIfMemberCanBeModified(memberEmail: string, tenantName: string) {
     const ShipmentModel = await this.tenantModels.getShipmentModel(tenantName);
@@ -312,18 +346,25 @@ export class LogisticsService {
 
     // TODO: Status New Shipment
     if (shipment.shipment_status === 'In Preparation' && !isConsolidated) {
+      // ✅ Obtener información del usuario desde el JWT
+      const userInfo = await this.getUserInfoFromUserId(userId);
+
       const slackMessage = CreateShipmentMessageToSlack({
         shipment: shipment,
         tenantName: tenantName,
         isOffboarding: false,
         status: 'New',
         ourOfficeEmail: ourOfficeEmail,
+        userInfo: userInfo,
       });
       await this.slackService.sendMessage(slackMessage);
     }
 
     //TODO: Status consolidate
     if (isConsolidated && shipment.shipment_status === 'In Preparation') {
+      // ✅ Obtener información del usuario desde el JWT
+      const userInfo = await this.getUserInfoFromUserId(userId);
+
       const slackMessage = CreateShipmentMessageToSlack({
         shipment: shipment,
         tenantName: tenantName,
@@ -331,6 +372,7 @@ export class LogisticsService {
         status: 'Consolidated',
         previousShipment: oldSnapshot,
         ourOfficeEmail: ourOfficeEmail,
+        userInfo: userInfo,
       });
 
       await this.slackService.sendMessage(slackMessage);
@@ -450,20 +492,54 @@ export class LogisticsService {
     }
 
     if (product.location === 'Our office') {
-      // Usar el adaptador para obtener datos de la oficina
-      const tenant = await this.tenantUserAdapter.getByTenantName(tenantName);
+      // ✅ Obtener datos de la colección offices en lugar del tenant
+      const office = await this.officesService.getDefaultOffice(tenantName);
 
-      if (!tenant) return false;
+      if (!office) {
+        console.log('❌ No se encontró oficina default para validación:', {
+          tenantName,
+        });
+        return false;
+      }
 
-      return !!(
-        tenant.country &&
-        tenant.city &&
-        tenant.state &&
-        tenant.zipCode &&
-        tenant.address &&
-        // tenant.apartment &&
-        tenant.phone
+      const isComplete = !!(
+        (
+          office.country &&
+          office.city &&
+          office.state &&
+          office.zipCode &&
+          office.address &&
+          // office.apartment &&
+          office.phone &&
+          office.email
+        ) // ✅ Email de la oficina real
       );
+
+      if (!isComplete) {
+        console.log('❌ Oficina incompleta para "Our office":', {
+          tenantName,
+          missing: {
+            country: !office.country,
+            city: !office.city,
+            state: !office.state,
+            zipCode: !office.zipCode,
+            address: !office.address,
+            phone: !office.phone,
+            email: !office.email, // ✅ Mostrar si falta email
+          },
+          office: {
+            country: office.country,
+            city: office.city,
+            state: office.state,
+            zipCode: office.zipCode,
+            address: office.address,
+            phone: office.phone,
+            email: office.email,
+          },
+        });
+      }
+
+      return isComplete;
     }
 
     return false;
@@ -686,6 +762,7 @@ export class LogisticsService {
         'country',
         'zipCode',
         'phone',
+        'email', // ✅ Agregar email como campo requerido
       ];
       const result = requiredFields.every((field) => !!details[field]);
       if (!result) {
@@ -1498,12 +1575,16 @@ export class LogisticsService {
     // Solo enviar mensaje a Slack si el shipment estaba en 'In Preparation'
     // Los shipments en 'On Hold - Missing Data' nunca fueron notificados a Slack
     if (originalShipmentData.shipment_status === 'In Preparation') {
+      // ✅ Obtener información del usuario desde el JWT
+      const userInfo = await this.getUserInfoFromUserId(userId);
+
       const slackMessage = CreateShipmentMessageToSlack({
         shipment,
         tenantName,
         isOffboarding: false,
         status: 'Cancelled',
         ourOfficeEmail,
+        userInfo: userInfo,
       });
       await this.slackService.sendMessage(slackMessage);
     } else {
@@ -1986,12 +2067,16 @@ export class LogisticsService {
         newStatus === 'On Hold - Missing Data' &&
         shipment.shipment_status !== 'On Hold - Missing Data'
       ) {
+        // ✅ Obtener información del usuario desde el JWT
+        const userInfo = await this.getUserInfoFromUserId(userId);
+
         const slackMessage = CreateShipmentMessageToSlack({
           shipment: shipment,
           tenantName: tenantName,
           isOffboarding: false,
           status: 'Missing Data',
           ourOfficeEmail: ourOfficeEmail,
+          userInfo: userInfo,
         });
         await this.slackService.sendMessage(slackMessage);
       }
@@ -2000,6 +2085,9 @@ export class LogisticsService {
         newStatus === 'In Preparation' &&
         shipment.shipment_status !== 'In Preparation'
       ) {
+        // ✅ Obtener información del usuario desde el JWT
+        const userInfo = await this.getUserInfoFromUserId(userId);
+
         const slackMessage = CreateShipmentMessageToSlack({
           shipment: shipment,
           tenantName: tenantName,
@@ -2007,6 +2095,7 @@ export class LogisticsService {
           status: 'Updated',
           previousShipment: originalShipment,
           ourOfficeEmail: ourOfficeEmail,
+          userInfo: userInfo,
         });
         await this.slackService.sendMessage(slackMessage);
       }
@@ -2205,6 +2294,9 @@ export class LogisticsService {
         isNowComplete &&
         !wasInPreparation
       ) {
+        // ✅ Obtener información del usuario desde el JWT
+        const userInfo = await this.getUserInfoFromUserId(userId);
+
         const slackMessage = CreateShipmentMessageToSlack({
           shipment: shipment,
           tenantName: tenantId,
@@ -2212,6 +2304,7 @@ export class LogisticsService {
           status: 'Updated',
           previousShipment: originalShipment,
           ourOfficeEmail: ourOfficeEmail,
+          userInfo: userInfo,
         });
         await this.slackService.sendMessage(slackMessage);
       }
@@ -2221,12 +2314,16 @@ export class LogisticsService {
         wasInPreparation &&
         !isNowComplete
       ) {
+        // ✅ Obtener información del usuario desde el JWT
+        const userInfo = await this.getUserInfoFromUserId(userId);
+
         const slackMessage = CreateShipmentMessageToSlack({
           shipment: shipment,
           tenantName: tenantId,
           isOffboarding: false,
           status: 'Missing Data',
           ourOfficeEmail: ourOfficeEmail,
+          userInfo: userInfo,
         });
         await this.slackService.sendMessage(slackMessage);
       }
@@ -2244,6 +2341,9 @@ export class LogisticsService {
         shipment.shipment_status === 'In Preparation' &&
         detailsChanged
       ) {
+        // ✅ Obtener información del usuario desde el JWT
+        const userInfo = await this.getUserInfoFromUserId(userId);
+
         const slackMessage = CreateShipmentMessageToSlack({
           shipment,
           tenantName: tenantId,
@@ -2251,6 +2351,7 @@ export class LogisticsService {
           status: 'Updated',
           previousShipment: originalShipment,
           ourOfficeEmail,
+          userInfo: userInfo,
         });
         await this.slackService.sendMessage(slackMessage);
       }

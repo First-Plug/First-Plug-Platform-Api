@@ -191,12 +191,25 @@ export class OfficesService {
         tenantName,
         officeId: office._id,
         name: office.name,
+        email: office.email, // ✅ Mostrar email para debug
+        hasEmail: !!office.email, // ✅ Verificar si tiene email
+        address: office.address,
+        city: office.city,
+        country: office.country,
       });
     } else {
       console.log('❌ No se encontró oficina default:', { tenantName });
     }
 
     return office;
+  }
+
+  /**
+   * Obtiene el email de la oficina default para un tenant
+   */
+  async getDefaultOfficeEmail(tenantName: string): Promise<string | null> {
+    const office = await this.getDefaultOffice(tenantName);
+    return office?.email || null;
   }
 
   async create(createOfficeDto: CreateOfficeDto): Promise<Office> {

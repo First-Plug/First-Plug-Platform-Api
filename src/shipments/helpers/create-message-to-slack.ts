@@ -56,6 +56,11 @@ interface CreateShipmentMessageParams {
   previousShipment?: Partial<ShipmentDocument> | null;
   ourOfficeEmail: string;
   deletedShipmentOrderId?: string;
+  userInfo?: {
+    userName: string;
+    userEmail: string;
+    userPhone: string;
+  };
 }
 
 const getBestEmail = (
@@ -63,8 +68,8 @@ const getBestEmail = (
   location: string,
   ourOfficeEmail?: string,
 ) => {
-  if (location === 'Our office' && ourOfficeEmail) {
-    return ourOfficeEmail;
+  if (location === 'Our office') {
+    return details?.email || ourOfficeEmail || '';
   }
   return details?.assignedEmail || details?.email || '';
 };
@@ -77,12 +82,17 @@ export const CreateShipmentMessageToSlack = ({
   previousShipment,
   ourOfficeEmail,
   deletedShipmentOrderId,
+  userInfo,
 }: CreateShipmentMessageParams) => {
   const showComparison =
     (status === 'Consolidated' ||
       status === 'Updated' ||
       status === 'Missing Data') &&
     previousShipment;
+
+  const userInfoText = userInfo
+    ? `*userName:* ${userInfo.userName}\n*usermail:* ${userInfo.userEmail}\n*userphone:* ${userInfo.userPhone}`
+    : '';
 
   const message = {
     blocks: [
@@ -91,8 +101,8 @@ export const CreateShipmentMessageToSlack = ({
         text: {
           type: 'mrkdwn',
           text: isOffboarding
-            ? `*Action:* Offboarding\n*Type:* ${status}\n*Tenant:* ${tenantName}`
-            : `*Type:* ${status}\n*Tenant:* ${tenantName}`,
+            ? `*Action:* Offboarding\n*Type:* ${status}\n*Tenant:* ${tenantName}${userInfoText ? `\n${userInfoText}` : ''}`
+            : `*Type:* ${status}\n*Tenant:* ${tenantName}${userInfoText ? `\n${userInfoText}` : ''}`,
         },
       },
     ],
@@ -117,18 +127,30 @@ export const CreateShipmentMessageToSlack = ({
   }
 
   // Origin
+  const originText =
+    shipment.origin === 'Our office'
+      ? `*Origin:* ${shipment.origin || ''}\n*Address:* ${getAddress(
+          shipment.originDetails?.address || '',
+          shipment.originDetails?.apartment || '',
+          shipment.originDetails?.city || '',
+          shipment.originDetails?.state || '',
+          shipment.originDetails?.country || '',
+          shipment.originDetails?.zipCode || '',
+        )}\n*Email:* ${getBestEmail(shipment.originDetails, shipment.origin || '', ourOfficeEmail)}\n*Phone:* ${shipment.originDetails?.phone || ''}`
+      : `*Origin:* ${shipment.origin || ''}\n*Address:* ${getAddress(
+          shipment.originDetails?.address || '',
+          shipment.originDetails?.apartment || '',
+          shipment.originDetails?.city || '',
+          shipment.originDetails?.state || '',
+          shipment.originDetails?.country || '',
+          shipment.originDetails?.zipCode || '',
+        )}\n*Email:* ${getBestEmail(shipment.originDetails, shipment.origin || '', ourOfficeEmail)}\n*Personal email:* ${shipment.originDetails?.personalEmail || ''}\n*Phone:* ${shipment.originDetails?.phone || ''}\n*DNI/CI/Passport:* ${shipment.originDetails?.dni || ''}`;
+
   message.blocks.push({
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: `*Origin:* ${shipment.origin || ''}\n*Address:* ${getAddress(
-        shipment.originDetails?.address || '',
-        shipment.originDetails?.apartment || '',
-        shipment.originDetails?.city || '',
-        shipment.originDetails?.state || '',
-        shipment.originDetails?.country || '',
-        shipment.originDetails?.zipCode || '',
-      )}\n*Email:* ${getBestEmail(shipment.originDetails, shipment.origin || '', ourOfficeEmail)}\n*Personal email:* ${shipment.originDetails?.personalEmail || ''}\n*Phone:* ${shipment.originDetails?.phone || ''}\n*DNI/CI/Passport:* ${shipment.originDetails?.dni || ''}`,
+      text: originText,
     },
   });
 
@@ -146,18 +168,30 @@ export const CreateShipmentMessageToSlack = ({
   }
 
   // Destination
+  const destinationText =
+    shipment.destination === 'Our office'
+      ? `*Destination:* ${shipment.destination || ''}\n*Address:* ${getAddress(
+          shipment.destinationDetails?.address || '',
+          shipment.destinationDetails?.apartment || '',
+          shipment.destinationDetails?.city || '',
+          shipment.destinationDetails?.state || '',
+          shipment.destinationDetails?.country || '',
+          shipment.destinationDetails?.zipCode || '',
+        )}\n*Email:* ${getBestEmail(shipment.destinationDetails, shipment.destination || '', ourOfficeEmail)}\n*Phone:* ${shipment.destinationDetails?.phone || ''}`
+      : `*Destination:* ${shipment.destination || ''}\n*Address:* ${getAddress(
+          shipment.destinationDetails?.address || '',
+          shipment.destinationDetails?.apartment || '',
+          shipment.destinationDetails?.city || '',
+          shipment.destinationDetails?.state || '',
+          shipment.destinationDetails?.country || '',
+          shipment.destinationDetails?.zipCode || '',
+        )}\n*Email:* ${getBestEmail(shipment.destinationDetails, shipment.destination || '', ourOfficeEmail)}\n*Personal email:* ${shipment.destinationDetails?.personalEmail || ''}\n*Phone:* ${shipment.destinationDetails?.phone || ''}\n*DNI/CI/Passport:* ${shipment.destinationDetails?.dni || ''}`;
+
   message.blocks.push({
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: `*Destination:* ${shipment.destination || ''}\n*Address:* ${getAddress(
-        shipment.destinationDetails?.address || '',
-        shipment.destinationDetails?.apartment || '',
-        shipment.destinationDetails?.city || '',
-        shipment.destinationDetails?.state || '',
-        shipment.destinationDetails?.country || '',
-        shipment.destinationDetails?.zipCode || '',
-      )}\n*Email:* ${getBestEmail(shipment.destinationDetails, shipment.destination || '', ourOfficeEmail)}\n*Personal email:* ${shipment.destinationDetails?.personalEmail || ''}\n*Phone:* ${shipment.destinationDetails?.phone || ''}\n*DNI/CI/Passport:* ${shipment.destinationDetails?.dni || ''}`,
+      text: destinationText,
     },
   });
 

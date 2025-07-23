@@ -15,10 +15,14 @@ import { HistoryModule } from 'src/history/history.module';
 import { TenantsMiddleware } from 'src/common/middlewares/tenants.middleware';
 import { SlackModule } from '../slack/slack.module';
 import { LogisticsModule } from 'src/logistics/logistics.module';
+import { OfficesModule } from '../offices/offices.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
     TenantsModule,
+    OfficesModule,
+    UsersModule,
     // forwardRef(() => MembersModule),
     // forwardRef(() => ProductsModule),
     forwardRef(() => HistoryModule),

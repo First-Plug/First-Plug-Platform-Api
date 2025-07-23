@@ -223,13 +223,31 @@ export class AuthService {
 
   private createUserPayload(user: any) {
     const payload = {
+      // Datos esenciales del usuario
       _id: user._id,
       email: user.email,
-      name: user.name,
-      image: user.image,
-      role: user.role || 'user', // Incluir rol en el JWT
-      tenantId: user.tenantId ? user.tenantId.toString() : null, // Convertir ObjectId a string
+      firstName: user.firstName || user.name?.split(' ')[0] || '', // Compatibilidad con usuarios viejos
+      lastName: user.lastName || user.name?.split(' ').slice(1).join(' ') || '',
+      role: user.role || 'user',
+      image: user.image || '',
+      accountProvider: user.accountProvider,
+
+      // Datos del tenant (esenciales)
+      tenantId: user.tenantId ? user.tenantId.toString() : null,
       tenantName: user.tenantName,
+
+      // Configuración del tenant (mantener en JWT)
+      isRecoverableConfig: user.isRecoverableConfig,
+      computerExpiration: user.computerExpiration,
+
+      // Datos del usuario (mantener en JWT)
+      widgets: user.widgets || [],
+
+      // 🔄 COMPATIBILIDAD TEMPORAL CON FRONTEND (hasta refactor)
+      name:
+        `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+        user.name ||
+        '',
       address: user.address || '',
       apartment: user.apartment || '',
       city: user.city || '',
@@ -237,20 +255,18 @@ export class AuthService {
       country: user.country || '',
       zipCode: user.zipCode || '',
       phone: user.phone || '',
-      accountProvider: user.accountProvider,
-      isRecoverableConfig: user.isRecoverableConfig,
-      computerExpiration: user.computerExpiration,
-      widgets: user.widgets,
     };
 
-    console.log('📦 Payload del JWT:', {
+    console.log('📦 Payload del JWT (limpio):', {
       email: payload.email,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
       tenantId: payload.tenantId,
       tenantName: payload.tenantName,
       role: payload.role,
       widgetsCount: payload.widgets?.length || 0,
-      widgets:
-        payload.widgets?.map((w: any) => ({ id: w.id, order: w.order })) || [],
+      hasRecoverableConfig: !!payload.isRecoverableConfig,
+      computerExpiration: payload.computerExpiration,
     });
 
     return payload;

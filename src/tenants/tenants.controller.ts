@@ -9,7 +9,6 @@ import {
   Param,
 } from '@nestjs/common';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
-// import { UpdateTenantInformationSchemaDto } from './dto/update-information.dto';
 import { TenantsService } from './tenants.service';
 
 import { Request } from 'express';
