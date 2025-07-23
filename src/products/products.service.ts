@@ -523,6 +523,8 @@ export class ProductsService {
         //   }
         // }
 
+        let shipmentStatus: string | null = null;
+
         if (activeShipment && _id) {
           const shipmentSummary =
             await this.logisticsService.getShipmentSummaryByProductId(
@@ -535,6 +537,13 @@ export class ProductsService {
             shipmentOrigin = shipmentSummary.shipmentOrigin;
             shipmentDestination = shipmentSummary.shipmentDestination;
           }
+
+          // Obtener el status del shipment para productos con activeShipment = true
+          shipmentStatus =
+            await this.logisticsService.getShipmentStatusByProductId(
+              _id.toString(),
+              tenantName,
+            );
         }
 
         return {
@@ -559,6 +568,7 @@ export class ProductsService {
           shipmentOrigin,
           shipmentDestination,
           shipmentId,
+          shipmentStatus,
         };
       }),
     );
