@@ -37,6 +37,7 @@ import { Status } from 'src/products/interfaces/product.interface';
 import { AddressData } from 'src/infra/event-bus/tenant-address-update.event';
 import { MembersService } from 'src/members/members.service';
 import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
+import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 @Injectable()
 export class LogisticsService {
@@ -55,6 +56,7 @@ export class LogisticsService {
     private readonly productsService: ProductsService,
     @Inject(forwardRef(() => MembersService))
     private readonly membersService: MembersService,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   async validateIfMemberCanBeModified(memberEmail: string, tenantName: string) {
@@ -1243,6 +1245,14 @@ export class LogisticsService {
       });
 
       console.log('✨ Completed office address update');
+
+      this.logger.debug(
+        `Sending websocket notification for tenant: ${tenantName}`,
+      );
+      this.eventsGateway.notifyTenant(tenantName, 'shipments-update', {
+        message: 'Shipments updated after office address change',
+        timestamp: new Date().toISOString(),
+      });
     } catch (error) {
       console.error('❌ Failed to update office shipments:', error);
       throw error;
@@ -1392,6 +1402,12 @@ export class LogisticsService {
             }
           }
         }
+      });
+
+      this.eventsGateway.notifyTenant(tenantName, 'shipments-update', {
+        message: 'Shipments updated after member address change',
+        memberEmail,
+        timestamp: new Date().toISOString(),
       });
     } catch (error) {
       this.logger.error('Error updating shipments for member:', error);
