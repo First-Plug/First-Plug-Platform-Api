@@ -24,16 +24,9 @@ export class ShipmentsController {
   ) {}
 
   @Get()
-  async paginatedShipments(
-    @Query('page') page: string = '1',
-    @Query('size') size: string = '10',
-    @Request() req: any,
-  ) {
+  async getAllShipments(@Request() req: any) {
     const tenantId = req.user.tenantName;
-    const pageNumber = parseInt(page, 10) || 1;
-    const pageSize = parseInt(size, 10) || 10;
-
-    return this.shipmentsService.findAll(pageNumber, pageSize, tenantId);
+    return this.shipmentsService.findAll(tenantId);
   }
 
   @Get('by-product/:productId')

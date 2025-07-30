@@ -70,30 +70,14 @@ export class ShipmentsService {
     return { page };
   }
 
-  async findAll(page: number, size: number, tenantId: string) {
+  async findAll(tenantId: string) {
     await new Promise((resolve) => process.nextTick(resolve));
-    const skip = (page - 1) * size;
-
-    const dateFilter: any = {};
 
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantId);
     const ShipmentModel = this.getShipmentModel(connection);
 
-    const [data, totalCount] = await Promise.all([
-      ShipmentModel.find(dateFilter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(size)
-        .exec(),
-      ShipmentModel.countDocuments(dateFilter).exec(),
-    ]);
-
-    return {
-      data,
-      totalCount,
-      totalPages: Math.ceil(totalCount / size),
-    };
+    return await ShipmentModel.find().sort({ createdAt: -1 }).exec();
   }
 
   private getCountryCode(country: string): string {

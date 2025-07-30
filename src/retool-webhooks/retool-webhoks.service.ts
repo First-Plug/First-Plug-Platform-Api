@@ -101,7 +101,7 @@ export class RetoolWebhooksService {
 
     await shipment.save();
 
- if (shipment.shipment_status === 'Received') {
+    if (shipment.shipment_status === 'Received') {
       await this.logisticsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
         shipment.originDetails?.assignedEmail,
         tenantName,
@@ -256,6 +256,19 @@ export class RetoolWebhooksService {
 
     if (fieldsUpdated.length > 0) {
       await shipment.save();
+
+      try {
+        this.eventsGateway.notifyTenant(tenantName, 'shipments-update', {
+          shipmentId,
+          fieldsUpdated,
+          shipment,
+        });
+      } catch (error) {
+        console.error(
+          `❌ Error sending websocket notification for shipment ${shipmentId}:`,
+          error,
+        );
+      }
     }
 
     return {
@@ -301,6 +314,22 @@ export class RetoolWebhooksService {
 
       shipment.price = price;
       await shipment.save();
+
+      try {
+        this.eventsGateway.notifyTenant(tenantName, 'shipments-update', {
+          shipmentId,
+          price,
+          shipment,
+        });
+        console.log(
+          `📡 Websocket notification sent for shipment ${shipmentId} - price updated`,
+        );
+      } catch (error) {
+        console.error(
+          `❌ Error sending websocket notification for shipment ${shipmentId}:`,
+          error,
+        );
+      }
 
       return {
         message: `Shipment actualizado correctamente: price`,
