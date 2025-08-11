@@ -30,73 +30,23 @@ export class UserEnrichmentService {
    * Soporta tanto usuarios viejos como nuevos.
    */
   async enrichUserWithTenantData(user: User): Promise<any> {
-    // CASO 1: Usuario del esquema viejo (tenantName directo, sin tenantId)
-    if (this.isOldSchemaUser(user)) {
-      return {
-        _id: user._id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        name: `${user.firstName} ${user.lastName}`,
-        image: user.image || '',
+    console.log('🔍 DEBUG enrichUserWithTenantData:', {
+      email: user.email,
+      tenantId: user.tenantId,
+      tenantName: user.tenantName,
+      isOldSchemaUser: this.isOldSchemaUser(user),
+      isNewSchemaUser: this.isNewSchemaUser(user),
+      hasPassword: !!user.password,
+      hasSalt: !!user.salt,
+    });
 
-        // Datos personales (ya embebidos en el usuario viejo)
-        address: user.address || '',
-        apartment: user.apartment || '',
-        city: user.city || '',
-        state: user.state || '',
-        country: user.country || '',
-        zipCode: user.zipCode || '',
-        phone: user.phone || '',
+    // ✅ TODOS los usuarios de colección 'users' se manejan aquí
+    // Distinguir entre usuarios CON tenant y SIN tenant
 
-        // Datos de autenticación
-        password: user.password,
-        salt: user.salt,
-        accountProvider: user.accountProvider,
-        status: user.status,
-        isActive: user.isActive,
-        role: user.role || 'user', // Incluir rol
+    if (user.tenantId) {
+      // CASO A: Usuario CON tenant asignado
+      console.log('✅ Usuario CON tenant asignado');
 
-        // Datos del tenant (ya embebidos en el usuario viejo)
-        tenantId: user._id, // Para usuarios viejos, el _id del registro es el tenantId
-        tenantName: (user as any).tenantName,
-        isRecoverableConfig: (user as any).isRecoverableConfig || new Map(),
-        computerExpiration: (user as any).computerExpiration || 3,
-        widgets: user.widgets || [],
-      };
-    }
-
-    // CASO 2: Usuario sin tenant asignado (nuevo schema pero sin tenant)
-    if (!user.tenantId) {
-      return {
-        _id: user._id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        name: `${user.firstName} ${user.lastName}`,
-        image: user.image || '',
-        address: user.address || '',
-        apartment: user.apartment || '',
-        city: user.city || '',
-        state: user.state || '',
-        country: user.country || '',
-        zipCode: user.zipCode || '',
-        phone: user.phone || '',
-        accountProvider: user.accountProvider,
-        status: user.status,
-        isActive: user.isActive,
-        role: user.role || 'user', // Incluir rol
-        // Valores por defecto para campos del tenant
-        tenantId: user.tenantId || null, // ← AGREGAR tenantId
-        tenantName: null,
-        isRecoverableConfig: new Map(),
-        computerExpiration: 3,
-        widgets: user.widgets || [],
-      };
-    }
-
-    // CASO 3: Usuario del esquema nuevo (tiene tenantId)
-    if (this.isNewSchemaUser(user)) {
       // Buscar datos del tenant
       console.log('🔍 Buscando tenant para usuario:', {
         email: user.email,
@@ -113,17 +63,13 @@ export class UserEnrichmentService {
         name: tenant?.name,
       });
 
-      // Construir el objeto "enriquecido" con la estructura que espera el sistema
       return {
-        // Datos del usuario
         _id: user._id,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
         name: `${user.firstName} ${user.lastName}`,
         image: user.image || '',
-
-        // Datos personales del usuario (dirección personal, etc.)
         address: user.address || '',
         apartment: user.apartment || '',
         city: user.city || '',
@@ -131,26 +77,58 @@ export class UserEnrichmentService {
         country: user.country || '',
         zipCode: user.zipCode || '',
         phone: user.phone || '',
-
-        // Datos de autenticación
+        // ✅ CRÍTICO: Datos de autenticación
         password: user.password,
         salt: user.salt,
         accountProvider: user.accountProvider,
         status: user.status,
         isActive: user.isActive,
-        role: user.role || 'user', // Incluir rol
-
-        // Datos del tenant (para mantener compatibilidad)
-        tenantId: user.tenantId, // ← AGREGAR tenantId
+        role: user.role || 'user',
+        // ✅ Datos del tenant obtenidos de la colección tenants
+        tenantId: user.tenantId,
         tenantName: tenant?.tenantName || null,
         isRecoverableConfig: tenant?.isRecoverableConfig || new Map(),
         computerExpiration: tenant?.computerExpiration || 3,
-        widgets: user.widgets || [], // Widgets ahora vienen del usuario
+        widgets: user.widgets || [],
       };
     }
 
-    // Si llegamos aquí, algo salió mal
-    throw new Error('Usuario en estado inconsistente');
+    // CASO 2: Usuario sin tenant asignado (nuevo schema pero sin tenant)
+    if (!user.tenantId) {
+      console.log('⏳ CASO 2: Usuario SIN tenant - AGREGANDO PASSWORD Y SALT');
+      return {
+        _id: user._id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        name: `${user.firstName} ${user.lastName}`,
+        image: user.image || '',
+        address: user.address || '',
+        apartment: user.apartment || '',
+        city: user.city || '',
+        state: user.state || '',
+        country: user.country || '',
+        zipCode: user.zipCode || '',
+        phone: user.phone || '',
+        // ✅ CRÍTICO: Agregar password y salt
+        password: user.password,
+        salt: user.salt,
+        accountProvider: user.accountProvider,
+        status: user.status,
+        isActive: user.isActive,
+        role: user.role || 'user',
+        // Valores por defecto para campos del tenant
+        tenantId: user.tenantId || null,
+        tenantName: null,
+        isRecoverableConfig: new Map(),
+        computerExpiration: 3,
+        widgets: user.widgets || [],
+      };
+    }
+
+    // ✅ CASO 3 eliminado - Ya se maneja en CASO A (línea 46)
+
+    // ✅ CASO 4 eliminado - Ya se maneja en CASO 2 (línea 83)
   }
 
   /**

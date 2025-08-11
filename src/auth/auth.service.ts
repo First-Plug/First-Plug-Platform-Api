@@ -67,15 +67,44 @@ export class AuthService {
   }
 
   async validateUser(loginDto: LoginDto) {
-    // Buscar usuario enriquecido con datos del tenant
+    // 1. PRIMERO: Buscar usuario por email
     const enrichedUser =
       await this.userEnrichmentService.findEnrichedUserByEmail(loginDto.email);
 
     if (!enrichedUser) {
-      throw new UnauthorizedException('Usuario no encontrado');
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    // Validar permisos según el rol del usuario
+    // 2. SEGUNDO: Validar contraseña
+    console.log('🔍 Datos de password:', {
+      email: enrichedUser.email,
+      hasPassword: !!enrichedUser.password,
+      hasSalt: !!enrichedUser.salt,
+      passwordLength: enrichedUser.password?.length || 0,
+      saltLength: enrichedUser.salt?.length || 0,
+    });
+
+    // Validar que el usuario tenga password y salt
+    if (!enrichedUser.password || !enrichedUser.salt) {
+      console.log(
+        '❌ Usuario sin password/salt configurado:',
+        enrichedUser.email,
+      );
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    const authorized = await this.validatePassword(
+      { salt: enrichedUser.salt, password: enrichedUser.password },
+      loginDto.password,
+    );
+
+    if (!authorized) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    console.log('✅ Credenciales válidas para:', enrichedUser.email);
+
+    // 3. TERCERO: Validar permisos según el rol del usuario
     const isOldUser = !enrichedUser.tenantId && enrichedUser.tenantName;
     const isNewUser = !!enrichedUser.tenantId;
     const isSuperAdmin = enrichedUser.role === 'superadmin';
@@ -96,24 +125,18 @@ export class AuthService {
       return enrichedUser;
     }
 
-    // Usuarios normales necesitan tenant
+    // 4. CUARTO: Usuarios normales necesitan tenant (DESPUÉS de validar credenciales)
     if (!isOldUser && !isNewUser) {
-      console.log('❌ Usuario sin tenant asignado:', enrichedUser.email);
-      throw new UnauthorizedException(
+      console.log('⏳ Usuario sin tenant asignado:', enrichedUser.email);
+      // Error específico para usuarios sin tenant (credenciales correctas)
+      const error = new UnauthorizedException(
         'Usuario sin tenant asignado. Contacte al administrador.',
       );
+      (error as any).code = 'NO_TENANT_ASSIGNED';
+      throw error;
     }
 
-    const authorized = await this.validatePassword(
-      { salt: enrichedUser.salt, password: enrichedUser.password },
-      loginDto.password,
-    );
-
-    if (authorized) {
-      return enrichedUser;
-    }
-
-    throw new UnauthorizedException('Credenciales inválidas');
+    return enrichedUser;
   }
 
   async getTokens(createTenantByProvidersDto: CreateTenantByProvidersDto) {
@@ -243,18 +266,7 @@ export class AuthService {
       // Datos del usuario (mantener en JWT)
       widgets: user.widgets || [],
 
-      // 🔄 COMPATIBILIDAD TEMPORAL CON FRONTEND (hasta refactor)
-      name:
-        `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
-        user.name ||
-        '',
-      address: user.address || '',
-      apartment: user.apartment || '',
-      city: user.city || '',
-      state: user.state || '',
-      country: user.country || '',
-      zipCode: user.zipCode || '',
-      phone: user.phone || '',
+      // ✅ MIGRACIÓN COMPLETA - Solo datos esenciales en JWT
     };
 
     console.log('📦 Payload del JWT (limpio):', {
