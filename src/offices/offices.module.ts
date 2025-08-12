@@ -7,14 +7,12 @@ import { TenantDbModule } from '../infra/db/tenant-db.module';
 import { TenantsModule } from '../tenants/tenants.module';
 import { TenantsMiddleware } from '../common/middlewares/tenants.middleware';
 import { tenantModels } from '../infra/db/tenant-models-provider';
-import { HistoryModule } from '../history/history.module';
 
 @Module({
   imports: [
     EventEmitterModule,
     TenantDbModule,
     TenantsModule,
-    HistoryModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'default-secret',
       signOptions: { expiresIn: '48h' },

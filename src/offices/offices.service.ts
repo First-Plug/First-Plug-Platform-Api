@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   Inject,
+  Optional,
 } from '@nestjs/common';
 import { Model, Types } from 'mongoose';
 import { Office } from './schemas/office.schema';
@@ -20,7 +21,7 @@ export class OfficesService {
     private officeModel: Model<Office>,
     private eventEmitter: EventEmitter2,
     private tenantModelRegistry: TenantModelRegistry,
-    private historyService: HistoryService,
+    @Optional() private historyService?: HistoryService,
   ) {}
 
   /**
@@ -80,16 +81,18 @@ export class OfficesService {
     };
 
     // Crear registro de history para la creación de la oficina
-    await this.historyService.create({
-      actionType: 'create',
-      itemType: 'offices',
-      userId,
-      changes: {
-        oldData: null,
-        newData: office.toObject(),
-        context: 'setup-default-office',
-      },
-    });
+    if (this.historyService) {
+      await this.historyService.create({
+        actionType: 'create',
+        itemType: 'offices',
+        userId,
+        changes: {
+          oldData: null,
+          newData: office.toObject(),
+          context: 'setup-default-office',
+        },
+      });
+    }
 
     this.eventEmitter.emit(
       EventTypes.OFFICE_ADDRESS_UPDATED,
@@ -157,16 +160,18 @@ export class OfficesService {
     });
 
     // Crear registro de history para la actualización de la oficina
-    await this.historyService.create({
-      actionType: 'update',
-      itemType: 'offices',
-      userId,
-      changes: {
-        oldData: currentOffice.toObject(),
-        newData: updatedOffice.toObject(),
-        context: 'office-address-update',
-      },
-    });
+    if (this.historyService) {
+      await this.historyService.create({
+        actionType: 'update',
+        itemType: 'offices',
+        userId,
+        changes: {
+          oldData: currentOffice.toObject(),
+          newData: updatedOffice.toObject(),
+          context: 'office-address-update',
+        },
+      });
+    }
 
     const newAddress = {
       address: updatedOffice.address,
