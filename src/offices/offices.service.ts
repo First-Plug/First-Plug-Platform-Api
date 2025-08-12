@@ -161,16 +161,25 @@ export class OfficesService {
 
     // Crear registro de history para la actualización de la oficina
     if (this.historyService) {
-      await this.historyService.create({
-        actionType: 'update',
-        itemType: 'offices',
-        userId,
-        changes: {
-          oldData: currentOffice.toObject(),
-          newData: updatedOffice.toObject(),
-          context: 'office-address-update',
-        },
-      });
+      try {
+        await this.historyService.create({
+          actionType: 'update',
+          itemType: 'offices',
+          userId,
+          changes: {
+            oldData: currentOffice.toObject(),
+            newData: updatedOffice.toObject(),
+            context: 'office-address-update',
+          },
+        });
+        console.log('✅ Registro de history de oficina creado');
+      } catch (error) {
+        console.error('❌ Error creando history de oficina:', error);
+      }
+    } else {
+      console.log(
+        '⚠️ HistoryService no disponible - saltando creación de history',
+      );
     }
 
     const newAddress = {

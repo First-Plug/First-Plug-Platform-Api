@@ -7,6 +7,7 @@ import { TenantDbModule } from '../infra/db/tenant-db.module';
 import { TenantsModule } from '../tenants/tenants.module';
 import { TenantsMiddleware } from '../common/middlewares/tenants.middleware';
 import { tenantModels } from '../infra/db/tenant-models-provider';
+import { HistoryService } from '../history/history.service';
 
 @Module({
   imports: [
@@ -19,7 +20,14 @@ import { tenantModels } from '../infra/db/tenant-models-provider';
     }),
   ],
   controllers: [OfficesController],
-  providers: [OfficesService, tenantModels.officeModel, JwtService],
+  providers: [
+    OfficesService,
+    tenantModels.officeModel,
+    JwtService,
+    HistoryService,
+    tenantModels.historyModel,
+    tenantModels.teamModel,
+  ],
   exports: [OfficesService],
 })
 export class OfficesModule {
