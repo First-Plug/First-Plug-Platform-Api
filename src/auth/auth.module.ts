@@ -8,9 +8,16 @@ import { TenantUserAdapterService } from '../common/services/tenant-user-adapter
 import { OfficesModule } from '../offices/offices.module';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
+import { SuperAdminModule } from './super-admin/super-admin.module';
 
 @Module({
-  imports: [TenantsModule, UsersModule, OfficesModule, ConfigModule],
+  imports: [
+    TenantsModule,
+    UsersModule,
+    OfficesModule,
+    ConfigModule,
+    SuperAdminModule,
+  ],
   controllers: [AuthController],
   providers: [
     AuthService,

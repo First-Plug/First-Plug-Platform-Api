@@ -11,57 +11,19 @@ export class UserEnrichmentService {
   ) {}
 
   /**
-   * Detecta si es un usuario del esquema viejo (tiene tenantName pero no tenantId)
-   */
-  private isOldSchemaUser(user: any): boolean {
-    return !user.tenantId && user.tenantName;
-  }
-
-  /**
-   * Detecta si es un usuario del esquema nuevo (tiene tenantId)
-   */
-  private isNewSchemaUser(user: any): boolean {
-    return !!user.tenantId;
-  }
-
-  /**
    * Enriquece un usuario con datos del tenant para mantener compatibilidad
    * con la estructura anterior donde todo estaba acoplado.
    * Soporta tanto usuarios viejos como nuevos.
    */
   async enrichUserWithTenantData(user: User): Promise<any> {
-    console.log('🔍 DEBUG enrichUserWithTenantData:', {
-      email: user.email,
-      tenantId: user.tenantId,
-      tenantName: user.tenantName,
-      isOldSchemaUser: this.isOldSchemaUser(user),
-      isNewSchemaUser: this.isNewSchemaUser(user),
-      hasPassword: !!user.password,
-      hasSalt: !!user.salt,
-    });
-
     // ✅ TODOS los usuarios de colección 'users' se manejan aquí
     // Distinguir entre usuarios CON tenant y SIN tenant
 
     if (user.tenantId) {
       // CASO A: Usuario CON tenant asignado
-      console.log('✅ Usuario CON tenant asignado');
-
-      // Buscar datos del tenant
-      console.log('🔍 Buscando tenant para usuario:', {
-        email: user.email,
-        tenantId: user.tenantId.toString(),
-      });
-
       const tenant = await this.tenantsService.getTenantById(
         user.tenantId.toString(),
       );
-
-      console.log('📋 Tenant encontrado:', {
-        tenantId: tenant?._id,
-        tenantName: tenant?.tenantName,
-        name: tenant?.name,
-      });
 
       return {
         _id: user._id,
@@ -95,7 +57,6 @@ export class UserEnrichmentService {
 
     // CASO 2: Usuario sin tenant asignado (nuevo schema pero sin tenant)
     if (!user.tenantId) {
-      console.log('⏳ CASO 2: Usuario SIN tenant - AGREGANDO PASSWORD Y SALT');
       return {
         _id: user._id,
         email: user.email,
@@ -125,10 +86,6 @@ export class UserEnrichmentService {
         widgets: user.widgets || [],
       };
     }
-
-    // ✅ CASO 3 eliminado - Ya se maneja en CASO A (línea 46)
-
-    // ✅ CASO 4 eliminado - Ya se maneja en CASO 2 (línea 83)
   }
 
   /**

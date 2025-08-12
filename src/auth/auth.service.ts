@@ -76,20 +76,8 @@ export class AuthService {
     }
 
     // 2. SEGUNDO: Validar contraseña
-    console.log('🔍 Datos de password:', {
-      email: enrichedUser.email,
-      hasPassword: !!enrichedUser.password,
-      hasSalt: !!enrichedUser.salt,
-      passwordLength: enrichedUser.password?.length || 0,
-      saltLength: enrichedUser.salt?.length || 0,
-    });
-
     // Validar que el usuario tenga password y salt
     if (!enrichedUser.password || !enrichedUser.salt) {
-      console.log(
-        '❌ Usuario sin password/salt configurado:',
-        enrichedUser.email,
-      );
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
@@ -101,8 +89,6 @@ export class AuthService {
     if (!authorized) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
-
-    console.log('✅ Credenciales válidas para:', enrichedUser.email);
 
     // 3. TERCERO: Validar permisos según el rol del usuario
     const isOldUser = !enrichedUser.tenantId && enrichedUser.tenantName;
@@ -127,7 +113,6 @@ export class AuthService {
 
     // 4. CUARTO: Usuarios normales necesitan tenant (DESPUÉS de validar credenciales)
     if (!isOldUser && !isNewUser) {
-      console.log('⏳ Usuario sin tenant asignado:', enrichedUser.email);
       // Error específico para usuarios sin tenant (credenciales correctas)
       const error = new UnauthorizedException(
         'Usuario sin tenant asignado. Contacte al administrador.',
