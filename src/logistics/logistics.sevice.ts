@@ -1309,6 +1309,18 @@ export class LogisticsService {
                 destinationDetails: refreshedShipment.destinationDetails,
               });
 
+              // Crear registro de history para el update del shipment
+              await this.historyService.create({
+                actionType: 'update',
+                itemType: 'shipments',
+                userId,
+                changes: {
+                  oldData: shipment.toObject(),
+                  newData: refreshedShipment.toObject(),
+                  context: 'office-address-update',
+                },
+              });
+
               await this.updateShipmentStatusOnAddressComplete(
                 refreshedShipment,
                 connection,
@@ -1460,6 +1472,18 @@ export class LogisticsService {
               shipment._id,
             ).session(session);
             if (refreshedShipment) {
+              // Crear registro de history para el update del shipment
+              await this.historyService.create({
+                actionType: 'update',
+                itemType: 'shipments',
+                userId,
+                changes: {
+                  oldData: originalShipmentData,
+                  newData: refreshedShipment.toObject(),
+                  context: 'member-address-update',
+                },
+              });
+
               await this.updateShipmentOnAddressComplete(
                 refreshedShipment,
                 connection,

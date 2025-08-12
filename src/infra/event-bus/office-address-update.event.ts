@@ -11,7 +11,7 @@ export interface AddressData {
 
 export class OfficeAddressUpdatedEvent {
   constructor(
-    public readonly tenantId: string,
+    public readonly tenantName: string,
     public readonly oldAddress: AddressData,
     public readonly newAddress: AddressData,
     public readonly updatedAt: Date = new Date(),

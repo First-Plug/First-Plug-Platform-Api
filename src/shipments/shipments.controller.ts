@@ -26,7 +26,15 @@ export class ShipmentsController {
   ) {}
 
   @Get()
-  async paginatedShipments(
+  async getAllShipments(@Request() req: any) {
+    const tenantId = req.user.tenantName;
+
+    // El frontend hace paginación client-side, necesita todos los shipments
+    return this.shipmentsService.getShipments(tenantId);
+  }
+
+  @Get('paginated')
+  async paginatedShipmentsWithMetadata(
     @Query('page') page: string = '1',
     @Query('size') size: string = '10',
     @Request() req: any,
@@ -35,6 +43,7 @@ export class ShipmentsController {
     const pageNumber = parseInt(page, 10) || 1;
     const pageSize = parseInt(size, 10) || 10;
 
+    // Devuelve la estructura completa con metadata de paginación
     return this.shipmentsService.findAll(pageNumber, pageSize, tenantId);
   }
 
