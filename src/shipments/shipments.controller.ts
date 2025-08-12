@@ -26,17 +26,27 @@ export class ShipmentsController {
   ) {}
 
   @Get()
-  async paginatedShipments(
-    @Query('page') page: string = '1',
-    @Query('size') size: string = '10',
-    @Request() req: any,
-  ) {
+  async getAllShipments(@Request() req: any) {
     const tenantId = req.user.tenantName;
-    const pageNumber = parseInt(page, 10) || 1;
-    const pageSize = parseInt(size, 10) || 10;
 
-    return this.shipmentsService.findAll(pageNumber, pageSize, tenantId);
+    // El frontend hace paginación client-side, necesita todos los shipments
+    return this.shipmentsService.getShipments(tenantId);
   }
+
+  // TODO: Implementar paginación server-side cuando sea necesario
+  // @Get('paginated')
+  // async paginatedShipmentsWithMetadata(
+  //   @Query('page') page: string = '1',
+  //   @Query('size') size: string = '10',
+  //   @Request() req: any,
+  // ) {
+  //   const tenantId = req.user.tenantName;
+  //   const pageNumber = parseInt(page, 10) || 1;
+  //   const pageSize = parseInt(size, 10) || 10;
+  //
+  //   // Implementar lógica de paginación server-side aquí
+  //   return this.shipmentsService.findAllPaginated(pageNumber, pageSize, tenantId);
+  // }
 
   @Get('by-product/:productId')
   async getShipmentByProductId(

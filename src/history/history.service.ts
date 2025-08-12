@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Model } from 'mongoose';
 import { CreateHistoryDto } from './dto/create-history.dto';
 import { History } from './schemas/history.schema';
@@ -12,7 +12,7 @@ export class HistoryService {
     @Inject('HISTORY_MODEL')
     private readonly historyRepository: Model<History>,
     @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
-    private readonly tenantUserAdapter: TenantUserAdapterService,
+    @Optional() private readonly tenantUserAdapter?: TenantUserAdapterService,
   ) {}
 
   async create(createHistoryDto: CreateHistoryDto) {
@@ -151,6 +151,11 @@ export class HistoryService {
       const validUserIds = userIds.filter((id) => isValidObjectId(id));
 
       // Usar el adaptador para obtener usuarios/tenants con la estructura esperada
+      if (!this.tenantUserAdapter) {
+        console.warn('TenantUserAdapter not available, returning empty array');
+        return [];
+      }
+
       const tenants =
         await this.tenantUserAdapter.findTenantsByIds(validUserIds);
 

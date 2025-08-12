@@ -14,7 +14,7 @@ export class OfficeAddressUpdatedListener {
   async handleTenantAddressUpdated(event: OfficeAddressUpdatedEvent) {
     try {
       this.logger.debug(
-        `Processing address update for tenant: ${event.tenantId}`,
+        `Processing address update for tenant: ${event.tenantName}`,
         {
           oldAddress: event.oldAddress,
           newAddress: event.newAddress,
@@ -28,7 +28,7 @@ export class OfficeAddressUpdatedListener {
       const userId = event.userId;
       const ourOfficeEmail = event.ourOfficeEmail;
       await this.logisticsService.checkAndUpdateShipmentsForOurOffice(
-        event.tenantId,
+        event.tenantName,
         event.oldAddress,
         event.newAddress,
         userId,
@@ -36,11 +36,11 @@ export class OfficeAddressUpdatedListener {
       );
 
       this.logger.debug(
-        `Successfully processed address update for tenant: ${event.tenantId}`,
+        `Successfully processed address update for tenant: ${event.tenantName}`,
       );
     } catch (error) {
       this.logger.error(
-        `Failed to process address update for tenant: ${event.tenantId}`,
+        `Failed to process address update for tenant: ${event.tenantName}`,
         error.stack,
       );
       throw error;

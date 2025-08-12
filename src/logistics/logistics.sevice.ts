@@ -40,6 +40,7 @@ import { Status } from 'src/products/interfaces/product.interface';
 import { AddressData } from 'src/infra/event-bus/tenant-address-update.event';
 import { MembersService } from 'src/members/members.service';
 import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
+import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 @Injectable()
 export class LogisticsService {
@@ -61,6 +62,7 @@ export class LogisticsService {
     private readonly membersService: MembersService,
     private readonly officesService: OfficesService,
     private readonly usersService: UsersService,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   /**
@@ -1309,6 +1311,9 @@ export class LogisticsService {
                 destinationDetails: refreshedShipment.destinationDetails,
               });
 
+              // Solo actualizar el status si es necesario
+              // El history se crea automáticamente en updateShipmentStatusOnAddressComplete
+              // cuando realmente cambia el status del shipment
               await this.updateShipmentStatusOnAddressComplete(
                 refreshedShipment,
                 connection,
@@ -1323,6 +1328,14 @@ export class LogisticsService {
       });
 
       console.log('✨ Completed office address update');
+
+      this.logger.debug(
+        `Sending websocket notification for tenant: ${tenantName}`,
+      );
+      this.eventsGateway.notifyTenant(tenantName, 'shipments-update', {
+        message: 'Shipments updated after office address change',
+        timestamp: new Date().toISOString(),
+      });
     } catch (error) {
       console.error('❌ Failed to update office shipments:', error);
       throw error;
@@ -1460,6 +1473,9 @@ export class LogisticsService {
               shipment._id,
             ).session(session);
             if (refreshedShipment) {
+              // Solo actualizar el status si es necesario
+              // El history se crea automáticamente en updateShipmentOnAddressComplete
+              // cuando realmente cambia el status del shipment
               await this.updateShipmentOnAddressComplete(
                 refreshedShipment,
                 connection,
@@ -1472,6 +1488,12 @@ export class LogisticsService {
             }
           }
         }
+      });
+
+      this.eventsGateway.notifyTenant(tenantName, 'shipments-update', {
+        message: 'Shipments updated after member address change',
+        memberEmail,
+        timestamp: new Date().toISOString(),
       });
     } catch (error) {
       this.logger.error('Error updating shipments for member:', error);

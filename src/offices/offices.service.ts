@@ -2,8 +2,9 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Inject,
+  Optional,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Office } from './schemas/office.schema';
 import { CreateOfficeDto, UpdateOfficeDto } from 'src/offices/dto';
@@ -11,14 +12,16 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { OfficeAddressUpdatedEvent } from 'src/infra/event-bus/office-address-update.event';
 import { EventTypes } from 'src/infra/event-bus/types';
 import { TenantModelRegistry } from '../infra/db/tenant-model-registry';
+import { HistoryService } from '../history/history.service';
 
 @Injectable()
 export class OfficesService {
   constructor(
-    @InjectModel(Office.name)
+    @Inject('OFFICE_MODEL')
     private officeModel: Model<Office>,
     private eventEmitter: EventEmitter2,
     private tenantModelRegistry: TenantModelRegistry,
+    @Optional() private historyService?: HistoryService,
   ) {}
 
   /**
@@ -76,6 +79,20 @@ export class OfficesService {
       phone: office.phone,
       ourOfficeEmail: office.email,
     };
+
+    // Crear registro de history para la creación de la oficina
+    if (this.historyService) {
+      await this.historyService.create({
+        actionType: 'create',
+        itemType: 'offices',
+        userId,
+        changes: {
+          oldData: null,
+          newData: office.toObject(),
+          context: 'setup-default-office',
+        },
+      });
+    }
 
     this.eventEmitter.emit(
       EventTypes.OFFICE_ADDRESS_UPDATED,
@@ -141,6 +158,29 @@ export class OfficesService {
       tenantName,
       officeId: updatedOffice._id,
     });
+
+    // Crear registro de history para la actualización de la oficina
+    if (this.historyService) {
+      try {
+        await this.historyService.create({
+          actionType: 'update',
+          itemType: 'offices',
+          userId,
+          changes: {
+            oldData: currentOffice.toObject(),
+            newData: updatedOffice.toObject(),
+            context: 'office-address-update',
+          },
+        });
+        console.log('✅ Registro de history de oficina creado');
+      } catch (error) {
+        console.error('❌ Error creando history de oficina:', error);
+      }
+    } else {
+      console.log(
+        '⚠️ HistoryService no disponible - saltando creación de history',
+      );
+    }
 
     const newAddress = {
       address: updatedOffice.address,
