@@ -11,6 +11,7 @@ import { TenantsModule } from 'src/tenants/tenants.module';
 import { ProductsModule } from 'src/products/products.module';
 import { OfficesModule } from '../offices/offices.module';
 import { UsersModule } from '../users/users.module';
+import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { UsersModule } from '../users/users.module';
     SlackModule,
     HistoryModule,
   ],
-  providers: [TenantModelRegistry, LogisticsService, JwtService],
+  providers: [TenantModelRegistry, LogisticsService, JwtService, EventsGateway],
   exports: [LogisticsService],
 })
 export class LogisticsModule {}
