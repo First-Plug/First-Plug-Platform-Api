@@ -2,8 +2,8 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Inject,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Office } from './schemas/office.schema';
 import { CreateOfficeDto, UpdateOfficeDto } from 'src/offices/dto';
@@ -15,7 +15,7 @@ import { TenantModelRegistry } from '../infra/db/tenant-model-registry';
 @Injectable()
 export class OfficesService {
   constructor(
-    @InjectModel(Office.name)
+    @Inject('OFFICE_MODEL')
     private officeModel: Model<Office>,
     private eventEmitter: EventEmitter2,
     private tenantModelRegistry: TenantModelRegistry,
