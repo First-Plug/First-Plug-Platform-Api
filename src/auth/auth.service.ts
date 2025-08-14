@@ -4,7 +4,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { LoginDto } from './dto/auth.dto';
-import { TenantsService } from 'src/tenants/tenants.service';
+import { UserEnrichmentService } from './user-enrichment.service';
 import { genSalt, hash } from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { CreateTenantByProvidersDto } from 'src/tenants/dto/create-tenant-by-providers.dto';
@@ -16,12 +16,19 @@ const EXPIRE_TIME = 20 * 1000;
 @Injectable()
 export class AuthService {
   constructor(
-    private tenantService: TenantsService,
+    private userEnrichmentService: UserEnrichmentService,
     private jwtService: JwtService,
   ) {}
 
   async login(loginDto: LoginDto) {
+    console.log('🔐 Login iniciado:', loginDto.email);
+
     const user = await this.validateUser(loginDto);
+    console.log('✅ Login exitoso:', user.email, '- Tipo:', {
+      tenantId: user.tenantId,
+      tenantName: user.tenantName,
+      tipo: user.tenantId ? 'NUEVO' : 'VIEJO',
+    });
 
     await this.checkAndPropagateTenantConfig(user);
 
@@ -45,65 +52,101 @@ export class AuthService {
   }
 
   async checkAndPropagateTenantConfig(user: any) {
+    // TODO: Implementar con la nueva arquitectura separada
+    // Por ahora comentado para mantener compatibilidad
     if (!user.tenantName) {
       return;
     }
 
-    const otherUsers = await this.tenantService.findUsersWithSameTenant(
-      user.tenantName,
-      user.createdAt,
+    // Esta funcionalidad necesita ser reimplementada con la nueva arquitectura
+    // donde los datos del tenant y usuario están separados
+    console.log(
+      'checkAndPropagateTenantConfig: Funcionalidad temporalmente deshabilitada',
     );
-
-    if (otherUsers.length > 0) {
-      const otherUser = otherUsers[0];
-
-      if (
-        JSON.stringify(otherUser.isRecoverableConfig) !==
-          JSON.stringify(user.isRecoverableConfig) ||
-        otherUser.computerExpiration !== user.computerExpiration ||
-        otherUser.address !== user.address
-      ) {
-        await this.tenantService.updateUserConfig(user._id, {
-          isRecoverableConfig: otherUser.isRecoverableConfig,
-          phone: otherUser.phone,
-          country: otherUser.country,
-          city: otherUser.city,
-          state: otherUser.state,
-          zipCode: otherUser.zipCode,
-          address: otherUser.address,
-          apartment: otherUser.apartment,
-          computerExpiration: otherUser.computerExpiration,
-        });
-      }
-    }
+    return;
   }
 
   async validateUser(loginDto: LoginDto) {
-    const user = await this.tenantService.findByEmail(loginDto.email);
+    // 1. PRIMERO: Buscar usuario por email
+    const enrichedUser =
+      await this.userEnrichmentService.findEnrichedUserByEmail(loginDto.email);
 
-    if (!user) {
-      throw new UnauthorizedException();
+    if (!enrichedUser) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    // 2. SEGUNDO: Validar contraseña
+    console.log('🔍 Datos de password:', {
+      email: enrichedUser.email,
+      hasPassword: !!enrichedUser.password,
+      hasSalt: !!enrichedUser.salt,
+      passwordLength: enrichedUser.password?.length || 0,
+      saltLength: enrichedUser.salt?.length || 0,
+    });
+
+    // Validar que el usuario tenga password y salt
+    if (!enrichedUser.password || !enrichedUser.salt) {
+      console.log(
+        '❌ Usuario sin password/salt configurado:',
+        enrichedUser.email,
+      );
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
     const authorized = await this.validatePassword(
-      { salt: user.salt, password: user.password },
+      { salt: enrichedUser.salt, password: enrichedUser.password },
       loginDto.password,
     );
 
-    if (authorized) {
-      return user;
+    if (!authorized) {
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    throw new UnauthorizedException();
+    console.log('✅ Credenciales válidas para:', enrichedUser.email);
+
+    // 3. TERCERO: Validar permisos según el rol del usuario
+    const isOldUser = !enrichedUser.tenantId && enrichedUser.tenantName;
+    const isNewUser = !!enrichedUser.tenantId;
+    const isSuperAdmin = enrichedUser.role === 'superadmin';
+
+    console.log('🔍 Validando acceso:', {
+      email: enrichedUser.email,
+      role: enrichedUser.role || 'user',
+      isOldUser,
+      isNewUser,
+      isSuperAdmin,
+      tenantName: enrichedUser.tenantName,
+      hasTenantId: !!enrichedUser.tenantId,
+    });
+
+    // SuperAdmin no necesita tenant
+    if (isSuperAdmin) {
+      console.log('👑 SuperAdmin detectado - acceso sin tenant');
+      return enrichedUser;
+    }
+
+    // 4. CUARTO: Usuarios normales necesitan tenant (DESPUÉS de validar credenciales)
+    if (!isOldUser && !isNewUser) {
+      console.log('⏳ Usuario sin tenant asignado:', enrichedUser.email);
+      // Error específico para usuarios sin tenant (credenciales correctas)
+      const error = new UnauthorizedException(
+        'Usuario sin tenant asignado. Contacte al administrador.',
+      );
+      (error as any).code = 'NO_TENANT_ASSIGNED';
+      throw error;
+    }
+
+    return enrichedUser;
   }
 
   async getTokens(createTenantByProvidersDto: CreateTenantByProvidersDto) {
-    const user = await this.tenantService.findByEmail(
-      createTenantByProvidersDto.email,
-    );
+    const enrichedUser =
+      await this.userEnrichmentService.findEnrichedUserByEmail(
+        createTenantByProvidersDto.email,
+      );
 
-    if (user) {
-      const payload = this.createUserPayload(user);
+    if (enrichedUser) {
+      const payload = this.createUserPayload(enrichedUser);
 
       return {
         user: payload,
@@ -125,11 +168,12 @@ export class AuthService {
   }
 
   async refreshToken(user: any) {
-    const updatedUser = await this.tenantService.findByEmail(user.email);
-    if (!updatedUser) {
+    const enrichedUser =
+      await this.userEnrichmentService.findEnrichedUserByEmail(user.email);
+    if (!enrichedUser) {
       throw new UnauthorizedException();
     }
-    const payload = this.createUserPayload(updatedUser);
+    const payload = this.createUserPayload(enrichedUser);
 
     return {
       user: payload,
@@ -150,11 +194,16 @@ export class AuthService {
   }
 
   async changePassword(user: UserJWT, changePasswordDto: ChangePasswordDto) {
-    const userFound = await this.tenantService.findByEmail(user.email);
+    const enrichedUser =
+      await this.userEnrichmentService.findEnrichedUserByEmail(user.email);
+
+    if (!enrichedUser) {
+      throw new UnauthorizedException('User not found');
+    }
 
     const userPassword = {
-      password: userFound?.password,
-      salt: userFound?.salt,
+      password: enrichedUser.password,
+      salt: enrichedUser.salt,
     };
 
     await this.validatePassword(
@@ -166,7 +215,8 @@ export class AuthService {
     const salt = await genSalt(10);
     const hashedPassword = await hash(changePasswordDto.newPassword, salt);
 
-    return await this.tenantService.update(user._id, {
+    // Actualizar la contraseña en la colección de usuarios
+    return await this.userEnrichmentService.updateUserConfig(user._id, {
       password: hashedPassword,
       salt,
     });
@@ -195,23 +245,42 @@ export class AuthService {
   }
 
   private createUserPayload(user: any) {
-    return {
+    const payload = {
+      // Datos esenciales del usuario
       _id: user._id,
       email: user.email,
-      name: user.name,
-      image: user.image,
-      tenantName: user.tenantName,
-      address: user.address || '',
-      apartment: user.apartment || '',
-      city: user.city || '',
-      state: user.state || '',
-      country: user.country || '',
-      zipCode: user.zipCode || '',
-      phone: user.phone || '',
+      firstName: user.firstName || user.name?.split(' ')[0] || '', // Compatibilidad con usuarios viejos
+      lastName: user.lastName || user.name?.split(' ').slice(1).join(' ') || '',
+      role: user.role || 'user',
+      image: user.image || '',
       accountProvider: user.accountProvider,
+
+      // Datos del tenant (esenciales)
+      tenantId: user.tenantId ? user.tenantId.toString() : null,
+      tenantName: user.tenantName,
+
+      // Configuración del tenant (mantener en JWT)
       isRecoverableConfig: user.isRecoverableConfig,
       computerExpiration: user.computerExpiration,
-      widgets: user.widgets,
+
+      // Datos del usuario (mantener en JWT)
+      widgets: user.widgets || [],
+
+      // ✅ MIGRACIÓN COMPLETA - Solo datos esenciales en JWT
     };
+
+    console.log('📦 Payload del JWT (limpio):', {
+      email: payload.email,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      tenantId: payload.tenantId,
+      tenantName: payload.tenantName,
+      role: payload.role,
+      widgetsCount: payload.widgets?.length || 0,
+      hasRecoverableConfig: !!payload.isRecoverableConfig,
+      computerExpiration: payload.computerExpiration,
+    });
+
+    return payload;
   }
 }

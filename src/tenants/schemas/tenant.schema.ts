@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { genSalt, hash } from 'bcrypt';
+// import { genSalt, hash } from 'bcrypt';
 import { Document, Types } from 'mongoose';
 
 export const PROVIDERS = ['credentials', 'google', 'azure-ad'] as const;
@@ -14,41 +14,8 @@ export class Tenant extends Document {
   @Prop({ type: String, required: true })
   name: string;
 
-  @Prop({ type: String, required: true })
-  email: string;
-
-  @Prop({ enum: PROVIDERS, required: false })
-  accountProvider: Provider;
-
   @Prop({ type: String, default: '' })
   image?: string;
-
-  @Prop({ type: String, required: false })
-  password: string;
-
-  @Prop({ type: String, required: false })
-  salt: string;
-
-  @Prop({ type: String, required: false, default: '' })
-  phone: string;
-
-  @Prop({ type: String, required: false, default: '' })
-  country: string;
-
-  @Prop({ type: String, required: false, default: '' })
-  city: string;
-
-  @Prop({ type: String, required: false, default: '' })
-  state: string;
-
-  @Prop({ type: String, required: false, default: '' })
-  zipCode: string;
-
-  @Prop({ type: String, required: false, default: '' })
-  address: string;
-
-  @Prop({ type: String, required: false, default: '' })
-  apartment: string;
 
   @Prop({ type: Number, required: false, default: 3 })
   computerExpiration: number;
@@ -67,38 +34,14 @@ export class Tenant extends Document {
   })
   isRecoverableConfig: Map<string, boolean>;
 
-  @Prop({
-    type: [
-      {
-        id: { type: String, required: true },
-        order: { type: Number, required: true },
-      },
-    ],
-    default: [
-      { id: 'my-assets', order: 0 },
-      { id: 'computer-updates', order: 1 },
-      { id: 'upcoming-birthdays', order: 2 },
-      { id: 'members-by-country', order: 3 },
-      { id: 'latest-activity', order: 4 },
-    ],
-  })
-  widgets: { id: string; order: number }[];
+  @Prop({ type: Types.ObjectId, ref: 'User', required: false })
+  createdBy?: Types.ObjectId;
+
+  @Prop({ default: true })
+  isActive: boolean;
+
+  @Prop({ type: Object, required: false })
+  metadata?: Record<string, any>;
 }
 
 export const TenantSchema = SchemaFactory.createForClass(Tenant);
-
-TenantSchema.pre('save', async function (next) {
-  if (!this.isModified('password') || !this.password) {
-    return next();
-  }
-
-  try {
-    const salt = await genSalt(10);
-
-    this.salt = salt;
-    this.password = await hash(this.password, salt);
-    next();
-  } catch (error) {
-    return next(error);
-  }
-});

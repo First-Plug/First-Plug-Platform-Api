@@ -21,6 +21,7 @@ import { AddFullNameInterceptor } from './interceptors/add-full-name.interceptor
 import { HistoryService } from 'src/history/history.service';
 import { ShipmentsService } from 'src/shipments/shipments.service';
 import { AssignmentsService } from 'src/assignments/assignments.service';
+import { OfficesService } from '../offices/offices.service';
 
 @Controller('members')
 @UseGuards(JwtGuard)
@@ -31,6 +32,7 @@ export class MembersController {
     private readonly assignmentsService: AssignmentsService,
     private readonly historyService: HistoryService,
     private readonly shipmentsService: ShipmentsService,
+    private readonly officesService: OfficesService,
   ) {}
 
   @Post()
@@ -65,7 +67,11 @@ export class MembersController {
   ) {
     const tenantName = req.user.tenantName;
     const { userId } = req;
-    const ourOfficeEmail = req.user.email;
+
+    // Obtener email de oficina en lugar de email personal
+    const ourOfficeEmail =
+      await this.officesService.getDefaultOfficeEmail(tenantName);
+
     console.log('offboarding → userId:', userId);
 
     return this.assignmentsService.offboardMember(
@@ -73,7 +79,7 @@ export class MembersController {
       data,
       userId,
       tenantName,
-      ourOfficeEmail,
+      ourOfficeEmail || req.user.email, // Fallback al email personal si no hay oficina
     );
   }
 

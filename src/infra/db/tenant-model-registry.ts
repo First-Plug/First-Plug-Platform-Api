@@ -9,6 +9,7 @@ import {
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { Team, TeamSchema } from 'src/teams/schemas/team.schema';
 import { History, HistorySchema } from 'src/history/schemas/history.schema';
+import { Office, OfficeSchema } from 'src/offices/schemas/office.schema';
 import { Model } from 'mongoose';
 import { Connection } from 'mongoose';
 
@@ -52,6 +53,12 @@ export class TenantModelRegistry {
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     return connection.model(History.name, HistorySchema);
+  }
+
+  async getOfficeModel(tenantName: string) {
+    const connection =
+      await this.connectionService.getTenantConnection(tenantName);
+    return connection.model(Office.name, OfficeSchema);
   }
 
   async getConnection(tenantName: string) {

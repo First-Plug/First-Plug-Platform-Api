@@ -18,14 +18,14 @@ export class TenantConnectionService
   private cleanupInterval: NodeJS.Timeout;
 
   async getTenantConnection(
-    tenantId: string,
+    tenantName: string,
     retries = 3,
   ): Promise<Connection> {
     const now = Date.now();
 
     // Si ya existe la conexión, actualiza su tiempo de uso y retorna
-    if (this.connections.has(tenantId)) {
-      const connectionData = this.connections.get(tenantId)!;
+    if (this.connections.has(tenantName)) {
+      const connectionData = this.connections.get(tenantName)!;
       connectionData.lastUsed = now;
       return connectionData.connection;
     }
@@ -37,25 +37,25 @@ export class TenantConnectionService
         const connection = createConnection(
           EnvConfiguration().database.connectionString!,
           {
-            dbName: `tenant_${tenantId}`,
+            dbName: `tenant_${tenantName}`, // ← Usar prefijo tenant_
             maxPoolSize: 10,
             minPoolSize: 1,
           },
         );
 
-        this.connections.set(tenantId, { connection, lastUsed: now });
+        this.connections.set(tenantName, { connection, lastUsed: now });
 
         return connection;
       } catch (error) {
         attempt++;
         console.error(
-          `Intento ${attempt} fallido al conectar con tenant ${tenantId}:`,
+          `Intento ${attempt} fallido al conectar con tenant ${tenantName}:`,
           error.message,
         );
 
         if (attempt >= retries) {
           throw new Error(
-            `No se pudo establecer conexión para tenant ${tenantId} después de ${retries} intentos.`,
+            `No se pudo establecer conexión para tenant ${tenantName} después de ${retries} intentos.`,
           );
         }
 
@@ -64,22 +64,22 @@ export class TenantConnectionService
       }
     }
 
-    throw new Error(`No se pudo establecer conexión para tenant ${tenantId}`);
+    throw new Error(`No se pudo establecer conexión para tenant ${tenantName}`);
   }
 
-  async closeTenantConnection(tenantId: string): Promise<void> {
-    const connectionData = this.connections.get(tenantId);
+  async closeTenantConnection(tenantName: string): Promise<void> {
+    const connectionData = this.connections.get(tenantName);
     if (connectionData) {
       try {
         await connectionData.connection.close();
-        console.log(`Conexión cerrada para tenant: ${tenantId}`);
+        console.log(`Conexión cerrada para tenant: ${tenantName}`);
       } catch (error) {
         console.error(
-          `Error al cerrar conexión para tenant ${tenantId}:`,
+          `Error al cerrar conexión para tenant ${tenantName}:`,
           error.message,
         );
       } finally {
-        this.connections.delete(tenantId);
+        this.connections.delete(tenantName);
       }
     }
   }
@@ -88,13 +88,13 @@ export class TenantConnectionService
     const now = Date.now();
 
     for (const [
-      tenantId,
+      tenantName,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       { connection, lastUsed },
     ] of this.connections.entries()) {
       if (now - lastUsed > this.maxIdleTime) {
-        console.log(`Cerrando conexión inactiva para tenant: ${tenantId}`);
-        this.closeTenantConnection(tenantId);
+        console.log(`Cerrando conexión inactiva para tenant: ${tenantName}`);
+        this.closeTenantConnection(tenantName);
       }
     }
   }
@@ -110,8 +110,8 @@ export class TenantConnectionService
   async onModuleDestroy() {
     // Detener la limpieza periódica y cerrar todas las conexiones
     clearInterval(this.cleanupInterval);
-    for (const [tenantId] of this.connections.entries()) {
-      await this.closeTenantConnection(tenantId);
+    for (const [tenantName] of this.connections.entries()) {
+      await this.closeTenantConnection(tenantName);
     }
   }
 }
