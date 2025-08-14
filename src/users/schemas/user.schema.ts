@@ -18,6 +18,9 @@ export class User {
   email: string;
 
   @Prop({ type: String, required: false })
+  personalEmail: string;
+
+  @Prop({ type: String, required: false })
   password: string;
 
   @Prop({ type: String, required: false })
@@ -97,6 +100,9 @@ export class User {
 
   @Prop({ default: false })
   isDeleted: boolean;
+
+  @Prop({ type: Date, required: false })
+  deletedAt?: Date;
 }
 
 export const UserSchema =
