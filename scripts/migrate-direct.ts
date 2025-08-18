@@ -153,6 +153,12 @@ async function migrateTenantDirect(
       firstName: string;
     }> = [];
 
+    // 🔧 CORRECCIÓN: Identificar el tenant principal (el que se mantendrá)
+    const mainTenant = oldUsers[0]; // El primer usuario será el tenant principal
+    console.log(
+      `🏢 Tenant principal identificado: ${mainTenant._id} (${mainTenant.email})`,
+    );
+
     for (const oldUser of oldUsers) {
       console.log(`👤 Migrando usuario: ${oldUser.email}`);
 
@@ -164,7 +170,7 @@ async function migrateTenantDirect(
         password: oldUser.password,
         salt: oldUser.salt,
         role: 'user', // ✅ Agregar rol user
-        tenantId: oldUser._id, // ID del tenant original
+        tenantId: mainTenant._id, // 🔧 CORRECCIÓN: ID del tenant principal, NO del usuario
         tenantName: oldUser.tenantName,
         widgets: oldUser.widgets || [],
         phone: '', // Datos personales vacíos
@@ -217,7 +223,7 @@ async function migrateTenantDirect(
       zipCode: firstUser.zipCode || '',
       address: firstUser.address || '',
       apartment: firstUser.apartment || '',
-      tenantId: firstUser._id,
+      tenantId: mainTenant._id, // 🔧 CORRECCIÓN: ID del tenant principal, NO del usuario
       isDefault: true,
       isActive: true,
       isDeleted: false,
@@ -236,10 +242,7 @@ async function migrateTenantDirect(
     console.log(`🧹 Limpiando ${oldUsers.length} registros de tenant...`);
     const firstUserId = migratedUsers[0]?.id;
 
-    // Mantener solo el primer registro como tenant principal
-    const mainTenant = oldUsers[0];
-
-    // Actualizar el tenant principal
+    // 5. Actualizar el tenant principal (ya identificado arriba)
     if (dryRun) {
       console.log(
         `🔍 [DRY RUN] Actualizaría tenant principal: ${mainTenant._id}`,
@@ -331,16 +334,26 @@ async function main() {
     console.log('🚀 INICIANDO MIGRACIÓN DIRECTA');
 
     const tenantName = process.argv[2];
+    const isDryRun =
+      process.argv[3] === '--dry-run' || process.argv[3] === 'dry-run';
 
     if (!tenantName) {
-      console.error('❌ Uso: npm run migrate:direct <tenantName>');
+      console.error('❌ Uso: npm run migrate:direct <tenantName> [--dry-run]');
       console.error('❌ Ejemplo: npm run migrate:direct mechi_test');
+      console.error(
+        '❌ Ejemplo DRY RUN: npm run migrate:direct mechi_test --dry-run',
+      );
       process.exit(1);
     }
 
     console.log(`🎯 Migrando tenant: ${tenantName}`);
+    if (isDryRun) {
+      console.log(
+        '🔍 MODO DRY RUN ACTIVADO - Solo simulación, no se harán cambios',
+      );
+    }
 
-    const result = await migrateTenantDirect(tenantName);
+    const result = await migrateTenantDirect(tenantName, isDryRun);
 
     if (result.success) {
       console.log(`\n🎉 MIGRACIÓN EXITOSA:`);
