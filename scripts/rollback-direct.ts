@@ -19,6 +19,39 @@ async function rollbackMigration(tenantName: string) {
     const mainDb = client.db('firstPlug');
     const tenantDb = client.db(`tenant_${tenantName}`);
 
+    // 🔧 NUEVO: Buscar tenant existente para preservar configuración
+    console.log('🔍 Buscando tenant existente para preservar configuración...');
+    const tenantsCollection = mainDb.collection('tenants');
+    const existingTenant = await tenantsCollection.findOne({ tenantName });
+
+    let preservedConfig = {
+      computerExpiration: 1,
+      isRecoverableConfig: {},
+      image: '',
+    };
+
+    if (existingTenant) {
+      console.log('✅ Tenant existente encontrado, preservando configuración:');
+      preservedConfig = {
+        computerExpiration: existingTenant.computerExpiration || 1,
+        isRecoverableConfig: existingTenant.isRecoverableConfig || {},
+        image: existingTenant.image || '',
+      };
+      console.log(
+        `   - computerExpiration: ${preservedConfig.computerExpiration}`,
+      );
+      console.log(
+        `   - isRecoverableConfig: ${Object.keys(preservedConfig.isRecoverableConfig).length} campos`,
+      );
+      console.log(
+        `   - image: ${preservedConfig.image ? 'presente' : 'ausente'}`,
+      );
+    } else {
+      console.log(
+        '⚠️ No se encontró tenant existente, usando valores por defecto',
+      );
+    }
+
     // 1. Buscar usuarios migrados
     console.log('🔍 Buscando usuarios migrados...');
     const usersCollection = mainDb.collection('users');
@@ -45,7 +78,6 @@ async function rollbackMigration(tenantName: string) {
 
     // 3. Restaurar usuarios como registros de tenant
     console.log('🔄 Restaurando usuarios como registros de tenant...');
-    const tenantsCollection = mainDb.collection('tenants');
 
     for (const user of migratedUsers) {
       // 🔧 CORRECCIÓN: Crear objeto base sin password/salt
@@ -63,8 +95,11 @@ async function rollbackMigration(tenantName: string) {
         zipCode: office?.zipCode || '',
         address: office?.address || '',
         apartment: office?.apartment || '',
-        computerExpiration: 1,
-        isRecoverableConfig: {},
+        // 🔧 USAR configuración preservada del tenant
+        computerExpiration: preservedConfig.computerExpiration,
+        isRecoverableConfig: preservedConfig.isRecoverableConfig,
+        // 🔧 USAR imagen personal del usuario
+        image: user.image || '',
         createdAt: user.createdAt,
         updatedAt: new Date(),
       };

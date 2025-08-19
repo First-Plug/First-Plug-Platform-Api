@@ -333,8 +333,8 @@ async function migrateTenantDirect(
     }
 
     // Eliminar los registros adicionales (usuarios duplicados)
-    if (oldUsers.length > 1) {
-      const additionalIds = oldUsers.slice(1).map((user) => user._id);
+    if (validUsers.length > 1) {
+      const additionalIds = validUsers.slice(1).map((user) => user._id);
       console.log(
         `🗑️ Eliminando ${additionalIds.length} registros duplicados...`,
       );
