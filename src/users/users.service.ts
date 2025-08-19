@@ -175,7 +175,7 @@ export class UsersService {
     const user = await this.userModel
       .findById(userId)
       .select(
-        'firstName lastName email phone address apartment city state country zipCode image accountProvider createdAt updatedAt',
+        'firstName lastName email personalEmail phone address apartment city state country zipCode image accountProvider createdAt updatedAt',
       );
 
     if (!user) {
