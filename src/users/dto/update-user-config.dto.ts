@@ -18,6 +18,10 @@ export class UpdateUserConfigDto {
   email?: string;
 
   @IsOptional()
+  @IsEmail()
+  personalEmail?: string;
+
+  @IsOptional()
   @IsString()
   phone?: string;
 
