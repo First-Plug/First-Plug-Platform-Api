@@ -1,4 +1,9 @@
 console.log('🔥 SCRIPT DE MIGRACIÓN DIRECTA INICIADO');
+// por consola para migrar el tenant
+//npm run migrate:direct retool
+
+// Por consola para probar como quedaria el tenant migrado sin cambiarlo realmente en base de datos
+// npm run migrate:direct retool --dry-run
 
 import { MongoClient } from 'mongodb';
 
@@ -13,6 +18,7 @@ console.log(
 interface MigrationResult {
   success: boolean;
   tenantName: string;
+  message?: string;
   migratedUsers?: any[];
   createdOffice?: any;
   updatedTenant?: any;
@@ -95,12 +101,36 @@ async function migrateTenantDirect(
       }
     }
 
-    const oldUsers = await tenantsCollection.find({ tenantName }).toArray();
-    console.log(
-      `🔍 Búsqueda con tenantName="${tenantName}" encontró: ${oldUsers.length} documentos`,
-    );
+    // 🔧 VERIFICAR SI YA ESTÁ MIGRADO
+    console.log('🔍 Verificando si el tenant ya está migrado...');
+    const usersCollection = mainDb.collection('users');
+    const existingMigratedUser = await usersCollection.findOne({
+      tenantName: tenantName,
+    });
 
-    if (oldUsers.length === 0) {
+    if (existingMigratedUser) {
+      console.log('⚠️ TENANT YA MIGRADO');
+      console.log(`   - Usuario encontrado: ${existingMigratedUser.email}`);
+      console.log('   - Use el script de rollback si necesita revertir');
+      return {
+        success: false,
+        message: `Tenant ${tenantName} ya está migrado`,
+        tenantName,
+        error: 'Tenant already migrated',
+      };
+    }
+
+    // 🔧 BUSCAR DOCUMENTOS DEL TENANT
+    const oldUsers = await tenantsCollection.find({ tenantName }).toArray();
+
+    // 🔧 FILTRAR SOLO DOCUMENTOS CON EMAIL VÁLIDO (usuarios reales)
+    const validUsers = oldUsers.filter(
+      (user) => user.email && user.email.trim() !== '',
+    );
+    console.log(
+      `🔍 Filtrados ${validUsers.length} usuarios válidos de ${oldUsers.length} documentos`,
+    );
+    if (validUsers.length === 0) {
       // Intentar búsqueda alternativa
       console.log('🔍 Intentando búsqueda alternativa...');
       const alternativeSearch = await tenantsCollection
@@ -128,25 +158,27 @@ async function migrateTenantDirect(
       throw new Error(`No se encontraron usuarios para tenant: ${tenantName}`);
     }
 
-    console.log(`📋 Encontrados ${oldUsers.length} usuarios para migrar`);
-    oldUsers.forEach((user) => {
+    console.log(`📋 Encontrados ${validUsers.length} usuarios para migrar`);
+    validUsers.forEach((user) => {
       console.log(`   - ${user.email} (${user.name})`);
     });
 
-    // 2. Verificar si ya está migrado
-    const usersCollection = mainDb.collection('users');
+    // 2. Verificación adicional por email (ya verificado arriba, pero por seguridad)
     const existingUser = await usersCollection.findOne({
-      email: { $in: oldUsers.map((u) => u.email) },
+      email: { $in: validUsers.map((u) => u.email) },
     });
 
     if (existingUser) {
-      throw new Error(
-        `Tenant ya migrado. Usuario encontrado: ${existingUser.email}`,
-      );
+      console.log('⚠️ Usuario específico ya migrado:', existingUser.email);
+      return {
+        success: false,
+        tenantName,
+        error: `Usuario ya migrado: ${existingUser.email}`,
+      };
     }
 
     // 3. Migrar usuarios a colección users
-    console.log(`👥 Migrando ${oldUsers.length} usuarios...`);
+    console.log(`👥 Migrando ${validUsers.length} usuarios...`);
     const migratedUsers: Array<{
       id: any;
       email: string;
@@ -154,21 +186,20 @@ async function migrateTenantDirect(
     }> = [];
 
     // 🔧 CORRECCIÓN: Identificar el tenant principal (el que se mantendrá)
-    const mainTenant = oldUsers[0]; // El primer usuario será el tenant principal
+    const mainTenant = validUsers[0]; // El primer usuario será el tenant principal
     console.log(
       `🏢 Tenant principal identificado: ${mainTenant._id} (${mainTenant.email})`,
     );
 
-    for (const oldUser of oldUsers) {
+    for (const oldUser of validUsers) {
       console.log(`👤 Migrando usuario: ${oldUser.email}`);
 
-      const newUser = {
+      // 🔧 CORRECCIÓN: Crear objeto base sin password/salt
+      const newUser: any = {
         firstName: oldUser.name?.split(' ')[0] || 'Usuario',
         lastName: oldUser.name?.split(' ').slice(1).join(' ') || '',
         email: oldUser.email,
         accountProvider: oldUser.accountProvider || 'credentials',
-        password: oldUser.password,
-        salt: oldUser.salt,
         role: 'user', // ✅ Agregar rol user
         tenantId: mainTenant._id, // 🔧 CORRECCIÓN: ID del tenant principal, NO del usuario
         tenantName: oldUser.tenantName,
@@ -187,6 +218,22 @@ async function migrateTenantDirect(
         createdAt: new Date(),
         updatedAt: new Date(),
       };
+
+      // 🔧 CORRECCIÓN: Solo agregar password/salt si usa credentials
+      if (
+        oldUser.accountProvider === 'credentials' ||
+        !oldUser.accountProvider
+      ) {
+        newUser.password = oldUser.password;
+        newUser.salt = oldUser.salt;
+        console.log(
+          `   - Usuario con credentials: password ${oldUser.password ? 'presente' : 'ausente'}`,
+        );
+      } else {
+        console.log(
+          `   - Usuario con ${oldUser.accountProvider}: sin password/salt`,
+        );
+      }
 
       if (dryRun) {
         console.log(`🔍 [DRY RUN] Insertaría usuario: ${newUser.email}`);
@@ -208,38 +255,45 @@ async function migrateTenantDirect(
       console.log(`✅ Usuario migrado: ${newUser.email}`);
     }
 
-    // 4. Crear oficina en tenant DB
-    const firstUser = oldUsers[0]; // Usar primer usuario para datos de oficina
-    console.log(`🏢 Creando oficina en tenant_${tenantName}...`);
-
+    // 4. Crear oficina en tenant DB (verificar si ya existe)
+    const firstUser = validUsers[0]; // Usar primer usuario para datos de oficina
     const officesCollection = tenantDb.collection('offices');
-    const newOffice = {
-      name: 'Oficina Principal',
-      email: '', // Vacío inicialmente, se completará después
-      phone: firstUser.phone || '',
-      country: firstUser.country || '',
-      city: firstUser.city || '',
-      state: firstUser.state || '',
-      zipCode: firstUser.zipCode || '',
-      address: firstUser.address || '',
-      apartment: firstUser.apartment || '',
-      tenantId: mainTenant._id, // 🔧 CORRECCIÓN: ID del tenant principal, NO del usuario
-      isDefault: true,
-      isActive: true,
-      isDeleted: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
 
-    if (dryRun) {
-      console.log(`🔍 [DRY RUN] Crearía oficina: ${newOffice.name}`);
+    // Verificar si ya existe una oficina
+    const existingOffice = await officesCollection.findOne({});
+    if (existingOffice) {
+      console.log('⚠️ Ya existe una oficina, saltando creación');
     } else {
-      await officesCollection.insertOne(newOffice);
-      console.log(`✅ Oficina creada: ${newOffice.name}`);
+      console.log(`🏢 Creando nueva oficina en tenant_${tenantName}...`);
+
+      const newOffice = {
+        name: 'Oficina Principal',
+        email: '', // Vacío inicialmente, se completará después
+        phone: firstUser.phone || '',
+        country: firstUser.country || '',
+        city: firstUser.city || '',
+        state: firstUser.state || '',
+        zipCode: firstUser.zipCode || '',
+        address: firstUser.address || '',
+        apartment: firstUser.apartment || '',
+        tenantId: mainTenant._id, // 🔧 CORRECCIÓN: ID del tenant principal, NO del usuario
+        isDefault: true,
+        isActive: true,
+        isDeleted: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      if (dryRun) {
+        console.log(`🔍 [DRY RUN] Crearía oficina: ${newOffice.name}`);
+      } else {
+        await officesCollection.insertOne(newOffice);
+        console.log(`✅ Oficina creada: ${newOffice.name}`);
+      }
     }
 
     // 5. Limpiar TODOS los tenants con el mismo tenantName
-    console.log(`🧹 Limpiando ${oldUsers.length} registros de tenant...`);
+    console.log(`🧹 Limpiando ${validUsers.length} registros de tenant...`);
     const firstUserId = migratedUsers[0]?.id;
 
     // 5. Actualizar el tenant principal (ya identificado arriba)
@@ -307,8 +361,8 @@ async function migrateTenantDirect(
       migratedUsers,
       createdOffice: {
         id: dryRun ? 'dry-run-office-id' : 'office-created',
-        name: newOffice.name,
-        address: newOffice.address,
+        name: 'Oficina Principal',
+        address: firstUser.address || '',
       },
       updatedTenant: {
         id: firstUser._id,
@@ -336,6 +390,12 @@ async function main() {
     const tenantName = process.argv[2];
     const isDryRun =
       process.argv[3] === '--dry-run' || process.argv[3] === 'dry-run';
+
+    // 🔍 DEBUG: Mostrar argumentos recibidos
+    console.log('🔍 DEBUG - Argumentos recibidos:', process.argv);
+    console.log('🔍 DEBUG - tenantName:', tenantName);
+    console.log('🔍 DEBUG - isDryRun:', isDryRun);
+    console.log('🔍 DEBUG - process.argv[3]:', process.argv[3]);
 
     if (!tenantName) {
       console.error('❌ Uso: npm run migrate:direct <tenantName> [--dry-run]');

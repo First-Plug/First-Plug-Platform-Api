@@ -9,9 +9,9 @@ const MONGO_URI =
 
 async function rollbackMigration(tenantName: string) {
   console.log(`🔄 Iniciando rollback para tenant: ${tenantName}`);
-  
+
   const client = new MongoClient(MONGO_URI);
-  
+
   try {
     await client.connect();
     console.log('✅ Conectado a MongoDB Atlas');
@@ -22,9 +22,11 @@ async function rollbackMigration(tenantName: string) {
     // 1. Buscar usuarios migrados
     console.log('🔍 Buscando usuarios migrados...');
     const usersCollection = mainDb.collection('users');
-    const migratedUsers = await usersCollection.find({ 
-      tenantName: tenantName 
-    }).toArray();
+    const migratedUsers = await usersCollection
+      .find({
+        tenantName: tenantName,
+      })
+      .toArray();
 
     if (migratedUsers.length === 0) {
       console.log('⚠️ No se encontraron usuarios migrados');
@@ -32,7 +34,7 @@ async function rollbackMigration(tenantName: string) {
     }
 
     console.log(`📋 Encontrados ${migratedUsers.length} usuarios migrados:`);
-    migratedUsers.forEach(user => {
+    migratedUsers.forEach((user) => {
       console.log(`   - ${user.email} (${user.firstName})`);
     });
 
@@ -46,13 +48,12 @@ async function rollbackMigration(tenantName: string) {
     const tenantsCollection = mainDb.collection('tenants');
 
     for (const user of migratedUsers) {
-      const restoredTenant = {
+      // 🔧 CORRECCIÓN: Crear objeto base sin password/salt
+      const restoredTenant: any = {
         tenantName: user.tenantName,
         name: user.firstName + (user.lastName ? ` ${user.lastName}` : ''),
         email: user.email,
         accountProvider: user.accountProvider,
-        password: user.password,
-        salt: user.salt,
         widgets: user.widgets || [],
         // Restaurar datos de oficina si existe
         phone: office?.phone || '',
@@ -68,14 +69,27 @@ async function rollbackMigration(tenantName: string) {
         updatedAt: new Date(),
       };
 
+      // 🔧 CORRECCIÓN: Solo agregar password/salt si usa credentials
+      if (user.accountProvider === 'credentials' || !user.accountProvider) {
+        restoredTenant.password = user.password;
+        restoredTenant.salt = user.salt;
+        console.log(
+          `   - Usuario con credentials: password ${user.password ? 'presente' : 'ausente'}`,
+        );
+      } else {
+        console.log(
+          `   - Usuario con ${user.accountProvider}: sin password/salt`,
+        );
+      }
+
       await tenantsCollection.insertOne(restoredTenant);
       console.log(`✅ Usuario restaurado como tenant: ${user.email}`);
     }
 
     // 4. Eliminar usuarios de users collection
     console.log('🗑️ Eliminando usuarios migrados...');
-    await usersCollection.deleteMany({ 
-      tenantName: tenantName 
+    await usersCollection.deleteMany({
+      tenantName: tenantName,
     });
 
     // 5. Eliminar oficina de tenant DB
@@ -86,9 +100,9 @@ async function rollbackMigration(tenantName: string) {
 
     // 6. Restaurar tenant original (eliminar el limpio)
     console.log('🔄 Restaurando tenant original...');
-    const cleanTenant = await tenantsCollection.findOne({ 
+    const cleanTenant = await tenantsCollection.findOne({
       tenantName: tenantName,
-      createdBy: { $exists: true } // El tenant limpio tiene createdBy
+      createdBy: { $exists: true }, // El tenant limpio tiene createdBy
     });
 
     if (cleanTenant) {
@@ -97,7 +111,6 @@ async function rollbackMigration(tenantName: string) {
     }
 
     console.log(`✅ Rollback completado para ${tenantName}`);
-
   } catch (error) {
     console.error('❌ Error en rollback:', error.message);
   } finally {
@@ -109,7 +122,7 @@ async function rollbackMigration(tenantName: string) {
 async function main() {
   try {
     const tenantName = process.argv[2];
-    
+
     if (!tenantName) {
       console.error('❌ Uso: npm run rollback:direct <tenantName>');
       console.error('❌ Ejemplo: npm run rollback:direct mechi_test');
@@ -118,9 +131,8 @@ async function main() {
 
     console.log(`⚠️ ADVERTENCIA: Esto revertirá la migración de ${tenantName}`);
     console.log(`⚠️ Los datos volverán al formato anterior`);
-    
+
     await rollbackMigration(tenantName);
-    
   } catch (error) {
     console.error('💥 ERROR CRÍTICO:', error.message);
     process.exit(1);
