@@ -21,14 +21,7 @@ export class AuthService {
   ) {}
 
   async login(loginDto: LoginDto) {
-    console.log('🔐 Login iniciado:', loginDto.email);
-
     const user = await this.validateUser(loginDto);
-    console.log('✅ Login exitoso:', user.email, '- Tipo:', {
-      tenantId: user.tenantId,
-      tenantName: user.tenantName,
-      tipo: user.tenantId ? 'NUEVO' : 'VIEJO',
-    });
 
     await this.checkAndPropagateTenantConfig(user);
 
@@ -76,20 +69,8 @@ export class AuthService {
     }
 
     // 2. SEGUNDO: Validar contraseña
-    console.log('🔍 Datos de password:', {
-      email: enrichedUser.email,
-      hasPassword: !!enrichedUser.password,
-      hasSalt: !!enrichedUser.salt,
-      passwordLength: enrichedUser.password?.length || 0,
-      saltLength: enrichedUser.salt?.length || 0,
-    });
-
     // Validar que el usuario tenga password y salt
     if (!enrichedUser.password || !enrichedUser.salt) {
-      console.log(
-        '❌ Usuario sin password/salt configurado:',
-        enrichedUser.email,
-      );
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
@@ -102,26 +83,13 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    console.log('✅ Credenciales válidas para:', enrichedUser.email);
-
     // 3. TERCERO: Validar permisos según el rol del usuario
     const isOldUser = !enrichedUser.tenantId && enrichedUser.tenantName;
     const isNewUser = !!enrichedUser.tenantId;
     const isSuperAdmin = enrichedUser.role === 'superadmin';
 
-    console.log('🔍 Validando acceso:', {
-      email: enrichedUser.email,
-      role: enrichedUser.role || 'user',
-      isOldUser,
-      isNewUser,
-      isSuperAdmin,
-      tenantName: enrichedUser.tenantName,
-      hasTenantId: !!enrichedUser.tenantId,
-    });
-
     // SuperAdmin no necesita tenant
     if (isSuperAdmin) {
-      console.log('👑 SuperAdmin detectado - acceso sin tenant');
       return enrichedUser;
     }
 
@@ -268,18 +236,6 @@ export class AuthService {
 
       // ✅ MIGRACIÓN COMPLETA - Solo datos esenciales en JWT
     };
-
-    console.log('📦 Payload del JWT (limpio):', {
-      email: payload.email,
-      firstName: payload.firstName,
-      lastName: payload.lastName,
-      tenantId: payload.tenantId,
-      tenantName: payload.tenantName,
-      role: payload.role,
-      widgetsCount: payload.widgets?.length || 0,
-      hasRecoverableConfig: !!payload.isRecoverableConfig,
-      computerExpiration: payload.computerExpiration,
-    });
 
     return payload;
   }

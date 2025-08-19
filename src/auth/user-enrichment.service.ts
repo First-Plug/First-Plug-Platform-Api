@@ -30,38 +30,14 @@ export class UserEnrichmentService {
    * Soporta tanto usuarios viejos como nuevos.
    */
   async enrichUserWithTenantData(user: User): Promise<any> {
-    console.log('🔍 DEBUG enrichUserWithTenantData:', {
-      email: user.email,
-      tenantId: user.tenantId,
-      tenantName: user.tenantName,
-      isOldSchemaUser: this.isOldSchemaUser(user),
-      isNewSchemaUser: this.isNewSchemaUser(user),
-      hasPassword: !!user.password,
-      hasSalt: !!user.salt,
-    });
-
     // ✅ TODOS los usuarios de colección 'users' se manejan aquí
     // Distinguir entre usuarios CON tenant y SIN tenant
 
     if (user.tenantId) {
       // CASO A: Usuario CON tenant asignado
-      console.log('✅ Usuario CON tenant asignado');
-
-      // Buscar datos del tenant
-      console.log('🔍 Buscando tenant para usuario:', {
-        email: user.email,
-        tenantId: user.tenantId.toString(),
-      });
-
       const tenant = await this.tenantsService.getTenantById(
         user.tenantId.toString(),
       );
-
-      console.log('📋 Tenant encontrado:', {
-        tenantId: tenant?._id,
-        tenantName: tenant?.tenantName,
-        name: tenant?.name,
-      });
 
       return {
         _id: user._id,
@@ -95,7 +71,6 @@ export class UserEnrichmentService {
 
     // CASO 2: Usuario sin tenant asignado (nuevo schema pero sin tenant)
     if (!user.tenantId) {
-      console.log('⏳ CASO 2: Usuario SIN tenant - AGREGANDO PASSWORD Y SALT');
       return {
         _id: user._id,
         email: user.email,
@@ -140,7 +115,6 @@ export class UserEnrichmentService {
     const user = await this.usersService.findByEmail(email);
 
     if (user) {
-      console.log('📍 Usuario NUEVO encontrado en colección USERS');
       const enrichedUser = await this.enrichUserWithTenantData(user);
       return enrichedUser;
     }
@@ -151,8 +125,6 @@ export class UserEnrichmentService {
     if (!oldUser) {
       return null;
     }
-
-    console.log('📍 Usuario VIEJO encontrado en colección TENANTS');
 
     // Convertir a objeto plano para acceder a campos dinámicos
     const oldUserData = (
