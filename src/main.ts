@@ -9,6 +9,7 @@ const URL_PREVIEW = 'https://first-plug-testing';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const config = app.get(ConfigService);
 
   app.use(json({ limit: '50mb' }));
   app.enableCors({
@@ -47,7 +48,6 @@ async function bootstrap() {
   );
 
   app.useGlobalPipes(new ZodValidationPipe());
-  const config = app.get(ConfigService);
 
   await app.listen(config.get('server.port')!);
 }

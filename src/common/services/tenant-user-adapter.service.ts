@@ -265,6 +265,7 @@ export class TenantUserAdapterService {
         firstName: updateData.firstName,
         lastName: updateData.lastName,
         email: updateData.email,
+        personalEmail: updateData.personalEmail,
         address: updateData.address,
         apartment: updateData.apartment,
         city: updateData.city,

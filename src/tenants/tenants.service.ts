@@ -267,6 +267,22 @@ export class TenantsService {
     }
   }
 
+  async updateTenantName(tenantName: string, newName: string) {
+    const updatedTenant = await this.tenantRepository.findOneAndUpdate(
+      { tenantName },
+      { $set: { name: newName, updatedAt: new Date() } },
+      { new: true },
+    );
+
+    if (!updatedTenant) {
+      throw new Error(
+        `No se encontró ningún tenant con el tenantName ${tenantName}`,
+      );
+    }
+
+    return updatedTenant;
+  }
+
   async createTenant(
     dto: CreateTenantDto,
     createdBy: ObjectId,

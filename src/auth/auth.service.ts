@@ -21,14 +21,7 @@ export class AuthService {
   ) {}
 
   async login(loginDto: LoginDto) {
-    console.log('🔐 Login iniciado:', loginDto.email);
-
     const user = await this.validateUser(loginDto);
-    console.log('✅ Login exitoso:', user.email, '- Tipo:', {
-      tenantId: user.tenantId,
-      tenantName: user.tenantName,
-      tipo: user.tenantId ? 'NUEVO' : 'VIEJO',
-    });
 
     await this.checkAndPropagateTenantConfig(user);
 
@@ -95,19 +88,8 @@ export class AuthService {
     const isNewUser = !!enrichedUser.tenantId;
     const isSuperAdmin = enrichedUser.role === 'superadmin';
 
-    console.log('🔍 Validando acceso:', {
-      email: enrichedUser.email,
-      role: enrichedUser.role || 'user',
-      isOldUser,
-      isNewUser,
-      isSuperAdmin,
-      tenantName: enrichedUser.tenantName,
-      hasTenantId: !!enrichedUser.tenantId,
-    });
-
     // SuperAdmin no necesita tenant
     if (isSuperAdmin) {
-      console.log('👑 SuperAdmin detectado - acceso sin tenant');
       return enrichedUser;
     }
 
@@ -253,18 +235,6 @@ export class AuthService {
 
       // ✅ MIGRACIÓN COMPLETA - Solo datos esenciales en JWT
     };
-
-    console.log('📦 Payload del JWT (limpio):', {
-      email: payload.email,
-      firstName: payload.firstName,
-      lastName: payload.lastName,
-      tenantId: payload.tenantId,
-      tenantName: payload.tenantName,
-      role: payload.role,
-      widgetsCount: payload.widgets?.length || 0,
-      hasRecoverableConfig: !!payload.isRecoverableConfig,
-      computerExpiration: payload.computerExpiration,
-    });
 
     return payload;
   }

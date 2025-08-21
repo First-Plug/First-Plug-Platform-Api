@@ -11,7 +11,7 @@ export class Tenant extends Document {
   @Prop({ type: String, default: '' })
   tenantName: string;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, default: '' })
   name: string;
 
   @Prop({ type: String, default: '' })

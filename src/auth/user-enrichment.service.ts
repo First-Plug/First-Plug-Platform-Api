@@ -97,7 +97,6 @@ export class UserEnrichmentService {
     const user = await this.usersService.findByEmail(email);
 
     if (user) {
-      console.log('📍 Usuario NUEVO encontrado en colección USERS');
       const enrichedUser = await this.enrichUserWithTenantData(user);
       return enrichedUser;
     }
@@ -108,8 +107,6 @@ export class UserEnrichmentService {
     if (!oldUser) {
       return null;
     }
-
-    console.log('📍 Usuario VIEJO encontrado en colección TENANTS');
 
     // Convertir a objeto plano para acceder a campos dinámicos
     const oldUserData = (

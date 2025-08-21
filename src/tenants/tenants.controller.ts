@@ -37,8 +37,6 @@ export class TenantsController {
     const user = (request as any).user;
     const tenantName = user.tenantName;
 
-    console.log('🏢 Obteniendo configuración de tenant:', { tenantName });
-
     // Obtener configuración directamente del servicio
     const tenant = await this.tenantService.getByTenantName(tenantName);
     if (!tenant) {
@@ -135,6 +133,21 @@ export class TenantsController {
     );
     return {
       message: `Configuración de computerExpiration actualizada para tenant: ${tenantName}`,
+    };
+  }
+
+  @Patch('update-name/:tenantName')
+  async updateTenantName(
+    @Param('tenantName') tenantName: string,
+    @Body('name') name: string,
+  ) {
+    const updatedTenant = await this.tenantService.updateTenantName(
+      tenantName,
+      name,
+    );
+    return {
+      message: 'Company name updated successfully',
+      data: updatedTenant,
     };
   }
 }
