@@ -2,9 +2,9 @@ import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
 import { Provider } from '../schemas/tenant.schema';
 
 export class CreateTenantByProvidersDto {
+  @IsOptional()
   @IsString()
-  @MinLength(1)
-  name: string;
+  name?: string;
 
   @IsEmail()
   @MinLength(1)
