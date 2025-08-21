@@ -11,20 +11,6 @@ export class UserEnrichmentService {
   ) {}
 
   /**
-   * Detecta si es un usuario del esquema viejo (tiene tenantName pero no tenantId)
-   */
-  private isOldSchemaUser(user: any): boolean {
-    return !user.tenantId && user.tenantName;
-  }
-
-  /**
-   * Detecta si es un usuario del esquema nuevo (tiene tenantId)
-   */
-  private isNewSchemaUser(user: any): boolean {
-    return !!user.tenantId;
-  }
-
-  /**
    * Enriquece un usuario con datos del tenant para mantener compatibilidad
    * con la estructura anterior donde todo estaba acoplado.
    * Soporta tanto usuarios viejos como nuevos.
@@ -100,10 +86,6 @@ export class UserEnrichmentService {
         widgets: user.widgets || [],
       };
     }
-
-    // ✅ CASO 3 eliminado - Ya se maneja en CASO A (línea 46)
-
-    // ✅ CASO 4 eliminado - Ya se maneja en CASO 2 (línea 83)
   }
 
   /**

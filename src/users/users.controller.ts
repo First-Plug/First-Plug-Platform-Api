@@ -9,6 +9,7 @@ import {
   Req,
   UseGuards,
   NotFoundException,
+  Delete,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { UsersService } from './users.service';
@@ -17,8 +18,10 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { CreateUserByProviderDto } from './dto/create-user-by-provider.dto';
 import { UpdateUserConfigDto } from './dto/update-user-config.dto';
 import { AssignTenantToUsersDto } from './dto/assign-tenant-to-users.dto';
+import { AssignTenantSuperAdminDto } from './dto/assign-tenant-superadmin.dto';
 import { TenantUserAdapterService } from '../common/services/tenant-user-adapter.service';
 import { JwtGuard } from '../auth/guard/jwt.guard';
+import { SuperAdminGuard } from '../common/guards/super-admin.guard';
 import { Request } from 'express';
 
 @Controller('users')
@@ -70,6 +73,37 @@ export class UsersController {
 
     return updatedProfile;
   }
+
+  // ==================== SUPERADMIN ENDPOINTS (DEBEN IR ANTES DE :id) ====================
+
+  /**
+   * Obtener usuarios sin tenant asignado (SuperAdmin only)
+   */
+  @Get('unassigned')
+  @UseGuards(JwtGuard, SuperAdminGuard)
+  async getUnassignedUsers() {
+    return await this.usersService.findUnassignedUsers();
+  }
+
+  /**
+   * Obtener usuarios con tenant asignado o SuperAdmins (SuperAdmin only)
+   */
+  @Get('assigned')
+  @UseGuards(JwtGuard, SuperAdminGuard)
+  async getAssignedUsers() {
+    return await this.usersService.findAssignedUsers();
+  }
+
+  /**
+   * Obtener TODOS los usuarios del sistema (SuperAdmin only)
+   */
+  @Get('all-cross-tenant')
+  @UseGuards(JwtGuard, SuperAdminGuard)
+  async getAllUsers() {
+    return await this.usersService.findAllUsers();
+  }
+
+  // ==================== ENDPOINTS GENERICOS (DEBEN IR DESPUES) ====================
 
   @Get(':id')
   async getById(@Param('id') id: string) {
@@ -128,5 +162,50 @@ export class UsersController {
       (request as any).user._id,
       dashboardData.widgets,
     );
+  }
+
+  /**
+   * Asignar tenant a usuario (SuperAdmin only)
+   */
+  @Patch(':id/assign-tenant-superadmin')
+  @UseGuards(JwtGuard, SuperAdminGuard)
+  async assignTenantSuperAdmin(
+    @Param('id') userId: string,
+    @Body() assignData: AssignTenantSuperAdminDto,
+  ) {
+    return await this.usersService.assignTenantSuperAdmin(
+      userId,
+      assignData.tenantId,
+      assignData.role || 'user',
+    );
+  }
+
+  /**
+   * Toggle active status (SuperAdmin only)
+   */
+  @Patch(':id/toggle-active')
+  @UseGuards(JwtGuard, SuperAdminGuard)
+  async toggleActiveStatus(@Param('id') userId: string) {
+    return await this.usersService.toggleActiveStatus(userId);
+  }
+
+  /**
+   * Soft delete user (SuperAdmin only)
+   */
+  @Delete(':id')
+  @UseGuards(JwtGuard, SuperAdminGuard)
+  async softDeleteUser(@Param('id') userId: string) {
+    return await this.usersService.softDelete(userId);
+  }
+
+  // ==================== ENDPOINT TEMPORAL PARA RESETEAR SUPERADMIN ====================
+
+  /**
+   * ENDPOINT TEMPORAL: Resetear password de SuperAdmin
+   * ELIMINAR DESPUÉS DE USAR
+   */
+  @Patch('reset-superadmin-password')
+  async resetSuperAdminPassword() {
+    return await this.usersService.resetSuperAdminPassword();
   }
 }

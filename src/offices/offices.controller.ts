@@ -13,8 +13,10 @@ import {
 import { Types } from 'mongoose';
 import { OfficesService } from './offices.service';
 import { CreateOfficeDto, UpdateOfficeDto } from './dto';
+import { GetOfficesByTenantsDto } from './dto/get-offices-by-tenants.dto';
 import { NotFoundException } from '@nestjs/common';
 import { JwtGuard } from '../auth/guard/jwt.guard';
+import { SuperAdminGuard } from '../common/guards/super-admin.guard';
 import { Request } from 'express';
 
 @Controller('offices')
@@ -111,5 +113,45 @@ export class OfficesController {
   @Delete(':id')
   async remove(@Param('id') id: string) {
     return this.officesService.softDelete(new Types.ObjectId(id));
+  }
+
+  // ==================== SUPERADMIN ENDPOINTS ====================
+
+  /**
+   * Obtener oficinas por tenant (SuperAdmin only)
+   */
+  @Get('by-tenant/:tenantName')
+  @UseGuards(JwtGuard, SuperAdminGuard)
+  async getOfficesByTenant(@Param('tenantName') tenantName: string) {
+    return await this.officesService.findOfficesByTenant(tenantName);
+  }
+
+  /**
+   * Obtener oficinas de múltiples tenants (SuperAdmin only)
+   */
+  @Post('by-tenants')
+  @UseGuards(JwtGuard, SuperAdminGuard)
+  async getOfficesByTenants(@Body() body: GetOfficesByTenantsDto) {
+    return await this.officesService.findAllOffices(body.tenantNames);
+  }
+
+  /**
+   * Actualizar oficina cross-tenant (SuperAdmin only)
+   */
+  @Patch('cross-tenant/:tenantName/:officeId')
+  @UseGuards(JwtGuard, SuperAdminGuard)
+  async updateOfficeCrossTenant(
+    @Param('tenantName') tenantName: string,
+    @Param('officeId') officeId: string,
+    @Body() updateData: UpdateOfficeDto,
+    @Req() request: Request,
+  ) {
+    const userId = (request as any).user._id;
+    return await this.officesService.updateOfficeCrossTenant(
+      tenantName,
+      officeId,
+      updateData,
+      userId,
+    );
   }
 }

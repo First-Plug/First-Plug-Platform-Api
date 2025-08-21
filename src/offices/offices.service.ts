@@ -331,4 +331,80 @@ export class OfficesService {
     if (!office) throw new NotFoundException('Office not found');
     return office;
   }
+
+  // ==================== SUPERADMIN METHODS ====================
+
+  /**
+   * Obtener oficinas por tenant (para SuperAdmin)
+   */
+  async findOfficesByTenant(tenantName: string): Promise<Office[]> {
+    console.log('🏢 SuperAdmin: Obteniendo oficinas por tenant:', {
+      tenantName,
+    });
+
+    const officeModel =
+      await this.tenantModelRegistry.getOfficeModel(tenantName);
+    if (!officeModel) {
+      throw new NotFoundException(`Tenant ${tenantName} not found`);
+    }
+
+    const offices = await officeModel.find({ isDeleted: { $ne: true } }).exec();
+
+    console.log('✅ Oficinas encontradas:', {
+      tenantName,
+      count: offices.length,
+    });
+
+    return offices;
+  }
+
+  /**
+   * Obtener todas las oficinas de tenants específicos (para SuperAdmin)
+   */
+  async findAllOffices(
+    tenantNames: string[],
+  ): Promise<{ tenantName: string; offices: Office[] }[]> {
+    console.log('🏢 SuperAdmin: Obteniendo todas las oficinas cross-tenant');
+
+    const result: { tenantName: string; offices: Office[] }[] = [];
+
+    for (const tenantName of tenantNames) {
+      try {
+        const offices = await this.findOfficesByTenant(tenantName);
+        result.push({ tenantName, offices });
+      } catch (error) {
+        console.warn(
+          `⚠️ Error obteniendo oficinas de ${tenantName}:`,
+          error.message,
+        );
+        // Continuar con otros tenants aunque uno falle
+      }
+    }
+
+    console.log('✅ Oficinas cross-tenant obtenidas:', {
+      tenantsCount: result.length,
+      totalOffices: result.reduce((sum, t) => sum + t.offices.length, 0),
+    });
+
+    return result;
+  }
+
+  /**
+   * Actualizar oficina cross-tenant (para SuperAdmin)
+   */
+  async updateOfficeCrossTenant(
+    tenantName: string,
+    officeId: string,
+    updateData: UpdateOfficeDto,
+    userId: string,
+  ): Promise<Office> {
+    console.log('🏢 SuperAdmin: Actualizando oficina cross-tenant:', {
+      tenantName,
+      officeId,
+      userId,
+    });
+
+    // Usar el método existente que ya maneja eventos y history
+    return await this.updateDefaultOffice(tenantName, updateData, userId);
+  }
 }

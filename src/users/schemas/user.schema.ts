@@ -100,6 +100,9 @@ export class User {
 
   @Prop({ default: false })
   isDeleted: boolean;
+
+  @Prop({ type: Date, required: false })
+  deletedAt?: Date;
 }
 
 export const UserSchema =

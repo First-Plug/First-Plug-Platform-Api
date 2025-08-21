@@ -95,7 +95,6 @@ export class AuthService {
 
     // 4. CUARTO: Usuarios normales necesitan tenant (DESPUÉS de validar credenciales)
     if (!isOldUser && !isNewUser) {
-      console.log('⏳ Usuario sin tenant asignado:', enrichedUser.email);
       // Error específico para usuarios sin tenant (credenciales correctas)
       const error = new UnauthorizedException(
         'Usuario sin tenant asignado. Contacte al administrador.',

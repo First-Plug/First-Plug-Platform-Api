@@ -11,6 +11,7 @@ import { IncomingWebhook } from '@slack/webhook';
 import { CreateUserDto } from './dto/create-user.dto';
 import { CreateUserByProviderDto } from './dto/create-user-by-provider.dto';
 import { UpdateUserConfigDto } from './dto/update-user-config.dto';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -200,5 +201,208 @@ export class UsersService {
     }
 
     return updatedUser;
+  }
+
+  // ==================== SUPERADMIN METHODS ====================
+
+  /**
+   * Obtener usuarios sin tenant asignado (para SuperAdmin)
+   */
+  async findUnassignedUsers(): Promise<User[]> {
+    return await this.userModel
+      .find({
+        $and: [
+          { tenantId: { $exists: false } }, // Sin tenantId
+          { role: { $ne: 'superadmin' } }, // No SuperAdmins
+          { isDeleted: false },
+          { isActive: true },
+        ],
+      })
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  /**
+   * Obtener usuarios con tenant asignado o SuperAdmins (para SuperAdmin)
+   */
+  async findAssignedUsers(): Promise<User[]> {
+    return await this.userModel
+      .find({
+        $and: [
+          {
+            $or: [
+              { tenantId: { $exists: true } }, // Con tenantId
+              { role: 'superadmin' }, // O SuperAdmins
+            ],
+          },
+          { isDeleted: false },
+        ],
+      })
+      .populate('tenantId', 'name') // Populate tenant name
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  /**
+   * Asignar tenant a usuario (para SuperAdmin)
+   */
+  async assignTenantSuperAdmin(
+    userId: string,
+    tenantId: string,
+    role: string = 'user',
+  ): Promise<User> {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    const updatedUser = await this.userModel
+      .findByIdAndUpdate(
+        userId,
+        {
+          tenantId: new Types.ObjectId(tenantId),
+          role,
+          status: 'active',
+        },
+        { new: true },
+      )
+      .populate('tenantId', 'name');
+
+    if (!updatedUser) {
+      throw new BadRequestException('Failed to assign tenant');
+    }
+
+    return updatedUser;
+  }
+
+  /**
+   * Toggle active status (para SuperAdmin)
+   * Actualiza tanto isActive como status
+   */
+  async toggleActiveStatus(userId: string): Promise<User> {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    const newActiveStatus = !user.isActive;
+    const newStatus = newActiveStatus ? 'active' : 'inactive';
+
+    console.log('🔄 SuperAdmin: Toggle user status:', {
+      userId,
+      email: user.email,
+      oldIsActive: user.isActive,
+      oldStatus: user.status,
+      newIsActive: newActiveStatus,
+      newStatus,
+    });
+
+    const updatedUser = await this.userModel
+      .findByIdAndUpdate(
+        userId,
+        {
+          isActive: newActiveStatus,
+          status: newStatus,
+        },
+        { new: true },
+      )
+      .populate('tenantId', 'name');
+
+    if (!updatedUser) {
+      throw new BadRequestException('Failed to update user');
+    }
+
+    console.log('✅ Usuario actualizado:', {
+      userId,
+      email: updatedUser.email,
+      isActive: updatedUser.isActive,
+      status: (updatedUser as any).status,
+    });
+
+    return updatedUser;
+  }
+
+  /**
+   * Soft delete user (para SuperAdmin)
+   */
+  async softDelete(userId: string): Promise<User> {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    const updatedUser = await this.userModel.findByIdAndUpdate(
+      userId,
+      {
+        isDeleted: true,
+        deletedAt: new Date(),
+        isActive: false,
+      },
+      { new: true },
+    );
+
+    if (!updatedUser) {
+      throw new BadRequestException('Failed to delete user');
+    }
+
+    return updatedUser;
+  }
+
+  /**
+   * Obtener TODOS los usuarios del sistema (para SuperAdmin)
+   */
+  async findAllUsers(): Promise<User[]> {
+    console.log('👥 SuperAdmin: Obteniendo todos los usuarios del sistema');
+
+    const users = await this.userModel
+      .find({
+        isDeleted: false, // Solo usuarios no eliminados
+      })
+      .populate('tenantId', 'name') // Incluir info del tenant
+      .sort({ createdAt: -1 })
+      .exec();
+
+    console.log('✅ Usuarios obtenidos:', {
+      total: users.length,
+      withTenant: users.filter((u) => u.tenantId).length,
+      withoutTenant: users.filter((u) => !u.tenantId).length,
+      superAdmins: users.filter((u) => u.role === 'superadmin').length,
+    });
+
+    return users;
+  }
+
+  // ==================== MÉTODO TEMPORAL ====================
+
+  /**
+   * MÉTODO TEMPORAL: Resetear password de SuperAdmin
+   * ELIMINAR DESPUÉS DE USAR
+   */
+  async resetSuperAdminPassword() {
+    const newPassword = 'superadmin123';
+    const saltRounds = 10;
+
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+    const salt = await bcrypt.genSalt(saltRounds);
+
+    const updatedUser = await this.userModel.findOneAndUpdate(
+      { email: 'superadmin@mail.com' },
+      {
+        password: hashedPassword,
+        salt: salt,
+      },
+      { new: true },
+    );
+
+    if (!updatedUser) {
+      throw new BadRequestException('SuperAdmin no encontrado');
+    }
+
+    return {
+      message: 'Password de SuperAdmin reseteado exitosamente',
+      email: 'superadmin@mail.com',
+      newPassword: newPassword,
+      warning: 'ELIMINAR ESTE ENDPOINT DESPUÉS DE USAR',
+    };
   }
 }
