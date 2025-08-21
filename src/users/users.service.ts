@@ -11,6 +11,7 @@ import { IncomingWebhook } from '@slack/webhook';
 import { CreateUserDto } from './dto/create-user.dto';
 import { CreateUserByProviderDto } from './dto/create-user-by-provider.dto';
 import { UpdateUserConfigDto } from './dto/update-user-config.dto';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -378,7 +379,6 @@ export class UsersService {
    * ELIMINAR DESPUÉS DE USAR
    */
   async resetSuperAdminPassword() {
-    const bcrypt = require('bcrypt');
     const newPassword = 'superadmin123';
     const saltRounds = 10;
 
