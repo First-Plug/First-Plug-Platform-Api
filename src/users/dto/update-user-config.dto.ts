@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsEmail } from 'class-validator';
+import { IsOptional, IsString, IsEmail, ValidateIf } from 'class-validator';
 
 /**
  * DTO para actualizar la configuración/perfil del usuario
@@ -18,6 +18,7 @@ export class UpdateUserConfigDto {
   email?: string;
 
   @IsOptional()
+  @ValidateIf((o) => o.personalEmail !== '')
   @IsEmail()
   personalEmail?: string;
 
