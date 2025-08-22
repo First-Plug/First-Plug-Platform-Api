@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -15,6 +16,7 @@ import { GetShipmentsCrossTenantDto } from './dto/get-shipments-cross-tenant.dto
 import { UpdateShipmentCompleteDto } from './dto/update-shipment-complete.dto';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { UpdateTenantOfficeDto } from './dto/update-tenant-office.dto';
 import { Request } from 'express';
 
 @Controller('superadmin')
@@ -83,6 +85,30 @@ export class SuperAdminController {
   }
 
   /**
+   * Obtener estadísticas de tenants (SuperAdmin only)
+   */
+  @Get('tenants/stats')
+  async getTenantStats() {
+    return await this.superAdminService.getTenantStats();
+  }
+
+  /**
+   * Obtener tenant por nombre único (SuperAdmin only)
+   */
+  @Get('tenants/by-name/:tenantName')
+  async getTenantByName(@Param('tenantName') tenantName: string) {
+    return await this.superAdminService.getTenantByName(tenantName);
+  }
+
+  /**
+   * Obtener un tenant específico con información completa (SuperAdmin only)
+   */
+  @Get('tenants/:id')
+  async getTenantById(@Param('id') tenantId: string) {
+    return await this.superAdminService.getTenantById(tenantId);
+  }
+
+  /**
    * Toggle isActive status de un tenant - Pause/Play (SuperAdmin only)
    */
   @Patch('tenants/:tenantId/toggle-active')
@@ -132,6 +158,28 @@ export class SuperAdminController {
       updateData,
       userId,
     );
+  }
+
+  /**
+   * Actualizar oficina de un tenant (SuperAdmin only)
+   */
+  @Patch('tenants/:tenantId/office')
+  async updateTenantOffice(
+    @Param('tenantId') tenantId: string,
+    @Body() officeData: UpdateTenantOfficeDto,
+  ) {
+    return await this.superAdminService.updateTenantOffice(
+      tenantId,
+      officeData,
+    );
+  }
+
+  /**
+   * Eliminar tenant (soft delete) (SuperAdmin only)
+   */
+  @Delete('tenants/:id')
+  async deleteTenant(@Param('id') tenantId: string) {
+    return await this.superAdminService.deleteTenant(tenantId);
   }
 
   // ==================== MIGRATION ENDPOINTS ====================
