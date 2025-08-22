@@ -512,9 +512,9 @@ export class LogisticsService {
           office.zipCode &&
           office.address &&
           // office.apartment &&
-          office.phone &&
-          office.email
-        ) // ✅ Email de la oficina real
+          office.phone
+        )
+        // office.email - Email es opcional para oficinas
       );
 
       if (!isComplete) {
@@ -527,7 +527,7 @@ export class LogisticsService {
             zipCode: !office.zipCode,
             address: !office.address,
             phone: !office.phone,
-            email: !office.email, // ✅ Mostrar si falta email
+            // email: !office.email, // Email es opcional
           },
           office: {
             country: office.country,
@@ -764,7 +764,7 @@ export class LogisticsService {
         'country',
         'zipCode',
         'phone',
-        'email', // ✅ Agregar email como campo requerido
+        // 'email', // Email es opcional para oficinas
       ];
       const result = requiredFields.every((field) => !!details[field]);
       if (!result) {
