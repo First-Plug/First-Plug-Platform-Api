@@ -219,6 +219,16 @@ export class UsersService {
       updateData,
     });
 
+    // Validar que userId no sea undefined o inválido
+    if (!userId || userId === 'undefined' || userId.trim() === '') {
+      throw new BadRequestException('User ID is required and must be valid');
+    }
+
+    // Validar que sea un ObjectId válido
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid User ID format');
+    }
+
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new BadRequestException('User not found');
