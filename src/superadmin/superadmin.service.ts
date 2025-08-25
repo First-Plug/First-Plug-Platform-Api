@@ -92,8 +92,13 @@ export class SuperAdminService {
 
       result.forEach((tenantData) => {
         tenantData.shipments.forEach((shipment) => {
+          // Convertir documento de Mongoose a objeto plano de JavaScript
+          const shipmentPlain = shipment.toObject
+            ? shipment.toObject()
+            : shipment;
+
           allShipmentsFlat.push({
-            ...shipment,
+            ...shipmentPlain,
             tenantName: tenantData.tenantName, // Agregar tenantName a cada shipment
           });
         });
