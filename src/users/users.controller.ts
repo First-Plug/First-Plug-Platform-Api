@@ -19,6 +19,7 @@ import { CreateUserByProviderDto } from './dto/create-user-by-provider.dto';
 import { UpdateUserConfigDto } from './dto/update-user-config.dto';
 import { AssignTenantToUsersDto } from './dto/assign-tenant-to-users.dto';
 import { AssignTenantSuperAdminDto } from './dto/assign-tenant-superadmin.dto';
+import { UpdateUserSuperAdminDto } from './dto/update-user-superadmin.dto';
 import { TenantUserAdapterService } from '../common/services/tenant-user-adapter.service';
 import { JwtGuard } from '../auth/guard/jwt.guard';
 import { SuperAdminGuard } from '../common/guards/super-admin.guard';
@@ -187,6 +188,18 @@ export class UsersController {
   @UseGuards(JwtGuard, SuperAdminGuard)
   async toggleActiveStatus(@Param('id') userId: string) {
     return await this.usersService.toggleActiveStatus(userId);
+  }
+
+  /**
+   * Actualizar datos básicos de usuario (SuperAdmin only)
+   */
+  @Patch(':id/update-superadmin')
+  @UseGuards(JwtGuard, SuperAdminGuard)
+  async updateUserSuperAdmin(
+    @Param('id') userId: string,
+    @Body() updateData: UpdateUserSuperAdminDto,
+  ) {
+    return await this.usersService.updateUserSuperAdmin(userId, updateData);
   }
 
   /**

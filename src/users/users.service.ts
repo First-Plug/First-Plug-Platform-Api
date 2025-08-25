@@ -203,6 +203,56 @@ export class UsersService {
     return updatedUser;
   }
 
+  /**
+   * Actualizar datos básicos de usuario (SuperAdmin only)
+   */
+  async updateUserSuperAdmin(
+    userId: string,
+    updateData: {
+      firstName?: string;
+      lastName?: string;
+      role?: string;
+    },
+  ): Promise<User> {
+    console.log('👑 SuperAdmin: Actualizando datos de usuario:', {
+      userId,
+      updateData,
+    });
+
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    // Filtrar solo los campos que se pueden actualizar
+    const allowedUpdates: any = {};
+    if (updateData.firstName !== undefined) {
+      allowedUpdates.firstName = updateData.firstName;
+    }
+    if (updateData.lastName !== undefined) {
+      allowedUpdates.lastName = updateData.lastName;
+    }
+    if (updateData.role !== undefined) {
+      allowedUpdates.role = updateData.role;
+    }
+
+    const updatedUser = await this.userModel
+      .findByIdAndUpdate(userId, allowedUpdates, { new: true })
+      .populate('tenantId', 'name tenantName');
+
+    if (!updatedUser) {
+      throw new BadRequestException('Failed to update user');
+    }
+
+    console.log('✅ Usuario actualizado por SuperAdmin:', {
+      userId,
+      email: updatedUser.email,
+      updatedFields: Object.keys(allowedUpdates),
+    });
+
+    return updatedUser;
+  }
+
   // ==================== SUPERADMIN METHODS ====================
 
   /**
@@ -238,7 +288,7 @@ export class UsersService {
           { isDeleted: false },
         ],
       })
-      .populate('tenantId', 'name') // Populate tenant name
+      .populate('tenantId', 'name tenantName') // Populate tenant name y tenantName
       .sort({ createdAt: -1 })
       .exec();
   }
@@ -266,7 +316,7 @@ export class UsersService {
         },
         { new: true },
       )
-      .populate('tenantId', 'name');
+      .populate('tenantId', 'name tenantName');
 
     if (!updatedUser) {
       throw new BadRequestException('Failed to assign tenant');
@@ -358,7 +408,7 @@ export class UsersService {
       .find({
         isDeleted: false, // Solo usuarios no eliminados
       })
-      .populate('tenantId', 'name') // Incluir info del tenant
+      .populate('tenantId', 'name tenantName') // Incluir info del tenant
       .sort({ createdAt: -1 })
       .exec();
 
