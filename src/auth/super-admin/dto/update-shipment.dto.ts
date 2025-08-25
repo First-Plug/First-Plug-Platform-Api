@@ -1,9 +1,21 @@
-import { IsString, IsOptional, IsEnum, IsObject, IsNumber } from 'class-validator';
-import { ShipmentStatus, ShipmentType } from '../../../shipments/interface/shipment.interface';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsObject,
+  IsNumber,
+} from 'class-validator';
+import {
+  ShipmentStatus,
+  ShipmentType,
+  SHIPMENT_STATUS,
+} from '../../../shipments/interface/shipment.interface';
 
 export class UpdateShipmentDto {
   @IsOptional()
-  @IsEnum(['In Preparation', 'On Hold - Missing Data', 'On The Way', 'Delivered', 'Cancelled'])
+  @IsEnum(SHIPMENT_STATUS, {
+    message: `shipment_status must be one of: ${SHIPMENT_STATUS.join(', ')}`,
+  })
   shipment_status?: ShipmentStatus;
 
   @IsOptional()
