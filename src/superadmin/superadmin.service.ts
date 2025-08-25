@@ -32,7 +32,6 @@ export class SuperAdminService {
       tenantName,
     });
 
-    // Usar el servicio existente pero especificando el tenant
     return await this.shipmentsService.findAll(tenantName);
   }
 
@@ -53,7 +52,6 @@ export class SuperAdminService {
           `⚠️ Error obteniendo shipments de ${tenantName}:`,
           error.message,
         );
-        // Continuar con otros tenants aunque uno falle
       }
     }
 
@@ -70,19 +68,10 @@ export class SuperAdminService {
    * Cada shipment incluye información del tenant
    */
   async getAllShipmentsAllTenants() {
-    console.log(
-      '📦 SuperAdmin: Obteniendo TODOS los shipments de TODOS los tenants',
-    );
-
     try {
       // 1. Obtener todos los tenants del sistema
       const tenants = await this.tenantsService.findAllTenants();
       const tenantNames = tenants.map((tenant) => tenant.tenantName);
-
-      console.log('🏢 Tenants encontrados:', {
-        total: tenants.length,
-        names: tenantNames,
-      });
 
       // 2. Obtener shipments de todos los tenants
       const result = await this.getAllShipmentsCrossTenant(tenantNames);
@@ -97,11 +86,6 @@ export class SuperAdminService {
             tenantName: tenantData.tenantName,
           });
         });
-      });
-
-      console.log('✅ Todos los shipments obtenidos:', {
-        tenantsProcessed: result.length,
-        totalShipments: allShipmentsFlat.length,
       });
 
       return {
@@ -134,7 +118,7 @@ export class SuperAdminService {
       courier?: string;
       shipment_status?: string;
       shipment_type?: string;
-      // Otros campos que se puedan actualizar
+
       [key: string]: any;
     },
     userId: string,
@@ -148,44 +132,31 @@ export class SuperAdminService {
 
     let result: any = null;
 
-    // Usar nuestros métodos privados que manejan
-    // toda la lógica de eventos, history, notificaciones, etc.
-
     // 1. Actualizar precio si se proporciona
     if (updateData.price !== undefined) {
-      console.log('💰 Actualizando precio del shipment');
       result = await this.updateShipmentPrice(tenantName, shipmentId, {
         amount: updateData.price,
-        currencyCode: 'USD', // Por defecto, podría ser configurable
+        currencyCode: 'USD',
       });
     }
 
     // 2. Actualizar tracking URL y tipo si se proporcionan
     if (updateData.trackingUrl || updateData.shipment_type) {
-      console.log('� Actualizando tracking URL y tipo');
-      const otherFields: any = {};
-      if (updateData.shipment_status)
-        otherFields.newStatus = updateData.shipment_status;
-      if (updateData.shipment_type)
-        otherFields.shipment_type = updateData.shipment_type;
-      if (updateData.trackingUrl)
-        otherFields.trackingURL = updateData.trackingUrl;
-
       result = await this.updateShipmentFields(tenantName, shipmentId, {
-        shipment_type: otherFields.shipment_type,
-        trackingURL: otherFields.trackingURL,
+        shipment_type: updateData.shipment_type,
+        trackingURL: updateData.trackingUrl,
       });
     }
 
-    // 3. Para otros campos como status, courier, etc., necesitaríamos
-    // implementar métodos adicionales o usar el servicio de shipments directamente
+    // 3. Actualizar status si se proporciona
+    if (updateData.shipment_status) {
+      result = await this.updateShipmentStatus(
+        tenantName,
+        shipmentId,
+        updateData.shipment_status,
+      );
+    }
 
-    console.log('✅ Shipment actualizado completamente:', {
-      shipmentId,
-      fieldsUpdated: Object.keys(updateData),
-    });
-
-    // Si no se usó ningún método específico, devolver información básica
     if (!result) {
       result = {
         message: 'Shipment update completed',
@@ -318,6 +289,60 @@ export class SuperAdminService {
       message: `Shipment actualizado correctamente: ${fieldsUpdated.join(', ')}`,
       shipment,
     };
+  }
+
+  /**
+   * Actualizar status de shipment (SuperAdmin)
+   */
+  private async updateShipmentStatus(
+    tenantName: string,
+    shipmentId: string,
+    newStatus: string,
+  ) {
+    try {
+      const connection =
+        await this.tenantConnectionService.getTenantConnection(tenantName);
+
+      const ShipmentModel =
+        connection.models.Shipment ||
+        connection.model('Shipment', ShipmentSchema, 'shipments');
+
+      const shipment = await ShipmentModel.findById(shipmentId);
+      if (!shipment) throw new NotFoundException('Shipment no encontrado');
+
+      const oldStatus = shipment.shipment_status;
+      shipment.shipment_status = newStatus;
+      await shipment.save();
+
+      console.log(`📊 Status actualizado: ${oldStatus} → ${newStatus}`);
+
+      // Enviar notificación WebSocket
+      try {
+        this.eventsGateway.notifyTenant(tenantName, 'shipments-update', {
+          shipmentId,
+          oldStatus,
+          newStatus,
+          shipment,
+        });
+        console.log(
+          `📡 Websocket notification sent for shipment ${shipmentId} - status updated`,
+        );
+      } catch (error) {
+        console.error(
+          `❌ Error sending websocket notification for shipment ${shipmentId}:`,
+          error,
+        );
+      }
+
+      return {
+        message: `Shipment status actualizado: ${oldStatus} → ${newStatus}`,
+        shipment,
+        oldStatus,
+        newStatus,
+      };
+    } catch (error) {
+      throw error;
+    }
   }
 
   // ==================== TENANTS MANAGEMENT ====================
