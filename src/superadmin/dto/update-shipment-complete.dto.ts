@@ -1,4 +1,5 @@
 import { IsOptional, IsString, IsNumber, IsEnum } from 'class-validator';
+import { SHIPMENT_STATUS } from '../../shipments/interface/shipment.interface';
 
 export class UpdateShipmentCompleteDto {
   @IsOptional()
@@ -14,17 +15,9 @@ export class UpdateShipmentCompleteDto {
   courier?: string;
 
   @IsOptional()
-  @IsEnum([
-    'In Preparation',
-    'Ready to Ship',
-    'Shipped',
-    'In Transit',
-    'Out for Delivery',
-    'Delivered',
-    'Exception',
-    'Cancelled',
-    'On Hold - Missing Data',
-  ])
+  @IsEnum(SHIPMENT_STATUS, {
+    message: `shipment_status must be one of: ${SHIPMENT_STATUS.join(', ')}`,
+  })
   shipment_status?: string;
 
   // Permitir otros campos adicionales
