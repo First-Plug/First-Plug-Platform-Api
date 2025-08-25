@@ -94,7 +94,7 @@ export class SuperAdminService {
         tenantData.shipments.forEach((shipment) => {
           allShipmentsFlat.push({
             ...shipment,
-            tenantName: tenantData.tenantName, // Agregar tenantName a cada shipment
+            tenantName: tenantData.tenantName,
           });
         });
       });
@@ -453,12 +453,24 @@ export class SuperAdminService {
     try {
       const users = await this.usersService.findAssignedUsers();
 
+      // Obtener el tenant para buscar también por tenantName
+      const tenant = await this.tenantsService.getTenantById(tenantId);
+      if (!tenant) {
+        console.warn(`⚠️ Tenant ${tenantId} no encontrado`);
+        return 0;
+      }
+
       // Debug temporal - remover después
-      console.log(`🔍 DEBUG - Contando usuarios para tenant ${tenantId}:`);
+      console.log(
+        `🔍 DEBUG - Contando usuarios para tenant ${tenantId} (${tenant.tenantName}):`,
+      );
       console.log(`📊 Total usuarios encontrados: ${users.length}`);
 
+      // Buscar usuarios por tenantId (nuevo sistema) O por tenantName (sistema viejo)
       const usersForTenant = users.filter(
-        (user) => user.tenantId?.toString() === tenantId,
+        (user) =>
+          user.tenantId?.toString() === tenantId ||
+          user.tenantName === tenant.tenantName,
       );
       console.log(
         `🏢 Usuarios del tenant ${tenantId}: ${usersForTenant.length}`,
@@ -480,6 +492,7 @@ export class SuperAdminService {
             isActive: u.isActive,
             isDeleted: u.isDeleted,
             tenantId: u.tenantId?.toString(),
+            tenantName: u.tenantName, // Mostrar también tenantName
           })),
         );
       }
@@ -616,12 +629,24 @@ export class SuperAdminService {
 
     try {
       const users = await this.usersService.findAssignedUsers();
+
+      // Obtener el tenant para buscar también por tenantName
+      const tenant = await this.tenantsService.getTenantById(tenantId);
+      if (!tenant) {
+        console.warn(`⚠️ Tenant ${tenantId} no encontrado`);
+        return [];
+      }
+
+      // Buscar usuarios por tenantId (nuevo sistema) O por tenantName (sistema viejo)
       const tenantUsers = users.filter(
-        (user) => user.tenantId?.toString() === tenantId,
+        (user) =>
+          user.tenantId?.toString() === tenantId ||
+          user.tenantName === tenant.tenantName,
       );
 
       console.log('✅ Usuarios del tenant obtenidos:', {
         tenantId,
+        tenantName: tenant.tenantName,
         totalUsers: tenantUsers.length,
         activeUsers: tenantUsers.filter((u) => u.isActive).length,
       });
