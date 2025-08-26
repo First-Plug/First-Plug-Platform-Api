@@ -214,11 +214,6 @@ export class UsersService {
       role?: string;
     },
   ): Promise<User> {
-    console.log('👑 SuperAdmin: Actualizando datos de usuario:', {
-      userId,
-      updateData,
-    });
-
     // Validar que userId no sea undefined o inválido
     if (!userId || userId === 'undefined' || userId.trim() === '') {
       throw new BadRequestException('User ID is required and must be valid');
@@ -253,12 +248,6 @@ export class UsersService {
     if (!updatedUser) {
       throw new BadRequestException('Failed to update user');
     }
-
-    console.log('✅ Usuario actualizado por SuperAdmin:', {
-      userId,
-      email: updatedUser.email,
-      updatedFields: Object.keys(allowedUpdates),
-    });
 
     return updatedUser;
   }
@@ -348,15 +337,6 @@ export class UsersService {
     const newActiveStatus = !user.isActive;
     const newStatus = newActiveStatus ? 'active' : 'inactive';
 
-    console.log('🔄 SuperAdmin: Toggle user status:', {
-      userId,
-      email: user.email,
-      oldIsActive: user.isActive,
-      oldStatus: user.status,
-      newIsActive: newActiveStatus,
-      newStatus,
-    });
-
     const updatedUser = await this.userModel
       .findByIdAndUpdate(
         userId,
@@ -371,13 +351,6 @@ export class UsersService {
     if (!updatedUser) {
       throw new BadRequestException('Failed to update user');
     }
-
-    console.log('✅ Usuario actualizado:', {
-      userId,
-      email: updatedUser.email,
-      isActive: updatedUser.isActive,
-      status: (updatedUser as any).status,
-    });
 
     return updatedUser;
   }
@@ -412,8 +385,6 @@ export class UsersService {
    * Obtener TODOS los usuarios del sistema (para SuperAdmin)
    */
   async findAllUsers(): Promise<User[]> {
-    console.log('👥 SuperAdmin: Obteniendo todos los usuarios del sistema');
-
     const users = await this.userModel
       .find({
         isDeleted: false, // Solo usuarios no eliminados
