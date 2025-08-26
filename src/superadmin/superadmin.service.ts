@@ -10,6 +10,7 @@ import { ShipmentSchema } from '../shipments/schema/shipment.schema';
 import { TenantsService } from '../tenants/tenants.service';
 import { UsersService } from '../users/users.service';
 import { OfficesService } from '../offices/offices.service';
+import { UpdateShipmentCompleteDto } from './dto/update-shipment-complete.dto';
 
 @Injectable()
 export class SuperAdminService {
@@ -117,15 +118,7 @@ export class SuperAdminService {
   async updateShipmentComplete(
     tenantName: string,
     shipmentId: string,
-    updateData: {
-      price?: number;
-      trackingUrl?: string;
-      courier?: string;
-      shipment_status?: string;
-      shipment_type?: string;
-
-      [key: string]: any;
-    },
+    updateData: UpdateShipmentCompleteDto,
     userId: string,
   ) {
     console.log('📦 SuperAdmin: Update completo de shipment:', {
@@ -140,16 +133,16 @@ export class SuperAdminService {
     // 1. Actualizar precio si se proporciona
     if (updateData.price !== undefined) {
       result = await this.updateShipmentPrice(tenantName, shipmentId, {
-        amount: updateData.price,
-        currencyCode: 'USD',
+        amount: updateData.price.amount,
+        currencyCode: updateData.price.currency,
       });
     }
 
     // 2. Actualizar tracking URL y tipo si se proporcionan
-    if (updateData.trackingUrl || updateData.shipment_type) {
+    if (updateData.trackingURL || updateData.shipment_type) {
       result = await this.updateShipmentFields(tenantName, shipmentId, {
         shipment_type: updateData.shipment_type,
-        trackingURL: updateData.trackingUrl,
+        trackingURL: updateData.trackingURL,
       });
     }
 
