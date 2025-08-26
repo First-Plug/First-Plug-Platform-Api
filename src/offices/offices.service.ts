@@ -338,10 +338,6 @@ export class OfficesService {
    * Obtener oficinas por tenant (para SuperAdmin)
    */
   async findOfficesByTenant(tenantName: string): Promise<Office[]> {
-    console.log('🏢 SuperAdmin: Obteniendo oficinas por tenant:', {
-      tenantName,
-    });
-
     const officeModel =
       await this.tenantModelRegistry.getOfficeModel(tenantName);
     if (!officeModel) {
@@ -349,11 +345,6 @@ export class OfficesService {
     }
 
     const offices = await officeModel.find({ isDeleted: { $ne: true } }).exec();
-
-    console.log('✅ Oficinas encontradas:', {
-      tenantName,
-      count: offices.length,
-    });
 
     return offices;
   }

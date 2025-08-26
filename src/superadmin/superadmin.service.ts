@@ -346,36 +346,111 @@ export class SuperAdminService {
   // ==================== TENANTS MANAGEMENT ====================
 
   /**
+   * Convierte un tenant del formato backend al formato esperado por el frontend
+   */
+  private transformTenantForFrontend(
+    tenant: any,
+    users: any[] = [],
+    office: any = null,
+    activeUsersCount: number = 0,
+  ): any {
+    // Convertir Map a Record para isRecoverableConfig
+    let recoverableConfig = {};
+    if (tenant.isRecoverableConfig instanceof Map) {
+      recoverableConfig = Object.fromEntries(tenant.isRecoverableConfig);
+    } else if (
+      tenant.isRecoverableConfig &&
+      typeof tenant.isRecoverableConfig === 'object'
+    ) {
+      recoverableConfig = tenant.isRecoverableConfig;
+    }
+
+    // Transformar usuarios al formato esperado
+    const transformedUsers = users.map((user) => ({
+      id: user._id.toString(),
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+      email: user.email || '',
+      role: user.role || 'User',
+      createdAt: user.createdAt || new Date().toISOString(),
+      lastLoginAt: user.lastLoginAt || null,
+      isActive: user.isActive || false,
+    }));
+
+    // Transformar oficina al formato esperado
+    let transformedOffice: any = null;
+    if (office) {
+      transformedOffice = {
+        id: office._id.toString(),
+        name: office.name || '',
+        email: office.email || '',
+        phone: office.phone || '',
+        address: office.address || '',
+        apartment: office.apartment || '',
+        city: office.city || '',
+        state: office.state || '',
+        country: office.country || '',
+        zipCode: office.zipCode || '',
+        isDefault: office.isDefault || false,
+      };
+    }
+
+    return {
+      id: tenant._id.toString(),
+      tenantName: tenant.tenantName,
+      name: tenant.name,
+      numberOfActiveUsers: activeUsersCount,
+      users: transformedUsers,
+      computerExpirationYears: tenant.computerExpiration || 3,
+      recoverableConfig,
+      office: transformedOffice,
+      createdAt: tenant.createdAt || new Date().toISOString(),
+      updatedAt: tenant.updatedAt || new Date().toISOString(),
+      isActive: tenant.isActive || false,
+    };
+  }
+
+  /**
    * Obtener todos los tenants con información enriquecida (para SuperAdmin)
    */
   async getAllTenantsWithDetails() {
-    console.log('🏢 SuperAdmin: Obteniendo todos los tenants con detalles');
-
     try {
       const tenants = await this.tenantsService.findAllTenants();
       const enrichedTenants: any[] = [];
 
       for (const tenant of tenants) {
-        // Contar usuarios activos por tenant
+        // 1. Contar usuarios activos por tenant
         const activeUsersCount = await this.countActiveUsersByTenant(
           tenant._id.toString(),
         );
 
-        // Verificar si tiene oficina configurada
-        const hasOffice = await this.checkTenantHasOffice(tenant.tenantName);
+        // 2. Obtener usuarios completos del tenant
+        const tenantUsers = await this.getTenantUsers(tenant._id.toString());
 
-        enrichedTenants.push({
-          ...(tenant.toObject ? tenant.toObject() : tenant),
+        // 3. Obtener datos completos de la oficina
+        let office: any = null;
+        try {
+          const offices = await this.officesService.findOfficesByTenant(
+            tenant.tenantName,
+          );
+          office = offices.find((o) => o.isDefault) || offices[0] || null;
+        } catch (error) {
+          console.warn(
+            `⚠️ No se pudo obtener oficina para ${tenant.tenantName}:`,
+            error.message,
+          );
+        }
+
+        // 4. Transformar al formato del frontend
+        const transformedTenant = this.transformTenantForFrontend(
+          tenant.toObject ? tenant.toObject() : tenant,
+          tenantUsers,
+          office,
           activeUsersCount,
-          hasOffice,
-        });
-      }
+        );
 
-      console.log('✅ Tenants con detalles obtenidos:', {
-        total: enrichedTenants.length,
-        active: enrichedTenants.filter((t) => t.isActive).length,
-        inactive: enrichedTenants.filter((t) => !t.isActive).length,
-      });
+        enrichedTenants.push(transformedTenant);
+      }
 
       return enrichedTenants;
     } catch (error) {
@@ -392,12 +467,40 @@ export class SuperAdminService {
   private async countActiveUsersByTenant(tenantId: string): Promise<number> {
     try {
       const users = await this.usersService.findAssignedUsers();
-      return users.filter(
+
+      // Obtener el tenant para buscar también por tenantName
+      const tenant = await this.tenantsService.getTenantById(tenantId);
+      if (!tenant) {
+        console.warn(`⚠️ Tenant ${tenantId} no encontrado`);
+        return 0;
+      }
+
+      // Buscar usuarios por tenantId (nuevo sistema) O por tenantName (sistema viejo)
+      const usersForTenant = users.filter(
         (user) =>
-          user.tenantId?.toString() === tenantId &&
-          user.isActive &&
-          !user.isDeleted,
-      ).length;
+          user.tenantId?.toString() === tenantId ||
+          user.tenantName === tenant.tenantName,
+      );
+
+      const activeUsers = usersForTenant.filter(
+        (user) => user.isActive && !user.isDeleted,
+      );
+
+      if (usersForTenant.length > 0) {
+        console.log(
+          '👥 Usuarios del tenant:',
+          usersForTenant.map((u) => ({
+            id: u._id,
+            email: u.email,
+            isActive: u.isActive,
+            isDeleted: u.isDeleted,
+            tenantId: u.tenantId?.toString(),
+            tenantName: u.tenantName,
+          })),
+        );
+      }
+
+      return activeUsers.length;
     } catch (error) {
       console.warn(
         `⚠️ Error contando usuarios del tenant ${tenantId}:`,
@@ -470,22 +573,69 @@ export class SuperAdminService {
   }
 
   /**
+   * Obtener un tenant específico con información completa (SuperAdmin)
+   */
+  async getTenantById(tenantId: string) {
+    try {
+      const tenant = await this.tenantsService.getTenantById(tenantId);
+      if (!tenant) {
+        throw new NotFoundException(`Tenant ${tenantId} not found`);
+      }
+
+      // Obtener datos completos
+      const activeUsersCount = await this.countActiveUsersByTenant(tenantId);
+      const tenantUsers = await this.getTenantUsers(tenantId);
+
+      let office: any = null;
+      try {
+        const offices = await this.officesService.findOfficesByTenant(
+          tenant.tenantName,
+        );
+        office = offices.find((o) => o.isDefault) || offices[0] || null;
+      } catch (error) {
+        console.warn(
+          `⚠️ No se pudo obtener oficina para ${tenant.tenantName}:`,
+          error.message,
+        );
+      }
+
+      // Transformar al formato del frontend
+      const transformedTenant = this.transformTenantForFrontend(
+        tenant.toObject ? tenant.toObject() : tenant,
+        tenantUsers,
+        office,
+        activeUsersCount,
+      );
+
+      return transformedTenant;
+    } catch (error) {
+      console.error('❌ Error obteniendo tenant específico:', error);
+      throw new BadRequestException(
+        `Error obteniendo tenant: ${error.message}`,
+      );
+    }
+  }
+
+  /**
    * Obtener usuarios asignados a un tenant específico (Details)
    */
   async getTenantUsers(tenantId: string) {
-    console.log('👥 SuperAdmin: Obteniendo usuarios del tenant:', { tenantId });
-
     try {
       const users = await this.usersService.findAssignedUsers();
-      const tenantUsers = users.filter(
-        (user) => user.tenantId?.toString() === tenantId,
-      );
 
-      console.log('✅ Usuarios del tenant obtenidos:', {
-        tenantId,
-        totalUsers: tenantUsers.length,
-        activeUsers: tenantUsers.filter((u) => u.isActive).length,
-      });
+      // Obtener el tenant para buscar también por tenantName
+      const tenant = await this.tenantsService.getTenantById(tenantId);
+      if (!tenant) {
+        console.warn(`⚠️ Tenant ${tenantId} no encontrado`);
+        return [];
+      }
+
+      // Buscar usuarios por tenantId (nuevo sistema) O por tenantName (sistema viejo)
+      const tenantUsers = users.filter(
+        (user) =>
+          user.tenantId?.toString() === tenantId ||
+          user.tenantName === tenant.tenantName,
+      );
 
       return tenantUsers.map((user) => ({
         _id: user._id,
@@ -515,8 +665,6 @@ export class SuperAdminService {
     },
     userId: string,
   ) {
-    console.log('🏢 SuperAdmin: Creando nuevo tenant:', { createData, userId });
-
     try {
       // Validar que no existe un tenant con ese nombre
       const existingTenant = await this.tenantsService.getByTenantName(
@@ -534,12 +682,13 @@ export class SuperAdminService {
         userId as any,
       );
 
-      console.log('✅ Tenant creado exitosamente:', {
-        tenantId: newTenant._id,
-        tenantName: newTenant.tenantName,
-      });
-
-      return newTenant;
+      // Transformar al formato del frontend (tenant recién creado no tiene usuarios ni oficina)
+      return this.transformTenantForFrontend(
+        newTenant.toObject ? newTenant.toObject() : newTenant,
+        [], // Sin usuarios inicialmente
+        null, // Sin oficina inicialmente
+        0, // Sin usuarios activos inicialmente
+      );
     } catch (error) {
       console.error('❌ Error creando tenant:', error);
       throw new BadRequestException(`Error creando tenant: ${error.message}`);
@@ -592,13 +741,34 @@ export class SuperAdminService {
         updateData as any,
       );
 
-      console.log('✅ Tenant actualizado exitosamente:', {
-        tenantId,
-        tenantName: updatedTenant?.tenantName,
-        updatedFields: Object.keys(updateData),
-      });
+      if (!updatedTenant) {
+        throw new BadRequestException('Error actualizando tenant');
+      }
 
-      return updatedTenant;
+      // Obtener datos completos para transformar al formato del frontend
+      const activeUsersCount = await this.countActiveUsersByTenant(tenantId);
+      const tenantUsers = await this.getTenantUsers(tenantId);
+
+      let office: any = null;
+      try {
+        const offices = await this.officesService.findOfficesByTenant(
+          updatedTenant.tenantName,
+        );
+        office = offices.find((o) => o.isDefault) || offices[0] || null;
+      } catch (error) {
+        console.warn(
+          `⚠️ No se pudo obtener oficina para ${updatedTenant.tenantName}:`,
+          error.message,
+        );
+      }
+
+      // Transformar al formato del frontend
+      return this.transformTenantForFrontend(
+        updatedTenant.toObject ? updatedTenant.toObject() : updatedTenant,
+        tenantUsers,
+        office,
+        activeUsersCount,
+      );
     } catch (error) {
       console.error('❌ Error actualizando tenant:', error);
       throw new BadRequestException(
@@ -607,16 +777,191 @@ export class SuperAdminService {
     }
   }
 
+  /**
+   * Obtener estadísticas de tenants (SuperAdmin)
+   */
+  async getTenantStats() {
+    console.log('📊 SuperAdmin: Obteniendo estadísticas de tenants');
+
+    try {
+      const tenants = await this.tenantsService.findAllTenants();
+      const activeTenants = tenants.filter((t) => t.isActive);
+
+      // Obtener todos los usuarios asignados
+      const allUsers = await this.usersService.findAssignedUsers();
+      const totalUsers = allUsers.length;
+
+      const averageUsersPerTenant =
+        activeTenants.length > 0
+          ? Math.round((totalUsers / activeTenants.length) * 10) / 10
+          : 0;
+
+      const stats = {
+        totalTenants: tenants.length,
+        activeTenants: activeTenants.length,
+        totalUsers,
+        averageUsersPerTenant,
+      };
+
+      console.log('✅ Estadísticas de tenants obtenidas:', stats);
+      return stats;
+    } catch (error) {
+      console.error('❌ Error obteniendo estadísticas de tenants:', error);
+      throw new BadRequestException(
+        `Error obteniendo estadísticas: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Obtener tenant por nombre (SuperAdmin)
+   */
+  async getTenantByName(tenantName: string) {
+    try {
+      const tenant = await this.tenantsService.getByTenantName(tenantName);
+      if (!tenant) {
+        throw new NotFoundException(`Tenant ${tenantName} not found`);
+      }
+
+      // Obtener datos completos
+      const activeUsersCount = await this.countActiveUsersByTenant(
+        tenant._id.toString(),
+      );
+      const tenantUsers = await this.getTenantUsers(tenant._id.toString());
+
+      let office: any = null;
+      try {
+        const offices = await this.officesService.findOfficesByTenant(
+          tenant.tenantName,
+        );
+        office = offices.find((o) => o.isDefault) || offices[0] || null;
+      } catch (error) {
+        console.warn(
+          `⚠️ No se pudo obtener oficina para ${tenant.tenantName}:`,
+          error.message,
+        );
+      }
+
+      // Transformar al formato del frontend
+      const transformedTenant = this.transformTenantForFrontend(
+        tenant.toObject ? tenant.toObject() : tenant,
+        tenantUsers,
+        office,
+        activeUsersCount,
+      );
+
+      console.log('✅ Tenant por nombre obtenido:', {
+        tenantName,
+        tenantId: tenant._id,
+        activeUsers: activeUsersCount,
+      });
+
+      return transformedTenant;
+    } catch (error) {
+      console.error('❌ Error obteniendo tenant por nombre:', error);
+      throw new BadRequestException(
+        `Error obteniendo tenant: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Actualizar oficina de un tenant (SuperAdmin)
+   */
+  async updateTenantOffice(
+    tenantId: string,
+    officeData: {
+      name?: string;
+      email?: string;
+      phone?: string;
+      address?: string;
+      apartment?: string;
+      city?: string;
+      state?: string;
+      country?: string;
+      zipCode?: string;
+    },
+  ) {
+    try {
+      const tenant = await this.tenantsService.getTenantById(tenantId);
+      if (!tenant) {
+        throw new NotFoundException(`Tenant ${tenantId} not found`);
+      }
+
+      // Buscar oficina existente o crear una nueva
+      let office: any = null;
+      try {
+        const offices = await this.officesService.findOfficesByTenant(
+          tenant.tenantName,
+        );
+        office = offices.find((o) => o.isDefault) || offices[0] || null;
+      } catch (error) {
+        console.warn(`⚠️ No se encontró oficina para ${tenant.tenantName}`);
+      }
+
+      if (office) {
+        // Actualizar oficina existente usando el método correcto
+        office = await this.officesService.updateDefaultOffice(
+          tenant.tenantName,
+          officeData,
+          'superadmin', // userId temporal para SuperAdmin
+        );
+      } else {
+        // Crear nueva oficina usando el método correcto
+        const newOfficeData = {
+          ...officeData,
+          name: officeData.name || 'Oficina Principal',
+          tenantId: tenant._id.toString(),
+        };
+        office = await this.officesService.create(newOfficeData as any);
+      }
+
+      // Devolver el tenant completo actualizado
+      return await this.getTenantById(tenantId);
+    } catch (error) {
+      console.error('❌ Error actualizando oficina del tenant:', error);
+      throw new BadRequestException(
+        `Error actualizando oficina: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Soft delete de un tenant (SuperAdmin)
+   */
+  async deleteTenant(tenantId: string) {
+    try {
+      const tenant = await this.tenantsService.getTenantById(tenantId);
+      if (!tenant) {
+        throw new NotFoundException(`Tenant ${tenantId} not found`);
+      }
+
+      // Soft delete: marcar como inactivo en lugar de eliminar
+      const updatedTenant = await this.tenantsService.update(
+        tenant._id as any,
+        { isActive: false } as any,
+      );
+
+      console.log('✅ Tenant eliminado (soft delete):', {
+        tenantId,
+        tenantName: updatedTenant?.tenantName,
+      });
+
+      return { message: 'Tenant eliminado exitosamente' };
+    } catch (error) {
+      console.error('❌ Error eliminando tenant:', error);
+      throw new BadRequestException(
+        `Error eliminando tenant: ${error.message}`,
+      );
+    }
+  }
+
   // ==================== MIGRATION METHODS ====================
 
   /**
-   * Migrar tenant del modelo viejo (acoplado) al nuevo (separado)
+   * Migrar tenant del modelo viejo (acoplado) al nuevo (separado) - Esto no esta en uso, la migracion va desde la terminal
    */
   async migrateTenantArchitecture(tenantName: string) {
-    console.log(
-      `🚀 SuperAdmin: Iniciando migración de arquitectura para tenant: ${tenantName}`,
-    );
-
     try {
       // 1. Buscar el tenant viejo (con datos de usuario mezclados)
       const oldTenant = await this.tenantsService.getByTenantName(tenantName);
@@ -634,8 +979,6 @@ export class SuperAdminService {
         };
       }
 
-      console.log(`📋 Tenant encontrado: ${oldTenantAny.email}`);
-
       // 2. Verificar si ya existe un usuario con este email
       const existingUser = await this.usersService.findByEmail(
         oldTenantAny.email,
@@ -649,7 +992,7 @@ export class SuperAdminService {
       }
 
       // 3. Crear usuario en la colección users
-      console.log(`👤 Creando usuario: ${oldTenantAny.email}`);
+
       const newUser = await this.usersService.create({
         firstName: oldTenant.name?.split(' ')[0] || 'Usuario',
         lastName: oldTenant.name?.split(' ').slice(1).join(' ') || '',
@@ -671,8 +1014,6 @@ export class SuperAdminService {
           isDeleted: false,
         } as any,
       );
-
-      console.log(`✅ Usuario creado y actualizado: ${newUser._id}`);
 
       // 4. Crear oficina si hay datos de oficina
       let createdOffice: any = null;

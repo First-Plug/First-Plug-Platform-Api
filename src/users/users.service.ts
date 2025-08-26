@@ -203,6 +203,55 @@ export class UsersService {
     return updatedUser;
   }
 
+  /**
+   * Actualizar datos básicos de usuario (SuperAdmin only)
+   */
+  async updateUserSuperAdmin(
+    userId: string,
+    updateData: {
+      firstName?: string;
+      lastName?: string;
+      role?: string;
+    },
+  ): Promise<User> {
+    // Validar que userId no sea undefined o inválido
+    if (!userId || userId === 'undefined' || userId.trim() === '') {
+      throw new BadRequestException('User ID is required and must be valid');
+    }
+
+    // Validar que sea un ObjectId válido
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid User ID format');
+    }
+
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    // Filtrar solo los campos que se pueden actualizar
+    const allowedUpdates: any = {};
+    if (updateData.firstName !== undefined) {
+      allowedUpdates.firstName = updateData.firstName;
+    }
+    if (updateData.lastName !== undefined) {
+      allowedUpdates.lastName = updateData.lastName;
+    }
+    if (updateData.role !== undefined) {
+      allowedUpdates.role = updateData.role;
+    }
+
+    const updatedUser = await this.userModel
+      .findByIdAndUpdate(userId, allowedUpdates, { new: true })
+      .populate('tenantId', 'name tenantName');
+
+    if (!updatedUser) {
+      throw new BadRequestException('Failed to update user');
+    }
+
+    return updatedUser;
+  }
+
   // ==================== SUPERADMIN METHODS ====================
 
   /**
@@ -238,7 +287,7 @@ export class UsersService {
           { isDeleted: false },
         ],
       })
-      .populate('tenantId', 'name') // Populate tenant name
+      .populate('tenantId', 'name tenantName') // Populate tenant name y tenantName
       .sort({ createdAt: -1 })
       .exec();
   }
@@ -266,7 +315,7 @@ export class UsersService {
         },
         { new: true },
       )
-      .populate('tenantId', 'name');
+      .populate('tenantId', 'name tenantName');
 
     if (!updatedUser) {
       throw new BadRequestException('Failed to assign tenant');
@@ -288,15 +337,6 @@ export class UsersService {
     const newActiveStatus = !user.isActive;
     const newStatus = newActiveStatus ? 'active' : 'inactive';
 
-    console.log('🔄 SuperAdmin: Toggle user status:', {
-      userId,
-      email: user.email,
-      oldIsActive: user.isActive,
-      oldStatus: user.status,
-      newIsActive: newActiveStatus,
-      newStatus,
-    });
-
     const updatedUser = await this.userModel
       .findByIdAndUpdate(
         userId,
@@ -311,13 +351,6 @@ export class UsersService {
     if (!updatedUser) {
       throw new BadRequestException('Failed to update user');
     }
-
-    console.log('✅ Usuario actualizado:', {
-      userId,
-      email: updatedUser.email,
-      isActive: updatedUser.isActive,
-      status: (updatedUser as any).status,
-    });
 
     return updatedUser;
   }
@@ -352,13 +385,11 @@ export class UsersService {
    * Obtener TODOS los usuarios del sistema (para SuperAdmin)
    */
   async findAllUsers(): Promise<User[]> {
-    console.log('👥 SuperAdmin: Obteniendo todos los usuarios del sistema');
-
     const users = await this.userModel
       .find({
         isDeleted: false, // Solo usuarios no eliminados
       })
-      .populate('tenantId', 'name') // Incluir info del tenant
+      .populate('tenantId', 'name tenantName') // Incluir info del tenant
       .sort({ createdAt: -1 })
       .exec();
 
