@@ -416,8 +416,6 @@ export class SuperAdminService {
    * Obtener todos los tenants con información enriquecida (para SuperAdmin)
    */
   async getAllTenantsWithDetails() {
-    console.log('🏢 SuperAdmin: Obteniendo todos los tenants con detalles');
-
     try {
       const tenants = await this.tenantsService.findAllTenants();
       const enrichedTenants: any[] = [];
@@ -456,12 +454,6 @@ export class SuperAdminService {
         enrichedTenants.push(transformedTenant);
       }
 
-      console.log('✅ Tenants con detalles obtenidos:', {
-        total: enrichedTenants.length,
-        active: enrichedTenants.filter((t) => t.isActive).length,
-        inactive: enrichedTenants.filter((t) => !t.isActive).length,
-      });
-
       return enrichedTenants;
     } catch (error) {
       console.error('❌ Error obteniendo tenants:', error);
@@ -485,27 +477,15 @@ export class SuperAdminService {
         return 0;
       }
 
-      // Debug temporal - remover después
-      console.log(
-        `🔍 DEBUG - Contando usuarios para tenant ${tenantId} (${tenant.tenantName}):`,
-      );
-      console.log(`📊 Total usuarios encontrados: ${users.length}`);
-
       // Buscar usuarios por tenantId (nuevo sistema) O por tenantName (sistema viejo)
       const usersForTenant = users.filter(
         (user) =>
           user.tenantId?.toString() === tenantId ||
           user.tenantName === tenant.tenantName,
       );
-      console.log(
-        `🏢 Usuarios del tenant ${tenantId}: ${usersForTenant.length}`,
-      );
 
       const activeUsers = usersForTenant.filter(
         (user) => user.isActive && !user.isDeleted,
-      );
-      console.log(
-        `✅ Usuarios activos del tenant ${tenantId}: ${activeUsers.length}`,
       );
 
       if (usersForTenant.length > 0) {
@@ -517,7 +497,7 @@ export class SuperAdminService {
             isActive: u.isActive,
             isDeleted: u.isDeleted,
             tenantId: u.tenantId?.toString(),
-            tenantName: u.tenantName, // Mostrar también tenantName
+            tenantName: u.tenantName,
           })),
         );
       }
@@ -598,8 +578,6 @@ export class SuperAdminService {
    * Obtener un tenant específico con información completa (SuperAdmin)
    */
   async getTenantById(tenantId: string) {
-    console.log('🏢 SuperAdmin: Obteniendo tenant específico:', { tenantId });
-
     try {
       const tenant = await this.tenantsService.getTenantById(tenantId);
       if (!tenant) {
@@ -631,12 +609,6 @@ export class SuperAdminService {
         activeUsersCount,
       );
 
-      console.log('✅ Tenant específico obtenido:', {
-        tenantId,
-        tenantName: tenant.tenantName,
-        activeUsers: activeUsersCount,
-      });
-
       return transformedTenant;
     } catch (error) {
       console.error('❌ Error obteniendo tenant específico:', error);
@@ -650,8 +622,6 @@ export class SuperAdminService {
    * Obtener usuarios asignados a un tenant específico (Details)
    */
   async getTenantUsers(tenantId: string) {
-    console.log('👥 SuperAdmin: Obteniendo usuarios del tenant:', { tenantId });
-
     try {
       const users = await this.usersService.findAssignedUsers();
 
@@ -668,13 +638,6 @@ export class SuperAdminService {
           user.tenantId?.toString() === tenantId ||
           user.tenantName === tenant.tenantName,
       );
-
-      console.log('✅ Usuarios del tenant obtenidos:', {
-        tenantId,
-        tenantName: tenant.tenantName,
-        totalUsers: tenantUsers.length,
-        activeUsers: tenantUsers.filter((u) => u.isActive).length,
-      });
 
       return tenantUsers.map((user) => ({
         _id: user._id,
@@ -704,8 +667,6 @@ export class SuperAdminService {
     },
     userId: string,
   ) {
-    console.log('🏢 SuperAdmin: Creando nuevo tenant:', { createData, userId });
-
     try {
       // Validar que no existe un tenant con ese nombre
       const existingTenant = await this.tenantsService.getByTenantName(
@@ -722,11 +683,6 @@ export class SuperAdminService {
         createData,
         userId as any,
       );
-
-      console.log('✅ Tenant creado exitosamente:', {
-        tenantId: newTenant._id,
-        tenantName: newTenant.tenantName,
-      });
 
       // Transformar al formato del frontend (tenant recién creado no tiene usuarios ni oficina)
       return this.transformTenantForFrontend(
@@ -790,12 +746,6 @@ export class SuperAdminService {
       if (!updatedTenant) {
         throw new BadRequestException('Error actualizando tenant');
       }
-
-      console.log('✅ Tenant actualizado exitosamente:', {
-        tenantId,
-        tenantName: updatedTenant.tenantName,
-        updatedFields: Object.keys(updateData),
-      });
 
       // Obtener datos completos para transformar al formato del frontend
       const activeUsersCount = await this.countActiveUsersByTenant(tenantId);
@@ -869,8 +819,6 @@ export class SuperAdminService {
    * Obtener tenant por nombre (SuperAdmin)
    */
   async getTenantByName(tenantName: string) {
-    console.log('🏢 SuperAdmin: Obteniendo tenant por nombre:', { tenantName });
-
     try {
       const tenant = await this.tenantsService.getByTenantName(tenantName);
       if (!tenant) {
@@ -936,11 +884,6 @@ export class SuperAdminService {
       zipCode?: string;
     },
   ) {
-    console.log('🏢 SuperAdmin: Actualizando oficina del tenant:', {
-      tenantId,
-      officeData,
-    });
-
     try {
       const tenant = await this.tenantsService.getTenantById(tenantId);
       if (!tenant) {
@@ -965,7 +908,6 @@ export class SuperAdminService {
           officeData,
           'superadmin', // userId temporal para SuperAdmin
         );
-        console.log('✅ Oficina actualizada:', office._id);
       } else {
         // Crear nueva oficina usando el método correcto
         const newOfficeData = {
@@ -974,7 +916,6 @@ export class SuperAdminService {
           tenantId: tenant._id.toString(),
         };
         office = await this.officesService.create(newOfficeData as any);
-        console.log('✅ Nueva oficina creada:', office._id);
       }
 
       // Devolver el tenant completo actualizado
@@ -991,10 +932,6 @@ export class SuperAdminService {
    * Soft delete de un tenant (SuperAdmin)
    */
   async deleteTenant(tenantId: string) {
-    console.log('🗑️ SuperAdmin: Eliminando tenant (soft delete):', {
-      tenantId,
-    });
-
     try {
       const tenant = await this.tenantsService.getTenantById(tenantId);
       if (!tenant) {
@@ -1024,13 +961,9 @@ export class SuperAdminService {
   // ==================== MIGRATION METHODS ====================
 
   /**
-   * Migrar tenant del modelo viejo (acoplado) al nuevo (separado)
+   * Migrar tenant del modelo viejo (acoplado) al nuevo (separado) - Esto no esta en uso, la migracion va desde la terminal
    */
   async migrateTenantArchitecture(tenantName: string) {
-    console.log(
-      `🚀 SuperAdmin: Iniciando migración de arquitectura para tenant: ${tenantName}`,
-    );
-
     try {
       // 1. Buscar el tenant viejo (con datos de usuario mezclados)
       const oldTenant = await this.tenantsService.getByTenantName(tenantName);
@@ -1048,8 +981,6 @@ export class SuperAdminService {
         };
       }
 
-      console.log(`📋 Tenant encontrado: ${oldTenantAny.email}`);
-
       // 2. Verificar si ya existe un usuario con este email
       const existingUser = await this.usersService.findByEmail(
         oldTenantAny.email,
@@ -1063,7 +994,7 @@ export class SuperAdminService {
       }
 
       // 3. Crear usuario en la colección users
-      console.log(`👤 Creando usuario: ${oldTenantAny.email}`);
+
       const newUser = await this.usersService.create({
         firstName: oldTenant.name?.split(' ')[0] || 'Usuario',
         lastName: oldTenant.name?.split(' ').slice(1).join(' ') || '',
@@ -1085,8 +1016,6 @@ export class SuperAdminService {
           isDeleted: false,
         } as any,
       );
-
-      console.log(`✅ Usuario creado y actualizado: ${newUser._id}`);
 
       // 4. Crear oficina si hay datos de oficina
       let createdOffice: any = null;
