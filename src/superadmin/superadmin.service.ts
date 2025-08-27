@@ -413,6 +413,29 @@ export class SuperAdminService {
   }
 
   /**
+   * Obtener todos los tenants - Solo datos básicos para tabla (RÁPIDO)
+   */
+  async getAllTenantsSimple() {
+    try {
+      const tenants = await this.tenantsService.findAllTenants();
+
+      // Solo datos básicos para la tabla
+      return tenants.map((tenant) => ({
+        id: tenant._id.toString(),
+        tenantName: tenant.tenantName,
+        name: tenant.name,
+        isActive: tenant.isActive || false,
+        createdAt: (tenant as any).createdAt || new Date().toISOString(),
+      }));
+    } catch (error) {
+      console.error('❌ Error obteniendo tenants simples:', error);
+      throw new BadRequestException(
+        `Error obteniendo tenants: ${error.message}`,
+      );
+    }
+  }
+
+  /**
    * Obtener todos los tenants con información enriquecida (para SuperAdmin)
    */
   async getAllTenantsWithDetails() {

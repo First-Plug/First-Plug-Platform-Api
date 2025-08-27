@@ -77,10 +77,18 @@ export class SuperAdminController {
   // ==================== TENANTS ENDPOINTS ====================
 
   /**
-   * Obtener todos los tenants con información enriquecida (SuperAdmin only)
+   * Obtener todos los tenants - Solo datos básicos para tabla (SuperAdmin only)
    */
   @Get('tenants')
   async getAllTenants() {
+    return await this.superAdminService.getAllTenantsSimple();
+  }
+
+  /**
+   * Obtener todos los tenants con información enriquecida (SuperAdmin only)
+   */
+  @Get('tenants/detailed')
+  async getAllTenantsDetailed() {
     return await this.superAdminService.getAllTenantsWithDetails();
   }
 
