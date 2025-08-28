@@ -1,10 +1,28 @@
-import { IsString, IsOptional, IsEnum } from 'class-validator';
+import {
+  IsOptional,
+  IsEnum,
+  ValidateIf,
+  IsMongoId,
+  IsString,
+} from 'class-validator';
+
+export enum UserRoleDto {
+  user = 'user',
+  admin = 'admin',
+  superadmin = 'superadmin',
+}
 
 export class AssignTenantSuperAdminDto {
-  @IsString()
-  tenantId: string;
-
   @IsOptional()
-  @IsEnum(['user', 'admin', 'superadmin'])
-  role?: string = 'user';
+  @IsEnum(UserRoleDto)
+  role?: UserRoleDto = UserRoleDto.user;
+
+  @ValidateIf((o) => (o.role ?? UserRoleDto.user) !== UserRoleDto.superadmin)
+  @IsMongoId()
+  tenantId?: string;
+
+  @ValidateIf((o) => (o.role ?? UserRoleDto.user) !== UserRoleDto.superadmin)
+  @IsOptional()
+  @IsString()
+  tenantName?: string;
 }

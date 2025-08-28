@@ -128,7 +128,10 @@ export class TenantsService {
   }
 
   async findAllTenants() {
-    const tenants = await this.tenantRepository.find({});
+    const tenants = await this.tenantRepository
+      .find({}, null, { sort: { createdAt: -1 } })
+      .lean()
+      .exec();
     if (!tenants || tenants.length === 0) {
       throw new Error('No se encontraron tenants en la base de datos');
     }
