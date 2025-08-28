@@ -178,6 +178,7 @@ export class UsersController {
       userId,
       assignData.tenantId,
       assignData.role || 'user',
+      assignData.tenantName,
     );
   }
 

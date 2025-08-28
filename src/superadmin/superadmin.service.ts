@@ -29,10 +29,6 @@ export class SuperAdminService {
    * Obtener shipments por tenant específico (para SuperAdmin)
    */
   async getShipmentsByTenant(tenantName: string) {
-    console.log('📦 SuperAdmin: Obteniendo shipments por tenant:', {
-      tenantName,
-    });
-
     return await this.shipmentsService.findAll(tenantName);
   }
 
@@ -487,17 +483,17 @@ export class SuperAdminService {
       );
 
       if (usersForTenant.length > 0) {
-        console.log(
-          '👥 Usuarios del tenant:',
-          usersForTenant.map((u) => ({
-            id: u._id,
-            email: u.email,
-            isActive: u.isActive,
-            isDeleted: u.isDeleted,
-            tenantId: u.tenantId?.toString(),
-            tenantName: u.tenantName,
-          })),
-        );
+        // console.log(
+        //   '👥 Usuarios del tenant:',
+        //   usersForTenant.map((u) => ({
+        //     id: u._id,
+        //     email: u.email,
+        //     isActive: u.isActive,
+        //     isDeleted: u.isDeleted,
+        //     tenantId: u.tenantId?.toString(),
+        //     tenantName: u.tenantName,
+        //   })),
+        // );
       }
 
       return activeUsers.length;

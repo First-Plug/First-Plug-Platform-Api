@@ -279,15 +279,12 @@ export class UsersService {
       .find({
         $and: [
           {
-            $or: [
-              { tenantId: { $exists: true } }, // Con tenantId
-              { role: 'superadmin' }, // O SuperAdmins
-            ],
+            $or: [{ tenantId: { $exists: true } }, { role: 'superadmin' }],
           },
           { isDeleted: false },
         ],
       })
-      .populate('tenantId', 'name tenantName') // Populate tenant name y tenantName
+      .populate('tenantId', 'name tenantName')
       .sort({ createdAt: -1 })
       .exec();
   }
@@ -297,24 +294,36 @@ export class UsersService {
    */
   async assignTenantSuperAdmin(
     userId: string,
-    tenantId: string,
+    tenantId?: string,
     role: string = 'user',
+    tenantName?: string,
   ): Promise<User> {
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new BadRequestException('User not found');
     }
+    const update: any = {
+      role,
+      status: 'active',
+    };
+
+    if (role === 'superadmin') {
+      update.tenantId = null;
+      update.tenantName = null;
+    } else {
+      if (!tenantId) {
+        throw new BadRequestException(
+          'tenantId is required for non-superadmin roles',
+        );
+      }
+      update.tenantId = new Types.ObjectId(tenantId);
+      if (typeof tenantName === 'string') {
+        update.tenantName = tenantName;
+      }
+    }
 
     const updatedUser = await this.userModel
-      .findByIdAndUpdate(
-        userId,
-        {
-          tenantId: new Types.ObjectId(tenantId),
-          role,
-          status: 'active',
-        },
-        { new: true },
-      )
+      .findByIdAndUpdate(userId, update, { new: true })
       .populate('tenantId', 'name tenantName');
 
     if (!updatedUser) {
