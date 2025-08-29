@@ -59,31 +59,36 @@ export class UsersService {
   }
 
   async createByProvider(dto: CreateUserByProviderDto) {
-    let user = await this.userModel.findOne({ email: dto.email });
+    const email = dto.email.trim().toLowerCase();
+    let user = await this.userModel.findOne({ email });
+
+    const [firstName, ...rest] = (dto.name ?? '').trim().split(' ');
+    const lastName = rest.join(' ');
 
     if (user) {
-      user.firstName = dto.name.split(' ')[0];
-      user.lastName = dto.name.split(' ').slice(1).join(' ');
-      user.image = dto.image;
+      user.firstName = firstName || user.firstName || '';
+      user.lastName = lastName || user.lastName || '';
+      user.image = dto.image ?? user.image ?? '';
       user.accountProvider = dto.accountProvider;
       await user.save();
-      return user;
+      return user.populate('tenantId', 'name tenantName');
     }
 
     user = new this.userModel({
-      email: dto.email,
-      firstName: dto.name.split(' ')[0],
-      lastName: dto.name.split(' ').slice(1).join(' '),
-      image: dto.image,
+      email,
+      firstName: firstName || '',
+      lastName: lastName || '',
+      image: dto.image ?? '',
       accountProvider: dto.accountProvider,
       status: 'pending',
       isActive: true,
+      role: 'user',
     });
 
     await user.save();
 
     await this.slack.send(
-      `El usuario ${user.email} se registró correctamente con ${dto.accountProvider}. Por favor habilitarlo cuanto antes y darle aviso para que pueda ingresar a la plataforma.`,
+      `El usuario ${user.email} se registró con ${dto.accountProvider}.`,
     );
 
     return user;

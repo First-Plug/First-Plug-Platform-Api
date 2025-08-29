@@ -11,6 +11,7 @@ import { JwtGuard } from './guard/jwt.guard';
 import { SuperAdminGuard } from './guards/super-admin.guard';
 import { CreateTenantByProvidersDto } from 'src/tenants/dto/create-tenant-by-providers.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { CreateUserByProviderDto } from 'src/users/dto/create-user-by-provider.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -49,12 +50,10 @@ export class AuthController {
     });
 
     try {
-      // Separar nombre en firstName y lastName
       const nameParts = registerData.name.trim().split(' ');
       const firstName = nameParts[0] || registerData.name;
       const lastName = nameParts.slice(1).join(' ') || '';
 
-      // Crear SOLO el usuario (sin tenant)
       const user = await this.usersService.create({
         firstName,
         lastName,
@@ -71,14 +70,13 @@ export class AuthController {
         tenantId: user.tenantId || 'null (sin asignar)',
       });
 
-      // Retornar en formato compatible con frontend
       return {
         _id: user._id,
         name: registerData.name,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        tenantId: null, // Sin tenant asignado
+        tenantId: null,
         message:
           'Usuario creado. Debe ser asignado a un tenant para poder hacer login.',
         createdAt: new Date(),
@@ -96,10 +94,9 @@ export class AuthController {
     console.log('🏢 Creando tenant:', createTenantDto.tenantName);
 
     try {
-      // Crear SOLO el tenant
       const tenant = await this.tenantService.createTenant(
         createTenantDto,
-        null as any, // CreatedBy temporal hasta que se implemente FirstPlug UI
+        null as any,
       );
       console.log('✅ Tenant creado:', tenant.tenantName);
 
@@ -164,12 +161,8 @@ export class AuthController {
   }
 
   @Post('register-providers')
-  async registerByProviders(
-    @Body() createTenantByProvidersDto: CreateTenantByProvidersDto,
-  ) {
-    return await this.tenantService.createByProviders(
-      createTenantByProvidersDto,
-    );
+  async registerByProviders(@Body() dto: CreateUserByProviderDto) {
+    return await this.usersService.createByProvider(dto);
   }
 
   @Post('login')

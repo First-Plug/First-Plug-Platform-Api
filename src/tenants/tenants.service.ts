@@ -315,16 +315,16 @@ export class TenantsService {
   }
 
   // Método para compatibilidad con AuthController
-  async createByProviders(dto: any): Promise<Tenant> {
-    // Mapear el DTO de providers al DTO estándar
-    const createTenantDto: CreateTenantDto = {
-      name: dto.name || dto.email?.split('@')[0] || 'Default Company',
-      tenantName: dto.tenantName || dto.email?.split('@')[0] || 'default',
-      image: dto.image || '',
-    };
+  // async createByProviders(dto: any): Promise<Tenant> {
+  //   // Mapear el DTO de providers al DTO estándar
+  //   const createTenantDto: CreateTenantDto = {
+  //     name: dto.name || dto.email?.split('@')[0] || 'Default Company',
+  //     tenantName: dto.tenantName || dto.email?.split('@')[0] || 'default',
+  //     image: dto.image || '',
+  //   };
 
-    return this.create(createTenantDto);
-  }
+  //   return this.create(createTenantDto);
+  // }
 
   async getByTenantName(tenantName: string) {
     return await this.tenantRepository.findOne({ tenantName });
