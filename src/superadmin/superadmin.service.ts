@@ -63,8 +63,9 @@ export class SuperAdminService {
   /**
    * Obtener TODOS los shipments de TODOS los tenants (para SuperAdmin)
    * Cada shipment incluye información del tenant
+   * Filtra por fechas de creación si se proporcionan
    */
-  async getAllShipmentsAllTenants() {
+  async getAllShipmentsAllTenants(startDate?: Date, endDate?: Date) {
     try {
       // 1. Obtener todos los tenants del sistema
       const tenants = await this.tenantsService.findAllTenants();
@@ -73,7 +74,7 @@ export class SuperAdminService {
       // 2. Obtener shipments de todos los tenants
       const result = await this.getAllShipmentsCrossTenant(tenantNames);
 
-      // 3. Convertir a formato plano con tenantName en cada shipment
+      // 3. Convertir a formato plano con tenantName en cada shipment y filtrar por fechas
       const allShipmentsFlat: any[] = [];
 
       result.forEach((tenantData) => {
@@ -82,6 +83,19 @@ export class SuperAdminService {
           const shipmentPlain = shipment.toObject
             ? shipment.toObject()
             : shipment;
+
+          // Filtrar por fechas si se proporcionan
+          if (startDate || endDate) {
+            const createdAt = shipmentPlain.createdAt;
+
+            if (startDate && createdAt < startDate) {
+              return; // Saltar este shipment si es anterior a startDate
+            }
+
+            if (endDate && createdAt > endDate) {
+              return; // Saltar este shipment si es posterior a endDate
+            }
+          }
 
           allShipmentsFlat.push({
             ...shipmentPlain,

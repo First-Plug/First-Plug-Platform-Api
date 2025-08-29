@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -49,8 +50,14 @@ export class SuperAdminController {
    * Cada shipment incluye el tenantName
    */
   @Get('shipments/all')
-  async getAllShipments() {
-    return await this.superAdminService.getAllShipmentsAllTenants();
+  async getAllShipments(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+  ) {
+    const start = startDate ? new Date(startDate) : undefined;
+    const end = endDate ? new Date(endDate) : undefined;
+
+    return await this.superAdminService.getAllShipmentsAllTenants(start, end);
   }
 
   /**
