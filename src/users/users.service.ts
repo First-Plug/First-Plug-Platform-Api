@@ -214,7 +214,6 @@ export class UsersService {
       role?: string;
     },
   ): Promise<User> {
-    // Validar que userId no sea undefined o inválido
     if (!userId || userId === 'undefined' || userId.trim() === '') {
       throw new BadRequestException('User ID is required and must be valid');
     }
@@ -241,8 +240,14 @@ export class UsersService {
       allowedUpdates.role = updateData.role;
     }
 
+    const updateOps: any = { $set: allowedUpdates };
+
+    if ((updateData.role ?? '').toLowerCase() === 'superadmin') {
+      updateOps.$unset = { tenantId: '', tenantName: '' };
+    }
+
     const updatedUser = await this.userModel
-      .findByIdAndUpdate(userId, allowedUpdates, { new: true })
+      .findByIdAndUpdate(userId, updateOps, { new: true })
       .populate('tenantId', 'name tenantName');
 
     if (!updatedUser) {

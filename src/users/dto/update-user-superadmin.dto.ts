@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsIn } from 'class-validator';
 
 export class UpdateUserSuperAdminDto {
   @IsOptional()
@@ -10,8 +10,8 @@ export class UpdateUserSuperAdminDto {
   lastName?: string;
 
   @IsOptional()
-  @IsEnum(['user', 'admin', 'superadmin'], {
-    message: 'role must be one of: user, admin, superadmin'
+  @IsIn(['user', 'admin', 'superadmin'], {
+    message: 'role must be one of: user, admin, superadmin',
   })
-  role?: string;
+  role?: 'user' | 'admin' | 'superadmin';
 }
