@@ -901,15 +901,23 @@ export class SuperAdminService {
           tenant.tenantName,
           officeData,
           'superadmin', // userId temporal para SuperAdmin
+          tenant._id.toString(), // tenantId
         );
       } else {
-        // Crear nueva oficina usando el método correcto
+        // 🔧 CREAR nueva oficina EN LA BASE DE DATOS DEL TENANT
+        console.log(
+          `🏗️ Creando oficina default para tenant ${tenant.tenantName}`,
+        );
         const newOfficeData = {
           ...officeData,
           name: officeData.name || 'Oficina Principal',
-          tenantId: tenant._id.toString(),
         };
-        office = await this.officesService.create(newOfficeData as any);
+        office = await this.officesService.setupDefaultOffice(
+          tenant.tenantName,
+          tenant._id,
+          newOfficeData,
+          'superadmin',
+        );
       }
 
       // Devolver el tenant completo actualizado
