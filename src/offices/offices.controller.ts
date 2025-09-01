@@ -74,6 +74,7 @@ export class OfficesController {
       tenantName,
       updateData,
       user._id,
+      user.tenantId,
     );
   }
 

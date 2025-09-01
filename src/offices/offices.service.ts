@@ -113,6 +113,7 @@ export class OfficesService {
     tenantName: string,
     updateData: UpdateOfficeDto,
     userId: string,
+    tenantId?: string,
   ): Promise<Office> {
     console.log('🏢 Actualizando oficina default:', {
       tenantName,
@@ -122,15 +123,69 @@ export class OfficesService {
     const OfficeModel =
       await this.tenantModelRegistry.getOfficeModel(tenantName);
 
-    const currentOffice = await OfficeModel.findOne({
+    let currentOffice = await OfficeModel.findOne({
       isDefault: true,
       isDeleted: false,
     });
 
     if (!currentOffice) {
-      throw new NotFoundException(
-        'No se encontró oficina default para este tenant',
+      // 🔧 CREAR oficina default con los datos enviados
+      const newOfficeData = {
+        name: updateData.name || 'Oficina Principal',
+        isDefault: true,
+        email: updateData.email || '',
+        phone: updateData.phone || '',
+        country: updateData.country || '',
+        city: updateData.city || '',
+        state: updateData.state || '',
+        zipCode: updateData.zipCode || '',
+        address: updateData.address || '',
+        apartment: updateData.apartment || '',
+        tenantId: tenantId || userId,
+        isActive: true,
+        isDeleted: false,
+      };
+
+      currentOffice = await OfficeModel.create(newOfficeData);
+
+      // Para oficina nueva, no hay dirección anterior
+      const emptyAddress = {
+        address: '',
+        apartment: '',
+        city: '',
+        state: '',
+        country: '',
+        zipCode: '',
+        phone: '',
+        ourOfficeEmail: '',
+      };
+
+      const newAddress = {
+        address: currentOffice.address,
+        apartment: currentOffice.apartment,
+        city: currentOffice.city,
+        state: currentOffice.state,
+        country: currentOffice.country,
+        zipCode: currentOffice.zipCode,
+        phone: currentOffice.phone,
+        ourOfficeEmail: currentOffice.email,
+      };
+
+      // Emitir evento para oficina nueva
+      console.log('📍 Oficina nueva creada, emitiendo evento');
+      this.eventEmitter.emit(
+        EventTypes.OFFICE_ADDRESS_UPDATED,
+        new OfficeAddressUpdatedEvent(
+          tenantName,
+          emptyAddress,
+          newAddress,
+          new Date(),
+          userId,
+          currentOffice.email,
+        ),
       );
+
+      return currentOffice;
     }
 
     const oldAddress = {
