@@ -8,6 +8,7 @@ import { UserAccessService } from './access/user-access.service';
 import { User, UserSchema } from './schemas/user.schema';
 import { TenantsModule } from '../tenants/tenants.module';
 import { TenantDbModule } from '../infra/db/tenant-db.module';
+import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 @Module({
   imports: [
@@ -21,7 +22,7 @@ import { TenantDbModule } from '../infra/db/tenant-db.module';
     }),
   ],
   controllers: [UsersController],
-  providers: [UsersService, UserAccessService],
+  providers: [UsersService, UserAccessService, EventsGateway],
   exports: [UsersService, UserAccessService],
 })
 export class UsersModule {}

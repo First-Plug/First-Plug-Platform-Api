@@ -772,6 +772,14 @@ export class SuperAdminService {
         );
       }
 
+      this.eventsGateway.notifyTenant(
+        updatedTenant.tenantName,
+        'company-updated',
+        {
+          office,
+        },
+      );
+
       // Transformar al formato del frontend
       return this.transformTenantForFrontend(
         updatedTenant.toObject ? updatedTenant.toObject() : updatedTenant,
@@ -933,6 +941,10 @@ export class SuperAdminService {
           'superadmin',
         );
       }
+
+      this.eventsGateway.notifyTenant(tenant.tenantName, 'office-updated', {
+        office,
+      });
 
       // Devolver el tenant completo actualizado
       return await this.getTenantById(tenantId);

@@ -12,6 +12,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { CreateUserByProviderDto } from './dto/create-user-by-provider.dto';
 import { UpdateUserConfigDto } from './dto/update-user-config.dto';
 import * as bcrypt from 'bcrypt';
+import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 @Injectable()
 export class UsersService {
@@ -19,6 +20,7 @@ export class UsersService {
     @InjectModel(User.name)
     private readonly userModel: Model<User>,
     @InjectSlack() private readonly slack: IncomingWebhook,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   async findByEmail(email: string): Promise<User | null> {
@@ -258,6 +260,14 @@ export class UsersService {
     if (!updatedUser) {
       throw new BadRequestException('Failed to update user');
     }
+
+    this.eventsGateway.notifyTenant(
+      updatedUser.tenantName as string,
+      'user-profile-updated',
+      {
+        user: updatedUser,
+      },
+    );
 
     return updatedUser;
   }
