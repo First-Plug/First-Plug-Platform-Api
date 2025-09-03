@@ -6,7 +6,7 @@ export class UpdateTenantOfficeDto {
   name?: string;
 
   @IsOptional()
-  @ValidateIf((o) => o.email !== '')
+  @ValidateIf((o) => o.email !== '' && o.email !== undefined)
   @IsEmail()
   email?: string;
 
@@ -37,4 +37,9 @@ export class UpdateTenantOfficeDto {
   @IsOptional()
   @IsString()
   zipCode?: string;
+
+  // 🔧 Campos a borrar (setear como string vacío)
+  @IsOptional()
+  @IsString({ each: true })
+  fieldsToEmpty?: string[];
 }

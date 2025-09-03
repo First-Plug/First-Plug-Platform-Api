@@ -4,11 +4,17 @@ import {
   IsNumber,
   IsBoolean,
   IsObject,
+  IsNotEmpty,
+  ValidateIf,
+  MaxLength,
 } from 'class-validator';
 
 export class UpdateTenantDto {
   @IsOptional()
+  @ValidateIf((o) => o.name !== undefined)
   @IsString()
+  @IsNotEmpty({ message: 'Company name cannot be empty' })
+  @MaxLength(20, { message: 'Company name cannot exceed 20 characters' })
   name?: string;
 
   @IsOptional()

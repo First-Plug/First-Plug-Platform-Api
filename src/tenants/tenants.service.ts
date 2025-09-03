@@ -271,9 +271,21 @@ export class TenantsService {
   }
 
   async updateTenantName(tenantName: string, newName: string) {
+    // Validar que el nuevo nombre no esté vacío
+    if (!newName || newName.trim() === '') {
+      throw new BadRequestException('Company name cannot be empty');
+    }
+
+    // Validar longitud máxima
+    if (newName.length > 100) {
+      throw new BadRequestException(
+        'Company name cannot exceed 100 characters',
+      );
+    }
+
     const updatedTenant = await this.tenantRepository.findOneAndUpdate(
       { tenantName },
-      { $set: { name: newName, updatedAt: new Date() } },
+      { $set: { name: newName.trim(), updatedAt: new Date() } },
       { new: true },
     );
 

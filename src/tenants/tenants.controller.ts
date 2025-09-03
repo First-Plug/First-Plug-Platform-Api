@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { TenantsService } from './tenants.service';
+import { UpdateCompanyNameDto } from './dto/update-company-name.dto';
 
 import { Request } from 'express';
 
@@ -139,11 +140,11 @@ export class TenantsController {
   @Patch('update-name/:tenantName')
   async updateTenantName(
     @Param('tenantName') tenantName: string,
-    @Body('name') name: string,
+    @Body() updateCompanyNameDto: UpdateCompanyNameDto,
   ) {
     const updatedTenant = await this.tenantService.updateTenantName(
       tenantName,
-      name,
+      updateCompanyNameDto.name,
     );
     return {
       message: 'Company name updated successfully',
