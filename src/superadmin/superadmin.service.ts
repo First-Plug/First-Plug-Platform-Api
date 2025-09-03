@@ -29,6 +29,7 @@ export class SuperAdminService {
    * Obtener shipments por tenant específico (para SuperAdmin)
    */
   async getShipmentsByTenant(tenantName: string) {
+    // antes: return await this.shipmentsService.findAll(tenantName);
     return await this.shipmentsService.findAll(tenantName);
   }
 
@@ -36,8 +37,6 @@ export class SuperAdminService {
    * Obtener todos los shipments de múltiples tenants (para SuperAdmin)
    */
   async getAllShipmentsCrossTenant(tenantNames: string[]) {
-    console.log('📦 SuperAdmin: Obteniendo shipments cross-tenant');
-
     const result: { tenantName: string; shipments: any[] }[] = [];
 
     for (const tenantName of tenantNames) {
@@ -51,11 +50,6 @@ export class SuperAdminService {
         );
       }
     }
-
-    console.log('✅ Shipments cross-tenant obtenidos:', {
-      tenantsCount: result.length,
-      totalShipments: result.reduce((sum, t) => sum + t.shipments.length, 0),
-    });
 
     return result;
   }
@@ -332,9 +326,6 @@ export class SuperAdminService {
           newStatus,
           shipment,
         });
-        console.log(
-          `📡 Websocket notification sent for shipment ${shipmentId} - status updated`,
-        );
       } catch (error) {
         console.error(
           `❌ Error sending websocket notification for shipment ${shipmentId}:`,
@@ -497,17 +488,6 @@ export class SuperAdminService {
       );
 
       if (usersForTenant.length > 0) {
-        // console.log(
-        //   '👥 Usuarios del tenant:',
-        //   usersForTenant.map((u) => ({
-        //     id: u._id,
-        //     email: u.email,
-        //     isActive: u.isActive,
-        //     isDeleted: u.isDeleted,
-        //     tenantId: u.tenantId?.toString(),
-        //     tenantName: u.tenantName,
-        //   })),
-        // );
       }
 
       return activeUsers.length;
@@ -560,13 +540,6 @@ export class SuperAdminService {
           isActive: newStatus,
         } as any,
       );
-
-      console.log('✅ Tenant status actualizado:', {
-        tenantId,
-        tenantName: tenant.tenantName,
-        oldStatus: tenant.isActive,
-        newStatus,
-      });
 
       return {
         message: `Tenant ${newStatus ? 'activado' : 'desactivado'} correctamente`,
@@ -799,8 +772,6 @@ export class SuperAdminService {
    * Obtener estadísticas de tenants (SuperAdmin)
    */
   async getTenantStats() {
-    console.log('📊 SuperAdmin: Obteniendo estadísticas de tenants');
-
     try {
       const tenants = await this.tenantsService.findAllTenants();
       const activeTenants = tenants.filter((t) => t.isActive);
@@ -821,7 +792,6 @@ export class SuperAdminService {
         averageUsersPerTenant,
       };
 
-      console.log('✅ Estadísticas de tenants obtenidas:', stats);
       return stats;
     } catch (error) {
       console.error('❌ Error obteniendo estadísticas de tenants:', error);
@@ -868,12 +838,6 @@ export class SuperAdminService {
         activeUsersCount,
       );
 
-      console.log('✅ Tenant por nombre obtenido:', {
-        tenantName,
-        tenantId: tenant._id,
-        activeUsers: activeUsersCount,
-      });
-
       return transformedTenant;
     } catch (error) {
       console.error('❌ Error obteniendo tenant por nombre:', error);
@@ -918,10 +882,23 @@ export class SuperAdminService {
       }
 
       if (office) {
+        // 🔧 Procesar campos a borrar
+        const updateData = { ...officeData };
+        const officeDataAny = officeData as any;
+        if (
+          officeDataAny.fieldsToEmpty &&
+          officeDataAny.fieldsToEmpty.length > 0
+        ) {
+          officeDataAny.fieldsToEmpty.forEach((field: string) => {
+            (updateData as any)[field] = '';
+          });
+          delete (updateData as any).fieldsToEmpty; // Remover el campo auxiliar
+        }
+
         // Actualizar oficina existente usando el método correcto
         office = await this.officesService.updateDefaultOffice(
           tenant.tenantName,
-          officeData,
+          updateData,
           'superadmin', // userId temporal para SuperAdmin
           tenant._id.toString(), // tenantId
         );

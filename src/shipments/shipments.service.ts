@@ -116,6 +116,25 @@ export class ShipmentsService {
     return await ShipmentModel.find().sort({ createdAt: -1 }).exec();
   }
 
+  async findAllReadOnlyIfExists(tenantId: string) {
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantId);
+
+    const exists = await connection.db
+      .listCollections({ name: 'shipments' }, { nameOnly: true })
+      .hasNext();
+
+    if (!exists) return [];
+
+    const docs = await connection.db
+      .collection('shipments')
+      .find({})
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    return docs;
+  }
+
   private getCountryCode(country: string): string {
     if (country === 'Our office') {
       return 'OO';

@@ -118,6 +118,7 @@ export class OfficesService {
     console.log('🏢 Actualizando oficina default:', {
       tenantName,
       userId,
+      updateData,
     });
 
     const OfficeModel =
@@ -172,7 +173,7 @@ export class OfficesService {
       };
 
       // Emitir evento para oficina nueva
-      console.log('📍 Oficina nueva creada, emitiendo evento');
+
       this.eventEmitter.emit(
         EventTypes.OFFICE_ADDRESS_UPDATED,
         new OfficeAddressUpdatedEvent(
@@ -199,20 +200,17 @@ export class OfficesService {
       ourOfficeEmail: currentOffice.email,
     };
 
+    // 🔧 Usar $set para asegurar que strings vacíos se actualicen correctamente
+
     const updatedOffice = await OfficeModel.findByIdAndUpdate(
       currentOffice._id,
-      updateData,
+      { $set: updateData },
       { new: true },
     );
 
     if (!updatedOffice) {
       throw new NotFoundException('Error actualizando oficina');
     }
-
-    console.log('✅ Oficina actualizada en DB del tenant:', {
-      tenantName,
-      officeId: updatedOffice._id,
-    });
 
     // Crear registro de history para la actualización de la oficina
     if (this.historyService) {
@@ -227,7 +225,6 @@ export class OfficesService {
             context: 'office-address-update',
           },
         });
-        console.log('✅ Registro de history de oficina creado');
       } catch (error) {
         console.error('❌ Error creando history de oficina:', error);
       }
@@ -271,30 +268,14 @@ export class OfficesService {
   }
 
   async getDefaultOffice(tenantName: string): Promise<Office | null> {
-    console.log('🔍 Buscando oficina default:', { tenantName });
-
     const OfficeModel =
       await this.tenantModelRegistry.getOfficeModel(tenantName);
 
+    // La oficina "Main Office" ya debería existir gracias a TenantModelRegistry
     const office = await OfficeModel.findOne({
       isDefault: true,
       isDeleted: false,
     });
-
-    if (office) {
-      console.log('✅ Oficina default encontrada:', {
-        tenantName,
-        officeId: office._id,
-        name: office.name,
-        email: office.email, // ✅ Mostrar email para debug
-        hasEmail: !!office.email, // ✅ Verificar si tiene email
-        address: office.address,
-        city: office.city,
-        country: office.country,
-      });
-    } else {
-      console.log('❌ No se encontró oficina default:', { tenantName });
-    }
 
     return office;
   }
@@ -410,8 +391,6 @@ export class OfficesService {
   async findAllOffices(
     tenantNames: string[],
   ): Promise<{ tenantName: string; offices: Office[] }[]> {
-    console.log('🏢 SuperAdmin: Obteniendo todas las oficinas cross-tenant');
-
     const result: { tenantName: string; offices: Office[] }[] = [];
 
     for (const tenantName of tenantNames) {
@@ -427,11 +406,6 @@ export class OfficesService {
       }
     }
 
-    console.log('✅ Oficinas cross-tenant obtenidas:', {
-      tenantsCount: result.length,
-      totalOffices: result.reduce((sum, t) => sum + t.offices.length, 0),
-    });
-
     return result;
   }
 
@@ -444,12 +418,6 @@ export class OfficesService {
     updateData: UpdateOfficeDto,
     userId: string,
   ): Promise<Office> {
-    console.log('🏢 SuperAdmin: Actualizando oficina cross-tenant:', {
-      tenantName,
-      officeId,
-      userId,
-    });
-
     // Usar el método existente que ya maneja eventos y history
     return await this.updateDefaultOffice(tenantName, updateData, userId);
   }

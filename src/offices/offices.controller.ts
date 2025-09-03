@@ -51,12 +51,8 @@ export class OfficesController {
     const user = (request as any).user;
     const tenantName = user.tenantName;
 
+    // 🔧 La oficina se crea automáticamente al crear la base de datos
     const office = await this.officesService.getDefaultOffice(tenantName);
-    if (!office) {
-      throw new NotFoundException(
-        'No se encontró oficina default para este tenant',
-      );
-    }
 
     return office;
   }
