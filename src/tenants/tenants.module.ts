@@ -7,6 +7,7 @@ import { TenantsController } from './tenants.controller';
 import { JwtService } from '@nestjs/jwt';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { UsersModule } from '../users/users.module';
+import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { UsersModule } from '../users/users.module';
     TenantConnectionService,
     tenantConnectionProvider,
     JwtService,
+    EventsGateway,
   ],
   exports: [TenantsService, TenantConnectionService, tenantConnectionProvider],
 })

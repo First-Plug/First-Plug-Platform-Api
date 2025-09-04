@@ -8,6 +8,7 @@ import { TenantsModule } from '../tenants/tenants.module';
 import { TenantsMiddleware } from '../common/middlewares/tenants.middleware';
 import { tenantModels } from '../infra/db/tenant-models-provider';
 import { HistoryService } from '../history/history.service';
+import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { HistoryService } from '../history/history.service';
     HistoryService,
     tenantModels.historyModel,
     tenantModels.teamModel,
+    EventsGateway,
   ],
   exports: [OfficesService],
 })

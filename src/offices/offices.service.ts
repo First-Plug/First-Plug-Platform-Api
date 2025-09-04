@@ -13,10 +13,12 @@ import { OfficeAddressUpdatedEvent } from 'src/infra/event-bus/office-address-up
 import { EventTypes } from 'src/infra/event-bus/types';
 import { TenantModelRegistry } from '../infra/db/tenant-model-registry';
 import { HistoryService } from '../history/history.service';
+import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 @Injectable()
 export class OfficesService {
   constructor(
+    private readonly eventsGateway: EventsGateway,
     @Inject('OFFICE_MODEL')
     private officeModel: Model<Office>,
     private eventEmitter: EventEmitter2,
@@ -264,6 +266,11 @@ export class OfficesService {
       );
     }
 
+    this.eventsGateway.notifyTenant('superadmin', 'superadmin', {
+      company: updatedOffice,
+      office: updatedOffice,
+    });
+
     return updatedOffice;
   }
 
@@ -338,6 +345,10 @@ export class OfficesService {
         ),
       );
     }
+
+    this.eventsGateway.notifyTenant('superadmin', 'superadmin', {
+      office: updated,
+    });
 
     return updated;
   }

@@ -190,6 +190,10 @@ export class UsersService {
       return null;
     }
 
+    this.eventsGateway.notifyTenant('superadmin', 'superadmin', {
+      user: user,
+    });
+
     return user;
   }
 

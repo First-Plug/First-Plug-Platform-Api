@@ -11,6 +11,7 @@ import { UpdateDashboardSchemaDto } from './dto/update-dashboard.dto';
 // import { TenantAddressUpdatedEvent } from 'src/infra/event-bus/tenant-address-update.event';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 // import { EventTypes } from 'src/infra/event-bus/types';
+import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 @Injectable()
 export class TenantsService {
@@ -23,6 +24,7 @@ export class TenantsService {
     private tenantRepository: Model<Tenant>,
     @InjectSlack() private readonly slack: IncomingWebhook,
     private eventEmitter: EventEmitter2,
+    private readonly eventsGateway: EventsGateway,
   ) {
     const slackMerchWebhookUrl = process.env.SLACK_WEBHOOK_URL_MERCH;
     const slackShopWebhookUrl = process.env.SLACK_WEBHOOK_URL_SHOP;
@@ -255,6 +257,10 @@ export class TenantsService {
         `No se encontró ningún tenant con el tenantName ${tenantName}`,
       );
     }
+
+    this.eventsGateway.notifyTenant('superadmin', 'superadmin', {
+      company: updated,
+    });
   }
 
   async updateComputerExpiration(tenantName: string, expirationYears: number) {
@@ -268,6 +274,10 @@ export class TenantsService {
         `No se encontró ningún tenant con el tenantName ${tenantName}`,
       );
     }
+
+    this.eventsGateway.notifyTenant('superadmin', 'superadmin', {
+      company: updated,
+    });
   }
 
   async updateTenantName(tenantName: string, newName: string) {
@@ -294,6 +304,10 @@ export class TenantsService {
         `No se encontró ningún tenant con el tenantName ${tenantName}`,
       );
     }
+
+    this.eventsGateway.notifyTenant('superadmin', 'superadmin', {
+      company: updatedTenant,
+    });
 
     return updatedTenant;
   }
