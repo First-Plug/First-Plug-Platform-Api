@@ -1,8 +1,16 @@
-import { IsString, IsOptional, IsEmail, ValidateIf } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsEmail,
+  ValidateIf,
+  IsNotEmpty,
+} from 'class-validator';
 
 export class UpdateTenantOfficeDto {
   @IsOptional()
+  @ValidateIf((o) => o.name !== undefined)
   @IsString()
+  @IsNotEmpty({ message: 'Office name cannot be empty' })
   name?: string;
 
   @IsOptional()
