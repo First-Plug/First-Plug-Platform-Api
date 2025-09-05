@@ -313,12 +313,19 @@ export class SuperAdminService {
       if (!shipment) throw new NotFoundException('Shipment no encontrado');
 
       const oldStatus = shipment.shipment_status;
+
+      if (oldStatus !== 'In Preparation' && oldStatus !== 'On The Way') {
+        throw new BadRequestException(
+          'Cannot update status if not In Preparation or On The Way',
+        );
+      }
+
       shipment.shipment_status = newStatus;
       await shipment.save();
 
       console.log(`📊 Status actualizado: ${oldStatus} → ${newStatus}`);
 
-      // Enviar notificación WebSocket
+      // Send WebSocket notification
       try {
         this.eventsGateway.notifyTenant(tenantName, 'shipments-update', {
           shipmentId,
