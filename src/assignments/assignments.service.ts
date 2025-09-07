@@ -27,6 +27,7 @@ import { ProductsService } from 'src/products/products.service';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { UpdateProductDto } from 'src/products/dto';
 import { TenantsService } from 'src/tenants/tenants.service';
+import { TenantUserAdapterService } from 'src/common/services/tenant-user-adapter.service';
 import { HistoryActionType } from 'src/history/validations/create-history.zod';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
 import { BulkReassignDto } from 'src/assignments/dto/bulk-reassign.dto';
@@ -46,6 +47,7 @@ export class AssignmentsService {
     @Inject('MEMBER_MODEL') private readonly memberModel: Model<Member>,
     private readonly connectionService: TenantConnectionService,
     private readonly tenantsService: TenantsService,
+    private readonly tenantUserAdapter: TenantUserAdapterService,
     private readonly historyService: HistoryService,
     private readonly slackService: SlackService,
     @Inject(forwardRef(() => MembersService))
@@ -327,7 +329,8 @@ export class AssignmentsService {
     }
 
     if (product.location === 'Our office') {
-      const tenant = await this.tenantsService.getByTenantName(tenantName);
+      // Usar el adaptador para obtener datos de la oficina
+      const tenant = await this.tenantUserAdapter.getByTenantName(tenantName);
 
       if (!tenant) return false;
 
@@ -903,7 +906,6 @@ export class AssignmentsService {
         }
 
         shipment = await this.logisticsService.tryCreateShipmentIfNeeded(
-
           product,
           updateDto,
           tenantName,
@@ -1101,7 +1103,6 @@ export class AssignmentsService {
         }
 
         shipment = await this.logisticsService.tryCreateShipmentIfNeeded(
-
           product as ProductDocument,
           updateDto,
           tenantName,

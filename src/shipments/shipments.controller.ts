@@ -14,6 +14,7 @@ import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
 import { UpdateShipmentDto } from 'src/shipments/validations/update-shipment-zod';
 import { LogisticsService } from 'src/logistics/logistics.sevice';
+import { OfficesService } from '../offices/offices.service';
 
 @Controller('shipments')
 @UseGuards(JwtGuard)
@@ -21,13 +22,31 @@ export class ShipmentsController {
   constructor(
     private readonly shipmentsService: ShipmentsService,
     private readonly logisticsService: LogisticsService,
+    private readonly officesService: OfficesService,
   ) {}
 
   @Get()
   async getAllShipments(@Request() req: any) {
     const tenantId = req.user.tenantName;
-    return this.shipmentsService.findAll(tenantId);
+
+    // El frontend hace paginación client-side, necesita todos los shipments
+    return this.shipmentsService.getShipments(tenantId);
   }
+
+  // TODO: Implementar paginación server-side cuando sea necesario
+  // @Get('paginated')
+  // async paginatedShipmentsWithMetadata(
+  //   @Query('page') page: string = '1',
+  //   @Query('size') size: string = '10',
+  //   @Request() req: any,
+  // ) {
+  //   const tenantId = req.user.tenantName;
+  //   const pageNumber = parseInt(page, 10) || 1;
+  //   const pageSize = parseInt(size, 10) || 10;
+  //
+  //   // Implementar lógica de paginación server-side aquí
+  //   return this.shipmentsService.findAllPaginated(pageNumber, pageSize, tenantId);
+  // }
 
   @Get('by-product/:productId')
   async getShipmentByProductId(
@@ -55,12 +74,16 @@ export class ShipmentsController {
   ): Promise<ShipmentDocument> {
     const tenantId = req.user.tenantName;
     const { userId } = req;
-    const ourOfficeEmail = req.user.email;
+
+    // Obtener email de oficina en lugar de email personal
+    const ourOfficeEmail =
+      await this.officesService.getDefaultOfficeEmail(tenantId);
+
     return this.logisticsService.cancelShipmentWithConsequences(
       shipmentId,
       tenantId,
       userId,
-      ourOfficeEmail,
+      ourOfficeEmail || req.user.email, // Fallback al email personal si no hay oficina
     );
   }
 
@@ -76,13 +99,17 @@ export class ShipmentsController {
   }> {
     const tenantId = req.user.tenantName;
     const { userId } = req;
-    const ourOfficeEmail = req.user.email;
+
+    // Obtener email de oficina en lugar de email personal
+    const ourOfficeEmail =
+      await this.officesService.getDefaultOfficeEmail(tenantId);
+
     return this.shipmentsService.findConsolidateAndUpdateShipment(
       shipmentId,
       updateDto,
       tenantId,
       userId,
-      ourOfficeEmail,
+      ourOfficeEmail || req.user.email, // Fallback al email personal si no hay oficina
     );
   }
 

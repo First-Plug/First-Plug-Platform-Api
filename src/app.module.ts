@@ -12,11 +12,14 @@ import { SlackModule } from 'nestjs-slack-webhook';
 import { HistoryModule } from './history/history.module';
 import { ShipmentsModule } from 'src/shipments/shipments.module';
 import { CommonModule } from 'src/common/common.module';
-import { RetoolWebhooksModule } from 'src/retool-webhooks/retool-webhooks.module';
+
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TenantDbModule } from 'src/infra/db/tenant-db.module';
 import { AssignmentsModule } from 'src/assignments/assignments.module';
 import { LogisticsModule } from 'src/logistics/logistics.module';
+import { UsersModule } from 'src/users/users.module';
+import { OfficesModule } from 'src/offices/offices.module';
+import { SuperAdminModule } from 'src/superadmin/superadmin.module';
 
 @Module({
   imports: [
@@ -53,9 +56,11 @@ import { LogisticsModule } from 'src/logistics/logistics.module';
     forwardRef(() => TeamsModule),
     HistoryModule,
     ShipmentsModule,
-    RetoolWebhooksModule,
     AssignmentsModule,
     LogisticsModule,
+    UsersModule,
+    OfficesModule,
+    SuperAdminModule,
   ],
   controllers: [],
   providers: [],

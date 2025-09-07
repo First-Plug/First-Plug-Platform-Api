@@ -1,35 +1,16 @@
-import {
-  IsEmail,
-  IsLowercase,
-  IsOptional,
-  IsString,
-  MinLength,
-} from 'class-validator';
-import { Provider } from '../schemas/tenant.schema';
+import { IsOptional, IsString, IsNotEmpty, MaxLength } from 'class-validator';
 
 export class CreateTenantDto {
   @IsString()
-  @IsOptional()
-  tenantName?: string;
-
-  @IsString()
-  @MinLength(1)
+  @IsNotEmpty({ message: 'Company name is required' })
+  @MaxLength(100, { message: 'Company name cannot exceed 100 characters' })
   name: string;
 
-  @IsEmail()
-  @MinLength(1)
-  @IsLowercase()
-  email: string;
-
   @IsString()
+  @IsNotEmpty({ message: 'Tenant name is required' })
+  tenantName: string;
+
   @IsOptional()
+  @IsString()
   image?: string;
-
-  @IsString()
-  @MinLength(1)
-  password: string;
-
-  @IsString()
-  @MinLength(1)
-  accountProvider: Provider;
 }

@@ -9,11 +9,15 @@ import { JwtService } from '@nestjs/jwt';
 import { MembersModule } from 'src/members/members.module';
 import { TenantsModule } from 'src/tenants/tenants.module';
 import { ProductsModule } from 'src/products/products.module';
+import { OfficesModule } from '../offices/offices.module';
+import { UsersModule } from '../users/users.module';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 @Module({
   imports: [
     TenantDbModule,
+    OfficesModule,
+    UsersModule,
     forwardRef(() => ShipmentsModule),
     forwardRef(() => MembersModule),
     forwardRef(() => TenantsModule),

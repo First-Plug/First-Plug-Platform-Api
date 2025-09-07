@@ -13,11 +13,13 @@ import { SlackModule } from 'src/slack/slack.module';
 import { AssignmentsModule } from 'src/assignments/assignments.module';
 import { LogisticsModule } from 'src/logistics/logistics.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { OfficesModule } from '../offices/offices.module';
 
 @Module({
   imports: [
     EventEmitterModule,
     TenantsModule,
+    OfficesModule,
     forwardRef(() => AssignmentsModule),
     forwardRef(() => TeamsModule),
     forwardRef(() => ShipmentsModule),

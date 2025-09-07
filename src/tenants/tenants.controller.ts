@@ -9,13 +9,12 @@ import {
   Param,
 } from '@nestjs/common';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
-import { UpdateTenantInformationSchemaDto } from './dto/update-information.dto';
 import { TenantsService } from './tenants.service';
-import { Request } from 'express';
-import { UpdateDashboardSchemaDto } from './dto/update-dashboard.dto';
+import { UpdateCompanyNameDto } from './dto/update-company-name.dto';
 
-@UseGuards(JwtGuard)
-@Controller('user')
+import { Request } from 'express';
+
+@Controller('tenants')
 export class TenantsController {
   constructor(private readonly tenantService: TenantsService) {}
 
@@ -31,6 +30,26 @@ export class TenantsController {
   async getRecoverableConfig(@Param('tenantName') tenantName: string) {
     const config = await this.tenantService.getRecoverableConfig(tenantName);
     return config;
+  }
+
+  @UseGuards(JwtGuard)
+  @Get('config')
+  async getTenantConfig(@Req() request: Request) {
+    const user = (request as any).user;
+    const tenantName = user.tenantName;
+
+    // Obtener configuración directamente del servicio
+    const tenant = await this.tenantService.getByTenantName(tenantName);
+    if (!tenant) {
+      throw new Error(`Tenant no encontrado: ${tenantName}`);
+    }
+
+    return {
+      tenantName: tenant.tenantName,
+      name: tenant.name,
+      isRecoverableConfig: tenant.isRecoverableConfig,
+      computerExpiration: tenant.computerExpiration,
+    };
   }
 
   @Post('notify-birthday-gift')
@@ -72,19 +91,6 @@ export class TenantsController {
       status,
       location,
     });
-  }
-
-  @Patch()
-  async update(
-    @Req() request: Request,
-    @Body() updateTenantInformationSchemaDto: UpdateTenantInformationSchemaDto,
-  ) {
-    const ourOfficeEmail = request.user.email;
-    return await this.tenantService.updateInformation(
-      request.user,
-      updateTenantInformationSchemaDto,
-      ourOfficeEmail,
-    );
   }
 
   @Patch('update-recoverable')
@@ -131,16 +137,18 @@ export class TenantsController {
     };
   }
 
-  @Patch('update-dashboard')
-  async updateDashboard(
-    @Req() request: Request,
-    @Body() updateDashboardSchemaDto: UpdateDashboardSchemaDto,
+  @Patch('update-name/:tenantName')
+  async updateTenantName(
+    @Param('tenantName') tenantName: string,
+    @Body() updateCompanyNameDto: UpdateCompanyNameDto,
   ) {
-    const user = await this.tenantService.update(
-      request.user,
-      updateDashboardSchemaDto,
+    const updatedTenant = await this.tenantService.updateTenantName(
+      tenantName,
+      updateCompanyNameDto.name,
     );
-
-    return user?.widgets || [];
+    return {
+      message: 'Company name updated successfully',
+      data: updatedTenant,
+    };
   }
 }

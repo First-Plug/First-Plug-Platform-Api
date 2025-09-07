@@ -1,20 +1,18 @@
-import { Inject, Injectable } from '@nestjs/common';
-import mongoose, { Model } from 'mongoose';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Model } from 'mongoose';
 import { CreateHistoryDto } from './dto/create-history.dto';
 import { History } from './schemas/history.schema';
-import { EnvConfiguration } from 'src/config';
-import { TenantSchema } from 'src/tenants/schemas/tenant.schema';
 import { Team } from 'src/teams/schemas/team.schema';
+import { TenantUserAdapterService } from 'src/common/services/tenant-user-adapter.service';
 import { isValidObjectId } from 'mongoose';
 
 @Injectable()
 export class HistoryService {
-  private tenantConnection: mongoose.Connection | null;
-
   constructor(
     @Inject('HISTORY_MODEL')
     private readonly historyRepository: Model<History>,
     @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
+    @Optional() private readonly tenantUserAdapter?: TenantUserAdapterService,
   ) {}
 
   async create(createHistoryDto: CreateHistoryDto) {
@@ -150,25 +148,21 @@ export class HistoryService {
 
   async getTenantsByUserIds(userIds: string[]) {
     try {
-      this.tenantConnection = mongoose.createConnection(
-        EnvConfiguration().database.connectionString!,
-      );
-      const TenantModel = this.tenantConnection.model('Tenant', TenantSchema);
       const validUserIds = userIds.filter((id) => isValidObjectId(id));
-      const tenants = await TenantModel.find({
-        _id: { $in: validUserIds },
-      }).exec();
 
-      await this.tenantConnection.close();
+      // Usar el adaptador para obtener usuarios/tenants con la estructura esperada
+      if (!this.tenantUserAdapter) {
+        console.warn('TenantUserAdapter not available, returning empty array');
+        return [];
+      }
+
+      const tenants =
+        await this.tenantUserAdapter.findTenantsByIds(validUserIds);
 
       return tenants;
     } catch (error) {
       console.error('Error al obtener los tenants:', error);
       throw new Error('Error al obtener los tenants');
-    } finally {
-      if (this.tenantConnection!.readyState !== 0) {
-        await this.tenantConnection!.close();
-      }
     }
   }
 }
