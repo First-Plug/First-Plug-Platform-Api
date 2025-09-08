@@ -10,7 +10,7 @@ import {
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { ClientSession, Connection, Model, ObjectId, Schema } from 'mongoose';
-import { MemberDocument, MemberSchema } from './schemas/member.schema';
+import { Member, MemberDocument, MemberSchema } from './schemas/member.schema';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { Team } from 'src/teams/schemas/team.schema';
 import { TeamsService } from 'src/teams/teams.service';
@@ -432,10 +432,15 @@ export class MembersService {
     connection?: Connection,
     session?: ClientSession,
   ) {
-    const query = this.memberRepository.findOne({ email: email }, null, {
-      connection,
-    });
+    // ✅ FIX: Si se proporciona conexión, usar esa conexión para crear el modelo
+    if (connection) {
+      const MemberModel = connection.model(Member.name, MemberSchema);
+      const query = MemberModel.findOne({ email: email });
+      return session ? query.session(session) : query;
+    }
 
+    // Fallback: usar el repositorio global
+    const query = this.memberRepository.findOne({ email: email });
     if (session) query.session(session);
     return await query;
   }
