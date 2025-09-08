@@ -16,6 +16,7 @@ import {
 } from 'src/members/schemas/member.schema';
 import mongoose, { ClientSession, Types, Connection } from 'mongoose';
 import {
+  Shipment,
   ShipmentDocument,
   ShipmentSchema,
 } from 'src/shipments/schema/shipment.schema';
@@ -1380,7 +1381,8 @@ export class LogisticsService {
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection = await this.tenantModels.getConnection(tenantName);
-    const ShipmentModel = await this.tenantModels.getShipmentModel(tenantName);
+    // ✅ FIX: Usar la misma conexión para crear el modelo en lugar de obtener una nueva
+    const ShipmentModel = connection.model(Shipment.name, ShipmentSchema);
     const session = await connection.startSession();
 
     try {
@@ -1396,18 +1398,20 @@ export class LogisticsService {
           return;
         }
 
-        const refreshed = await this.membersService.findById(
-          member._id,
-          tenantName,
+        // ✅ FIX: Usar findByEmailNotThrowError con conexión y sesión en lugar de findById
+        const refreshed = await this.membersService.findByEmailNotThrowError(
+          memberEmail,
+          connection,
+          session,
         );
         if (!refreshed) {
           this.logger.error(
-            `Member with ID ${member._id} not found during refresh`,
+            `Member with email ${memberEmail} not found during refresh`,
           );
           return;
         }
 
-        member = refreshed as NonNullable<typeof member>;
+        member = refreshed;
 
         const fullName = `${member.firstName} ${member.lastName}`;
         this.logger.debug(`Searching shipments for member: ${fullName}`);
