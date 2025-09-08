@@ -800,9 +800,17 @@ export class ProductsService {
     return ProductModel.updateOne(filter, update, options);
   }
 
-  async findByIdAndDelete(tenantName: string, id: ObjectId, options?: any) {
-    const ProductModel =
-      await this.tenantModelRegistry.getProductModel(tenantName);
+  async findByIdAndDelete(
+    tenantName: string,
+    id: ObjectId,
+    options?: any,
+    providedConnection?: Connection,
+  ) {
+    // ✅ FIX: Usar la conexión proporcionada si existe (misma que creó la session)
+    const connection =
+      providedConnection ||
+      (await this.connectionService.getTenantConnection(tenantName));
+    const ProductModel = connection.model(Product.name, ProductSchema);
     return ProductModel.findByIdAndDelete(id, options);
   }
 
