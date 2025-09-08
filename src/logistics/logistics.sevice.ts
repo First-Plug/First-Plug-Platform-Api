@@ -14,7 +14,7 @@ import {
   MemberDocument,
   MemberSchema,
 } from 'src/members/schemas/member.schema';
-import mongoose, { ClientSession, Types } from 'mongoose';
+import mongoose, { ClientSession, Types, Connection } from 'mongoose';
 import {
   ShipmentDocument,
   ShipmentSchema,
@@ -266,6 +266,7 @@ export class LogisticsService {
     },
     userId: string,
     ourOfficeEmail: string,
+    providedConnection?: Connection,
   ): Promise<ShipmentDocument | null> {
     console.log(
       'called user id from maybeCreateShipmentAndUpdateStatus',
@@ -282,8 +283,22 @@ export class LogisticsService {
         ? updateDto.desirableDate
         : updateDto.desirableDate?.destination || '';
 
+    // ✅ FIX: Usar la conexión proporcionada si existe (misma que creó la session)
+    console.log(
+      '🔧 DEBUG maybeCreateShipmentAndUpdateStatus: Session ID:',
+      session?.id,
+    );
+    console.log(
+      '🔧 DEBUG maybeCreateShipmentAndUpdateStatus: Connection provided:',
+      !!providedConnection,
+    );
     const connection =
-      await this.connectionService.getTenantConnection(tenantName);
+      providedConnection ||
+      (await this.connectionService.getTenantConnection(tenantName));
+    console.log(
+      '🔧 DEBUG maybeCreateShipmentAndUpdateStatus: Using connection:',
+      connection.name,
+    );
 
     const { shipment, isConsolidated, oldSnapshot } =
       await this.shipmentsService.findOrCreateShipment(
@@ -297,6 +312,7 @@ export class LogisticsService {
         oldData,
         newData,
         product,
+        connection, // ✅ FIX: Pasar la misma conexión que creó la session
       );
 
     if (!shipment || !shipment._id) {
@@ -394,8 +410,11 @@ export class LogisticsService {
     session: ClientSession,
     userId: string,
     ourOfficeEmail: string,
+    providedConnection?: Connection,
   ): Promise<ShipmentDocument | null> {
     console.log('tryCreateShipmentIfNeeded called with userId:', userId);
+    console.log('🔧 DEBUG: Session ID:', session?.id);
+    console.log('🔧 DEBUG: Connection provided:', !!providedConnection);
     return await this.maybeCreateShipmentAndUpdateStatus(
       product,
       updateDto,
@@ -414,6 +433,7 @@ export class LogisticsService {
       },
       userId,
       ourOfficeEmail,
+      providedConnection, // ✅ FIX: Pasar la conexión proporcionada
     );
   }
 
@@ -564,6 +584,7 @@ export class LogisticsService {
       assignedMember?: string;
     },
     providedProduct?: ProductDocument,
+    providedConnection?: Connection,
   ): Promise<{
     product: Product;
     origin: string;
@@ -580,9 +601,13 @@ export class LogisticsService {
   }> {
     const product =
       providedProduct ??
-      (await this.tenantModels
-        .getProductModel(tenantName)
-        .then((ProductModel) => ProductModel.findById(productId)));
+      (providedConnection
+        ? await providedConnection
+            .model(Product.name, ProductSchema)
+            .findById(productId)
+        : await this.tenantModels
+            .getProductModel(tenantName)
+            .then((ProductModel) => ProductModel.findById(productId)));
 
     if (!product) {
       throw new NotFoundException(`Product ${productId} not found.`);
@@ -894,6 +919,7 @@ export class LogisticsService {
     originEmail?: string,
     destinationEmail?: string,
     session?: ClientSession | null,
+    providedConnection?: Connection,
   ) {
     console.log('📍 Marking active shipment targets:', {
       origin,
@@ -902,7 +928,9 @@ export class LogisticsService {
       destinationEmail,
     });
 
-    const connection = await this.tenantModels.getConnection(tenantName);
+    // ✅ FIX: Usar la conexión proporcionada si existe (misma que creó la session)
+    const connection =
+      providedConnection || (await this.tenantModels.getConnection(tenantName));
     const ProductModel =
       this.tenantModels.getProductModelFromConnection(connection);
     const MemberModel =

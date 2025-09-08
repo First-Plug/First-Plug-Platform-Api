@@ -912,6 +912,7 @@ export class AssignmentsService {
           session,
           userId,
           ourOfficeEmail,
+          connection, // ✅ FIX: Pasar la conexión
         );
       }
 
@@ -1109,6 +1110,7 @@ export class AssignmentsService {
           session,
           userId,
           ourOfficeEmail,
+          connection, // ✅ FIX: Pasar la conexión
         );
         updateDto.status = product.status;
       } else {
@@ -1208,6 +1210,7 @@ export class AssignmentsService {
             },
             userId,
             ourOfficeEmail,
+            connection, // ✅ FIX: Pasar la conexión que creó la session
           );
       }
 
