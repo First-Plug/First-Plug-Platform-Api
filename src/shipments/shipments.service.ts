@@ -365,6 +365,7 @@ export class ShipmentsService {
       assignedMember?: string;
     },
     providedProduct?: ProductDocument,
+    providedConnection?: Connection,
   ): Promise<{
     shipment: ShipmentDocument;
     isConsolidated: boolean;
@@ -401,6 +402,7 @@ export class ShipmentsService {
       oldData,
       newData,
       providedProduct,
+      providedConnection, // ✅ FIX: Pasar la conexión proporcionada
     );
 
     const shipmentStatus =
@@ -408,8 +410,10 @@ export class ShipmentsService {
         ? 'In Preparation'
         : 'On Hold - Missing Data';
 
+    // ✅ FIX: Usar la conexión proporcionada si existe (misma que creó la session)
     const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
+      providedConnection ||
+      (await this.tenantConnectionService.getTenantConnection(tenantName));
     const ShipmentModel = this.getShipmentModel(connection);
     const productObjectId = new mongoose.Types.ObjectId(productId);
 
@@ -458,21 +462,29 @@ export class ShipmentsService {
       nextNumber,
     );
 
-    const newShipment = await ShipmentModel.create({
-      order_id,
-      tenant: tenantName,
-      quantity_products: 1,
-      shipment_status: shipmentStatus,
-      shipment_type: 'TBC',
-      origin,
-      originDetails,
-      destination,
-      destinationDetails,
-      products: [productObjectId],
-      type: 'shipments',
-      order_date: new Date(),
-      price: { amount: null, currencyCode: 'TBC' },
-    });
+    // ✅ FIX: Usar session en create para evitar conflictos de MongoClient
+    const newShipmentArray = await ShipmentModel.create(
+      [
+        {
+          order_id,
+          tenant: tenantName,
+          quantity_products: 1,
+          shipment_status: shipmentStatus,
+          shipment_type: 'TBC',
+          origin,
+          originDetails,
+          destination,
+          destinationDetails,
+          products: [productObjectId],
+          type: 'shipments',
+          order_date: new Date(),
+          price: { amount: null, currencyCode: 'TBC' },
+        },
+      ],
+      { session: session || undefined },
+    );
+
+    const newShipment = newShipmentArray[0]; // ✅ FIX: Extraer el primer elemento del array
 
     const originEmail = oldData?.assignedEmail || '';
     const destinationEmail = newData?.assignedEmail || '';
@@ -490,6 +502,7 @@ export class ShipmentsService {
         originEmail,
         destinationEmail,
         session,
+        connection, // ✅ FIX: Pasar la misma conexión
       );
     }
 
@@ -499,7 +512,8 @@ export class ShipmentsService {
       session ?? undefined,
     );
 
-    await newShipment.save();
+    // ✅ FIX: Ya no necesitamos save() porque create() ya guardó el documento
+    // await newShipment.save();
 
     if (shipmentStatus === 'In Preparation' && session) {
       await this.logisticsService.updateProductStatusToInTransit(
