@@ -17,6 +17,7 @@ import { SlackModule } from '../slack/slack.module';
 import { LogisticsModule } from 'src/logistics/logistics.module';
 import { OfficesModule } from '../offices/offices.module';
 import { UsersModule } from '../users/users.module';
+import { EventsGateway } from '../infra/event-bus/events.gateway';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { UsersModule } from '../users/users.module';
   controllers: [ShipmentsController],
   providers: [
     ShipmentsService,
+    EventsGateway,
     OfficeAddressUpdatedListener,
     MemberAddressUpdatedListener,
     ProductUpdatedListener,

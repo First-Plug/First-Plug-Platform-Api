@@ -26,6 +26,7 @@ import { SlackService } from '../slack/slack.service';
 import { LogisticsService } from 'src/logistics/logistics.sevice';
 import { OfficesService } from '../offices/offices.service';
 import { UsersService } from '../users/users.service';
+import { EventsGateway } from '../infra/event-bus/events.gateway';
 
 @Injectable()
 export class ShipmentsService {
@@ -42,6 +43,7 @@ export class ShipmentsService {
     private readonly logisticsService: LogisticsService,
     private readonly officesService: OfficesService,
     private readonly usersService: UsersService,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   /**
@@ -523,6 +525,28 @@ export class ShipmentsService {
       );
     }
 
+    try {
+      this.eventsGateway.notifyTenant('superadmin', 'shipments-superadmin', {
+        shipmentId: newShipment._id.toString(),
+        orderId: newShipment.order_id,
+        tenantName,
+        status: newShipment.shipment_status,
+        origin: newShipment.origin,
+        destination: newShipment.destination,
+        quantityProducts: newShipment.quantity_products,
+        createdAt: newShipment.order_date,
+        isNewShipment: true,
+      });
+      console.log(
+        `🔔 WebSocket notification sent for new shipment: ${newShipment.order_id}`,
+      );
+    } catch (error) {
+      console.error(
+        '❌ Error sending WebSocket notification for new shipment:',
+        error,
+      );
+    }
+
     return { shipment: newShipment, isConsolidated: false };
   }
 
@@ -618,6 +642,31 @@ export class ShipmentsService {
         await this.slackService.sendMessage(slackMessage);
       }
 
+      // 🔔 Notificar a superadmin sobre la consolidación del shipment
+      try {
+        this.eventsGateway.notifyTenant(tenantName, 'shipment-consolidated', {
+          consolidatedShipmentId: consolidable._id.toString(),
+          consolidatedOrderId: consolidable.order_id,
+          deletedShipmentId: shipment._id.toString(),
+          deletedOrderId: shipment.order_id,
+          tenantName,
+          status: consolidable.shipment_status,
+          origin: consolidable.origin,
+          destination: consolidable.destination,
+          quantityProducts: consolidable.quantity_products,
+          updatedAt: new Date(),
+          isConsolidated: true,
+        });
+        console.log(
+          `🔔 WebSocket notification sent for consolidated shipment: ${consolidable.order_id}`,
+        );
+      } catch (error) {
+        console.error(
+          '❌ Error sending WebSocket notification for consolidated shipment:',
+          error,
+        );
+      }
+
       await recordShipmentHistory(
         this.historyService,
         'delete',
@@ -663,6 +712,30 @@ export class ShipmentsService {
             session,
           );
         }
+      }
+
+      // 🔔 Notificar a superadmin sobre la actualización del shipment
+      try {
+        this.eventsGateway.notifyTenant(tenantName, 'shipment-updated', {
+          shipmentId: shipment._id.toString(),
+          orderId: shipment.order_id,
+          tenantName,
+          oldStatus,
+          newStatus: shipment.shipment_status,
+          origin: shipment.origin,
+          destination: shipment.destination,
+          quantityProducts: shipment.quantity_products,
+          updatedAt: new Date(),
+          isUpdated: true,
+        });
+        console.log(
+          `🔔 WebSocket notification sent for updated shipment: ${shipment.order_id}`,
+        );
+      } catch (error) {
+        console.error(
+          '❌ Error sending WebSocket notification for updated shipment:',
+          error,
+        );
       }
 
       if (
