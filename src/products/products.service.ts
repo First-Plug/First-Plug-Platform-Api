@@ -800,9 +800,17 @@ export class ProductsService {
     return ProductModel.updateOne(filter, update, options);
   }
 
-  async findByIdAndDelete(tenantName: string, id: ObjectId, options?: any) {
-    const ProductModel =
-      await this.tenantModelRegistry.getProductModel(tenantName);
+  async findByIdAndDelete(
+    tenantName: string,
+    id: ObjectId,
+    options?: any,
+    providedConnection?: Connection,
+  ) {
+    // ✅ FIX: Usar la conexión proporcionada si existe (misma que creó la session)
+    const connection =
+      providedConnection ||
+      (await this.connectionService.getTenantConnection(tenantName));
+    const ProductModel = connection.model(Product.name, ProductSchema);
     return ProductModel.findByIdAndDelete(id, options);
   }
 
@@ -1135,14 +1143,21 @@ export class ProductsService {
       );
       console.log('🧩 Buscando producto por ID en ProductModel...');
 
-      const ProductModel =
-        await this.tenantModelRegistry.getProductModel(tenantName);
-      console.log('🧩 Obtenido ProductModel para tenant:', tenantName);
-      console.error(
-        '❌ Producto no encontrado en ProductModel con id:',
-        id.toString(),
+      // ✅ FIX: Usar la conexión interna en lugar de obtener una nueva
+      const ProductModel = internalConnection.model(
+        Product.name,
+        ProductSchema,
       );
+      console.log('🧩 Obtenido ProductModel para tenant:', tenantName);
+
       const product = await ProductModel.findById(id).session(internalSession);
+
+      if (!product) {
+        console.error(
+          '❌ Producto no encontrado en ProductModel con id:',
+          id.toString(),
+        );
+      }
 
       const result = product
         ? await this.assignmentsService.handleProductFromProductsCollection(
@@ -1191,11 +1206,12 @@ export class ProductsService {
     session: ClientSession,
     tenantName: string,
   ): Promise<void> {
-    const ProductModel =
-      await this.tenantModelRegistry.getProductModel(tenantName);
-
+    // ✅ FIX: Usar la conexión proporcionada en lugar de obtener una nueva
+    const ProductModel = connection.model(Product.name, ProductSchema);
+    console.log('tenantName', tenantName);
     if (updateProductDto.fp_shipment === undefined) {
-      const existingProduct = await ProductModel.findById(productId);
+      const existingProduct =
+        await ProductModel.findById(productId).session(session);
 
       if (existingProduct) {
         updateProductDto.fp_shipment = existingProduct.fp_shipment === true;

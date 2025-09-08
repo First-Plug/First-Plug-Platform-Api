@@ -439,6 +439,7 @@ export class AssignmentsService {
     product: ProductDocument,
     updateProductDto: UpdateProductDto,
     tenantName: string,
+    providedConnection?: Connection,
   ) {
     const newMember = await this.membersService.findByEmailNotThrowError(
       updateProductDto.assignedEmail!,
@@ -457,6 +458,7 @@ export class AssignmentsService {
       updateProductDto,
       product.assignedEmail || '',
       tenantName,
+      providedConnection, // ✅ FIX: Pasar la conexión proporcionada
     );
 
     return newMember;
@@ -515,14 +517,18 @@ export class AssignmentsService {
     updateProductDto: UpdateProductDto,
     lastAssigned: string,
     tenantName?: string,
+    providedConnection?: Connection,
   ) {
     if (!tenantName) {
       throw new Error('tenantName is required to find and delete a product');
     }
 
-    await this.productsService.findByIdAndDelete(tenantName, product._id!, {
-      session,
-    });
+    await this.productsService.findByIdAndDelete(
+      tenantName,
+      product._id!,
+      { session },
+      providedConnection, // ✅ FIX: Pasar la conexión proporcionada
+    );
     if (product.assignedEmail) {
       await this.removeProductFromMember(
         session,
@@ -912,6 +918,7 @@ export class AssignmentsService {
           session,
           userId,
           ourOfficeEmail,
+          connection, // ✅ FIX: Pasar la conexión
         );
       }
 
@@ -922,6 +929,7 @@ export class AssignmentsService {
         { ...updateDto, recoverable: isRecoverable },
         product.assignedEmail || '',
         tenantName,
+        connection, // ✅ FIX: Pasar la conexión
       );
 
       await this.recordAssetHistoryIfNeeded(
@@ -1109,6 +1117,7 @@ export class AssignmentsService {
           session,
           userId,
           ourOfficeEmail,
+          connection, // ✅ FIX: Pasar la conexión
         );
         updateDto.status = product.status;
       } else {
@@ -1131,6 +1140,7 @@ export class AssignmentsService {
         { ...updateDto, recoverable: isRecoverable },
         product.assignedEmail || '',
         tenantName,
+        connection, // ✅ FIX: Pasar la conexión
       );
 
       await this.recordAssetHistoryIfNeeded(
@@ -1208,6 +1218,7 @@ export class AssignmentsService {
             },
             userId,
             ourOfficeEmail,
+            connection, // ✅ FIX: Pasar la conexión que creó la session
           );
       }
 

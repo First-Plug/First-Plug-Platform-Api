@@ -26,6 +26,7 @@ import { SlackService } from '../slack/slack.service';
 import { LogisticsService } from 'src/logistics/logistics.sevice';
 import { OfficesService } from '../offices/offices.service';
 import { UsersService } from '../users/users.service';
+import { EventsGateway } from '../infra/event-bus/events.gateway';
 
 @Injectable()
 export class ShipmentsService {
@@ -42,6 +43,7 @@ export class ShipmentsService {
     private readonly logisticsService: LogisticsService,
     private readonly officesService: OfficesService,
     private readonly usersService: UsersService,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   /**
@@ -365,6 +367,7 @@ export class ShipmentsService {
       assignedMember?: string;
     },
     providedProduct?: ProductDocument,
+    providedConnection?: Connection,
   ): Promise<{
     shipment: ShipmentDocument;
     isConsolidated: boolean;
@@ -401,6 +404,7 @@ export class ShipmentsService {
       oldData,
       newData,
       providedProduct,
+      providedConnection, // ✅ FIX: Pasar la conexión proporcionada
     );
 
     const shipmentStatus =
@@ -408,8 +412,10 @@ export class ShipmentsService {
         ? 'In Preparation'
         : 'On Hold - Missing Data';
 
+    // ✅ FIX: Usar la conexión proporcionada si existe (misma que creó la session)
     const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
+      providedConnection ||
+      (await this.tenantConnectionService.getTenantConnection(tenantName));
     const ShipmentModel = this.getShipmentModel(connection);
     const productObjectId = new mongoose.Types.ObjectId(productId);
 
@@ -458,21 +464,29 @@ export class ShipmentsService {
       nextNumber,
     );
 
-    const newShipment = await ShipmentModel.create({
-      order_id,
-      tenant: tenantName,
-      quantity_products: 1,
-      shipment_status: shipmentStatus,
-      shipment_type: 'TBC',
-      origin,
-      originDetails,
-      destination,
-      destinationDetails,
-      products: [productObjectId],
-      type: 'shipments',
-      order_date: new Date(),
-      price: { amount: null, currencyCode: 'TBC' },
-    });
+    // ✅ FIX: Usar session en create para evitar conflictos de MongoClient
+    const newShipmentArray = await ShipmentModel.create(
+      [
+        {
+          order_id,
+          tenant: tenantName,
+          quantity_products: 1,
+          shipment_status: shipmentStatus,
+          shipment_type: 'TBC',
+          origin,
+          originDetails,
+          destination,
+          destinationDetails,
+          products: [productObjectId],
+          type: 'shipments',
+          order_date: new Date(),
+          price: { amount: null, currencyCode: 'TBC' },
+        },
+      ],
+      { session: session || undefined },
+    );
+
+    const newShipment = newShipmentArray[0]; // ✅ FIX: Extraer el primer elemento del array
 
     const originEmail = oldData?.assignedEmail || '';
     const destinationEmail = newData?.assignedEmail || '';
@@ -490,6 +504,7 @@ export class ShipmentsService {
         originEmail,
         destinationEmail,
         session,
+        connection, // ✅ FIX: Pasar la misma conexión
       );
     }
 
@@ -499,13 +514,36 @@ export class ShipmentsService {
       session ?? undefined,
     );
 
-    await newShipment.save();
+    // ✅ FIX: Ya no necesitamos save() porque create() ya guardó el documento
+    // await newShipment.save();
 
     if (shipmentStatus === 'In Preparation' && session) {
       await this.logisticsService.updateProductStatusToInTransit(
         productId,
         connection,
         session,
+      );
+    }
+
+    try {
+      this.eventsGateway.notifyTenant('superadmin', 'shipments-superadmin', {
+        shipmentId: newShipment._id.toString(),
+        orderId: newShipment.order_id,
+        tenantName,
+        status: newShipment.shipment_status,
+        origin: newShipment.origin,
+        destination: newShipment.destination,
+        quantityProducts: newShipment.quantity_products,
+        createdAt: newShipment.order_date,
+        isNewShipment: true,
+      });
+      console.log(
+        `🔔 WebSocket notification sent for new shipment: ${newShipment.order_id}`,
+      );
+    } catch (error) {
+      console.error(
+        '❌ Error sending WebSocket notification for new shipment:',
+        error,
       );
     }
 
@@ -604,6 +642,31 @@ export class ShipmentsService {
         await this.slackService.sendMessage(slackMessage);
       }
 
+      // 🔔 Notificar a superadmin sobre la consolidación del shipment
+      try {
+        this.eventsGateway.notifyTenant(tenantName, 'shipment-consolidated', {
+          consolidatedShipmentId: consolidable._id.toString(),
+          consolidatedOrderId: consolidable.order_id,
+          deletedShipmentId: shipment._id.toString(),
+          deletedOrderId: shipment.order_id,
+          tenantName,
+          status: consolidable.shipment_status,
+          origin: consolidable.origin,
+          destination: consolidable.destination,
+          quantityProducts: consolidable.quantity_products,
+          updatedAt: new Date(),
+          isConsolidated: true,
+        });
+        console.log(
+          `🔔 WebSocket notification sent for consolidated shipment: ${consolidable.order_id}`,
+        );
+      } catch (error) {
+        console.error(
+          '❌ Error sending WebSocket notification for consolidated shipment:',
+          error,
+        );
+      }
+
       await recordShipmentHistory(
         this.historyService,
         'delete',
@@ -649,6 +712,30 @@ export class ShipmentsService {
             session,
           );
         }
+      }
+
+      // 🔔 Notificar a superadmin sobre la actualización del shipment
+      try {
+        this.eventsGateway.notifyTenant(tenantName, 'shipment-updated', {
+          shipmentId: shipment._id.toString(),
+          orderId: shipment.order_id,
+          tenantName,
+          oldStatus,
+          newStatus: shipment.shipment_status,
+          origin: shipment.origin,
+          destination: shipment.destination,
+          quantityProducts: shipment.quantity_products,
+          updatedAt: new Date(),
+          isUpdated: true,
+        });
+        console.log(
+          `🔔 WebSocket notification sent for updated shipment: ${shipment.order_id}`,
+        );
+      } catch (error) {
+        console.error(
+          '❌ Error sending WebSocket notification for updated shipment:',
+          error,
+        );
       }
 
       if (
