@@ -1139,7 +1139,6 @@ export class ProductsService {
         updateProductDto,
         internalConnection,
         internalSession,
-        tenantName,
       );
       console.log('🧩 Buscando producto por ID en ProductModel...');
 
@@ -1157,6 +1156,20 @@ export class ProductsService {
           '❌ Producto no encontrado en ProductModel con id:',
           id.toString(),
         );
+      }
+
+      // ✅ VALIDACIÓN: No permitir actualizar productos con shipment "On The Way"
+      if (product && product.activeShipment) {
+        const shipmentStatus =
+          await this.logisticsService.getShipmentStatusByProductId(
+            id.toString(),
+            tenantName,
+          );
+        if (shipmentStatus === 'On The Way') {
+          throw new BadRequestException(
+            'Cannot update product with shipment On The Way',
+          );
+        }
       }
 
       const result = product
@@ -1204,7 +1217,6 @@ export class ProductsService {
     updateProductDto: UpdateProductDto,
     connection: Connection,
     session: ClientSession,
-    tenantName: string,
   ): Promise<void> {
     // ✅ FIX: Usar la conexión proporcionada en lugar de obtener una nueva
     const ProductModel = connection.model(Product.name, ProductSchema);
@@ -1337,6 +1349,13 @@ export class ProductsService {
         };
 
         if (product) {
+          // ✅ VALIDACIÓN: No permitir eliminar productos con active shipment
+          if (product.activeShipment) {
+            throw new BadRequestException(
+              'Cannot delete product that is part of an active shipment',
+            );
+          }
+
           product.status = 'Deprecated';
           product.lastSerialNumber = product.serialNumber;
           product.serialNumber = undefined;
@@ -1361,6 +1380,13 @@ export class ProductsService {
             );
 
           if (memberProduct && memberProduct.product) {
+            // ✅ VALIDACIÓN: No permitir eliminar productos con active shipment
+            if (memberProduct.product.activeShipment) {
+              throw new BadRequestException(
+                'Cannot delete product that is part of an active shipment',
+              );
+            }
+
             await ProductModel.create(
               [
                 {
@@ -1571,7 +1597,6 @@ export class ProductsService {
       updateProductDto,
       connection,
       session,
-      tenantName,
     );
 
     console.log(
