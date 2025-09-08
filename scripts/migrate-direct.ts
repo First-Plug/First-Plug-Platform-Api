@@ -10,7 +10,7 @@ import { MongoClient } from 'mongodb';
 // Configuración de conexión (usar la URI de MongoDB Atlas)
 const MONGO_URI =
   process.env.DB_CONNECTION_STRING ||
-  'mongodb+srv://santiago:2025devs%2B@firstplug-dev.qxiv5.mongodb.net/firstPlug';
+  'mongodb+srv://retool:firstplugretool@first-plug-prod.ur9z4te.mongodb.net/main';
 console.log(
   `🔗 URI de conexión: ${MONGO_URI.replace(/\/\/.*:.*@/, '//***:***@')}`,
 );
@@ -55,10 +55,10 @@ async function migrateTenantDirect(
     });
 
     // Obtener bases de datos (usar firstPlug de MongoDB Atlas)
-    const mainDb = client.db('firstPlug');
+    const mainDb = client.db('main');
     const tenantDb = client.db(`tenant_${tenantName}`);
 
-    console.log(`📋 Usando bases de datos: firstPlug, tenant_${tenantName}`);
+    console.log(`📋 Usando bases de datos: main, tenant_${tenantName}`);
 
     // 1. Buscar usuarios viejos en la colección tenants
     console.log(`🔍 Buscando usuarios con tenantName: ${tenantName}`);
