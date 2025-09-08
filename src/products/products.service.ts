@@ -1139,6 +1139,7 @@ export class ProductsService {
         updateProductDto,
         internalConnection,
         internalSession,
+        tenantName,
       );
       console.log('🧩 Buscando producto por ID en ProductModel...');
 
@@ -1217,6 +1218,7 @@ export class ProductsService {
     updateProductDto: UpdateProductDto,
     connection: Connection,
     session: ClientSession,
+    tenantName: string,
   ): Promise<void> {
     // ✅ FIX: Usar la conexión proporcionada en lugar de obtener una nueva
     const ProductModel = connection.model(Product.name, ProductSchema);
@@ -1597,6 +1599,7 @@ export class ProductsService {
       updateProductDto,
       connection,
       session,
+      tenantName,
     );
 
     console.log(
