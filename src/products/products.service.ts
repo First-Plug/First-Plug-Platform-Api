@@ -1208,7 +1208,7 @@ export class ProductsService {
   ): Promise<void> {
     // ✅ FIX: Usar la conexión proporcionada en lugar de obtener una nueva
     const ProductModel = connection.model(Product.name, ProductSchema);
-
+    console.log('tenantName', tenantName);
     if (updateProductDto.fp_shipment === undefined) {
       const existingProduct =
         await ProductModel.findById(productId).session(session);
