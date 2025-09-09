@@ -420,45 +420,109 @@ export class SuperAdminService {
 
   /**
    * Obtener todos los tenants con información enriquecida (para SuperAdmin)
+   * Optimizado para procesamiento paralelo de múltiples tenants
    */
   async getAllTenantsWithDetails() {
     try {
-      const tenants = await this.tenantsService.findAllTenants();
-      const enrichedTenants: any[] = [];
+      // Obtener todos los datos necesarios en paralelo
+      const [tenants, allUsers] = await Promise.all([
+        this.tenantsService.findAllTenants(),
+        this.usersService.findAssignedUsers(),
+      ]);
 
-      for (const tenant of tenants) {
-        // 1. Contar usuarios activos por tenant
-        const activeUsersCount = await this.countActiveUsersByTenant(
-          tenant._id.toString(),
-        );
+      // Crear mapas para acceso rápido a los datos
+      const usersByTenantId = new Map<string, any[]>();
+      const usersByTenantName = new Map<string, any[]>();
 
-        // 2. Obtener usuarios completos del tenant
-        const tenantUsers = await this.getTenantUsers(tenant._id.toString());
-
-        // 3. Obtener datos completos de la oficina
-        let office: any = null;
-        try {
-          const offices = await this.officesService.findOfficesByTenant(
-            tenant.tenantName,
-          );
-          office = offices.find((o) => o.isDefault) || offices[0] || null;
-        } catch (error) {
-          console.warn(
-            `⚠️ No se pudo obtener oficina para ${tenant.tenantName}:`,
-            error.message,
-          );
+      // Agrupar usuarios por tenantId y tenantName para compatibilidad con ambos sistemas
+      allUsers.forEach((user) => {
+        if (user.tenantId) {
+          const tenantId = user.tenantId.toString();
+          if (!usersByTenantId.has(tenantId)) {
+            usersByTenantId.set(tenantId, []);
+          }
+          usersByTenantId.get(tenantId)!.push(user);
         }
+        if (user.tenantName) {
+          if (!usersByTenantName.has(user.tenantName)) {
+            usersByTenantName.set(user.tenantName, []);
+          }
+          usersByTenantName.get(user.tenantName)!.push(user);
+        }
+      });
 
-        // 4. Transformar al formato del frontend
-        const transformedTenant = this.transformTenantForFrontend(
-          tenant.toObject ? tenant.toObject() : tenant,
-          tenantUsers,
-          office,
-          activeUsersCount,
-        );
+      // Procesar todos los tenants en paralelo usando Promise.all
+      const enrichedTenants = await Promise.all(
+        tenants.map(async (tenant) => {
+          try {
+            // Obtener usuarios del tenant desde los mapas (más eficiente)
+            const tenantUsersById =
+              usersByTenantId.get(tenant._id.toString()) || [];
+            const tenantUsersByName =
+              usersByTenantName.get(tenant.tenantName) || [];
 
-        enrichedTenants.push(transformedTenant);
-      }
+            // Combinar usuarios de ambos sistemas (tenantId y tenantName)
+            const allTenantUsers = [...tenantUsersById, ...tenantUsersByName];
+
+            // Eliminar duplicados basándose en el _id
+            const uniqueUsers = allTenantUsers.filter(
+              (user, index, self) =>
+                index ===
+                self.findIndex((u) => u._id.toString() === user._id.toString()),
+            );
+
+            // Contar usuarios activos
+            const activeUsersCount = uniqueUsers.filter(
+              (user) => user.isActive && !user.isDeleted,
+            ).length;
+
+            // Transformar usuarios al formato esperado
+            const transformedUsers = uniqueUsers.map((user) => ({
+              _id: user._id,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              email: user.email,
+              role: user.role,
+              isActive: user.isActive,
+              createdAt: (user as any).createdAt,
+            }));
+
+            // Obtener oficina del tenant
+            let office: any = null;
+            try {
+              const offices = await this.officesService.findOfficesByTenant(
+                tenant.tenantName,
+              );
+              office = offices.find((o) => o.isDefault) || offices[0] || null;
+            } catch (error) {
+              console.warn(
+                `⚠️ No se pudo obtener oficina para ${tenant.tenantName}:`,
+                error.message,
+              );
+            }
+
+            // Transformar al formato del frontend
+            return this.transformTenantForFrontend(
+              tenant.toObject ? tenant.toObject() : tenant,
+              transformedUsers,
+              office,
+              activeUsersCount,
+            );
+          } catch (error) {
+            console.error(
+              `❌ Error procesando tenant ${tenant.tenantName}:`,
+              error,
+            );
+            // Devolver un tenant básico en caso de error para no romper toda la respuesta
+            return this.transformTenantForFrontend(
+              tenant.toObject ? tenant.toObject() : tenant,
+              [],
+              null,
+              0,
+            );
+          }
+        }),
+      );
 
       return enrichedTenants;
     } catch (error) {
