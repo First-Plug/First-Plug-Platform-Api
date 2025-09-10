@@ -1019,6 +1019,20 @@ export class AssignmentsService {
       throw new NotFoundException(`Product with id "${id}" not found`);
     }
 
+    // ✅ VALIDACIÓN: No permitir actualizar productos con shipment "On The Way"
+    if (memberProduct.product.activeShipment) {
+      const shipmentStatus =
+        await this.logisticsService.getShipmentStatusByProductId(
+          id.toString(),
+          tenantName,
+        );
+      if (shipmentStatus === 'On The Way') {
+        throw new BadRequestException(
+          'Cannot update product with shipment On The Way',
+        );
+      }
+    }
+
     const { product, member } = memberProduct;
 
     const productCopy = { ...memberProduct.product };
