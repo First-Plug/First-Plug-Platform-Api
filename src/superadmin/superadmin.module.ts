@@ -7,6 +7,7 @@ import { TenantDbModule } from '../infra/db/tenant-db.module';
 import { TenantsModule } from '../tenants/tenants.module';
 import { UsersModule } from '../users/users.module';
 import { OfficesModule } from '../offices/offices.module';
+import { LogisticsModule } from '../logistics/logistics.module';
 import { EventsGateway } from '../infra/event-bus/events.gateway';
 
 @Module({
@@ -16,6 +17,7 @@ import { EventsGateway } from '../infra/event-bus/events.gateway';
     forwardRef(() => ShipmentsModule),
     forwardRef(() => UsersModule),
     forwardRef(() => OfficesModule),
+    forwardRef(() => LogisticsModule),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'default-secret',
       signOptions: { expiresIn: '48h' },
