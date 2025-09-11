@@ -328,7 +328,7 @@ export class SuperAdminService {
       console.log(`📊 Status actualizado: ${oldStatus} → ${newStatus}`);
 
       // ✅ Si el status cambió a "Received" o "Cancelled", actualizar productos y members
-      if (newStatus === 'Received' || newStatus === 'Cancelled') {
+ if (newStatus === 'Received' || newStatus === 'Cancelled') {
         const actionText = newStatus === 'Received' ? 'recibido' : 'cancelado';
         console.log(
           `🎯 Shipment ${actionText} - actualizando productos y members...`,
