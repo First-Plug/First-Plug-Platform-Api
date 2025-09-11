@@ -1159,6 +1159,20 @@ export class ProductsService {
         );
       }
 
+      // ✅ VALIDACIÓN: No permitir actualizar productos con shipment "On The Way"
+      if (product && product.activeShipment) {
+        const shipmentStatus =
+          await this.logisticsService.getShipmentStatusByProductId(
+            id.toString(),
+            tenantName,
+          );
+        if (shipmentStatus === 'On The Way') {
+          throw new BadRequestException(
+            'Cannot update product with shipment On The Way',
+          );
+        }
+      }
+
       const result = product
         ? await this.assignmentsService.handleProductFromProductsCollection(
             product,
@@ -1337,6 +1351,13 @@ export class ProductsService {
         };
 
         if (product) {
+          // ✅ VALIDACIÓN: No permitir eliminar productos con active shipment
+          if (product.activeShipment) {
+            throw new BadRequestException(
+              'Cannot delete product that is part of an active shipment',
+            );
+          }
+
           product.status = 'Deprecated';
           product.lastSerialNumber = product.serialNumber;
           product.serialNumber = undefined;
@@ -1361,6 +1382,13 @@ export class ProductsService {
             );
 
           if (memberProduct && memberProduct.product) {
+            // ✅ VALIDACIÓN: No permitir eliminar productos con active shipment
+            if (memberProduct.product.activeShipment) {
+              throw new BadRequestException(
+                'Cannot delete product that is part of an active shipment',
+              );
+            }
+
             await ProductModel.create(
               [
                 {

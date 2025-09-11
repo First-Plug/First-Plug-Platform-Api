@@ -573,6 +573,16 @@ export class ShipmentsService {
       );
     }
 
+    // ✅ Validar que el shipment esté en un estado actualizable
+    if (
+      shipment.shipment_status !== 'In Preparation' &&
+      shipment.shipment_status !== 'On Hold - Missing Data'
+    ) {
+      throw new BadRequestException(
+        `Cannot update shipment with status: ${shipment.shipment_status}`,
+      );
+    }
+
     const originalShipment = { ...shipment.toObject() };
     let wasModified = false;
 

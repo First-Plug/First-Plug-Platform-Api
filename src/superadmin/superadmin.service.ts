@@ -10,6 +10,7 @@ import { ShipmentSchema } from '../shipments/schema/shipment.schema';
 import { TenantsService } from '../tenants/tenants.service';
 import { UsersService } from '../users/users.service';
 import { OfficesService } from '../offices/offices.service';
+import { LogisticsService } from '../logistics/logistics.sevice';
 import { UpdateShipmentCompleteDto } from './dto/update-shipment-complete.dto';
 
 @Injectable()
@@ -21,6 +22,7 @@ export class SuperAdminService {
     private readonly tenantsService: TenantsService,
     private readonly usersService: UsersService,
     private readonly officesService: OfficesService,
+    private readonly logisticsService: LogisticsService,
   ) {}
 
   // ==================== SHIPMENTS CROSS-TENANT ====================
@@ -324,6 +326,97 @@ export class SuperAdminService {
       await shipment.save();
 
       console.log(`📊 Status actualizado: ${oldStatus} → ${newStatus}`);
+
+      // ✅ Si el status cambió a "Received" o "Cancelled", actualizar productos y members
+ if (newStatus === 'Received' || newStatus === 'Cancelled') {
+        const actionText = newStatus === 'Received' ? 'recibido' : 'cancelado';
+        console.log(
+          `🎯 Shipment ${actionText} - actualizando productos y members...`,
+        );
+        console.log('📋 Shipment data:', {
+          origin: shipment.origin,
+          destination: shipment.destination,
+          originDetails: shipment.originDetails,
+          destinationDetails: shipment.destinationDetails,
+        });
+
+        // Actualizar cada producto del shipment
+        for (const productId of shipment.products) {
+          try {
+            if (newStatus === 'Received') {
+              await this.logisticsService.updateProductOnShipmentReceived(
+                productId.toString(),
+                tenantName,
+                shipment.origin,
+              );
+            } else if (newStatus === 'Cancelled') {
+              // Para cancelación, usar el método de cancelación de productos
+              await this.logisticsService.cancelAllProductsInShipment(
+                [productId],
+                tenantName,
+              );
+            }
+            console.log(`✅ Producto ${productId} actualizado correctamente`);
+          } catch (error) {
+            console.error(
+              `❌ Error actualizando producto ${productId}:`,
+              error,
+            );
+          }
+        }
+
+        // Actualizar activeShipment flags de members si no tienen otros shipments activos
+        const memberEmails = new Set<string>();
+
+        // Helper function para obtener el mejor email (igual que en Slack helper)
+        const getBestEmail = (details: any, location: string) => {
+          if (location === 'Our office') {
+            return details?.email || '';
+          }
+          return details?.assignedEmail || details?.email || '';
+        };
+
+        // Obtener emails de origin y destination si no son "Our office" o "FP warehouse"
+        if (!['Our office', 'FP warehouse'].includes(shipment.origin)) {
+          const originEmail = getBestEmail(
+            shipment.originDetails,
+            shipment.origin,
+          );
+          if (originEmail) {
+            memberEmails.add(originEmail);
+            console.log(`📧 Origin email encontrado: ${originEmail}`);
+          }
+        }
+
+        if (!['Our office', 'FP warehouse'].includes(shipment.destination)) {
+          const destinationEmail = getBestEmail(
+            shipment.destinationDetails,
+            shipment.destination,
+          );
+          if (destinationEmail) {
+            memberEmails.add(destinationEmail);
+            console.log(`📧 Destination email encontrado: ${destinationEmail}`);
+          }
+        }
+
+        // Actualizar activeShipment para cada member involucrado
+        console.log(`🔍 Total de emails encontrados: ${memberEmails.size}`);
+        for (const memberEmail of memberEmails) {
+          try {
+            console.log(`🔄 Procesando member: ${memberEmail}`);
+            await this.logisticsService.clearMemberActiveShipmentFlagIfNoOtherShipments(
+              memberEmail,
+              tenantName,
+            );
+            console.log(`✅ Member ${memberEmail} activeShipment actualizado`);
+          } catch (error) {
+            console.error(
+              `❌ Error actualizando member ${memberEmail}:`,
+              error,
+            );
+          }
+        }
+      }
 
       // Send WebSocket notification
       try {
