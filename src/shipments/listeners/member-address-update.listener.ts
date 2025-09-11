@@ -13,18 +13,37 @@ export class MemberAddressUpdatedListener {
   @OnEvent(EventTypes.MEMBER_ADDRESS_UPDATED)
   async handleMemberAddressUpdated(event: MemberAddressUpdatedEvent) {
     try {
+      console.log(
+        '🎯 [EVENT LISTENER] Received MEMBER_ADDRESS_UPDATED event:',
+        {
+          memberEmail: event.memberEmail,
+          tenantName: event.tenantName,
+          userId: event.userId,
+          timestamp: new Date().toISOString(),
+        },
+      );
+
       this.logger.debug(
         `Processing address update for member: ${event.memberEmail}`,
       );
       const userId = event.userId || 'system';
       const ourOfficeEmail = event.ourOfficeEmail;
+
+      console.log(
+        '🔄 [EVENT LISTENER] Calling checkAndUpdateShipmentsForMember...',
+      );
       await this.logisticsService.checkAndUpdateShipmentsForMember(
         event.memberEmail,
         event.tenantName,
         userId,
         ourOfficeEmail,
       );
+      console.log('✅ [EVENT LISTENER] Successfully processed member update');
     } catch (error) {
+      console.error(
+        '❌ [EVENT LISTENER] Failed to process member update:',
+        error,
+      );
       this.logger.error(
         `Failed to process member update for ${event.memberEmail}`,
         error.stack,

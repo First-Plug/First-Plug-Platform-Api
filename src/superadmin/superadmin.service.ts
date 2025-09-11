@@ -328,9 +328,10 @@ export class SuperAdminService {
       console.log(`📊 Status actualizado: ${oldStatus} → ${newStatus}`);
 
       // ✅ Si el status cambió a "Received" o "Cancelled", actualizar productos y members
-      if (newStatus === 'Received' || newStatus === 'Cancelled') {
+ if (newStatus === 'Received' || newStatus === 'Cancelled') {
+        const actionText = newStatus === 'Received' ? 'recibido' : 'cancelado';
         console.log(
-          '🎯 Shipment recibido - actualizando productos y members...',
+          `🎯 Shipment ${actionText} - actualizando productos y members...`,
         );
         console.log('📋 Shipment data:', {
           origin: shipment.origin,
@@ -342,11 +343,19 @@ export class SuperAdminService {
         // Actualizar cada producto del shipment
         for (const productId of shipment.products) {
           try {
-            await this.logisticsService.updateProductOnShipmentReceived(
-              productId.toString(),
-              tenantName,
-              shipment.origin,
-            );
+            if (newStatus === 'Received') {
+              await this.logisticsService.updateProductOnShipmentReceived(
+                productId.toString(),
+                tenantName,
+                shipment.origin,
+              );
+            } else if (newStatus === 'Cancelled') {
+              // Para cancelación, usar el método de cancelación de productos
+              await this.logisticsService.cancelAllProductsInShipment(
+                [productId],
+                tenantName,
+              );
+            }
             console.log(`✅ Producto ${productId} actualizado correctamente`);
           } catch (error) {
             console.error(

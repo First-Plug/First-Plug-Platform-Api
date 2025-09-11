@@ -576,16 +576,25 @@ export class MembersService {
         );
       }
 
-      await this.logisticsService.handleAddressUpdateIfShipmentActive(
+      // ✅ Guardar datos para emitir evento DESPUÉS del commit
+      const shouldEmitEvent = this.logisticsService.shouldEmitMemberUpdateEvent(
         initialMember,
         member,
-        tenantName,
-        userId,
-        ourOfficeEmail,
       );
 
       await session.commitTransaction();
       session.endSession();
+
+      // ✅ Emitir evento DESPUÉS de que la transacción se confirme
+      if (shouldEmitEvent) {
+        await this.logisticsService.handleAddressUpdateIfShipmentActive(
+          initialMember,
+          member,
+          tenantName,
+          userId,
+          ourOfficeEmail,
+        );
+      }
 
       const finalMemberData = member.toObject?.() ?? member;
 

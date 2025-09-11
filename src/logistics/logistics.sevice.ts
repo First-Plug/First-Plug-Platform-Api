@@ -125,15 +125,13 @@ export class LogisticsService {
     userId: string,
     ourOfficeEmail: string,
   ) {
-    const modified = this.hasPersonalDataChanged(initialMember, updatedMember);
-
-    if (!modified) return;
-
-    if (!updatedMember.activeShipment) {
-      this.logger.debug('No event emitted: member has no active shipment');
-      return;
-    }
-
+    console.log(
+      '🎯 [MEMBER UPDATE] Emitting MEMBER_ADDRESS_UPDATED event (post-commit):',
+      {
+        memberEmail: updatedMember.email,
+        tenantName,
+      },
+    );
     this.logger.debug('Emitting MEMBER_ADDRESS_UPDATED event');
 
     this.eventEmitter.emit(
@@ -186,6 +184,15 @@ export class LogisticsService {
       'personalEmail',
     ];
 
+    console.log('🔍 [PERSONAL DATA CHECK] Comparing member data:', {
+      memberEmail: after.email,
+      beforeActiveShipment: before.activeShipment,
+      afterActiveShipment: after.activeShipment,
+    });
+
+    let hasChanges = false;
+    const changes: Array<{ field: string; before: any; after: any }> = [];
+
     for (const field of sensitiveFields) {
       const beforeVal = before[field];
       const afterVal = after[field];
@@ -201,14 +208,57 @@ export class LogisticsService {
           : afterVal;
 
       if (normalizedBefore !== normalizedAfter) {
+        console.log(
+          `🔄 [PERSONAL DATA CHECK] Campo ${field} ha cambiado: "${normalizedBefore}" -> "${normalizedAfter}"`,
+        );
         this.logger.debug(
           `🔄 Campo ${field} ha cambiado: ${normalizedBefore} -> ${normalizedAfter}`,
         );
-        return true;
+        changes.push({
+          field,
+          before: normalizedBefore,
+          after: normalizedAfter,
+        });
+        hasChanges = true;
       }
     }
 
-    return false;
+    if (hasChanges) {
+      console.log('✅ [PERSONAL DATA CHECK] Changes detected:', changes);
+    } else {
+      console.log('❌ [PERSONAL DATA CHECK] No changes detected');
+    }
+
+    return hasChanges;
+  }
+
+  /**
+   * Verifica si se debe emitir el evento de actualización de member
+   * (versión pública para usar antes del commit de transacción)
+   */
+  public shouldEmitMemberUpdateEvent(
+    initialMember: MemberDocument,
+    updatedMember: MemberDocument,
+  ): boolean {
+    console.log('🔍 [SHOULD EMIT CHECK] Checking if should emit event:', {
+      memberEmail: updatedMember.email,
+      activeShipment: updatedMember.activeShipment,
+    });
+
+    const modified = this.hasPersonalDataChanged(initialMember, updatedMember);
+
+    if (!modified) {
+      console.log('❌ [SHOULD EMIT CHECK] No personal data changed');
+      return false;
+    }
+
+    if (!updatedMember.activeShipment) {
+      console.log('❌ [SHOULD EMIT CHECK] Member has no active shipment');
+      return false;
+    }
+
+    console.log('✅ [SHOULD EMIT CHECK] Should emit event');
+    return true;
   }
 
   async getShipmentSummaryByProductId(productId: string, tenantName: string) {
