@@ -9,11 +9,13 @@ import { UsersModule } from '../users/users.module';
 import { OfficesModule } from '../offices/offices.module';
 import { LogisticsModule } from '../logistics/logistics.module';
 import { EventsGateway } from '../infra/event-bus/events.gateway';
+import { WarehousesModule } from '../warehouses/warehouses.module';
 
 @Module({
   imports: [
     TenantDbModule,
     TenantsModule,
+    WarehousesModule,
     forwardRef(() => ShipmentsModule),
     forwardRef(() => UsersModule),
     forwardRef(() => OfficesModule),

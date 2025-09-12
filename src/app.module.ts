@@ -20,6 +20,7 @@ import { LogisticsModule } from 'src/logistics/logistics.module';
 import { UsersModule } from 'src/users/users.module';
 import { OfficesModule } from 'src/offices/offices.module';
 import { SuperAdminModule } from 'src/superadmin/superadmin.module';
+import { WarehousesModule } from 'src/warehouses/warehouses.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { SuperAdminModule } from 'src/superadmin/superadmin.module';
     LogisticsModule,
     UsersModule,
     OfficesModule,
+    WarehousesModule,
     SuperAdminModule,
   ],
   controllers: [],

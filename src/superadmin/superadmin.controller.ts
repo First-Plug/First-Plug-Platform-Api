@@ -19,11 +19,16 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { UpdateTenantOfficeDto } from './dto/update-tenant-office.dto';
 import { Request } from 'express';
+import { WarehousesService } from '../warehouses/warehouses.service';
+import { CreateWarehouseDto, UpdateWarehouseDto } from '../warehouses/dto';
 
 @Controller('superadmin')
 @UseGuards(JwtGuard, SuperAdminGuard)
 export class SuperAdminController {
-  constructor(private readonly superAdminService: SuperAdminService) {}
+  constructor(
+    private readonly superAdminService: SuperAdminService,
+    private readonly warehousesService: WarehousesService,
+  ) {}
 
   // ==================== SHIPMENTS ENDPOINTS ====================
 
@@ -197,5 +202,76 @@ export class SuperAdminController {
   @Post('migrate-tenant/:tenantName')
   async migrateTenant(@Param('tenantName') tenantName: string) {
     return await this.superAdminService.migrateTenantArchitecture(tenantName);
+  }
+
+  // ==================== WAREHOUSES ENDPOINTS ====================
+
+  /**
+   * Obtener todos los países con sus warehouses (SuperAdmin only)
+   */
+  @Get('warehouses')
+  async getAllWarehouses() {
+    return await this.warehousesService.findAll();
+  }
+
+  /**
+   * Obtener warehouses de un país específico (SuperAdmin only)
+   */
+  @Get('warehouses/:country')
+  async getWarehousesByCountry(@Param('country') country: string) {
+    return await this.warehousesService.findByCountry(country);
+  }
+
+  /**
+   * Crear un nuevo warehouse en un país (SuperAdmin only)
+   */
+  @Post('warehouses/:country')
+  async createWarehouse(
+    @Param('country') country: string,
+    @Body() createWarehouseDto: CreateWarehouseDto,
+  ) {
+    return await this.warehousesService.createWarehouse(
+      country,
+      createWarehouseDto,
+    );
+  }
+
+  /**
+   * Actualizar un warehouse específico (SuperAdmin only)
+   */
+  @Patch('warehouses/:country/:warehouseId')
+  async updateWarehouse(
+    @Param('country') country: string,
+    @Param('warehouseId') warehouseId: string,
+    @Body() updateWarehouseDto: UpdateWarehouseDto,
+  ) {
+    return await this.warehousesService.updateWarehouse(
+      country,
+      warehouseId,
+      updateWarehouseDto,
+    );
+  }
+
+  /**
+   * Activar un warehouse específico (SuperAdmin only)
+   */
+  @Post('warehouses/:country/:warehouseId/activate')
+  async activateWarehouse(
+    @Param('country') country: string,
+    @Param('warehouseId') warehouseId: string,
+  ) {
+    return await this.warehousesService.activateWarehouse(country, warehouseId);
+  }
+
+  /**
+   * Eliminar un warehouse (soft delete) (SuperAdmin only)
+   */
+  @Delete('warehouses/:country/:warehouseId')
+  async deleteWarehouse(
+    @Param('country') country: string,
+    @Param('warehouseId') warehouseId: string,
+  ) {
+    await this.warehousesService.deleteWarehouse(country, warehouseId);
+    return { message: 'Warehouse deleted successfully' };
   }
 }
