@@ -21,6 +21,7 @@ import { UpdateTenantOfficeDto } from './dto/update-tenant-office.dto';
 import { Request } from 'express';
 import { WarehousesService } from '../warehouses/warehouses.service';
 import { CreateWarehouseDto, UpdateWarehouseDto } from '../warehouses/dto';
+import { InitializeWarehousesScript } from '../warehouses/scripts/initialize-warehouses.script';
 
 @Controller('superadmin')
 @UseGuards(JwtGuard, SuperAdminGuard)
@@ -28,6 +29,7 @@ export class SuperAdminController {
   constructor(
     private readonly superAdminService: SuperAdminService,
     private readonly warehousesService: WarehousesService,
+    private readonly initializeWarehousesScript: InitializeWarehousesScript,
   ) {}
 
   // ==================== SHIPMENTS ENDPOINTS ====================
@@ -273,5 +275,33 @@ export class SuperAdminController {
   ) {
     await this.warehousesService.deleteWarehouse(country, warehouseId);
     return { message: 'Warehouse deleted successfully' };
+  }
+
+  // ==================== WAREHOUSES INITIALIZATION ENDPOINTS ====================
+
+  /**
+   * Inicializar todos los países con warehouses vacíos (SuperAdmin only)
+   */
+  @Post('warehouses/initialize-all')
+  async initializeAllWarehouses() {
+    await this.initializeWarehousesScript.initializeAllCountries();
+    return { message: 'Warehouses initialization completed successfully' };
+  }
+
+  /**
+   * Inicializar un país específico (SuperAdmin only)
+   */
+  @Post('warehouses/initialize/:country')
+  async initializeCountryWarehouse(@Param('country') country: string) {
+    await this.initializeWarehousesScript.initializeCountry(country);
+    return { message: `Country ${country} initialized successfully` };
+  }
+
+  /**
+   * Verificar estado de inicialización de warehouses (SuperAdmin only)
+   */
+  @Get('warehouses/initialization-status')
+  async getWarehousesInitializationStatus() {
+    return await this.initializeWarehousesScript.checkInitializationStatus();
   }
 }

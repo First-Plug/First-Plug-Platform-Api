@@ -1,6 +1,12 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { softDeletePlugin } from 'soft-delete-plugin-mongoose';
+import {
+  COMMUNICATION_CHANNELS,
+  PARTNER_TYPES,
+  DEFAULT_COMMUNICATION_CHANNEL,
+  DEFAULT_PARTNER_TYPE,
+} from '../constants/warehouse.constants';
 
 export type WarehouseDocument = Warehouse & Document;
 
@@ -9,22 +15,22 @@ export type WarehouseDocument = Warehouse & Document;
 export class WarehouseItem {
   _id: Types.ObjectId;
 
-  @Prop({ type: String, required: false })
+  @Prop({ type: String, required: true })
   name: string;
 
-  @Prop({ type: String, required: false })
+  @Prop({ type: String, required: true })
   address: string;
 
   @Prop({ type: String, required: false })
   apartment: string;
 
-  @Prop({ type: String, required: false })
+  @Prop({ type: String, required: true })
   city: string;
 
-  @Prop({ type: String, required: false })
+  @Prop({ type: String, required: true })
   state: string;
 
-  @Prop({ type: String, required: false })
+  @Prop({ type: String, required: true })
   zipCode: string;
 
   @Prop({ type: String, required: false })
@@ -44,13 +50,20 @@ export class WarehouseItem {
 
   @Prop({
     type: String,
-    enum: ['partner', 'own', 'temporary', 'default'],
-    default: 'default',
+    enum: COMMUNICATION_CHANNELS,
+    default: DEFAULT_COMMUNICATION_CHANNEL,
+  })
+  canal: string;
+
+  @Prop({
+    type: String,
+    enum: PARTNER_TYPES,
+    default: DEFAULT_PARTNER_TYPE,
   })
   partnerType: string;
 
   @Prop({ type: Boolean, default: false })
-  isRealPartner: boolean; // false para datos placeholder
+  isRealPartner: boolean;
 
   @Prop({ type: Boolean, default: false })
   isDeleted: boolean;

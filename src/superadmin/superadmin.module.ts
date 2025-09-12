@@ -10,6 +10,7 @@ import { OfficesModule } from '../offices/offices.module';
 import { LogisticsModule } from '../logistics/logistics.module';
 import { EventsGateway } from '../infra/event-bus/events.gateway';
 import { WarehousesModule } from '../warehouses/warehouses.module';
+import { InitializeWarehousesScript } from '../warehouses/scripts/initialize-warehouses.script';
 
 @Module({
   imports: [
@@ -26,7 +27,12 @@ import { WarehousesModule } from '../warehouses/warehouses.module';
     }),
   ],
   controllers: [SuperAdminController],
-  providers: [SuperAdminService, EventsGateway, JwtService],
+  providers: [
+    SuperAdminService,
+    EventsGateway,
+    JwtService,
+    InitializeWarehousesScript,
+  ],
   exports: [SuperAdminService],
 })
 export class SuperAdminModule {}

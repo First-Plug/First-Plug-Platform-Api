@@ -23,6 +23,8 @@
     "rollback:migration": "ts-node -r tsconfig-paths/register scripts/rollback-migration.ts",
     "rollback:direct": "ts-node -r tsconfig-paths/register scripts/rollback-direct.ts",
     "cleanup:duplicates": "ts-node -r tsconfig-paths/register scripts/cleanup-duplicates.ts",
+    "init:warehouses": "ts-node -r tsconfig-paths/register src/warehouses/scripts/run-initialization.ts",
+    "init:warehouses:direct": "ts-node -r tsconfig-paths/register src/warehouses/scripts/direct-initialization.ts",
     "cleanup:offices": "ts-node -r tsconfig-paths/register scripts/cleanup-offices.ts",
     "test:script": "ts-node -r tsconfig-paths/register scripts/test-simple.ts"
   },

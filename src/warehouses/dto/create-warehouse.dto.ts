@@ -5,38 +5,43 @@ import {
   IsOptional,
   IsBoolean,
   MaxLength,
+  IsNotEmpty,
 } from 'class-validator';
+import {
+  COMMUNICATION_CHANNELS,
+  PARTNER_TYPES,
+} from '../constants/warehouse.constants';
 
 export class CreateWarehouseDto {
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(100)
-  name?: string;
+  name: string;
 
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(200)
-  address?: string;
+  address: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(100)
   apartment?: string;
 
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(50)
-  city?: string;
+  city: string;
 
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(50)
-  state?: string;
+  state: string;
 
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(20)
-  zipCode?: string;
+  zipCode: string;
 
   @IsOptional()
   @IsEmail()
@@ -52,6 +57,10 @@ export class CreateWarehouseDto {
   contactPerson?: string;
 
   @IsOptional()
+  @IsEnum(COMMUNICATION_CHANNELS)
+  canal?: string;
+
+  @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 
@@ -61,7 +70,7 @@ export class CreateWarehouseDto {
   additionalInfo?: string;
 
   @IsOptional()
-  @IsEnum(['partner', 'own', 'temporary', 'default'])
+  @IsEnum(PARTNER_TYPES)
   partnerType?: string;
 
   @IsOptional()
