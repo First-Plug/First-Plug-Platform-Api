@@ -63,9 +63,6 @@ export class WarehouseItem {
   partnerType: string;
 
   @Prop({ type: Boolean, default: false })
-  isRealPartner: boolean;
-
-  @Prop({ type: Boolean, default: false })
   isDeleted: boolean;
 
   @Prop({ type: Date, required: false })

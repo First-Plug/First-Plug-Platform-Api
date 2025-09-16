@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -7,10 +12,7 @@ import {
   WarehouseItem,
 } from './schemas/warehouse.schema';
 import { CreateWarehouseDto, UpdateWarehouseDto } from './dto';
-import {
-  DEFAULT_COMMUNICATION_CHANNEL,
-  DEFAULT_PARTNER_TYPE,
-} from './constants/warehouse.constants';
+import { DEFAULT_PARTNER_TYPE } from './constants/warehouse.constants';
 
 @Injectable()
 export class WarehousesService {
@@ -156,7 +158,7 @@ export class WarehousesService {
   }
 
   /**
-   * Actualizar un warehouse específico
+   * Actualizar un warehouse específico con validaciones inteligentes
    */
   async updateWarehouse(
     country: string,
@@ -179,22 +181,70 @@ export class WarehousesService {
         );
       }
 
-      // Si se quiere activar este warehouse, desactivar los demás
-      if (updateWarehouseDto.isActive) {
-        countryDoc.warehouses.forEach((w, index) => {
-          if (index !== warehouseIndex && !w.isDeleted) {
-            w.isActive = false;
-          }
-        });
-      }
-
       // Actualizar el warehouse
       const warehouse = countryDoc.warehouses[warehouseIndex];
       Object.assign(warehouse, updateWarehouseDto, { updatedAt: new Date() });
 
+      // Verificar si el warehouse ahora está completo
+      const isComplete = this.isWarehouseComplete(warehouse);
+
+      // Lógica de activación inteligente
+      if (isComplete) {
+        // Si el warehouse está completo y no hay otro activo, activarlo automáticamente
+        const hasActiveWarehouse = countryDoc.warehouses.some(
+          (w, index) => index !== warehouseIndex && w.isActive && !w.isDeleted,
+        );
+
+        if (!hasActiveWarehouse) {
+          warehouse.isActive = true;
+          this.logger.log(
+            `✅ Warehouse auto-activated (first complete warehouse in ${country})`,
+          );
+        }
+      } else {
+        // Si el warehouse no está completo, no puede estar activo
+        if (warehouse.isActive) {
+          warehouse.isActive = false;
+
+          // Buscar otro warehouse completo para activar
+          const bestCandidate = this.findBestActiveCandidate(
+            countryDoc.warehouses,
+          );
+          if (bestCandidate) {
+            bestCandidate.isActive = true;
+            this.logger.log(
+              `✅ Activated alternative warehouse: ${bestCandidate.name}`,
+            );
+          } else {
+            this.logger.warn(
+              `⚠️  No complete warehouse available in ${country}`,
+            );
+          }
+        }
+      }
+
+      // Si se solicita activación explícita
+      if (updateWarehouseDto.isActive === true) {
+        if (isComplete) {
+          // Desactivar otros warehouses
+          countryDoc.warehouses.forEach((w, index) => {
+            if (index !== warehouseIndex && !w.isDeleted) {
+              w.isActive = false;
+            }
+          });
+          warehouse.isActive = true;
+        } else {
+          throw new BadRequestException(
+            `Cannot activate incomplete warehouse. Missing required fields: ${this.getMissingFields(warehouse).join(', ')}`,
+          );
+        }
+      }
+
       await countryDoc.save();
 
-      this.logger.log(`✅ Warehouse updated in ${country}: ${warehouse.name}`);
+      this.logger.log(
+        `✅ Warehouse updated in ${country}: ${warehouse.name || 'Unnamed'}`,
+      );
       return warehouse;
     } catch (error) {
       this.logger.error(
@@ -206,29 +256,27 @@ export class WarehousesService {
   }
 
   /**
-   * Activar un warehouse específico (desactiva los demás del país)
+   * Obtener campos faltantes de un warehouse
    */
-  async activateWarehouse(
-    country: string,
-    warehouseId: string,
-  ): Promise<WarehouseItem> {
-    try {
-      return await this.updateWarehouse(country, warehouseId, {
-        isActive: true,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Error activating warehouse ${warehouseId} in ${country}:`,
-        error,
-      );
-      throw error;
-    }
+  private getMissingFields(warehouse: WarehouseItem): string[] {
+    const requiredFields = ['name', 'address', 'city', 'state', 'zipCode'];
+    return requiredFields.filter(
+      (field) => !warehouse[field] || warehouse[field].toString().trim() === '',
+    );
   }
 
   /**
-   * Soft delete de un warehouse
+   * Soft delete de un warehouse con lógica inteligente
    */
-  async deleteWarehouse(country: string, warehouseId: string): Promise<void> {
+  async deleteWarehouse(
+    country: string,
+    warehouseId: string,
+  ): Promise<{
+    deleted: boolean;
+    message: string;
+    newActiveWarehouse?: string;
+    warning?: string;
+  }> {
     try {
       const countryDoc = await this.findByCountry(country);
       if (!countryDoc) {
@@ -245,19 +293,188 @@ export class WarehousesService {
         );
       }
 
+      const wasActive = warehouse.isActive;
+
       // Soft delete
       warehouse.isDeleted = true;
       warehouse.deletedAt = new Date();
-      warehouse.isActive = false; // También desactivar
+      warehouse.isActive = false;
+      warehouse.updatedAt = new Date();
+
+      const result = {
+        deleted: true,
+        message: `Warehouse deleted successfully: ${warehouse.name || 'Unnamed'}`,
+        newActiveWarehouse: undefined as string | undefined,
+        warning: undefined as string | undefined,
+      };
+
+      // Si el warehouse eliminado era el activo, buscar reemplazo
+      if (wasActive) {
+        const bestCandidate = this.findBestActiveCandidate(
+          countryDoc.warehouses,
+        );
+
+        if (bestCandidate) {
+          bestCandidate.isActive = true;
+          bestCandidate.updatedAt = new Date();
+          result.newActiveWarehouse = bestCandidate.name || 'Unnamed';
+          result.message += `. New active warehouse: ${result.newActiveWarehouse}`;
+        } else {
+          result.warning = `Warning: ${country} now has no active warehouses. Products cannot be assigned to FP warehouse until a warehouse is completed and activated.`;
+        }
+      }
 
       await countryDoc.save();
 
-      this.logger.log(
-        `✅ Warehouse soft deleted in ${country}: ${warehouse.name}`,
-      );
+      this.logger.log(`✅ ${result.message}`);
+      if (result.warning) {
+        this.logger.warn(`⚠️  ${result.warning}`);
+      }
+
+      return result;
     } catch (error) {
       this.logger.error(
         `Error deleting warehouse ${warehouseId} in ${country}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Activar un warehouse específico (solo si está completo)
+   */
+  async activateWarehouse(
+    country: string,
+    warehouseId: string,
+  ): Promise<{
+    activated: boolean;
+    message: string;
+    deactivatedWarehouses?: string[];
+  }> {
+    try {
+      const countryDoc = await this.findByCountry(country);
+      if (!countryDoc) {
+        throw new NotFoundException(`Country ${country} not found`);
+      }
+
+      const warehouse = countryDoc.warehouses.find(
+        (w) => w._id.toString() === warehouseId && !w.isDeleted,
+      );
+
+      if (!warehouse) {
+        throw new NotFoundException(
+          `Warehouse ${warehouseId} not found in ${country}`,
+        );
+      }
+
+      if (warehouse.isActive) {
+        return {
+          activated: false,
+          message: 'Warehouse is already active',
+        };
+      }
+
+      // Verificar si está completo
+      if (!this.isWarehouseComplete(warehouse)) {
+        throw new BadRequestException(
+          `Cannot activate incomplete warehouse. Missing required fields: ${this.getMissingFields(warehouse).join(', ')}`,
+        );
+      }
+
+      // Desactivar otros warehouses
+      const deactivatedWarehouses: string[] = [];
+      countryDoc.warehouses.forEach((w) => {
+        if (w.isActive && !w.isDeleted && w._id.toString() !== warehouseId) {
+          w.isActive = false;
+          w.updatedAt = new Date();
+          deactivatedWarehouses.push(w.name || 'Unnamed');
+        }
+      });
+
+      // Activar el warehouse
+      warehouse.isActive = true;
+      warehouse.updatedAt = new Date();
+
+      await countryDoc.save();
+
+      const result = {
+        activated: true,
+        message: `Warehouse activated successfully: ${warehouse.name || 'Unnamed'}`,
+        deactivatedWarehouses:
+          deactivatedWarehouses.length > 0 ? deactivatedWarehouses : undefined,
+      };
+
+      this.logger.log(`✅ ${result.message}`);
+      if (deactivatedWarehouses.length > 0) {
+        this.logger.log(
+          `📋 Deactivated warehouses: ${deactivatedWarehouses.join(', ')}`,
+        );
+      }
+
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Error activating warehouse ${warehouseId} in ${country}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Desactivar un warehouse específico
+   */
+  async deactivateWarehouse(
+    country: string,
+    warehouseId: string,
+  ): Promise<{
+    deactivated: boolean;
+    message: string;
+    warning?: string;
+  }> {
+    try {
+      const countryDoc = await this.findByCountry(country);
+      if (!countryDoc) {
+        throw new NotFoundException(`Country ${country} not found`);
+      }
+
+      const warehouse = countryDoc.warehouses.find(
+        (w) => w._id.toString() === warehouseId && !w.isDeleted,
+      );
+
+      if (!warehouse) {
+        throw new NotFoundException(
+          `Warehouse ${warehouseId} not found in ${country}`,
+        );
+      }
+
+      if (!warehouse.isActive) {
+        return {
+          deactivated: false,
+          message: 'Warehouse is already inactive',
+        };
+      }
+
+      // Desactivar el warehouse
+      warehouse.isActive = false;
+      warehouse.updatedAt = new Date();
+
+      await countryDoc.save();
+
+      const result = {
+        deactivated: true,
+        message: `Warehouse deactivated successfully: ${warehouse.name || 'Unnamed'}`,
+        warning: `Warning: ${country} now has no active warehouses. Products cannot be assigned to FP warehouse until another warehouse is activated.`,
+      };
+
+      this.logger.log(`✅ ${result.message}`);
+      this.logger.warn(`⚠️  ${result.warning}`);
+
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Error deactivating warehouse ${warehouseId} in ${country}:`,
         error,
       );
       throw error;
@@ -274,11 +491,11 @@ export class WarehousesService {
         const warehouse = countryDoc?.warehouses.find(
           (w) => w._id.toString() === warehouseId && !w.isDeleted,
         );
-        return warehouse?.isRealPartner || false;
+        return warehouse?.partnerType !== 'default';
       } else {
         const activeWarehouse =
           await this.findActiveWarehouseByCountry(country);
-        return activeWarehouse?.isRealPartner || false;
+        return activeWarehouse?.partnerType !== 'default';
       }
     } catch (error) {
       this.logger.error(`Error checking if warehouse is real partner:`, error);
@@ -313,11 +530,10 @@ export class WarehousesService {
         email: '',
         phone: '',
         contactPerson: '',
-        canal: DEFAULT_COMMUNICATION_CHANNEL, // Default canal de comunicación
+        canal: '', // Vacío - será completado por SuperAdmin
         isActive: false, // Inactivo hasta que se actualice con datos reales
         additionalInfo: '', // Vacío - será completado por SuperAdmin
-        partnerType: DEFAULT_PARTNER_TYPE,
-        isRealPartner: false, // No es partner real hasta que se actualice
+        partnerType: DEFAULT_PARTNER_TYPE, // 'default' hasta que se actualice
         isDeleted: false,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -340,18 +556,52 @@ export class WarehousesService {
   }
 
   /**
-   * Verificar si un país tiene al menos un warehouse real (no placeholder)
+   * Verificar si un warehouse tiene todos los datos requeridos completos
+   */
+  private isWarehouseComplete(warehouse: WarehouseItem): boolean {
+    const requiredFields = ['name', 'address', 'city', 'state', 'zipCode'];
+    return requiredFields.every(
+      (field) => warehouse[field] && warehouse[field].toString().trim() !== '',
+    );
+  }
+
+  /**
+   * Verificar si un país tiene al menos un warehouse real (no default)
    */
   async hasRealPartner(country: string): Promise<boolean> {
     try {
       const countryDoc = await this.findByCountry(country);
       if (!countryDoc) return false;
 
-      return countryDoc.warehouses.some((w) => !w.isDeleted && w.isRealPartner);
+      return countryDoc.warehouses.some(
+        (w) => !w.isDeleted && w.partnerType !== 'default',
+      );
     } catch (error) {
       this.logger.error(`Error checking if country has real partner:`, error);
       return false;
     }
+  }
+
+  /**
+   * Encontrar el mejor candidato para ser warehouse activo
+   */
+  private findBestActiveCandidate(
+    warehouses: WarehouseItem[],
+  ): WarehouseItem | null {
+    const candidates = warehouses.filter(
+      (w) => !w.isDeleted && this.isWarehouseComplete(w),
+    );
+
+    if (candidates.length === 0) return null;
+
+    // Priorizar por tipo: partner > own > temporary > default
+    const priority = { partner: 1, own: 2, temporary: 3, default: 4 };
+
+    return candidates.sort((a, b) => {
+      const priorityA = priority[a.partnerType] || 5;
+      const priorityB = priority[b.partnerType] || 5;
+      return priorityA - priorityB;
+    })[0];
   }
 
   /**

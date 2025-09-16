@@ -25,6 +25,9 @@
     "cleanup:duplicates": "ts-node -r tsconfig-paths/register scripts/cleanup-duplicates.ts",
     "init:warehouses": "ts-node -r tsconfig-paths/register src/warehouses/scripts/run-initialization.ts",
     "init:warehouses:direct": "ts-node -r tsconfig-paths/register src/warehouses/scripts/direct-initialization.ts",
+    "cleanup:warehouses": "ts-node -r tsconfig-paths/register src/warehouses/scripts/cleanup-warehouses.ts",
+    "compare:countries": "ts-node -r tsconfig-paths/register src/warehouses/scripts/compare-countries.ts",
+    "count:countries": "ts-node -r tsconfig-paths/register src/warehouses/scripts/count-countries.ts",
     "cleanup:offices": "ts-node -r tsconfig-paths/register scripts/cleanup-offices.ts",
     "test:script": "ts-node -r tsconfig-paths/register scripts/test-simple.ts"
   },

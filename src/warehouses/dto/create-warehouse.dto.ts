@@ -72,8 +72,4 @@ export class CreateWarehouseDto {
   @IsOptional()
   @IsEnum(PARTNER_TYPES)
   partnerType?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  isRealPartner?: boolean;
 }

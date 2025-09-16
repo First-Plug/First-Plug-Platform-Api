@@ -68,7 +68,6 @@ async function initializeWarehousesDirectly() {
               isActive: false,
               additionalInfo: '',
               partnerType: 'default',
-              isRealPartner: false,
               isDeleted: false,
               createdAt: new Date(),
               updatedAt: new Date(),
