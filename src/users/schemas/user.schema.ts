@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { genSalt, hash } from 'bcrypt';
 import { softDeletePlugin } from 'soft-delete-plugin-mongoose';
 import { HydratedDocument } from 'mongoose';
+import { CountryHelper } from '../../common/helpers/country.helper';
 
 export const PROVIDERS = ['credentials', 'google', 'azure-ad'] as const;
 export type Provider = (typeof PROVIDERS)[number];
@@ -46,7 +47,20 @@ export class User {
   @Prop({ type: String, required: false, default: '' })
   phone: string;
 
-  @Prop({ type: String, required: false, default: '' })
+  @Prop({
+    type: String,
+    required: false,
+    default: '',
+    validate: {
+      validator: function (value: string) {
+        // Permitir valores vacíos para compatibilidad durante migración
+        if (!value || value === '') return true;
+        return CountryHelper.isValidCountryCode(value);
+      },
+      message:
+        'Country must be a valid ISO 3166-1 alpha-2 code (e.g., AR, BR, US) or special internal code (OO, FP)',
+    },
+  })
   country: string;
 
   @Prop({ type: String, required: false, default: '' })
