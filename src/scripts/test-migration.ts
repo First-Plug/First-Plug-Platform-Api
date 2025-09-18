@@ -11,8 +11,8 @@ import { MongoClient, Db } from 'mongodb';
 import { countryCodes } from '../shipments/helpers/countryCodes';
 
 // Configuración
-const MONGO_URI =
-  'mongodb+srv://santiago:2025devs%2B@firstplug-dev.qxiv5.mongodb.net/tenant_nahuel_test';
+// const MONGO_URI =
+//   'mongodb+srv://santiago:2025devs%2B@firstplug-dev.qxiv5.mongodb.net/tenant_nahuel_test';
 // const MAIN_DB_NAME = process.env.MAIN_DB_NAME || 'firstPlug';
 
 // Mapeo de nombres → códigos
@@ -26,9 +26,9 @@ class MigrationTester {
   private client: MongoClient;
   private mainDb: Db;
 
-  constructor() {
-    this.client = new MongoClient(MONGO_URI);
-  }
+  // constructor() {
+  //   this.client = new MongoClient(MONGO_URI);
+  // }
 
   async connect() {
     await this.client.connect();
