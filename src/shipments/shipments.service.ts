@@ -11,7 +11,7 @@ import { ShipmentDocument, ShipmentSchema } from './schema/shipment.schema';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { TenantsService } from 'src/tenants/tenants.service';
 import { TenantUserAdapterService } from 'src/common/services/tenant-user-adapter.service';
-import { countryCodes } from 'src/shipments/helpers/countryCodes';
+import { CountryHelper } from 'src/common/helpers/country.helper';
 import { ProductDocument } from 'src/products/schemas/product.schema';
 import {
   ShipmentMetadata,
@@ -138,11 +138,19 @@ export class ShipmentsService {
   }
 
   private getCountryCode(country: string): string {
+    // Usar el helper centralizado para validación y normalización
+    const normalized = CountryHelper.validateAndNormalize(country);
+    if (normalized) {
+      return normalized;
+    }
+
+    // Casos especiales para compatibilidad durante migración
     if (country === 'Our office') {
       return 'OO';
     }
 
-    return countryCodes[country] || 'XX';
+    // Fallback para códigos no válidos
+    return 'XX';
   }
 
   public getLocationCode(

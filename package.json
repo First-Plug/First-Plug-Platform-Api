@@ -29,7 +29,9 @@
     "compare:countries": "ts-node -r tsconfig-paths/register src/warehouses/scripts/compare-countries.ts",
     "count:countries": "ts-node -r tsconfig-paths/register src/warehouses/scripts/count-countries.ts",
     "cleanup:offices": "ts-node -r tsconfig-paths/register scripts/cleanup-offices.ts",
-    "test:script": "ts-node -r tsconfig-paths/register scripts/test-simple.ts"
+    "test:script": "ts-node -r tsconfig-paths/register scripts/test-simple.ts",
+    "migrate:countries": "ts-node -r tsconfig-paths/register src/scripts/migrate-countries-to-codes.ts",
+    "test:migration": "ts-node -r tsconfig-paths/register src/scripts/test-migration.ts"
   },
   "dependencies": {
     "@anatine/zod-nestjs": "^2.0.8",
