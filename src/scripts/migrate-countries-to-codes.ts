@@ -12,7 +12,7 @@ import { countryCodes } from '../shipments/helpers/countryCodes';
 
 // Configuración
 // para que funcione bien tengo que pegar lo que tengo en el .env
-const MONGO_URI = process.env.MONGO_URI;
+// const MONGO_URI = process.env.MONGO_URI;
 
 // Mapeo de nombres → códigos (usando el archivo existente)
 // NOTA: Our office y FP warehouse NO se migran, se mantienen como texto
@@ -38,9 +38,9 @@ class CountryMigrator {
   private mainDb: Db;
   private stats: MigrationStats[] = [];
 
-  constructor() {
-    this.client = new MongoClient(MONGO_URI);
-  }
+  // constructor() {
+  //   this.client = new MongoClient(MONGO_URI);
+  // }
 
   async connect() {
     await this.client.connect();
