@@ -48,10 +48,14 @@ export class Member {
       validator: function (value: string) {
         // Permitir valores vacíos/null para compatibilidad durante migración
         if (!value || value === '') return true;
-        return CountryHelper.isValidCountryCode(value);
+        // Permitir ubicaciones especiales
+        if (CountryHelper.isSpecialLocation(value)) return true;
+        // Validar códigos ISO
+        const normalized = CountryHelper.normalizeCountryCode(value);
+        return CountryHelper.isISOCountryCode(normalized);
       },
       message:
-        'Country must be a valid ISO 3166-1 alpha-2 code (e.g., AR, BR, US) or special internal code (OO, FP)',
+        'Country must be a valid ISO 3166-1 alpha-2 code (e.g., AR, BR, US) or special location (Our office, FP warehouse)',
     },
   })
   country?: string;

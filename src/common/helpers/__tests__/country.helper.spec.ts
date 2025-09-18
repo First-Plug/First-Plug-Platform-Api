@@ -9,9 +9,9 @@ describe('CountryHelper', () => {
       expect(CountryHelper.isValidCountryCode('CL')).toBe(true);
     });
 
-    it('should validate special internal codes', () => {
-      expect(CountryHelper.isValidCountryCode('OO')).toBe(true);
-      expect(CountryHelper.isValidCountryCode('FP')).toBe(true);
+    it('should NOT validate special locations as codes', () => {
+      expect(CountryHelper.isValidCountryCode('Our office')).toBe(false);
+      expect(CountryHelper.isValidCountryCode('FP warehouse')).toBe(false);
     });
 
     it('should reject invalid codes', () => {
@@ -24,8 +24,6 @@ describe('CountryHelper', () => {
     it('should handle case insensitive input', () => {
       expect(CountryHelper.isValidCountryCode('ar')).toBe(true);
       expect(CountryHelper.isValidCountryCode('br')).toBe(true);
-      expect(CountryHelper.isValidCountryCode('oo')).toBe(true);
-      expect(CountryHelper.isValidCountryCode('fp')).toBe(true);
     });
 
     it('should handle empty/null/undefined values', () => {
@@ -39,7 +37,6 @@ describe('CountryHelper', () => {
     it('should normalize to uppercase and trim', () => {
       expect(CountryHelper.normalizeCountryCode('ar')).toBe('AR');
       expect(CountryHelper.normalizeCountryCode(' BR ')).toBe('BR');
-      expect(CountryHelper.normalizeCountryCode('  oo  ')).toBe('OO');
     });
 
     it('should handle empty/null/undefined values', () => {
@@ -53,7 +50,6 @@ describe('CountryHelper', () => {
     it('should return normalized code for valid inputs', () => {
       expect(CountryHelper.validateAndNormalize('ar')).toBe('AR');
       expect(CountryHelper.validateAndNormalize(' BR ')).toBe('BR');
-      expect(CountryHelper.validateAndNormalize('oo')).toBe('OO');
     });
 
     it('should return null for invalid inputs', () => {
@@ -63,18 +59,18 @@ describe('CountryHelper', () => {
     });
   });
 
-  describe('isSpecialInternalCode', () => {
-    it('should identify special internal codes', () => {
-      expect(CountryHelper.isSpecialInternalCode('OO')).toBe(true);
-      expect(CountryHelper.isSpecialInternalCode('FP')).toBe(true);
-      expect(CountryHelper.isSpecialInternalCode('oo')).toBe(true);
-      expect(CountryHelper.isSpecialInternalCode('fp')).toBe(true);
+  describe('isSpecialLocation', () => {
+    it('should identify special locations', () => {
+      expect(CountryHelper.isSpecialLocation('Our office')).toBe(true);
+      expect(CountryHelper.isSpecialLocation('FP warehouse')).toBe(true);
+      expect(CountryHelper.isSpecialLocation(' Our office ')).toBe(true);
+      expect(CountryHelper.isSpecialLocation(' FP warehouse ')).toBe(true);
     });
 
-    it('should reject ISO codes', () => {
-      expect(CountryHelper.isSpecialInternalCode('AR')).toBe(false);
-      expect(CountryHelper.isSpecialInternalCode('BR')).toBe(false);
-      expect(CountryHelper.isSpecialInternalCode('US')).toBe(false);
+    it('should reject ISO codes and country names', () => {
+      expect(CountryHelper.isSpecialLocation('AR')).toBe(false);
+      expect(CountryHelper.isSpecialLocation('Argentina')).toBe(false);
+      expect(CountryHelper.isSpecialLocation('Brazil')).toBe(false);
     });
   });
 

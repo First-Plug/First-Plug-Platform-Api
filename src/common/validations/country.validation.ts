@@ -2,18 +2,26 @@ import { z } from 'zod';
 import { CountryHelper } from '../helpers/country.helper';
 
 /**
- * Validador Zod para códigos de país
- * Acepta códigos ISO 3166-1 alpha-2 y códigos especiales internos (OO, FP)
+ * Validador Zod para códigos de país o ubicaciones especiales
+ * Acepta códigos ISO 3166-1 alpha-2 (AR, BR, US) o ubicaciones especiales (Our office, FP warehouse)
  */
 export const countryCodeSchema = z
   .string()
   .trim()
-  .transform((val) => CountryHelper.normalizeCountryCode(val))
   .refine(
-    (code) => CountryHelper.isValidCountryCode(code),
+    (value) => {
+      // Permitir ubicaciones especiales sin modificar
+      if (CountryHelper.isSpecialLocation(value)) {
+        return true;
+      }
+      // Validar códigos ISO
+      const normalized = CountryHelper.normalizeCountryCode(value);
+      return CountryHelper.isISOCountryCode(normalized);
+    },
     {
-      message: 'Invalid country code. Must be a valid ISO 3166-1 alpha-2 code (e.g., AR, BR, US) or special internal code (OO, FP)',
-    }
+      message:
+        'Invalid country. Must be a valid ISO 3166-1 alpha-2 code (e.g., AR, BR, US) or special location (Our office, FP warehouse)',
+    },
   );
 
 /**
@@ -27,10 +35,15 @@ export const optionalCountryCodeSchema = countryCodeSchema.optional();
 export const countryCodeOrEmptySchema = z
   .string()
   .trim()
-  .transform((val) => val === '' ? '' : CountryHelper.normalizeCountryCode(val))
   .refine(
-    (code) => code === '' || CountryHelper.isValidCountryCode(code),
+    (value) => {
+      if (value === '') return true;
+      if (CountryHelper.isSpecialLocation(value)) return true;
+      const normalized = CountryHelper.normalizeCountryCode(value);
+      return CountryHelper.isISOCountryCode(normalized);
+    },
     {
-      message: 'Invalid country code. Must be empty string or valid ISO 3166-1 alpha-2 code (e.g., AR, BR, US) or special internal code (OO, FP)',
-    }
+      message:
+        'Invalid country. Must be empty string, valid ISO 3166-1 alpha-2 code (e.g., AR, BR, US) or special location (Our office, FP warehouse)',
+    },
   );
