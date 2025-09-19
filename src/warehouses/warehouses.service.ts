@@ -4,8 +4,8 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { InjectModel, InjectConnection } from '@nestjs/mongoose';
+import { Model, Types, Connection } from 'mongoose';
 import {
   Warehouse,
   WarehouseDocument,
@@ -13,14 +13,17 @@ import {
 } from './schemas/warehouse.schema';
 import { CreateWarehouseDto, UpdateWarehouseDto } from './dto';
 import { DEFAULT_PARTNER_TYPE } from './constants/warehouse.constants';
+import { GlobalIndexService } from './services/global-index.service';
 
 @Injectable()
 export class WarehousesService {
   private readonly logger = new Logger(WarehousesService.name);
 
   constructor(
-    @InjectModel(Warehouse.name)
+    @InjectModel(Warehouse.name, 'firstPlug')
     private warehouseModel: Model<WarehouseDocument>,
+    @InjectConnection('firstPlug') private firstPlugConnection: Connection,
+    private globalIndexService: GlobalIndexService,
   ) {}
 
   /**
@@ -342,7 +345,7 @@ export class WarehousesService {
   }
 
   /**
-   * Activar un warehouse específico (solo si está completo)
+   * Activar un warehouse específico (solo si está completo) con migración automática
    */
   async activateWarehouse(
     country: string,
@@ -351,6 +354,8 @@ export class WarehousesService {
     activated: boolean;
     message: string;
     deactivatedWarehouses?: string[];
+    migratedProducts?: number;
+    affectedTenants?: number;
   }> {
     try {
       const countryDoc = await this.findByCountry(country);
@@ -398,17 +403,43 @@ export class WarehousesService {
 
       await countryDoc.save();
 
+      // 5. Migrar productos automáticamente si había warehouses activos antes
+      let migratedProducts = 0;
+      let affectedTenants = 0;
+
+      if (deactivatedWarehouses.length > 0) {
+        this.logger.log(
+          `🔄 Starting automatic product migration to new warehouse...`,
+        );
+
+        const migrationResult = await this.migrateProductsToNewWarehouse(
+          countryDoc.countryCode,
+          warehouseId,
+          warehouse.name || 'Unnamed',
+        );
+
+        migratedProducts = migrationResult.migratedProducts;
+        affectedTenants = migrationResult.affectedTenants;
+      }
+
       const result = {
         activated: true,
         message: `Warehouse activated successfully: ${warehouse.name || 'Unnamed'}`,
         deactivatedWarehouses:
           deactivatedWarehouses.length > 0 ? deactivatedWarehouses : undefined,
+        migratedProducts: migratedProducts > 0 ? migratedProducts : undefined,
+        affectedTenants: affectedTenants > 0 ? affectedTenants : undefined,
       };
 
       this.logger.log(`✅ ${result.message}`);
       if (deactivatedWarehouses.length > 0) {
         this.logger.log(
           `📋 Deactivated warehouses: ${deactivatedWarehouses.join(', ')}`,
+        );
+      }
+      if (migratedProducts > 0) {
+        this.logger.log(
+          `🚚 Migrated ${migratedProducts} products from ${affectedTenants} tenants`,
         );
       }
 
@@ -478,6 +509,184 @@ export class WarehousesService {
         error,
       );
       throw error;
+    }
+  }
+
+  /**
+   * Migrar productos de un país a un nuevo warehouse activo
+   */
+  private async migrateProductsToNewWarehouse(
+    countryCode: string,
+    newWarehouseId: string,
+    newWarehouseName: string,
+  ): Promise<{
+    migratedProducts: number;
+    affectedTenants: number;
+    errors?: string[];
+  }> {
+    try {
+      const errors: string[] = [];
+      let totalMigratedProducts = 0;
+      let affectedTenants = 0;
+
+      // 1. Obtener lista de todas las bases de datos de tenants
+      // Nota: Necesitarás implementar este método o inyectar un servicio que lo haga
+      const tenantDatabases = await this.getAllTenantDatabases();
+
+      // 2. Migrar productos en cada tenant
+      for (const tenantName of tenantDatabases) {
+        try {
+          const migratedInTenant = await this.migrateProductsInTenant(
+            tenantName,
+            countryCode,
+            newWarehouseId,
+            newWarehouseName,
+          );
+
+          if (migratedInTenant > 0) {
+            totalMigratedProducts += migratedInTenant;
+            affectedTenants++;
+            this.logger.log(
+              `✅ Migrated ${migratedInTenant} products in tenant ${tenantName}`,
+            );
+          }
+        } catch (error) {
+          const errorMsg = `Error migrating products in tenant ${tenantName}: ${error.message}`;
+          errors.push(errorMsg);
+          this.logger.error(errorMsg, error);
+        }
+      }
+
+      // 3. Actualizar índice global
+      try {
+        const migratedInIndex = await this.globalIndexService.migrateWarehouse(
+          countryCode,
+          new Types.ObjectId(newWarehouseId),
+          newWarehouseName,
+        );
+        this.logger.log(
+          `📊 Updated ${migratedInIndex} products in global index`,
+        );
+      } catch (error) {
+        this.logger.error(
+          'Error updating global index during migration:',
+          error,
+        );
+        errors.push(`Global index update failed: ${error.message}`);
+      }
+
+      this.logger.log(
+        `🎯 Migration completed: ${totalMigratedProducts} products from ${affectedTenants} tenants`,
+      );
+
+      return {
+        migratedProducts: totalMigratedProducts,
+        affectedTenants,
+        errors: errors.length > 0 ? errors : undefined,
+      };
+    } catch (error) {
+      this.logger.error(`Error during product migration:`, error);
+      return {
+        migratedProducts: 0,
+        affectedTenants: 0,
+        errors: [`Migration failed: ${error.message}`],
+      };
+    }
+  }
+
+  /**
+   * Migrar productos en un tenant específico
+   */
+  private async migrateProductsInTenant(
+    tenantName: string,
+    countryCode: string,
+    newWarehouseId: string,
+    newWarehouseName: string,
+  ): Promise<number> {
+    try {
+      // Conectar a la base de datos del tenant
+      const tenantConnection = this.firstPlugConnection.useDb(tenantName);
+
+      // Verificar si la colección products existe
+      const collections = await tenantConnection.db
+        .listCollections({ name: 'products' })
+        .toArray();
+      if (collections.length === 0) {
+        this.logger.log(
+          `📦 No products collection found in tenant ${tenantName}`,
+        );
+        return 0;
+      }
+
+      // Obtener el modelo de Product para este tenant
+      const ProductModel = tenantConnection.model('Product');
+
+      // Actualizar productos que están en FP warehouse en este país
+      const result = await ProductModel.updateMany(
+        {
+          location: 'FP warehouse',
+          $or: [
+            { 'fpWarehouse.warehouseCountryCode': countryCode },
+            // También migrar productos que no tienen fpWarehouse pero están en FP warehouse
+            // (productos antiguos antes de implementar fpWarehouse)
+            {
+              'fpWarehouse.warehouseCountryCode': { $exists: false },
+              location: 'FP warehouse',
+            },
+          ],
+        },
+        {
+          $set: {
+            'fpWarehouse.warehouseId': new Types.ObjectId(newWarehouseId),
+            'fpWarehouse.warehouseCountryCode': countryCode,
+            'fpWarehouse.warehouseName': newWarehouseName,
+            'fpWarehouse.assignedAt': new Date(),
+            'fpWarehouse.status': 'STORED',
+          },
+        },
+      );
+
+      if (result.modifiedCount > 0) {
+        this.logger.log(
+          `✅ Migrated ${result.modifiedCount} products in tenant ${tenantName}`,
+        );
+      }
+
+      return result.modifiedCount;
+    } catch (error) {
+      this.logger.error(
+        `Error migrating products in tenant ${tenantName}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Obtener lista de todas las bases de datos de tenants
+   */
+  private async getAllTenantDatabases(): Promise<string[]> {
+    try {
+      // Listar todas las bases de datos y filtrar las de tenants
+      const databases = await this.firstPlugConnection.db
+        .admin()
+        .listDatabases();
+
+      const tenantDbs = databases.databases
+        .filter((db) => {
+          // Filtrar DBs del sistema
+          const systemDbs = ['firstPlug', 'admin', 'local', 'config'];
+          return !systemDbs.includes(db.name);
+        })
+        .map((db) => db.name);
+
+      this.logger.log(
+        `📋 Found ${tenantDbs.length} tenant databases: ${tenantDbs.join(', ')}`,
+      );
+      return tenantDbs;
+    } catch (error) {
+      this.logger.error('Error getting tenant databases:', error);
+      return [];
     }
   }
 

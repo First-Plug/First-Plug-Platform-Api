@@ -41,6 +41,17 @@ import { WarehousesModule } from 'src/warehouses/warehouses.module';
       }),
       inject: [ConfigService],
     }),
+    // Conexión con nombre 'firstPlug' que apunta a la misma DB
+    MongooseModule.forRootAsync({
+      connectionName: 'firstPlug',
+      imports: [ConfigModule],
+      useFactory: async (config) => ({
+        uri: config.get('database.connectionString'), // Misma URI, no cambiar
+        maxPoolSize: 10,
+        minPoolSize: 1,
+      }),
+      inject: [ConfigService],
+    }),
     SlackModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (config) => ({
