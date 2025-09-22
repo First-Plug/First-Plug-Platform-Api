@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Warehouse, WarehouseDocument } from '../schemas/warehouse.schema';
-import { GlobalIndexService } from './global-index.service';
 
 export interface WarehouseMetricsResult {
   countryCode: string;
@@ -23,7 +22,6 @@ export class WarehouseMetricsService {
   constructor(
     @InjectModel(Warehouse.name, 'firstPlug')
     private warehouseModel: Model<WarehouseDocument>,
-    private globalIndexService: GlobalIndexService,
   ) {}
 
   /**
@@ -53,9 +51,14 @@ export class WarehouseMetricsService {
         return null;
       }
 
-      // 2. Obtener métricas del índice global
-      const metrics =
-        await this.globalIndexService.getWarehouseMetrics(warehouseId);
+      // 2. TODO: Usar GlobalMetricsService para obtener métricas reales
+      // Por ahora placeholder - la lógica real está en GlobalMetricsService
+      const metrics = {
+        total: 0,
+        computers: 0,
+        nonComputers: 0,
+        distinctTenants: 0,
+      };
 
       return {
         countryCode,
@@ -119,7 +122,12 @@ export class WarehouseMetricsService {
     distinctTenants: number;
   }> {
     try {
-      return await this.globalIndexService.getCountryMetrics(countryCode);
+      // TODO: Usar GlobalMetricsService para obtener métricas reales
+      // Por ahora placeholder - la lógica real está en GlobalMetricsService
+      this.logger.warn(
+        `getCountryMetrics not implemented yet for ${countryCode}`,
+      );
+      return { total: 0, computers: 0, nonComputers: 0, distinctTenants: 0 };
     } catch (error) {
       this.logger.error(`Error getting country metrics:`, error);
       return { total: 0, computers: 0, nonComputers: 0, distinctTenants: 0 };

@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../../app.module';
 import { WarehousesService } from '../warehouses.service';
-// import { GlobalIndexService } from '../services/global-index.service';
+
 import { WarehouseMetricsService } from '../services/warehouse-metrics.service';
 
 /**
@@ -13,7 +13,7 @@ async function testMigration() {
 
   const app = await NestFactory.createApplicationContext(AppModule);
   const warehousesService = app.get(WarehousesService);
-  // const globalIndexService = app.get(GlobalIndexService);
+
   const metricsService = app.get(WarehouseMetricsService);
 
   try {

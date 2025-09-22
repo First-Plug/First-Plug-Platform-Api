@@ -1,4 +1,5 @@
 import { MiddlewareConsumer, Module, forwardRef } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
 import { ProductsService } from './products.service';
 import { ProductsController } from './products.controller';
 import { tenantModels } from '../infra/db/tenant-models-provider';
@@ -11,6 +12,11 @@ import { SlackModule } from 'src/slack/slack.module';
 import { AssignmentsModule } from 'src/assignments/assignments.module';
 import { TenantDbModule } from 'src/infra/db/tenant-db.module';
 import { LogisticsModule } from 'src/logistics/logistics.module';
+import {
+  GlobalProduct,
+  GlobalProductSchema,
+} from './schemas/global-product.schema';
+import { GlobalProductSyncService } from './services/global-product-sync.service';
 
 @Module({
   imports: [
@@ -21,10 +27,29 @@ import { LogisticsModule } from 'src/logistics/logistics.module';
     HistoryModule,
     SlackModule,
     forwardRef(() => LogisticsModule),
+    // Registrar GlobalProduct en la conexión firstPlug
+    MongooseModule.forFeature(
+      [
+        {
+          name: GlobalProduct.name,
+          schema: GlobalProductSchema,
+        },
+      ],
+      'firstPlug',
+    ),
   ],
   controllers: [ProductsController],
-  providers: [ProductsService, tenantModels.productModel, JwtService],
-  exports: [ProductsService, tenantModels.productModel],
+  providers: [
+    ProductsService,
+    tenantModels.productModel,
+    JwtService,
+    GlobalProductSyncService,
+  ],
+  exports: [
+    ProductsService,
+    tenantModels.productModel,
+    GlobalProductSyncService,
+  ],
 })
 export class ProductsModule {
   configure(consumer: MiddlewareConsumer) {

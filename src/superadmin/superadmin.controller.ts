@@ -22,6 +22,7 @@ import { Request } from 'express';
 import { WarehousesService } from '../warehouses/warehouses.service';
 import { CreateWarehouseDto, UpdateWarehouseDto } from '../warehouses/dto';
 import { InitializeWarehousesScript } from '../warehouses/scripts/initialize-warehouses.script';
+import { GlobalWarehouseMetricsService } from './services/global-warehouse-metrics.service';
 
 @Controller('superadmin')
 @UseGuards(JwtGuard, SuperAdminGuard)
@@ -30,6 +31,7 @@ export class SuperAdminController {
     private readonly superAdminService: SuperAdminService,
     private readonly warehousesService: WarehousesService,
     private readonly initializeWarehousesScript: InitializeWarehousesScript,
+    private readonly globalWarehouseMetricsService: GlobalWarehouseMetricsService,
   ) {}
 
   // ==================== SHIPMENTS ENDPOINTS ====================
@@ -303,5 +305,94 @@ export class SuperAdminController {
   @Get('warehouses/initialization-status')
   async getWarehousesInitializationStatus() {
     return await this.initializeWarehousesScript.checkInitializationStatus();
+  }
+
+  // ==================== GLOBAL METRICS ENDPOINTS ====================
+
+  /**
+   * Obtener resumen general del sistema (SuperAdmin only)
+   */
+  @Get('metrics/overview')
+  async getGlobalOverview() {
+    const overview =
+      await this.globalWarehouseMetricsService.getGlobalOverview();
+    return {
+      success: true,
+      data: overview,
+    };
+  }
+
+  /**
+   * Obtener métricas de todos los warehouses activos (SuperAdmin only)
+   */
+  @Get('metrics/warehouses')
+  async getAllWarehouseMetrics() {
+    const metrics =
+      await this.globalWarehouseMetricsService.getAllWarehouseMetrics();
+    return {
+      success: true,
+      data: metrics,
+    };
+  }
+
+  /**
+   * Obtener métricas de un warehouse específico (SuperAdmin only)
+   */
+  @Get('metrics/warehouses/:countryCode/:warehouseId')
+  async getWarehouseMetrics(
+    @Param('countryCode') countryCode: string,
+    @Param('warehouseId') warehouseId: string,
+  ) {
+    const metrics =
+      await this.globalWarehouseMetricsService.getWarehouseMetrics(
+        countryCode,
+        warehouseId,
+      );
+
+    if (!metrics) {
+      return {
+        success: false,
+        message: `Warehouse ${warehouseId} not found in ${countryCode}`,
+      };
+    }
+
+    return {
+      success: true,
+      data: metrics,
+    };
+  }
+
+  /**
+   * Obtener métricas de un país específico (SuperAdmin only)
+   */
+  @Get('metrics/countries/:countryCode')
+  async getCountryMetrics(@Param('countryCode') countryCode: string) {
+    const metrics =
+      await this.globalWarehouseMetricsService.getCountryMetrics(countryCode);
+
+    if (!metrics) {
+      return {
+        success: false,
+        message: `Country ${countryCode} not found`,
+      };
+    }
+
+    return {
+      success: true,
+      data: metrics,
+    };
+  }
+
+  /**
+   * Obtener métricas por categoría de producto (SuperAdmin only)
+   */
+  @Get('metrics/categories')
+  async getProductCategoryMetrics() {
+    const metrics =
+      await this.globalWarehouseMetricsService.getProductCategoryMetrics();
+    return {
+      success: true,
+      data: metrics,
+    };
   }
 }

@@ -13,7 +13,6 @@ import {
 } from './schemas/warehouse.schema';
 import { CreateWarehouseDto, UpdateWarehouseDto } from './dto';
 import { DEFAULT_PARTNER_TYPE } from './constants/warehouse.constants';
-import { GlobalIndexService } from './services/global-index.service';
 
 @Injectable()
 export class WarehousesService {
@@ -23,7 +22,6 @@ export class WarehousesService {
     @InjectModel(Warehouse.name, 'firstPlug')
     private warehouseModel: Model<WarehouseDocument>,
     @InjectConnection('firstPlug') private firstPlugConnection: Connection,
-    private globalIndexService: GlobalIndexService,
   ) {}
 
   /**
@@ -58,6 +56,28 @@ export class WarehousesService {
         error,
       );
       throw error;
+    }
+  }
+
+  /**
+   * Obtener warehouses por código de país
+   */
+  async findByCountryCode(
+    countryCode: string,
+  ): Promise<WarehouseDocument | null> {
+    try {
+      return await this.warehouseModel
+        .findOne({
+          countryCode: countryCode.toUpperCase(),
+          isDeleted: { $ne: true },
+        })
+        .exec();
+    } catch (error) {
+      this.logger.error(
+        `Error finding warehouses for country code ${countryCode}:`,
+        error,
+      );
+      return null;
     }
   }
 
@@ -557,23 +577,11 @@ export class WarehousesService {
         }
       }
 
-      // 3. Actualizar índice global
-      try {
-        const migratedInIndex = await this.globalIndexService.migrateWarehouse(
-          countryCode,
-          new Types.ObjectId(newWarehouseId),
-          newWarehouseName,
-        );
-        this.logger.log(
-          `📊 Updated ${migratedInIndex} products in global index`,
-        );
-      } catch (error) {
-        this.logger.error(
-          'Error updating global index during migration:',
-          error,
-        );
-        errors.push(`Global index update failed: ${error.message}`);
-      }
+      // 3. TODO: Actualizar colección global de productos
+      // Esto se implementará con el nuevo GlobalProductSyncService
+      this.logger.log(
+        '📊 Global product sync will be implemented with new architecture',
+      );
 
       this.logger.log(
         `🎯 Migration completed: ${totalMigratedProducts} products from ${affectedTenants} tenants`,
@@ -811,6 +819,83 @@ export class WarehousesService {
       const priorityB = priority[b.partnerType] || 5;
       return priorityA - priorityB;
     })[0];
+  }
+
+  /**
+   * Encontrar un warehouse específico por ID
+   */
+  async findWarehouseById(
+    countryCode: string,
+    warehouseId: string,
+  ): Promise<{
+    country: string;
+    name: string;
+    isActive: boolean;
+  } | null> {
+    try {
+      const countryDoc = await this.findByCountryCode(countryCode);
+      if (!countryDoc) return null;
+
+      const warehouse = countryDoc.warehouses.find(
+        (w) => w._id.toString() === warehouseId && !w.isDeleted,
+      );
+
+      if (!warehouse) return null;
+
+      return {
+        country: countryDoc.country,
+        name: warehouse.name || 'Unnamed Warehouse',
+        isActive: warehouse.isActive,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error finding warehouse ${warehouseId} in ${countryCode}:`,
+        error,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Obtener todos los warehouses activos del sistema
+   */
+  async findAllActiveWarehouses(): Promise<
+    Array<{
+      countryCode: string;
+      country: string;
+      warehouseId: string;
+      warehouseName: string;
+    }>
+  > {
+    try {
+      const allCountries = await this.findAll();
+      const activeWarehouses: Array<{
+        countryCode: string;
+        country: string;
+        warehouseId: string;
+        warehouseName: string;
+      }> = [];
+
+      for (const countryDoc of allCountries) {
+        const activeWarehouse = countryDoc.warehouses.find(
+          (w) => w.isActive && !w.isDeleted,
+        );
+
+        if (activeWarehouse) {
+          activeWarehouses.push({
+            countryCode: countryDoc.countryCode,
+            country: countryDoc.country,
+            warehouseId: activeWarehouse._id.toString(),
+            warehouseName: activeWarehouse.name || 'Unnamed Warehouse',
+          });
+        }
+      }
+
+      return activeWarehouses;
+    } catch (error) {
+      this.logger.error('Error finding all active warehouses:', error);
+      return [];
+    }
   }
 
   /**
