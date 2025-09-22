@@ -1,5 +1,12 @@
-import { IsString, IsBoolean, IsOptional, IsEmail } from 'class-validator';
+import {
+  IsString,
+  IsBoolean,
+  IsOptional,
+  IsEmail,
+  Validate,
+} from 'class-validator';
 import { Types } from 'mongoose';
+import { CountryCodeValidator } from '../../common/validators/country-code.validator';
 
 export class CreateOfficeDto {
   @IsString()
@@ -19,6 +26,7 @@ export class CreateOfficeDto {
 
   @IsOptional()
   @IsString()
+  @Validate(CountryCodeValidator)
   country?: string;
 
   @IsOptional()

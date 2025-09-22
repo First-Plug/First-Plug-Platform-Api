@@ -4,7 +4,9 @@ import {
   IsEmail,
   ValidateIf,
   IsNotEmpty,
+  Validate,
 } from 'class-validator';
+import { CountryCodeValidator } from '../../common/validators/country-code.validator';
 
 export class UpdateTenantOfficeDto {
   @IsOptional()
@@ -40,6 +42,7 @@ export class UpdateTenantOfficeDto {
 
   @IsOptional()
   @IsString()
+  @Validate(CountryCodeValidator)
   country?: string;
 
   @IsOptional()

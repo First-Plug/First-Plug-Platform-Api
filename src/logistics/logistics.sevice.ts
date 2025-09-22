@@ -30,7 +30,7 @@ import { SlackService } from 'src/slack/slack.service';
 import { ShipmentsService } from 'src/shipments/shipments.service';
 import { HistoryService } from 'src/history/history.service';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
-import { countryCodes } from 'src/shipments/helpers/countryCodes';
+import { CountryHelper } from 'src/common/helpers/country.helper';
 import { Product } from 'src/products/schemas/product.schema';
 import { TenantsService } from 'src/tenants/tenants.service';
 import { TenantUserAdapterService } from 'src/common/services/tenant-user-adapter.service';
@@ -530,11 +530,19 @@ export class LogisticsService {
   }
 
   public getCountryCode(country: string): string {
+    // Usar el helper centralizado para validación y normalización
+    const normalized = CountryHelper.validateAndNormalize(country);
+    if (normalized) {
+      return normalized;
+    }
+
+    // Casos especiales para compatibilidad durante migración
     if (country === 'Our office') {
       return 'OO';
     }
 
-    return countryCodes[country] || 'XX';
+    // Fallback para códigos no válidos
+    return 'XX';
   }
 
   public async isLocationDataComplete(

@@ -1,4 +1,11 @@
-import { IsOptional, IsString, IsEmail, ValidateIf } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsEmail,
+  ValidateIf,
+  Validate,
+} from 'class-validator';
+import { CountryCodeValidator } from '../../common/validators/country-code.validator';
 
 /**
  * DTO para actualizar la configuración/perfil del usuario
@@ -36,6 +43,7 @@ export class UpdateUserConfigDto {
 
   @IsOptional()
   @IsString()
+  @Validate(CountryCodeValidator)
   country?: string;
 
   @IsOptional()

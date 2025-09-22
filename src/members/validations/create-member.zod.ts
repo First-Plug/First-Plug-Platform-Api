@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ProductSchemaZod } from 'src/products/validations/create-product.zod';
 import validator from 'validator';
+import { optionalCountryCodeSchema } from '../../common/validations/country.validation';
 
 const phoneRegex = /^\+?[0-9\s]*$/;
 
@@ -30,8 +31,8 @@ export const MemberSchemaZod = z.object({
     })
     .optional(),
   city: z.string().trim().optional(),
-  // Contry list
-  country: z.string().trim().optional(),
+  // Country code (ISO 3166-1 alpha-2 or special internal codes)
+  country: optionalCountryCodeSchema,
   zipCode: z.string().trim().optional(),
   address: z.string().trim().optional(),
   apartment: z.string().trim().optional(),
