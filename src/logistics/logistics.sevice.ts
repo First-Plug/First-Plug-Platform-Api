@@ -2192,23 +2192,23 @@ export class LogisticsService {
     originalShipmentData?: any,
   ): Promise<string> {
     try {
-      console.log(
-        '🔍 [SLACK_DEBUG] originalShipmentData provided:',
-        !!originalShipmentData,
-      );
+      // console.log(
+      //   '🔍 [SLACK_DEBUG] originalShipmentData provided:',
+      //   !!originalShipmentData,
+      // );
 
       const originalShipment = originalShipmentData || {
         ...shipment.toObject(),
       };
 
-      console.log(
-        '🔍 [SLACK_DEBUG] Original destinationDetails:',
-        JSON.stringify(originalShipment.destinationDetails, null, 2),
-      );
-      console.log(
-        '🔍 [SLACK_DEBUG] Current destinationDetails:',
-        JSON.stringify(shipment.destinationDetails, null, 2),
-      );
+      // console.log(
+      //   '🔍 [SLACK_DEBUG] Original destinationDetails:',
+      //   JSON.stringify(originalShipment.destinationDetails, null, 2),
+      // );
+      // console.log(
+      //   '🔍 [SLACK_DEBUG] Current destinationDetails:',
+      //   JSON.stringify(shipment.destinationDetails, null, 2),
+      // );
 
       const detailsChanged =
         JSON.stringify(originalShipment.originDetails) !==
@@ -2225,13 +2225,25 @@ export class LogisticsService {
           shipment.shipment_status === 'In Preparation',
       });
 
+      // Ejecutar la lógica completa de actualización de estado
+      const newStatus = await this.updateShipmentStatusOnAddressComplete(
+        shipment,
+        connection,
+        session,
+        userId,
+        tenantId,
+        ourOfficeEmail,
+      );
+
+      // Verificar si necesitamos enviar notificación adicional por cambio de detalles
+      // (solo si ambos estados son 'In Preparation' y hubo cambios en los detalles)
       if (
         originalShipment.shipment_status === 'In Preparation' &&
-        shipment.shipment_status === 'In Preparation' &&
+        newStatus === 'In Preparation' &&
         detailsChanged
       ) {
         console.log(
-          '🔍 [SLACK_DEBUG] ✅ Sending Slack notification for shipment update',
+          '🔍 [SLACK_DEBUG] ✅ Sending Slack notification for shipment details update',
         );
 
         const userInfo = await this.getUserInfoFromUserId(userId);
@@ -2241,6 +2253,7 @@ export class LogisticsService {
           tenantName: tenantId,
           isOffboarding: false,
           status: 'Updated',
+          previousShipment: originalShipment,
           ourOfficeEmail: ourOfficeEmail,
           userInfo: userInfo,
         });
@@ -2249,9 +2262,15 @@ export class LogisticsService {
         console.log(
           '🔍 [SLACK_DEBUG] ❌ Slack notification NOT sent - condition not met',
         );
+        console.log('🔍 [SLACK_DEBUG] Condition details:', {
+          originalWasInPreparation:
+            originalShipment.shipment_status === 'In Preparation',
+          newIsInPreparation: newStatus === 'In Preparation',
+          detailsChanged,
+        });
       }
 
-      return shipment.shipment_status;
+      return newStatus;
     } catch (error) {
       console.error('❌ Error updating shipment:', error);
       throw error;
