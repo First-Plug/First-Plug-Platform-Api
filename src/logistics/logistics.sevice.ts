@@ -2242,9 +2242,9 @@ export class LogisticsService {
         newStatus === 'In Preparation' &&
         detailsChanged
       ) {
-        console.log(
-          '🔍 [SLACK_DEBUG] ✅ Sending Slack notification for shipment details update',
-        );
+        // console.log(
+        //   '🔍 [SLACK_DEBUG] ✅ Sending Slack notification for shipment details update',
+        // );
 
         const userInfo = await this.getUserInfoFromUserId(userId);
 
@@ -2259,15 +2259,15 @@ export class LogisticsService {
         });
         await this.slackService.sendMessage(slackMessage);
       } else {
-        console.log(
-          '🔍 [SLACK_DEBUG] ❌ Slack notification NOT sent - condition not met',
-        );
-        console.log('🔍 [SLACK_DEBUG] Condition details:', {
-          originalWasInPreparation:
-            originalShipment.shipment_status === 'In Preparation',
-          newIsInPreparation: newStatus === 'In Preparation',
-          detailsChanged,
-        });
+        // console.log(
+        //   '🔍 [SLACK_DEBUG] ❌ Slack notification NOT sent - condition not met',
+        // );
+        // console.log('🔍 [SLACK_DEBUG] Condition details:', {
+        //   originalWasInPreparation:
+        //     originalShipment.shipment_status === 'In Preparation',
+        //   newIsInPreparation: newStatus === 'In Preparation',
+        //   detailsChanged,
+        // });
       }
 
       return newStatus;
