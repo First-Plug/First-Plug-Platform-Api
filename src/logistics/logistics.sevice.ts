@@ -2182,6 +2182,68 @@ export class LogisticsService {
     }
   }
 
+  private hasRelevantDetailsChanged(
+    oldOrigin: any,
+    newOrigin: any,
+    oldDestination: any,
+    newDestination: any,
+  ): boolean {
+    // Solo los campos que realmente se actualizan en la oficina
+    const officeRelevantFields = [
+      'address',
+      'city',
+      'state',
+      'country',
+      'zipCode',
+      'apartment',
+      'phone',
+      'desirableDate',
+    ];
+
+    // Para miembros incluimos también campos personales
+    const memberRelevantFields = [
+      'address',
+      'city',
+      'country',
+      'zipCode',
+      'apartment',
+      'phone',
+      'personalEmail',
+      'dni',
+      'desirableDate',
+    ];
+
+    // Verificar cambios en origin - solo campos relevantes
+    const fieldsToCheckOrigin = this.isOfficeLocation(oldOrigin)
+      ? officeRelevantFields
+      : memberRelevantFields;
+
+    for (const field of fieldsToCheckOrigin) {
+      if (oldOrigin?.[field] !== newOrigin?.[field]) {
+        return true;
+      }
+    }
+
+    // Verificar cambios en destination - solo campos relevantes
+    const fieldsToCheckDestination = this.isOfficeLocation(oldDestination)
+      ? officeRelevantFields
+      : memberRelevantFields;
+
+    for (const field of fieldsToCheckDestination) {
+      if (oldDestination?.[field] !== newDestination?.[field]) {
+        return true;
+      }
+    }
+
+    console.log('🔍 [SLACK_DEBUG] No relevant field changes detected');
+    return false;
+  }
+
+  private isOfficeLocation(details: any): boolean {
+    // Determinar si es oficina basado en la presencia de email vs personalEmail
+    return details?.email && !details?.personalEmail;
+  }
+
   public async updateShipmentOnAddressComplete(
     shipment: ShipmentDocument,
     connection: mongoose.Connection,
@@ -2192,38 +2254,21 @@ export class LogisticsService {
     originalShipmentData?: any,
   ): Promise<string> {
     try {
-      // console.log(
-      //   '🔍 [SLACK_DEBUG] originalShipmentData provided:',
-      //   !!originalShipmentData,
-      // );
+      console.log(
+        '🔍 [SLACK_DEBUG] originalShipmentData provided:',
+        !!originalShipmentData,
+      );
 
       const originalShipment = originalShipmentData || {
         ...shipment.toObject(),
       };
 
-      // console.log(
-      //   '🔍 [SLACK_DEBUG] Original destinationDetails:',
-      //   JSON.stringify(originalShipment.destinationDetails, null, 2),
-      // );
-      // console.log(
-      //   '🔍 [SLACK_DEBUG] Current destinationDetails:',
-      //   JSON.stringify(shipment.destinationDetails, null, 2),
-      // );
-
-      const detailsChanged =
-        JSON.stringify(originalShipment.originDetails) !==
-          JSON.stringify(shipment.originDetails) ||
-        JSON.stringify(originalShipment.destinationDetails) !==
-          JSON.stringify(shipment.destinationDetails);
-
-      console.log('🔍 [SLACK_DEBUG] detailsChanged result:', detailsChanged);
-      console.log('🔍 [SLACK_DEBUG] Status check:', {
-        originalStatus: originalShipment.shipment_status,
-        currentStatus: shipment.shipment_status,
-        bothInPreparation:
-          originalShipment.shipment_status === 'In Preparation' &&
-          shipment.shipment_status === 'In Preparation',
-      });
+      const detailsChanged = this.hasRelevantDetailsChanged(
+        originalShipment.originDetails,
+        shipment.originDetails,
+        originalShipment.destinationDetails,
+        shipment.destinationDetails,
+      );
 
       // Ejecutar la lógica completa de actualización de estado
       const newStatus = await this.updateShipmentStatusOnAddressComplete(
@@ -2242,9 +2287,9 @@ export class LogisticsService {
         newStatus === 'In Preparation' &&
         detailsChanged
       ) {
-        // console.log(
-        //   '🔍 [SLACK_DEBUG] ✅ Sending Slack notification for shipment details update',
-        // );
+        console.log(
+          '🔍 [SLACK_DEBUG] ✅ Sending Slack notification for shipment details update',
+        );
 
         const userInfo = await this.getUserInfoFromUserId(userId);
 
@@ -2259,15 +2304,6 @@ export class LogisticsService {
         });
         await this.slackService.sendMessage(slackMessage);
       } else {
-        // console.log(
-        //   '🔍 [SLACK_DEBUG] ❌ Slack notification NOT sent - condition not met',
-        // );
-        // console.log('🔍 [SLACK_DEBUG] Condition details:', {
-        //   originalWasInPreparation:
-        //     originalShipment.shipment_status === 'In Preparation',
-        //   newIsInPreparation: newStatus === 'In Preparation',
-        //   detailsChanged,
-        // });
       }
 
       return newStatus;
