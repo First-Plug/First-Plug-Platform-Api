@@ -1,4 +1,5 @@
 import { ShipmentDocument } from '../schema/shipment.schema';
+import { convertCountryCodeToName } from './country-code-to-name.helper';
 
 const getAttribute = (
   attributes: { key: string; value: any }[],
@@ -22,7 +23,7 @@ const getAddress = (
   if (apartment) parts.push(apartment);
   if (city) parts.push(city);
   if (state) parts.push(state);
-  if (country) parts.push(country);
+  if (country) parts.push(convertCountryCodeToName(country));
   if (zipCode) parts.push(zipCode);
 
   return parts.join(', ');
