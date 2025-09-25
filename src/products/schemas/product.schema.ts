@@ -254,7 +254,10 @@ export class Product {
       warehouseCountryCode: { type: String },
       warehouseName: { type: String },
       assignedAt: { type: Date },
-      status: { type: String, enum: ['STORED', 'IN_TRANSIT'] },
+      status: {
+        type: String,
+        enum: ['STORED', 'IN_TRANSIT', 'IN_TRANSIT_IN', 'IN_TRANSIT_OUT'],
+      },
     },
     required: false,
   })
@@ -263,11 +266,15 @@ export class Product {
     warehouseCountryCode?: string;
     warehouseName?: string;
     assignedAt?: Date;
-    status?: 'STORED' | 'IN_TRANSIT';
+    status?: 'STORED' | 'IN_TRANSIT' | 'IN_TRANSIT_IN' | 'IN_TRANSIT_OUT';
   };
 
   @Prop({ type: String })
   lastSerialNumber?: string;
+
+  // === CAMPOS ADICIONALES PARA SUPERADMIN ===
+  @Prop({ type: String, required: false })
+  createdBy?: string; // 'SuperAdmin' | 'User' | email
 
   isDeleted?: boolean;
 

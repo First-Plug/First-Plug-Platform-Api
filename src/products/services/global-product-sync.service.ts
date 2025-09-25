@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectModel, InjectConnection } from '@nestjs/mongoose';
-import { Model, Connection, Types } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
 import {
   GlobalProduct,
   GlobalProductDocument,
@@ -34,6 +34,7 @@ export interface SyncProductParams {
   activeShipment?: boolean;
   imageUrl?: string;
   isDeleted?: boolean;
+  createdBy?: string;
 
   // Datos específicos de ubicación
   fpWarehouse?: {
@@ -61,8 +62,6 @@ export class GlobalProductSyncService {
   constructor(
     @InjectModel(GlobalProduct.name, 'firstPlug')
     private globalProductModel: Model<GlobalProductDocument>,
-    @InjectConnection('firstPlug')
-    private firstPlugConnection: Connection,
   ) {}
 
   /**

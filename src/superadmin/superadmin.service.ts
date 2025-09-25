@@ -12,6 +12,9 @@ import { UsersService } from '../users/users.service';
 import { OfficesService } from '../offices/offices.service';
 import { LogisticsService } from '../logistics/logistics.sevice';
 import { UpdateShipmentCompleteDto } from './dto/update-shipment-complete.dto';
+import { CreateProductForTenantDto } from './dto/create-product-for-tenant.dto';
+import { WarehousesService } from '../warehouses/warehouses.service';
+import { GlobalProductSyncService } from '../products/services/global-product-sync.service';
 
 @Injectable()
 export class SuperAdminService {
@@ -23,6 +26,8 @@ export class SuperAdminService {
     private readonly usersService: UsersService,
     private readonly officesService: OfficesService,
     private readonly logisticsService: LogisticsService,
+    private readonly warehousesService: WarehousesService,
+    private readonly globalProductSyncService: GlobalProductSyncService,
   ) {}
 
   // ==================== SHIPMENTS CROSS-TENANT ====================
@@ -328,7 +333,7 @@ export class SuperAdminService {
       console.log(`📊 Status actualizado: ${oldStatus} → ${newStatus}`);
 
       // ✅ Si el status cambió a "Received" o "Cancelled", actualizar productos y members
- if (newStatus === 'Received' || newStatus === 'Cancelled') {
+      if (newStatus === 'Received' || newStatus === 'Cancelled') {
         const actionText = newStatus === 'Received' ? 'recibido' : 'cancelado';
         console.log(
           `🎯 Shipment ${actionText} - actualizando productos y members...`,
@@ -1253,6 +1258,173 @@ export class SuperAdminService {
         tenantName,
         error: error.message,
       };
+    }
+  }
+
+  // ==================== PRODUCT CREATION FOR TENANTS ====================
+
+  /**
+   * Crear producto para un tenant específico desde SuperAdmin
+   * El producto se asigna automáticamente a FP warehouse del país seleccionado
+   */
+  async createProductForTenant(createProductDto: CreateProductForTenantDto) {
+    const { tenantName, warehouseCountryCode, ...productData } =
+      createProductDto;
+
+    try {
+      // 1. Validar que el tenant existe
+      const tenant = await this.tenantsService.getByTenantName(tenantName);
+      if (!tenant) {
+        throw new NotFoundException(`Tenant ${tenantName} not found`);
+      }
+
+      // 2. Buscar warehouse para asignación (activo o default) en el país especificado
+      const warehouseInfo =
+        await this.warehousesService.findWarehouseForProductAssignment(
+          warehouseCountryCode,
+        );
+
+      if (!warehouseInfo) {
+        throw new BadRequestException(
+          `No warehouse found in country ${warehouseCountryCode}. Please initialize the country first.`,
+        );
+      }
+
+      // 2.1. Verificar si es un warehouse real o default (para logging/alertas futuras)
+      const isRealPartner = warehouseInfo.partnerType !== 'default';
+      if (!isRealPartner) {
+        console.warn(
+          `⚠️ Using default warehouse for ${warehouseCountryCode}. Consider finding a real logistics partner.`,
+        );
+      }
+
+      // 3. Conectar a la base de datos del tenant
+      const tenantConnection =
+        await this.tenantConnectionService.getTenantConnection(tenantName);
+      // Importar el schema correctamente
+      const { ProductSchema } = await import(
+        '../products/schemas/product.schema'
+      );
+      const ProductModel = tenantConnection.model('Product', ProductSchema);
+
+      // 4. Crear el producto en la colección del tenant
+      const newProduct = new ProductModel({
+        name: productData.name,
+        category: productData.category,
+        attributes: productData.attributes,
+        serialNumber: productData.serialNumber,
+        productCondition: productData.productCondition,
+        recoverable: productData.recoverable ?? true,
+
+        // Asignación automática a FP warehouse
+        location: 'FP warehouse',
+        status: 'Available',
+        fp_shipment: false,
+        activeShipment: false,
+
+        // Información del warehouse
+        fpWarehouse: {
+          warehouseId: warehouseInfo._id,
+          warehouseCountryCode: warehouseCountryCode.toUpperCase(),
+          warehouseName:
+            warehouseInfo.name ||
+            `Default Warehouse ${warehouseCountryCode.toUpperCase()}`,
+          assignedAt: new Date(),
+          status: 'STORED',
+        },
+
+        // Metadatos de creación por SuperAdmin
+        createdBy: 'SuperAdmin',
+      });
+
+      const savedProduct = await newProduct.save();
+
+      // 5. Sincronizar automáticamente a la colección global
+      await this.globalProductSyncService.syncProduct({
+        tenantId: tenantName,
+        tenantName: tenantName,
+        originalProductId: savedProduct._id as any, // Convertir ObjectId de Mongoose a Types.ObjectId
+        sourceCollection: 'products',
+
+        name: savedProduct.name || '', // Asegurar que no sea undefined
+        category: savedProduct.category,
+        status: savedProduct.status,
+        location: savedProduct.location || 'FP warehouse', // Asegurar que no sea undefined
+
+        // Convertir attributes de Attribute[] a { key: string; value: string }[]
+        attributes:
+          savedProduct.attributes?.map((attr) => ({
+            key: attr.key,
+            value: String(attr.value), // Convertir unknown a string
+          })) || [],
+        serialNumber: savedProduct.serialNumber || undefined, // Convertir null a undefined
+        productCondition: savedProduct.productCondition,
+        recoverable: savedProduct.recoverable,
+        fp_shipment: savedProduct.fp_shipment,
+        activeShipment: savedProduct.activeShipment,
+
+        // Validar que fpWarehouse tenga los campos requeridos
+        fpWarehouse:
+          savedProduct.fpWarehouse &&
+          savedProduct.fpWarehouse.warehouseId &&
+          savedProduct.fpWarehouse.warehouseCountryCode &&
+          savedProduct.fpWarehouse.warehouseName
+            ? {
+                warehouseId: savedProduct.fpWarehouse.warehouseId as any,
+                warehouseCountryCode:
+                  savedProduct.fpWarehouse.warehouseCountryCode,
+                warehouseName: savedProduct.fpWarehouse.warehouseName,
+                assignedAt: savedProduct.fpWarehouse.assignedAt,
+                // Mapear 'IN_TRANSIT' a 'IN_TRANSIT_IN' para compatibilidad
+                status:
+                  savedProduct.fpWarehouse.status === 'IN_TRANSIT'
+                    ? 'IN_TRANSIT_IN'
+                    : (savedProduct.fpWarehouse.status as
+                        | 'STORED'
+                        | 'IN_TRANSIT_IN'
+                        | 'IN_TRANSIT_OUT'
+                        | undefined),
+              }
+            : undefined,
+
+        // Información adicional
+        createdBy: 'SuperAdmin',
+      });
+
+      return {
+        success: true,
+        message: `Product created successfully for tenant ${tenantName}`,
+        data: {
+          productId: savedProduct._id,
+          tenantName,
+          warehouseInfo: {
+            country: warehouseCountryCode,
+            warehouseName:
+              warehouseInfo.name ||
+              `Default Warehouse ${warehouseCountryCode.toUpperCase()}`,
+            warehouseId: warehouseInfo._id,
+            isRealPartner,
+          },
+          product: {
+            name: savedProduct.name,
+            category: savedProduct.category,
+            serialNumber: savedProduct.serialNumber,
+            location: savedProduct.location,
+            status: savedProduct.status,
+          },
+        },
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+
+      throw new BadRequestException(
+        `Error creating product for tenant ${tenantName}: ${error.message}`,
+      );
     }
   }
 }

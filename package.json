@@ -32,6 +32,7 @@
     "test:warehouse-migration": "ts-node -r tsconfig-paths/register src/warehouses/scripts/test-migration.ts",
     "test:global-sync": "ts-node -r tsconfig-paths/register src/products/scripts/test-global-sync.ts",
     "test:global-warehouses": "ts-node -r tsconfig-paths/register src/warehouses/scripts/test-metrics-integration.ts",
+    "test:superadmin-products": "ts-node -r tsconfig-paths/register src/superadmin/scripts/test-product-creation.ts",
     "cleanup:offices": "ts-node -r tsconfig-paths/register scripts/cleanup-offices.ts",
     "test:script": "ts-node -r tsconfig-paths/register scripts/test-simple.ts",
     "migrate:countries": "ts-node -r tsconfig-paths/register src/scripts/migrate-countries-to-codes.ts",

@@ -18,6 +18,7 @@ import { UpdateShipmentCompleteDto } from './dto/update-shipment-complete.dto';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { UpdateTenantOfficeDto } from './dto/update-tenant-office.dto';
+import { CreateProductForTenantDto } from './dto/create-product-for-tenant.dto';
 import { Request } from 'express';
 import { WarehousesService } from '../warehouses/warehouses.service';
 import { CreateWarehouseDto, UpdateWarehouseDto } from '../warehouses/dto';
@@ -394,5 +395,20 @@ export class SuperAdminController {
       success: true,
       data: metrics,
     };
+  }
+
+  // ==================== PRODUCT CREATION ENDPOINTS ====================
+
+  /**
+   * Crear producto para un tenant específico (SuperAdmin only)
+   * El producto se asigna automáticamente a FP warehouse del país seleccionado
+   */
+  @Post('products/create-for-tenant')
+  async createProductForTenant(
+    @Body() createProductDto: CreateProductForTenantDto,
+  ) {
+    return await this.superAdminService.createProductForTenant(
+      createProductDto,
+    );
   }
 }

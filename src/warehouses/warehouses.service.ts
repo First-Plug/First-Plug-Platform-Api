@@ -13,6 +13,7 @@ import {
 } from './schemas/warehouse.schema';
 import { CreateWarehouseDto, UpdateWarehouseDto } from './dto';
 import { DEFAULT_PARTNER_TYPE } from './constants/warehouse.constants';
+import { countryCodes } from '../shipments/helpers/countryCodes';
 
 @Injectable()
 export class WarehousesService {
@@ -99,6 +100,79 @@ export class WarehousesService {
     } catch (error) {
       this.logger.error(
         `Error fetching active warehouse for country ${country}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Obtener warehouse para asignación de productos (activo o default)
+   * Prioriza warehouse activo, pero si no existe, usa el default
+   * Si el país no existe, lo crea automáticamente con warehouse default
+   * Acepta tanto código de país (AR) como nombre (Argentina)
+   */
+  async findWarehouseForProductAssignment(
+    countryInput: string,
+  ): Promise<WarehouseItem | null> {
+    try {
+      // Primero intentar buscar por código de país
+      let countryDoc = await this.findByCountryCode(countryInput);
+
+      // Si no se encuentra por código, intentar por nombre
+      if (!countryDoc) {
+        countryDoc = await this.findByCountry(countryInput);
+      }
+
+      // Si el país no existe, crearlo automáticamente
+      if (!countryDoc) {
+        this.logger.log(
+          `Country ${countryInput} not found, creating automatically...`,
+        );
+
+        // Buscar el código y nombre del país
+        let countryCode: string;
+        let countryName: string;
+
+        // Determinar si el input es código o nombre
+        if (countryInput.length === 2) {
+          // Es un código de país
+          countryCode = countryInput.toUpperCase();
+          countryName =
+            Object.keys(countryCodes).find(
+              (name) => countryCodes[name] === countryCode,
+            ) || countryInput;
+        } else {
+          // Es un nombre de país
+          countryName = countryInput;
+          countryCode = countryCodes[countryName];
+        }
+
+        if (!countryCode) {
+          this.logger.error(`Country code not found for: ${countryInput}`);
+          return null;
+        }
+
+        // Crear el país con warehouse default
+        countryDoc = await this.initializeCountry(countryName, countryCode);
+      }
+
+      // Primero buscar warehouse activo
+      const activeWarehouse = countryDoc.warehouses.find(
+        (w) => w.isActive && !w.isDeleted,
+      );
+
+      if (activeWarehouse) {
+        return activeWarehouse;
+      }
+
+      // Si no hay activo, buscar el default (primer warehouse no eliminado)
+      const defaultWarehouse = countryDoc.warehouses.find((w) => !w.isDeleted);
+
+      return defaultWarehouse || null;
+    } catch (error) {
+      this.logger.error(
+        `Error fetching warehouse for product assignment in country ${countryInput}:`,
         error,
       );
       throw error;

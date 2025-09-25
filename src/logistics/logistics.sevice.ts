@@ -1706,9 +1706,6 @@ export class LogisticsService {
     }).session(session);
 
     if (!memberWithProduct) {
-      console.log(
-        `❌ [MISSING_DATA] No se encontró member con producto ${productId}`,
-      );
       return null;
     }
 
@@ -1717,16 +1714,10 @@ export class LogisticsService {
     );
 
     if (!targetProduct) {
-      console.log(
-        `❌ [MISSING_DATA] Producto ${productId} no encontrado en products array`,
-      );
       return null;
     }
 
     if (targetProduct.status !== 'In Transit') {
-      console.log(
-        `ℹ️ [MISSING_DATA] Producto ${productId} tiene status "${targetProduct.status}", no se actualiza`,
-      );
       return null;
     }
 
@@ -1810,9 +1801,6 @@ export class LogisticsService {
       }).session(session);
 
       if (!memberWithProduct) {
-        console.log(
-          `❌ [IN_TRANSIT] No se encontró member con producto ${productId}`,
-        );
         return null;
       }
 
@@ -1821,16 +1809,10 @@ export class LogisticsService {
       );
 
       if (!targetProduct) {
-        console.log(
-          `❌ [IN_TRANSIT] Producto ${productId} no encontrado en products array`,
-        );
         return null;
       }
 
       if (targetProduct.status !== 'In Transit - Missing Data') {
-        console.log(
-          `ℹ️ [IN_TRANSIT] Producto ${productId} tiene status "${targetProduct.status}", no se actualiza`,
-        );
         return null;
       }
 
@@ -1901,11 +1883,6 @@ export class LogisticsService {
           `ℹ️ [IN_TRANSIT] Product ${productId} status in member was not 'In Transit - Missing Data' or not found`,
         );
       }
-
-      console.log(
-        `[🧪] [IN_TRANSIT] Resultado del updateOne a member.products:`,
-        updateResult,
-      );
 
       return null;
     } catch (error) {
