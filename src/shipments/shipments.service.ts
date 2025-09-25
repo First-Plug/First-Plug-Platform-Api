@@ -187,7 +187,6 @@ export class ShipmentsService {
     }
 
     if (location === 'Our office') {
-      // ✅ Obtener datos de la colección offices en lugar del tenant
       const office = await this.officesService.getDefaultOffice(tenantId);
       if (!office)
         throw new NotFoundException(
@@ -205,7 +204,7 @@ export class ShipmentsService {
           country: office.country || '',
           zipCode: office.zipCode || '',
           phone: office.phone || '',
-          email: office.email || '', // ✅ Email de la oficina real
+          email: office.email || '',
           desirableDate: desirableDate || '',
         },
       };

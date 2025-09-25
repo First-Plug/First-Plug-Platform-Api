@@ -248,16 +248,13 @@ export class LogisticsService {
     const modified = this.hasPersonalDataChanged(initialMember, updatedMember);
 
     if (!modified) {
-      console.log('❌ [SHOULD EMIT CHECK] No personal data changed');
       return false;
     }
 
     if (!updatedMember.activeShipment) {
-      console.log('❌ [SHOULD EMIT CHECK] Member has no active shipment');
       return false;
     }
 
-    console.log('✅ [SHOULD EMIT CHECK] Should emit event');
     return true;
   }
 
@@ -319,10 +316,6 @@ export class LogisticsService {
     ourOfficeEmail: string,
     providedConnection?: Connection,
   ): Promise<ShipmentDocument | null> {
-    console.log(
-      'called user id from maybeCreateShipmentAndUpdateStatus',
-      userId,
-    );
     if (!updateDto.fp_shipment || !actionType) return null;
 
     const desirableDateOrigin =
@@ -334,22 +327,9 @@ export class LogisticsService {
         ? updateDto.desirableDate
         : updateDto.desirableDate?.destination || '';
 
-    // ✅ FIX: Usar la conexión proporcionada si existe (misma que creó la session)
-    console.log(
-      '🔧 DEBUG maybeCreateShipmentAndUpdateStatus: Session ID:',
-      session?.id,
-    );
-    console.log(
-      '🔧 DEBUG maybeCreateShipmentAndUpdateStatus: Connection provided:',
-      !!providedConnection,
-    );
     const connection =
       providedConnection ||
       (await this.connectionService.getTenantConnection(tenantName));
-    console.log(
-      '🔧 DEBUG maybeCreateShipmentAndUpdateStatus: Using connection:',
-      connection.name,
-    );
 
     const { shipment, isConsolidated, oldSnapshot } =
       await this.shipmentsService.findOrCreateShipment(
@@ -363,7 +343,7 @@ export class LogisticsService {
         oldData,
         newData,
         product,
-        connection, // ✅ FIX: Pasar la misma conexión que creó la session
+        connection,
       );
 
     if (!shipment || !shipment._id) {
@@ -415,7 +395,6 @@ export class LogisticsService {
 
     // TODO: Status New Shipment
     if (shipment.shipment_status === 'In Preparation' && !isConsolidated) {
-      // ✅ Obtener información del usuario desde el JWT
       const userInfo = await this.getUserInfoFromUserId(userId);
 
       const slackMessage = CreateShipmentMessageToSlack({
@@ -431,7 +410,6 @@ export class LogisticsService {
 
     //TODO: Status consolidate
     if (isConsolidated && shipment.shipment_status === 'In Preparation') {
-      // ✅ Obtener información del usuario desde el JWT
       const userInfo = await this.getUserInfoFromUserId(userId);
 
       const slackMessage = CreateShipmentMessageToSlack({
@@ -463,9 +441,6 @@ export class LogisticsService {
     ourOfficeEmail: string,
     providedConnection?: Connection,
   ): Promise<ShipmentDocument | null> {
-    console.log('tryCreateShipmentIfNeeded called with userId:', userId);
-    console.log('🔧 DEBUG: Session ID:', session?.id);
-    console.log('🔧 DEBUG: Connection provided:', !!providedConnection);
     return await this.maybeCreateShipmentAndUpdateStatus(
       product,
       updateDto,
@@ -484,7 +459,7 @@ export class LogisticsService {
       },
       userId,
       ourOfficeEmail,
-      providedConnection, // ✅ FIX: Pasar la conexión proporcionada
+      providedConnection,
     );
   }
 
@@ -530,18 +505,15 @@ export class LogisticsService {
   }
 
   public getCountryCode(country: string): string {
-    // Usar el helper centralizado para validación y normalización
     const normalized = CountryHelper.validateAndNormalize(country);
     if (normalized) {
       return normalized;
     }
 
-    // Casos especiales para compatibilidad durante migración
     if (country === 'Our office') {
       return 'OO';
     }
 
-    // Fallback para códigos no válidos
     return 'XX';
   }
 
@@ -565,7 +537,6 @@ export class LogisticsService {
         member.city &&
         member.zipCode &&
         member.address &&
-        // member.apartment &&
         member.personalEmail &&
         member.phone &&
         member.dni
@@ -573,27 +544,19 @@ export class LogisticsService {
     }
 
     if (product.location === 'Our office') {
-      // ✅ Obtener datos de la colección offices en lugar del tenant
       const office = await this.officesService.getDefaultOffice(tenantName);
 
       if (!office) {
-        console.log('❌ No se encontró oficina default para validación:', {
-          tenantName,
-        });
         return false;
       }
 
       const isComplete = !!(
-        (
-          office.country &&
-          office.city &&
-          office.state &&
-          office.zipCode &&
-          office.address &&
-          // office.apartment &&
-          office.phone
-        )
-        // office.email - Email es opcional para oficinas
+        office.country &&
+        office.city &&
+        office.state &&
+        office.zipCode &&
+        office.address &&
+        office.phone
       );
 
       if (!isComplete) {
@@ -606,7 +569,6 @@ export class LogisticsService {
             zipCode: !office.zipCode,
             address: !office.address,
             phone: !office.phone,
-            // email: !office.email, // Email es opcional
           },
           office: {
             country: office.country,
@@ -780,7 +742,6 @@ export class LogisticsService {
       const productId = rawId.toString();
       const objectId = new Types.ObjectId(productId);
 
-      // Evitar duplicados en shipment.products
       if (!shipment.products.some((p) => p.equals(objectId))) {
         shipment.products.push(objectId);
       } else {
@@ -802,7 +763,6 @@ export class LogisticsService {
         continue;
       }
 
-      // Agregar snapshot solo si no existe
       if (!existingSnapshotIds.includes(product._id.toString())) {
         const snapshot = this.shipmentsService.buildSnapshot(
           product as ProductDocument & { _id: Types.ObjectId },
@@ -848,7 +808,6 @@ export class LogisticsService {
         'country',
         'zipCode',
         'phone',
-        // 'email', // Email es opcional para oficinas
       ];
       const result = requiredFields.every((field) => !!details[field]);
       if (!result) {
@@ -912,11 +871,6 @@ export class LogisticsService {
         product.status = status;
         await product.save();
         assignedEmail = product.assignedEmail;
-
-        console.log(`✅ Product updated from Product collection:`, {
-          id: product._id,
-          status,
-        });
       } else {
         const member = await MemberModel.findOne({
           'products._id': new Types.ObjectId(productId),
@@ -987,7 +941,6 @@ export class LogisticsService {
       destinationEmail,
     });
 
-    // ✅ FIX: Usar la conexión proporcionada si existe (misma que creó la session)
     const connection =
       providedConnection || (await this.tenantModels.getConnection(tenantName));
     const ProductModel =
@@ -1113,7 +1066,6 @@ export class LogisticsService {
       const member = await MemberModel.findOne({ email: memberEmail });
 
       if (!member) {
-        console.log(`❌ No se encontró el member con email ${memberEmail}`);
         return;
       }
 
@@ -1131,10 +1083,6 @@ export class LogisticsService {
         ],
         isDeleted: { $ne: true },
       });
-
-      console.log(
-        `🔍 Active shipments for member ${fullName} (${memberEmail}): ${activeShipmentsForMember}`,
-      );
 
       if (activeShipmentsForMember === 0) {
         console.log(`✅ Setting activeShipment: false for member ${fullName}`);
@@ -1173,9 +1121,7 @@ export class LogisticsService {
         origin,
       );
       await product.save();
-      console.log(
-        `✅ Producto actualizado (colección Products): ${product._id}`,
-      );
+
       return;
     }
 
@@ -1208,8 +1154,6 @@ export class LogisticsService {
             },
           },
         );
-
-        console.log(`✅ Producto actualizado (colección Member): ${productId}`);
       }
     }
   }
@@ -1219,10 +1163,6 @@ export class LogisticsService {
     tenantId: string,
   ) {
     if (typeof memberEmail !== 'string') {
-      console.warn(
-        `❌ Email inválido recibido en clearMemberActiveShipmentFlagIfNoOtherShipments:`,
-        memberEmail,
-      );
       return;
     }
 
@@ -1232,7 +1172,6 @@ export class LogisticsService {
     const MemberModel =
       this.tenantModels.getMemberModelFromConnection(connection);
 
-    // Agregar logs detallados para debugging
     const activeShipments = await ShipmentModel.find({
       shipment_status: {
         $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
@@ -1246,17 +1185,17 @@ export class LogisticsService {
       isDeleted: { $ne: true },
     });
 
-    console.log(`🔍 Active shipments found for ${normalizedEmail}:`, {
-      count: activeShipments.length,
-      shipments: activeShipments.map((s) => ({
-        id: s._id,
-        status: s.shipment_status,
-        origin: s.origin,
-        destination: s.destination,
-        originEmail: s.originDetails?.assignedEmail,
-        destinationEmail: s.destinationDetails?.assignedEmail,
-      })),
-    });
+    // console.log(`🔍 Active shipments found for ${normalizedEmail}:`, {
+    //   count: activeShipments.length,
+    //   shipments: activeShipments.map((s) => ({
+    //     id: s._id,
+    //     status: s.shipment_status,
+    //     origin: s.origin,
+    //     destination: s.destination,
+    //     originEmail: s.originDetails?.assignedEmail,
+    //     destinationEmail: s.destinationDetails?.assignedEmail,
+    //   })),
+    // });
 
     const memberStillInvolved = activeShipments.length > 0;
 
@@ -1289,11 +1228,6 @@ export class LogisticsService {
     userId: string,
     ourOfficeEmail: string,
   ) {
-    console.log('🔄 Starting office address update:', {
-      tenantName,
-      oldAddress,
-      newAddress,
-    });
     await new Promise((resolve) => process.nextTick(resolve));
     const connection = await this.tenantModels.getConnection(tenantName);
     const ShipmentModel = await this.tenantModels.getShipmentModel(tenantName);
@@ -1312,6 +1246,8 @@ export class LogisticsService {
         for (const shipment of shipments) {
           let updated = false;
 
+          const originalShipmentData = { ...shipment.toObject() };
+
           if (shipment.origin === 'Our office') {
             const desirableDate = shipment.originDetails?.desirableDate || '';
 
@@ -1326,24 +1262,7 @@ export class LogisticsService {
               desirableDate: desirableDate,
             };
 
-            await ShipmentModel.updateOne(
-              { _id: shipment._id },
-              {
-                $set: {
-                  'originDetails.address': updatedOriginDetails.address,
-                  'originDetails.city': updatedOriginDetails.city,
-                  'originDetails.state': updatedOriginDetails.state,
-                  'originDetails.country': updatedOriginDetails.country,
-                  'originDetails.zipCode': updatedOriginDetails.zipCode,
-                  'originDetails.apartment': updatedOriginDetails.apartment,
-                  'originDetails.phone': updatedOriginDetails.phone,
-                  'originDetails.desirableDate':
-                    updatedOriginDetails.desirableDate,
-                },
-              },
-              { session },
-            );
-
+            shipment.originDetails = updatedOriginDetails;
             updated = true;
           }
 
@@ -1362,73 +1281,39 @@ export class LogisticsService {
               desirableDate: desirableDate,
             };
 
-            await ShipmentModel.updateOne(
-              { _id: shipment._id },
-              {
-                $set: {
-                  'destinationDetails.address':
-                    updatedDestinationDetails.address,
-                  'destinationDetails.city': updatedDestinationDetails.city,
-                  'destinationDetails.state': updatedDestinationDetails.state,
-                  'destinationDetails.country':
-                    updatedDestinationDetails.country,
-                  'destinationDetails.zipCode':
-                    updatedDestinationDetails.zipCode,
-                  'destinationDetails.apartment':
-                    updatedDestinationDetails.apartment,
-                  'destinationDetails.phone': updatedDestinationDetails.phone,
-                  'destinationDetails.desirableDate':
-                    updatedDestinationDetails.desirableDate,
-                },
-              },
-              { session },
-            );
-
+            shipment.destinationDetails = updatedDestinationDetails;
             updated = true;
           }
 
           if (updated) {
+            await shipment.save({ session });
+
             const refreshedShipment = await ShipmentModel.findById(
               shipment._id,
             ).session(session);
 
             if (refreshedShipment) {
-              console.log('📋 Refreshed shipment details:', {
-                originDetails: refreshedShipment.originDetails,
-                destinationDetails: refreshedShipment.destinationDetails,
-              });
-
-              // Solo actualizar el status si es necesario
-              // El history se crea automáticamente en updateShipmentStatusOnAddressComplete
-              // cuando realmente cambia el status del shipment
-              await this.updateShipmentStatusOnAddressComplete(
+              await this.updateShipmentOnAddressComplete(
                 refreshedShipment,
                 connection,
                 session,
                 userId,
                 tenantName,
                 ourOfficeEmail,
+                originalShipmentData,
               );
             }
           }
         }
       });
-
-      console.log('✨ Completed office address update');
-
-      this.logger.debug(
-        `Sending websocket notification for tenant: ${tenantName}`,
-      );
-      this.eventsGateway.notifyTenant(tenantName, 'shipments-update', {
-        message: 'Shipments updated after office address change',
-        timestamp: new Date().toISOString(),
-      });
     } catch (error) {
-      console.error('❌ Failed to update office shipments:', error);
+      console.error('❌ Error in office address update:', error);
       throw error;
     } finally {
       await session.endSession();
     }
+
+    console.log('✨ Completed office address update');
   }
 
   async checkAndUpdateShipmentsForMember(
@@ -1439,7 +1324,7 @@ export class LogisticsService {
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection = await this.tenantModels.getConnection(tenantName);
-    // ✅ FIX: Usar la misma conexión para crear el modelo en lugar de obtener una nueva
+
     const ShipmentModel = connection.model(Shipment.name, ShipmentSchema);
     const session = await connection.startSession();
 
@@ -1456,7 +1341,6 @@ export class LogisticsService {
           return;
         }
 
-        // ✅ FIX: Usar findByEmailNotThrowError con conexión y sesión en lugar de findById
         const refreshed = await this.membersService.findByEmailNotThrowError(
           memberEmail,
           connection,
@@ -1486,7 +1370,6 @@ export class LogisticsService {
         for (const shipment of shipments) {
           let updated = false;
 
-          // Capturar datos originales ANTES de cualquier actualización
           const originalShipmentData = { ...shipment.toObject() };
 
           const desirableDateOrigin =
@@ -1563,9 +1446,6 @@ export class LogisticsService {
               shipment._id,
             ).session(session);
             if (refreshedShipment) {
-              // Solo actualizar el status si es necesario
-              // El history se crea automáticamente en updateShipmentOnAddressComplete
-              // cuando realmente cambia el status del shipment
               await this.updateShipmentOnAddressComplete(
                 refreshedShipment,
                 connection,
@@ -1646,11 +1526,8 @@ export class LogisticsService {
     userId: string,
     ourOfficeEmail: string,
   ): Promise<ShipmentDocument> {
-    console.log('🚨 [CANCEL SHIPMENT] Start for', shipmentId);
-
     await new Promise((resolve) => process.nextTick(resolve));
 
-    // Capturar el status original ANTES de cancelar
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
@@ -1678,16 +1555,9 @@ export class LogisticsService {
       );
     }
 
-    await this.cancelAllProductsInShipment(
-      shipment.products,
-      tenantName,
-      // userId (si lo usás internamente)
-    );
+    await this.cancelAllProductsInShipment(shipment.products, tenantName);
 
-    // Solo enviar mensaje a Slack si el shipment estaba en 'In Preparation'
-    // Los shipments en 'On Hold - Missing Data' nunca fueron notificados a Slack
     if (originalShipmentData.shipment_status === 'In Preparation') {
-      // ✅ Obtener información del usuario desde el JWT
       const userInfo = await this.getUserInfoFromUserId(userId);
 
       const slackMessage = CreateShipmentMessageToSlack({
@@ -1830,7 +1700,7 @@ export class LogisticsService {
       'products._id': productId,
       'products.status': 'In Transit',
     });
-    // Primero verificar que el producto específico tenga el status correcto
+
     const memberWithProduct = await MemberModel.findOne({
       'products._id': new Types.ObjectId(productId),
     }).session(session);
@@ -2223,6 +2093,68 @@ export class LogisticsService {
     }
   }
 
+  private hasRelevantDetailsChanged(
+    oldOrigin: any,
+    newOrigin: any,
+    oldDestination: any,
+    newDestination: any,
+  ): boolean {
+    // Solo los campos que realmente se actualizan en la oficina
+    const officeRelevantFields = [
+      'address',
+      'city',
+      'state',
+      'country',
+      'zipCode',
+      'apartment',
+      'phone',
+      'desirableDate',
+    ];
+
+    // Para miembros incluimos también campos personales
+    const memberRelevantFields = [
+      'address',
+      'city',
+      'country',
+      'zipCode',
+      'apartment',
+      'phone',
+      'personalEmail',
+      'dni',
+      'desirableDate',
+    ];
+
+    // Verificar cambios en origin - solo campos relevantes
+    const fieldsToCheckOrigin = this.isOfficeLocation(oldOrigin)
+      ? officeRelevantFields
+      : memberRelevantFields;
+
+    for (const field of fieldsToCheckOrigin) {
+      if (oldOrigin?.[field] !== newOrigin?.[field]) {
+        return true;
+      }
+    }
+
+    // Verificar cambios en destination - solo campos relevantes
+    const fieldsToCheckDestination = this.isOfficeLocation(oldDestination)
+      ? officeRelevantFields
+      : memberRelevantFields;
+
+    for (const field of fieldsToCheckDestination) {
+      if (oldDestination?.[field] !== newDestination?.[field]) {
+        return true;
+      }
+    }
+
+    console.log('🔍 [SLACK_DEBUG] No relevant field changes detected');
+    return false;
+  }
+
+  private isOfficeLocation(details: any): boolean {
+    // Determinar si es oficina basado en la presencia de email vs personalEmail
+    return details?.email && !details?.personalEmail;
+  }
+
   public async updateShipmentOnAddressComplete(
     shipment: ShipmentDocument,
     connection: mongoose.Connection,
@@ -2231,263 +2163,58 @@ export class LogisticsService {
     tenantId: string,
     ourOfficeEmail: string,
     originalShipmentData?: any,
-  ) {
+  ): Promise<string> {
     try {
-      // const originalShipment = { ...shipment.toObject() };
-      const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
-
-      const freshShipment = await ShipmentModel.findById(shipment._id).session(
-        session,
+      console.log(
+        '🔍 [SLACK_DEBUG] originalShipmentData provided:',
+        !!originalShipmentData,
       );
-      if (!freshShipment) {
-        throw new NotFoundException(`Shipment ${shipment._id} not found`);
-      }
 
-      shipment = freshShipment;
       const originalShipment = originalShipmentData || {
         ...shipment.toObject(),
       };
 
-      const orderNumber = parseInt(shipment.order_id.slice(-4));
-
-      const originCode = this.shipmentsService.getLocationCode(
-        shipment.origin,
+      const detailsChanged = this.hasRelevantDetailsChanged(
+        originalShipment.originDetails,
         shipment.originDetails,
-      );
-      const destinationCode = this.shipmentsService.getLocationCode(
-        shipment.destination,
+        originalShipment.destinationDetails,
         shipment.destinationDetails,
       );
 
-      const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
-
-      // const hasCodesForOrderId =
-      //   originCode !== 'XX' && destinationCode !== 'XX';
-
-      const originComplete = this.areShipmentDetailsComplete(
-        shipment.originDetails,
-        shipment.origin,
-      );
-      const destinationComplete = this.areShipmentDetailsComplete(
-        shipment.destinationDetails,
-        shipment.destination,
+      // Ejecutar la lógica completa de actualización de estado
+      const newStatus = await this.updateShipmentStatusOnAddressComplete(
+        shipment,
+        connection,
+        session,
+        userId,
+        tenantId,
+        ourOfficeEmail,
       );
 
-      const isNowComplete = originComplete && destinationComplete;
-      const wasInPreparation = shipment.shipment_status === 'In Preparation';
-
-      if (newOrderId !== shipment.order_id) {
-        await ShipmentModel.updateOne(
-          { _id: shipment._id },
-          { $set: { order_id: newOrderId } },
-          { session },
-        );
-        shipment.order_id = newOrderId;
-      }
-
-      let newStatus = shipment.shipment_status;
-
-      if (
-        isNowComplete &&
-        shipment.shipment_status === 'On Hold - Missing Data'
-      ) {
-        newStatus = 'In Preparation';
-        const updatedProducts: ProductDocument[] = [];
-
-        for (const productId of shipment.products) {
-          const updatedProduct = await this.updateProductStatusToInTransit(
-            productId.toString(),
-            connection,
-            session,
-          );
-          if (updatedProduct) updatedProducts.push(updatedProduct);
-        }
-
-        await session.commitTransaction();
-        await session.startTransaction();
-
-        await this.historyService.create({
-          actionType: 'update',
-          itemType: 'shipments',
-          userId,
-          changes: {
-            oldData: originalShipment,
-            newData: { ...originalShipment, shipment_status: newStatus },
-          },
-        });
-
-        console.log('📸 Generating product snapshots...');
-        await this.shipmentsService.createSnapshots(shipment, connection, {
-          providedProducts: updatedProducts,
-          force: true,
-        });
-      }
-
-      if (wasInPreparation && !isNowComplete) {
-        newStatus = 'On Hold - Missing Data';
-
-        const updatedProducts: ProductDocument[] = [];
-
-        for (const productId of shipment.products) {
-          const updatedProduct = await this.updateProductStatusToMissingData(
-            productId.toString(),
-            connection,
-            session,
-          );
-          if (updatedProduct) {
-            updatedProducts.push(updatedProduct);
-          }
-        }
-
-        await this.shipmentsService.createSnapshots(shipment, connection, {
-          providedProducts: updatedProducts,
-          force: true,
-        });
-
-        await this.historyService.create({
-          actionType: 'update',
-          itemType: 'shipments',
-          userId,
-          changes: {
-            oldData: originalShipment,
-            newData: { ...originalShipment, shipment_status: newStatus },
-          },
-        });
-      }
-
-      // También actualizar productos si el shipment se mantiene en 'On Hold - Missing Data'
-      // pero se actualizaron los datos (para asegurar consistencia)
-      if (
-        !isNowComplete &&
-        newStatus === 'On Hold - Missing Data' &&
-        originalShipment.shipment_status === 'On Hold - Missing Data'
-      ) {
-        console.log(
-          '🔄 Shipment remains On Hold - Missing Data, ensuring product status consistency',
-        );
-
-        const updatedProducts: ProductDocument[] = [];
-
-        for (const productId of shipment.products) {
-          const updatedProduct = await this.updateProductStatusToMissingData(
-            productId.toString(),
-            connection,
-            session,
-          );
-          if (updatedProduct) {
-            updatedProducts.push(updatedProduct);
-          }
-        }
-
-        if (updatedProducts.length > 0) {
-          await this.shipmentsService.createSnapshots(shipment, connection, {
-            providedProducts: updatedProducts,
-            force: true,
-          });
-        }
-      }
-
-      if (newStatus !== shipment.shipment_status) {
-        await ShipmentModel.updateOne(
-          { _id: shipment._id },
-          {
-            $set: {
-              shipment_status: newStatus,
-              snapshots: shipment.snapshots,
-            },
-          },
-          { session },
-        );
-      }
-
-      // TODO: Status On Hold - Missing Data
-      if (
-        newStatus === 'In Preparation' &&
-        isNowComplete &&
-        !wasInPreparation
-      ) {
-        // ✅ Obtener información del usuario desde el JWT
-        const userInfo = await this.getUserInfoFromUserId(userId);
-
-        const slackMessage = CreateShipmentMessageToSlack({
-          shipment: shipment,
-          tenantName: tenantId,
-          isOffboarding: false,
-          status: 'Updated',
-          previousShipment: originalShipment,
-          ourOfficeEmail: ourOfficeEmail,
-          userInfo: userInfo,
-        });
-        await this.slackService.sendMessage(slackMessage);
-      }
-
-      if (
-        newStatus === 'On Hold - Missing Data' &&
-        wasInPreparation &&
-        !isNowComplete
-      ) {
-        // ✅ Obtener información del usuario desde el JWT
-        const userInfo = await this.getUserInfoFromUserId(userId);
-
-        const slackMessage = CreateShipmentMessageToSlack({
-          shipment: shipment,
-          tenantName: tenantId,
-          isOffboarding: false,
-          status: 'Missing Data',
-          ourOfficeEmail: ourOfficeEmail,
-          userInfo: userInfo,
-        });
-        await this.slackService.sendMessage(slackMessage);
-      }
-
-      shipment.shipment_status = newStatus;
-
-      const detailsChanged =
-        JSON.stringify(originalShipment.originDetails) !==
-          JSON.stringify(shipment.originDetails) ||
-        JSON.stringify(originalShipment.destinationDetails) !==
-          JSON.stringify(shipment.destinationDetails);
-
+      // Verificar si necesitamos enviar notificación adicional por cambio de detalles
+      // (solo si ambos estados son 'In Preparation' y hubo cambios en los detalles)
       if (
         originalShipment.shipment_status === 'In Preparation' &&
-        shipment.shipment_status === 'In Preparation' &&
+        newStatus === 'In Preparation' &&
         detailsChanged
       ) {
-        // ✅ Obtener información del usuario desde el JWT
+        console.log(
+          '🔍 [SLACK_DEBUG] ✅ Sending Slack notification for shipment details update',
+        );
+
         const userInfo = await this.getUserInfoFromUserId(userId);
 
         const slackMessage = CreateShipmentMessageToSlack({
-          shipment,
+          shipment: shipment,
           tenantName: tenantId,
           isOffboarding: false,
           status: 'Updated',
           previousShipment: originalShipment,
-          ourOfficeEmail,
+          ourOfficeEmail: ourOfficeEmail,
           userInfo: userInfo,
         });
         await this.slackService.sendMessage(slackMessage);
-      }
-
-      // Debug: Verificar status final de productos embebidos
-      const MemberModel =
-        connection.models.Member || connection.model('Member', MemberSchema);
-      for (const productId of shipment.products) {
-        const member = await MemberModel.findOne({
-          'products._id': new Types.ObjectId(productId),
-        }).session(session);
-
-        if (member) {
-          const p = member.products.find((pr) => pr._id.equals(productId));
-          if (p) {
-            console.log(
-              `🔍 [FINAL_CHECK] Producto ${productId} → Status embebido en Member: "${p.status}"`,
-            );
-          }
-        } else {
-          console.log(
-            `❌ [FINAL_CHECK] No se encontró Member con producto ${productId}`,
-          );
-        }
+      } else {
       }
 
       return newStatus;
