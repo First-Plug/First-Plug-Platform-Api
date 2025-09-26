@@ -38,6 +38,7 @@ import {
   CurrencyCode,
   CURRENCY_CODES,
 } from 'src/products/validations/create-product.zod';
+import { GlobalProductSyncService } from 'src/products/services/global-product-sync.service';
 
 @Injectable()
 export class AssignmentsService {
@@ -59,7 +60,96 @@ export class AssignmentsService {
     private readonly tenantModelRegistry: TenantModelRegistry,
     @Inject(forwardRef(() => LogisticsService))
     private readonly logisticsService: LogisticsService,
+    private readonly globalProductSyncService: GlobalProductSyncService,
   ) {}
+
+  /**
+   * Helper method para sincronizar producto a la colección global
+   * No falla la operación principal si hay error en sincronización
+   */
+  private async syncProductToGlobal(
+    product: ProductDocument | any,
+    tenantName: string,
+    sourceCollection: 'products' | 'members' = 'products',
+    memberData?: {
+      memberId: Types.ObjectId;
+      memberEmail: string;
+      memberName: string;
+      assignedAt?: Date;
+    },
+  ): Promise<void> {
+    try {
+      await this.globalProductSyncService.syncProduct({
+        tenantId: tenantName,
+        tenantName: tenantName,
+        originalProductId: product._id as any,
+        sourceCollection,
+
+        // Datos básicos del producto
+        name: product.name || '',
+        category: product.category,
+        status: product.status,
+        location: product.location || 'Our office',
+
+        // Atributos convertidos al formato correcto
+        attributes:
+          product.attributes?.map((attr: any) => ({
+            key: attr.key,
+            value: String(attr.value),
+          })) || [],
+
+        serialNumber: product.serialNumber || undefined,
+        assignedEmail: product.assignedEmail,
+        assignedMember: product.assignedMember,
+        lastAssigned: product.lastAssigned,
+        acquisitionDate: product.acquisitionDate,
+        price: product.price,
+        additionalInfo: product.additionalInfo,
+        productCondition: product.productCondition,
+        recoverable: product.recoverable,
+        fp_shipment: product.fp_shipment,
+        activeShipment: product.activeShipment,
+        imageUrl: product.imageUrl,
+        isDeleted: product.isDeleted || false,
+
+        // Datos de warehouse si existen
+        fpWarehouse:
+          product.fpWarehouse &&
+          product.fpWarehouse.warehouseId &&
+          product.fpWarehouse.warehouseCountryCode &&
+          product.fpWarehouse.warehouseName
+            ? {
+                warehouseId: product.fpWarehouse.warehouseId as any,
+                warehouseCountryCode: product.fpWarehouse.warehouseCountryCode,
+                warehouseName: product.fpWarehouse.warehouseName,
+                assignedAt: product.fpWarehouse.assignedAt,
+                status:
+                  product.fpWarehouse.status === 'IN_TRANSIT'
+                    ? 'IN_TRANSIT_IN'
+                    : (product.fpWarehouse.status as any),
+              }
+            : undefined,
+
+        // Datos del member si está asignado
+        memberData,
+
+        // Metadatos
+        createdBy: product.createdBy,
+        sourceUpdatedAt: product.updatedAt || new Date(),
+      });
+
+      this.logger.debug(
+        `✅ Product ${product._id} synced to global collection for tenant ${tenantName}`,
+      );
+    } catch (error) {
+      // Log el error pero no fallar la operación principal
+      this.logger.error(
+        `❌ Failed to sync product ${product._id} to global collection for tenant ${tenantName}:`,
+        error,
+      );
+      // Opcional: Aquí podrías agregar el producto a una cola de retry
+    }
+  }
 
   public async assignProductsToMemberByEmail(
     memberEmail: string,
@@ -163,6 +253,7 @@ export class AssignmentsService {
     email: string,
     createProductDto: CreateProductDto,
     session?: ClientSession,
+    tenantName?: string,
   ) {
     const member = await this.membersService.findByEmailNotThrowError(email);
 
@@ -205,6 +296,28 @@ export class AssignmentsService {
 
     member.products.push(productData);
     await member.save({ session });
+
+    // 🔄 SYNC: Sincronizar producto asignado a colección global
+    if (tenantName) {
+      // Crear objeto producto completo para sincronización
+      const productForSync = {
+        _id: new Types.ObjectId(), // Generar ID nuevo
+        ...productData,
+        updatedAt: new Date(),
+      };
+
+      await this.syncProductToGlobal(
+        productForSync,
+        tenantName,
+        'members', // Producto está en colección members
+        {
+          memberId: member._id as any,
+          memberEmail: member.email,
+          memberName: `${member.firstName} ${member.lastName}`,
+          assignedAt: new Date(),
+        },
+      );
+    }
 
     return member;
   }
@@ -588,6 +701,21 @@ export class AssignmentsService {
     await this.productsService.findByIdAndDelete(tenantName, product._id!, {
       session,
     });
+
+    // 🔄 SYNC: Sincronizar producto movido a member
+    if (tenantName) {
+      await this.syncProductToGlobal(
+        updateData,
+        tenantName,
+        'members', // Ahora está en colección members
+        {
+          memberId: newMember._id as any,
+          memberEmail: newMember.email,
+          memberName: `${newMember.firstName} ${newMember.lastName}`,
+          assignedAt: new Date(),
+        },
+      );
+    }
   }
 
   // Metodo para mover un producto de un miembro a la colección de productos
@@ -596,8 +724,8 @@ export class AssignmentsService {
     product: ProductDocument,
     member: MemberDocument,
     updateProductDto: UpdateProductDto,
-    // tenantName?: string,
     connection: Connection,
+    tenantName?: string,
   ) {
     console.log(
       '📦 [moveToProductsCollection] Producto a mover:',
@@ -658,6 +786,17 @@ export class AssignmentsService {
       session,
     });
     console.log('✅ Producto movido a colección de productos');
+
+    // 🔄 SYNC: Sincronizar producto movido a products collection
+    if (tenantName && createdProducts.length > 0) {
+      await this.syncProductToGlobal(
+        createdProducts[0],
+        tenantName,
+        'products', // Ahora está en colección products
+        undefined, // No hay memberData porque se desasignó
+      );
+    }
+
     return createdProducts;
   }
 
@@ -1286,7 +1425,7 @@ export class AssignmentsService {
     updateProductDto: UpdateProductDto,
     connection: Connection,
     currentMember?: MemberDocument,
-    // tenantName?: string,
+    tenantName?: string,
   ) {
     if (currentMember) {
       console.log('🔁 Llamando a moveToProductsCollection...');
@@ -1295,8 +1434,8 @@ export class AssignmentsService {
         product,
         currentMember,
         updateProductDto,
-        // tenantName,
         connection,
+        tenantName,
       );
       return created;
     } else {
@@ -1486,6 +1625,14 @@ export class AssignmentsService {
       }
 
       await session.commitTransaction();
+
+      // 🔄 SYNC: Sincronizar productos después de bulk reassign
+      // Nota: Los productos individuales ya se sincronizan en updateWithinTransaction,
+      // pero agregamos este log para tracking
+      this.logger.debug(
+        `✅ Bulk reassign completed for ${items.length} products in tenant ${tenantName}`,
+      );
+
       return { message: 'Bulk reassign completed successfully' };
     } catch (error) {
       await session.abortTransaction();

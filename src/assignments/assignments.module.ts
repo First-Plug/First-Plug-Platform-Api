@@ -11,6 +11,12 @@ import { AssignmentsController } from './assignments.controller';
 import { JwtService } from '@nestjs/jwt';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { LogisticsModule } from 'src/logistics/logistics.module';
+import { GlobalProductSyncService } from 'src/products/services/global-product-sync.service';
+import { MongooseModule } from '@nestjs/mongoose';
+import {
+  GlobalProduct,
+  GlobalProductSchema,
+} from 'src/products/schemas/global-product.schema';
 
 @Module({
   imports: [
@@ -21,11 +27,16 @@ import { LogisticsModule } from 'src/logistics/logistics.module';
     HistoryModule,
     SlackModule,
     TenantsModule,
+    MongooseModule.forFeature(
+      [{ name: GlobalProduct.name, schema: GlobalProductSchema }],
+      'firstPlug',
+    ),
   ],
   controllers: [AssignmentsController],
   providers: [
     TenantModelRegistry,
     AssignmentsService,
+    GlobalProductSyncService,
     tenantModels.productModel,
     tenantModels.memberModel,
     JwtService,

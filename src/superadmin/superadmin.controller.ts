@@ -199,16 +199,6 @@ export class SuperAdminController {
     return await this.superAdminService.deleteTenant(tenantId);
   }
 
-  // ==================== MIGRATION ENDPOINTS ====================
-
-  /**
-   * Migrar tenant del modelo viejo al nuevo (SuperAdmin only)
-   */
-  @Post('migrate-tenant/:tenantName')
-  async migrateTenant(@Param('tenantName') tenantName: string) {
-    return await this.superAdminService.migrateTenantArchitecture(tenantName);
-  }
-
   // ==================== WAREHOUSES ENDPOINTS ====================
 
   /**
@@ -410,5 +400,13 @@ export class SuperAdminController {
     return await this.superAdminService.createProductForTenant(
       createProductDto,
     );
+  }
+
+  /**
+   * Obtener productos de la colección global
+   */
+  @Get('global-products')
+  async getGlobalProducts() {
+    return await this.superAdminService.getGlobalProducts();
   }
 }

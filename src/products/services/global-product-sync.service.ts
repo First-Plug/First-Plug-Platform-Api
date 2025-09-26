@@ -5,6 +5,9 @@ import {
   GlobalProduct,
   GlobalProductDocument,
 } from '../schemas/global-product.schema';
+import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
+import { ProductSchema } from '../schemas/product.schema';
+import { MemberSchema } from 'src/members/schemas/member.schema';
 
 export interface SyncProductParams {
   tenantId: string;
@@ -62,6 +65,7 @@ export class GlobalProductSyncService {
   constructor(
     @InjectModel(GlobalProduct.name, 'firstPlug')
     private globalProductModel: Model<GlobalProductDocument>,
+    private readonly tenantConnectionService: TenantConnectionService,
   ) {}
 
   /**
@@ -204,28 +208,193 @@ export class GlobalProductSyncService {
     errors: string[];
   }> {
     const errors: string[] = [];
-    const synced = 0; // Placeholder - será reasignado cuando se implemente
+    let synced = 0;
 
     try {
       this.logger.log(`🔄 Starting sync for tenant ${tenantName}`);
 
-      // TODO: Implementar conexión a tenant DB
-      // Por ahora es un placeholder que necesita:
-      // 1. TenantConnectionService para conectar a tenant DB
-      // 2. ProductSchema y MemberSchema para los modelos
-      // 3. Lógica para mapear datos del tenant al formato global
+      // 1. Obtener conexión al tenant
+      const tenantConnection =
+        await this.tenantConnectionService.getTenantConnection(tenantName);
+      const ProductModel = tenantConnection.model('Product', ProductSchema);
+      const MemberModel = tenantConnection.model('Member', MemberSchema);
 
-      this.logger.warn(`⚠️ syncTenantProducts not fully implemented yet`);
-      this.logger.warn(
-        `   This method needs TenantConnectionService integration`,
-      );
-      this.logger.warn(`   Use syncProduct() for individual product sync`);
+      // 2. Sincronizar productos de la colección 'products'
+      const products = await ProductModel.find({ isDeleted: { $ne: true } });
+      for (const product of products) {
+        try {
+          // WAREHOUSE RESOLUTION: Si el producto tiene "FP warehouse", resolver warehouse
+          let fpWarehouseData = product.fpWarehouse;
 
+          if (product.location === 'FP warehouse' && !fpWarehouseData) {
+            // Intentar resolver warehouse basado en el país del tenant o producto
+            fpWarehouseData = await this.resolveWarehouseForProduct(
+              product,
+              tenantName,
+            );
+          }
+
+          await this.syncProduct({
+            tenantId: tenantName,
+            tenantName: tenantName,
+            originalProductId: product._id as any,
+            sourceCollection: 'products',
+            name: product.name || '',
+            category: product.category,
+            status: product.status,
+            location: product.location || 'FP warehouse',
+            attributes:
+              product.attributes?.map((attr: any) => ({
+                key: attr.key,
+                value: String(attr.value),
+              })) || [],
+            serialNumber: product.serialNumber || undefined,
+            assignedEmail: product.assignedEmail,
+            assignedMember: product.assignedMember,
+            lastAssigned: product.lastAssigned,
+            acquisitionDate: product.acquisitionDate,
+            price: product.price,
+            additionalInfo: product.additionalInfo,
+            productCondition: product.productCondition,
+            recoverable: product.recoverable,
+            fp_shipment: product.fp_shipment,
+            activeShipment: product.activeShipment,
+            fpWarehouse:
+              fpWarehouseData &&
+              fpWarehouseData.warehouseId &&
+              fpWarehouseData.warehouseCountryCode &&
+              fpWarehouseData.warehouseName
+                ? {
+                    warehouseId: fpWarehouseData.warehouseId as any,
+                    warehouseCountryCode: fpWarehouseData.warehouseCountryCode,
+                    warehouseName: fpWarehouseData.warehouseName,
+                    assignedAt: fpWarehouseData.assignedAt,
+                    status:
+                      fpWarehouseData.status === 'IN_TRANSIT'
+                        ? 'IN_TRANSIT_IN'
+                        : (fpWarehouseData.status as any),
+                  }
+                : undefined,
+            sourceUpdatedAt: (product as any).updatedAt || new Date(),
+          });
+          synced++;
+        } catch (error) {
+          errors.push(`Product ${product._id}: ${error.message}`);
+        }
+      }
+
+      // 3. Sincronizar productos de la colección 'members'
+      const members = await MemberModel.find({
+        'products.0': { $exists: true },
+      });
+      for (const member of members) {
+        for (const product of member.products) {
+          try {
+            await this.syncProduct({
+              tenantId: tenantName,
+              tenantName: tenantName,
+              originalProductId: product._id as any,
+              sourceCollection: 'members',
+              name: product.name || '',
+              category: product.category,
+              status: product.status,
+              location: 'Employee',
+              attributes:
+                product.attributes?.map((attr: any) => ({
+                  key: attr.key,
+                  value: String(attr.value),
+                })) || [],
+              serialNumber: product.serialNumber || undefined,
+              assignedEmail: member.email,
+              assignedMember: `${member.firstName} ${member.lastName}`,
+              lastAssigned: product.lastAssigned,
+              acquisitionDate: product.acquisitionDate,
+              price: product.price,
+              additionalInfo: product.additionalInfo,
+              productCondition: product.productCondition,
+              recoverable: product.recoverable,
+              fp_shipment: product.fp_shipment,
+              activeShipment: product.activeShipment,
+              memberData: {
+                memberId: member._id as any,
+                memberEmail: member.email,
+                memberName: `${member.firstName} ${member.lastName}`,
+                assignedAt:
+                  (product as any).assignedAt || (member as any).updatedAt,
+              },
+              sourceUpdatedAt:
+                (product as any).updatedAt || (member as any).updatedAt,
+            });
+            synced++;
+          } catch (error) {
+            errors.push(`Member product ${product._id}: ${error.message}`);
+          }
+        }
+      }
+
+      this.logger.log(`✅ Synced ${synced} products from tenant ${tenantName}`);
       return { synced, errors };
     } catch (error) {
       this.logger.error(`❌ Error syncing tenant ${tenantName}:`, error);
       errors.push(`Tenant sync failed: ${error.message}`);
       return { synced, errors };
+    }
+  }
+
+  /**
+   * Resolver warehouse para productos con "FP warehouse"
+   */
+  private async resolveWarehouseForProduct(
+    product: any,
+    tenantName: string,
+  ): Promise<any> {
+    console.log(tenantName);
+    try {
+      // Por ahora, devolver null - la lógica de warehouse se implementará después
+      // TODO: Integrar con WarehousesService para resolver warehouse por país
+      this.logger.debug(
+        `⚠️ Product ${product._id} has "FP warehouse" but no warehouse data - will be resolved later`,
+      );
+      return null;
+    } catch (error) {
+      this.logger.error(
+        `Error resolving warehouse for product ${product._id}:`,
+        error,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Obtener productos de la colección global con paginación
+   */
+  async getGlobalProducts(
+    limit: number = 100,
+    skip: number = 0,
+  ): Promise<any[]> {
+    try {
+      return await this.globalProductModel
+        .find()
+        .sort({ lastSyncedAt: -1 })
+        .limit(limit)
+        .skip(skip)
+        .lean()
+        .exec();
+    } catch (error) {
+      this.logger.error('Error getting global products:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtener total de productos en la colección global
+   */
+  async getTotalGlobalProducts(): Promise<number> {
+    try {
+      return await this.globalProductModel.countDocuments();
+    } catch (error) {
+      this.logger.error('Error counting global products:', error);
+      throw error;
     }
   }
 

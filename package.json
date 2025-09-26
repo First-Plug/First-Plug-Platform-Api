@@ -36,7 +36,11 @@
     "cleanup:offices": "ts-node -r tsconfig-paths/register scripts/cleanup-offices.ts",
     "test:script": "ts-node -r tsconfig-paths/register scripts/test-simple.ts",
     "migrate:countries": "ts-node -r tsconfig-paths/register src/scripts/migrate-countries-to-codes.ts",
-    "test:migration": "ts-node -r tsconfig-paths/register src/scripts/test-migration.ts"
+    "test:migration": "ts-node -r tsconfig-paths/register src/scripts/test-migration.ts",
+    "migrate:prepare-warehouses": "ts-node -r tsconfig-paths/register src/scripts/migration/phase1-simple.ts",
+    "migrate:members-to-global": "ts-node -r tsconfig-paths/register src/scripts/migration/phase2-simple.ts",
+    "migrate:products-to-global": "ts-node -r tsconfig-paths/register src/scripts/migration/phase3-simple.ts",
+    "fix:tenant-ids": "ts-node -r tsconfig-paths/register src/scripts/migration/fix-tenant-ids.ts"
   },
   "dependencies": {
     "@anatine/zod-nestjs": "^2.0.8",
