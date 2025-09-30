@@ -38,13 +38,13 @@ export class FpWarehouseData {
 // Subdocumento para datos de miembro asignado
 @Schema({ _id: false })
 export class AssignedMemberData {
-  @Prop({ type: MongooseSchema.Types.ObjectId, required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, required: false })
   memberId: MongooseSchema.Types.ObjectId;
 
-  @Prop({ required: true })
+  @Prop({ required: false })
   memberEmail: string;
 
-  @Prop({ required: true })
+  @Prop({ required: false })
   memberName: string;
 
   @Prop({ type: Date, default: Date.now })

@@ -73,9 +73,28 @@ export class GlobalProductSyncService {
    */
   async syncProduct(params: SyncProductParams): Promise<void> {
     try {
+      // Resolver tenantId real si viene como string
+      let resolvedTenantId: any = params.tenantId;
+
+      if (typeof params.tenantId === 'string') {
+        // Buscar el tenant real por tenantName
+        const tenantsCollection =
+          this.globalProductModel.db.collection('tenants');
+        const tenant = await tenantsCollection.findOne({
+          tenantName: params.tenantId,
+        });
+        if (tenant) {
+          resolvedTenantId = tenant._id;
+        } else {
+          this.logger.warn(
+            `⚠️ [syncProduct] Could not find tenant with tenantName: ${params.tenantId}`,
+          );
+        }
+      }
+
       // Obtener el producto existente para comparar ubicaciones
       const existingProduct = await this.globalProductModel.findOne({
-        tenantId: params.tenantId,
+        tenantId: resolvedTenantId,
         originalProductId: params.originalProductId,
       });
 
@@ -90,7 +109,7 @@ export class GlobalProductSyncService {
       }
 
       const updateData = {
-        tenantId: params.tenantId,
+        tenantId: resolvedTenantId,
         tenantName: params.tenantName,
         originalProductId: params.originalProductId,
         sourceCollection: params.sourceCollection,
@@ -116,8 +135,10 @@ export class GlobalProductSyncService {
         isDeleted: params.isDeleted || false,
 
         // Datos de ubicación
-        fpWarehouse: params.fpWarehouse,
-        memberData: params.memberData,
+        // ✅ FIX: Convertir undefined a null para que MongoDB elimine el campo
+        fpWarehouse:
+          params.fpWarehouse !== undefined ? params.fpWarehouse : null,
+        memberData: params.memberData !== undefined ? params.memberData : null,
 
         // Metadatos
         sourceUpdatedAt: params.sourceUpdatedAt || new Date(),
@@ -126,7 +147,7 @@ export class GlobalProductSyncService {
 
       await this.globalProductModel.updateOne(
         {
-          tenantId: params.tenantId,
+          tenantId: resolvedTenantId,
           originalProductId: params.originalProductId,
         },
         { $set: updateData },
@@ -178,8 +199,22 @@ export class GlobalProductSyncService {
     originalProductId: Types.ObjectId,
   ): Promise<void> {
     try {
+      // Resolver tenantId real si viene como string
+      let resolvedTenantId: any = tenantId;
+      if (typeof tenantId === 'string') {
+        // Buscar el tenant real por tenantName
+        const tenantsCollection =
+          this.globalProductModel.db.collection('tenants');
+        const tenant = await tenantsCollection.findOne({
+          tenantName: tenantId,
+        });
+        if (tenant) {
+          resolvedTenantId = tenant._id;
+        }
+      }
+
       await this.globalProductModel.updateOne(
-        { tenantId, originalProductId },
+        { tenantId: resolvedTenantId, originalProductId },
         {
           $set: {
             isDeleted: true,

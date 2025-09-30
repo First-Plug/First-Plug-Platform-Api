@@ -11,6 +11,7 @@ import { AssignmentsController } from './assignments.controller';
 import { JwtService } from '@nestjs/jwt';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { LogisticsModule } from 'src/logistics/logistics.module';
+import { WarehousesModule } from 'src/warehouses/warehouses.module';
 import { GlobalProductSyncService } from 'src/products/services/global-product-sync.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import {
@@ -24,6 +25,7 @@ import {
     forwardRef(() => ProductsModule),
     forwardRef(() => ShipmentsModule),
     forwardRef(() => LogisticsModule),
+    WarehousesModule,
     HistoryModule,
     SlackModule,
     TenantsModule,

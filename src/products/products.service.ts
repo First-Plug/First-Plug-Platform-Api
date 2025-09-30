@@ -38,6 +38,7 @@ import { EventTypes } from 'src/infra/event-bus/types';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { LogisticsService } from 'src/logistics/logistics.sevice';
 import { normalizeSerialForHistory } from './helpers/history.helper';
+import { GlobalProductSyncService } from './services/global-product-sync.service';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -46,6 +47,72 @@ export interface ProductModel
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
+
+  /**
+   * Helper para sincronizar producto a colección global
+   * No falla la operación principal si hay error en sincronización
+   */
+  private async syncProductToGlobal(
+    product: ProductDocument | any,
+    tenantName: string,
+    sourceCollection: 'products' | 'members' = 'products',
+    memberData?: {
+      memberId: Types.ObjectId;
+      memberEmail: string;
+      memberName: string;
+      assignedAt?: Date;
+    },
+  ): Promise<void> {
+    try {
+      await this.globalProductSyncService.syncProduct({
+        tenantId: tenantName, // Se corregirá automáticamente en GlobalProductSyncService
+        tenantName: tenantName,
+        originalProductId: product._id as any,
+        sourceCollection: sourceCollection,
+
+        // Datos básicos del producto
+        name: product.name || '',
+        category: product.category,
+        status: product.status,
+        location: product.location || 'FP warehouse',
+
+        // Convertir atributos a formato string
+        attributes:
+          product.attributes?.map((attr: any) => ({
+            key: attr.key,
+            value: String(attr.value),
+          })) || [],
+
+        serialNumber: product.serialNumber || undefined,
+        assignedEmail: product.assignedEmail,
+        assignedMember: product.assignedMember,
+        lastAssigned: product.lastAssigned,
+        acquisitionDate: product.acquisitionDate,
+        price: product.price,
+        additionalInfo: product.additionalInfo,
+        productCondition: product.productCondition,
+        recoverable: product.recoverable,
+        fp_shipment: product.fp_shipment,
+        activeShipment: product.activeShipment,
+
+        // Datos del member si aplica
+        memberData: memberData,
+
+        sourceUpdatedAt: (product as any).updatedAt || new Date(),
+      });
+
+      this.logger.debug(
+        `✅ Product ${product._id} synced to global collection`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `❌ Error syncing product ${product._id} to global:`,
+        error,
+      );
+      // No lanzar error para no fallar la operación principal
+    }
+  }
+
   constructor(
     private readonly tenantModelRegistry: TenantModelRegistry,
     private tenantsService: TenantsService,
@@ -57,6 +124,7 @@ export class ProductsService {
     private readonly assignmentsService: AssignmentsService,
     @Inject(forwardRef(() => LogisticsService))
     private readonly logisticsService: LogisticsService,
+    private readonly globalProductSyncService: GlobalProductSyncService,
   ) {}
 
   onModuleInit() {
@@ -293,6 +361,9 @@ export class ProductsService {
       recoverable: isRecoverable,
       productCondition: createData.productCondition,
     });
+
+    // 🔄 SYNC: Sincronizar producto creado a colección global
+    await this.syncProductToGlobal(newProduct, tenantName, 'products');
 
     await this.historyService.create({
       actionType: 'create',
@@ -1048,6 +1119,29 @@ export class ProductsService {
         );
       }
 
+      // 🔄 SYNC: Sincronizar producto actualizado a colección global
+      if (productUpdated) {
+        const sourceCollection =
+          location === 'members' ? 'members' : 'products';
+        let memberData: any = undefined;
+
+        if (location === 'members' && member) {
+          memberData = {
+            memberId: member._id as any,
+            memberEmail: member.email,
+            memberName: `${member.firstName} ${member.lastName}`,
+            assignedAt: (productUpdated as any).assignedAt || member.updatedAt,
+          };
+        }
+
+        await this.syncProductToGlobal(
+          productUpdated,
+          tenantName,
+          sourceCollection,
+          memberData,
+        );
+      }
+
       if (!userId)
         throw new Error('❌ userId is undefined antes de crear history');
       await this.historyService.create({
@@ -1365,6 +1459,12 @@ export class ProductsService {
 
           await product.save();
           await ProductModel.softDelete({ _id: id }, { session });
+
+          // 🔄 SYNC: Marcar producto como eliminado en colección global
+          await this.globalProductSyncService.markProductAsDeleted(
+            tenantName, // Se corregirá automáticamente en GlobalProductSyncService
+            id as any,
+          );
 
           changes.oldData = product;
         } else {
