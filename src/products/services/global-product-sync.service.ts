@@ -140,6 +140,11 @@ export class GlobalProductSyncService {
           params.fpWarehouse !== undefined ? params.fpWarehouse : null,
         memberData: params.memberData !== undefined ? params.memberData : null,
 
+        // Campos calculados (porque updateOne no dispara pre('save') middleware)
+        isComputer: params.category === 'Computer',
+        inFpWarehouse: params.location === 'FP warehouse',
+        isAssigned: params.location === 'Employee',
+
         // Metadatos
         sourceUpdatedAt: params.sourceUpdatedAt || new Date(),
         lastSyncedAt: new Date(),
@@ -603,6 +608,10 @@ export class GlobalProductSyncService {
 
   /**
    * Calcular el valor de lastAssigned basado en cambios de ubicación
+   *
+   * REGLA: lastAssigned debe reflejar el member inmediatamente anterior,
+   * no preservar historial completo. Debe ser consistente con la colección
+   * de productos del tenant.
    */
   private calculateLastAssigned(
     existingProduct: GlobalProductDocument,
@@ -611,27 +620,16 @@ export class GlobalProductSyncService {
     const oldLocation = existingProduct.location;
     const newLocation = newParams.location;
 
-    // Si no cambió la ubicación, mantener el lastAssigned actual
-    if (oldLocation === newLocation) {
-      return newParams.lastAssigned || existingProduct.lastAssigned;
+    // CASO 1: Si sale de Employee (member) hacia cualquier otro lugar
+    // → Guardar el email del member como lastAssigned
+    if (oldLocation === 'Employee' && newLocation !== 'Employee') {
+      return existingProduct.assignedEmail || existingProduct.lastAssigned;
     }
 
-    // Si sale de un warehouse, registrar el warehouse como lastAssigned
-    if (
-      oldLocation === 'FP warehouse' &&
-      existingProduct.fpWarehouse?.warehouseCountryCode
-    ) {
-      const countryCode = existingProduct.fpWarehouse.warehouseCountryCode;
-      return `FP warehouse - ${countryCode}`;
-    }
-
-    // Si sale de Employee, registrar el email del member como lastAssigned
-    if (oldLocation === 'Employee' && existingProduct.assignedEmail) {
-      return existingProduct.assignedEmail;
-    }
-
-    // Para otros casos, usar el valor proporcionado o mantener el existente
-    return newParams.lastAssigned || existingProduct.lastAssigned;
+    // CASO 2: Para todos los demás casos (incluyendo asignación a nuevo member)
+    // → Usar el valor que viene del tenant (params.lastAssigned)
+    // Esto asegura consistencia con la colección de productos del tenant
+    return newParams.lastAssigned;
   }
 
   /**

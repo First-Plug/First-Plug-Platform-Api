@@ -58,8 +58,8 @@ export class AssignedMemberData {
 })
 export class GlobalProduct {
   // === DATOS DEL TENANT ===
-  @Prop({ required: true, index: true })
-  tenantId: string;
+  @Prop({ type: MongooseSchema.Types.ObjectId, required: true, index: true })
+  tenantId: MongooseSchema.Types.ObjectId;
 
   @Prop({ required: true, index: true })
   tenantName: string;
