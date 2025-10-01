@@ -354,6 +354,22 @@ export class SuperAdminController {
   }
 
   /**
+   * Obtener detalle de tenants para un warehouse específico (SuperAdmin only)
+   */
+  @Get('metrics/warehouses/:countryCode/:warehouseId/tenants')
+  async getWarehouseTenantDetails(@Param('warehouseId') warehouseId: string) {
+    const tenants =
+      await this.globalWarehouseMetricsService.getWarehouseTenantDetails(
+        warehouseId,
+      );
+
+    return {
+      success: true,
+      data: tenants,
+    };
+  }
+
+  /**
    * Obtener métricas de un país específico (SuperAdmin only)
    */
   @Get('metrics/countries/:countryCode')

@@ -1,17 +1,28 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GlobalProductSyncService } from '../../products/services/global-product-sync.service';
 import { WarehousesService } from '../../warehouses/warehouses.service';
+import { WarehouseMetricsService } from '../../warehouses/services/warehouse-metrics.service';
 
 export interface GlobalWarehouseMetrics {
   countryCode: string;
   country: string;
   warehouseId: string;
   warehouseName: string;
+  partnerType: string;
   isActive: boolean;
   totalProducts: number;
   computers: number;
-  nonComputers: number;
+  otherProducts: number;
   distinctTenants: number;
+}
+
+export interface TenantMetricsDetail {
+  tenantId: string;
+  tenantName: string;
+  companyName: string;
+  computers: number;
+  otherProducts: number;
+  totalProducts: number;
 }
 
 export interface GlobalCountryMetrics {
@@ -26,7 +37,7 @@ export interface GlobalCountryMetrics {
 
 /**
  * Servicio de SuperAdmin para métricas globales de warehouses
- * Conecta warehouses con productos globales para generar reportes
+ * Usa métricas pre-calculadas de WarehouseMetricsService
  */
 @Injectable()
 export class GlobalWarehouseMetricsService {
@@ -35,44 +46,39 @@ export class GlobalWarehouseMetricsService {
   constructor(
     private readonly globalProductSyncService: GlobalProductSyncService,
     private readonly warehousesService: WarehousesService,
+    private readonly warehouseMetricsService: WarehouseMetricsService,
   ) {}
 
   /**
-   * Obtener métricas completas de un warehouse específico
+   * Obtener métricas completas de un warehouse específico (usa métricas pre-calculadas)
    */
   async getWarehouseMetrics(
     countryCode: string,
     warehouseId: string,
   ): Promise<GlobalWarehouseMetrics | null> {
     try {
-      // 1. Obtener información del warehouse desde WarehousesService
-      const warehouseInfo = await this.warehousesService.findWarehouseById(
-        countryCode,
-        warehouseId,
-      );
+      // Obtener métricas pre-calculadas
+      const metrics =
+        await this.warehouseMetricsService.getWarehouseMetrics(warehouseId);
 
-      if (!warehouseInfo) {
+      if (!metrics) {
         this.logger.warn(
-          `Warehouse ${warehouseId} not found in ${countryCode}`,
+          `Warehouse metrics not found for ${warehouseId} in ${countryCode}`,
         );
         return null;
       }
 
-      // 2. Obtener métricas de productos desde GlobalProductSyncService
-      const productMetrics =
-        await this.globalProductSyncService.getWarehouseMetrics(warehouseId);
-
-      // 3. Combinar información de ambos servicios
       return {
-        countryCode,
-        country: warehouseInfo.country,
-        warehouseId,
-        warehouseName: warehouseInfo.name,
-        isActive: warehouseInfo.isActive,
-        totalProducts: productMetrics.total,
-        computers: productMetrics.computers,
-        nonComputers: productMetrics.nonComputers,
-        distinctTenants: productMetrics.distinctTenants,
+        countryCode: metrics.countryCode,
+        country: metrics.country,
+        warehouseId: metrics.warehouseId.toString(),
+        warehouseName: metrics.warehouseName,
+        partnerType: metrics.partnerType || 'FirstPlug',
+        isActive: metrics.isActive,
+        totalProducts: metrics.totalProducts,
+        computers: metrics.totalComputers,
+        otherProducts: metrics.totalOtherProducts,
+        distinctTenants: metrics.totalTenants,
       };
     } catch (error) {
       this.logger.error(
@@ -84,31 +90,47 @@ export class GlobalWarehouseMetricsService {
   }
 
   /**
-   * Obtener métricas de todos los warehouses activos
+   * Obtener métricas de todos los warehouses (usa métricas pre-calculadas)
    */
   async getAllWarehouseMetrics(): Promise<GlobalWarehouseMetrics[]> {
     try {
-      // 1. Obtener todos los warehouses activos
-      const activeWarehouses =
-        await this.warehousesService.findAllActiveWarehouses();
+      // Obtener todas las métricas pre-calculadas
+      const allMetrics =
+        await this.warehouseMetricsService.getAllWarehouseMetrics();
 
-      const results: GlobalWarehouseMetrics[] = [];
-
-      // 2. Para cada warehouse, obtener sus métricas
-      for (const warehouse of activeWarehouses) {
-        const metrics = await this.getWarehouseMetrics(
-          warehouse.countryCode,
-          warehouse.warehouseId,
-        );
-
-        if (metrics) {
-          results.push(metrics);
-        }
-      }
-
-      return results;
+      return allMetrics.map((metrics) => ({
+        countryCode: metrics.countryCode,
+        country: metrics.country,
+        warehouseId: metrics.warehouseId.toString(),
+        warehouseName: metrics.warehouseName,
+        partnerType: metrics.partnerType || 'FirstPlug',
+        isActive: metrics.isActive,
+        totalProducts: metrics.totalProducts,
+        computers: metrics.totalComputers,
+        otherProducts: metrics.totalOtherProducts,
+        distinctTenants: metrics.totalTenants,
+      }));
     } catch (error) {
       this.logger.error('Error getting all warehouse metrics:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Obtener detalle de tenants para un warehouse específico
+   */
+  async getWarehouseTenantDetails(
+    warehouseId: string,
+  ): Promise<TenantMetricsDetail[]> {
+    try {
+      return await this.warehouseMetricsService.getWarehouseTenantDetails(
+        warehouseId,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error getting warehouse tenant details for ${warehouseId}:`,
+        error,
+      );
       return [];
     }
   }

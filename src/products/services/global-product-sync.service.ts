@@ -8,6 +8,7 @@ import {
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { ProductSchema } from '../schemas/product.schema';
 import { MemberSchema } from 'src/members/schemas/member.schema';
+import { WarehouseMetricsService } from 'src/warehouses/services/warehouse-metrics.service';
 
 export interface SyncProductParams {
   tenantId: string;
@@ -66,6 +67,7 @@ export class GlobalProductSyncService {
     @InjectModel(GlobalProduct.name, 'firstPlug')
     private globalProductModel: Model<GlobalProductDocument>,
     private readonly tenantConnectionService: TenantConnectionService,
+    private readonly warehouseMetricsService: WarehouseMetricsService,
   ) {}
 
   /**
@@ -157,6 +159,13 @@ export class GlobalProductSyncService {
         },
         { $set: updateData },
         { upsert: true },
+      );
+
+      // ==================== ACTUALIZAR MÉTRICAS DE WAREHOUSE ====================
+      await this.updateWarehouseMetrics(
+        existingProduct,
+        params,
+        resolvedTenantId,
       );
 
       this.logger.debug(
@@ -603,6 +612,93 @@ export class GlobalProductSyncService {
         assignedProducts: 0,
         availableProducts: 0,
       };
+    }
+  }
+
+  /**
+   * Actualizar métricas de warehouse cuando un producto cambia de ubicación
+   */
+  private async updateWarehouseMetrics(
+    existingProduct: GlobalProductDocument | null,
+    newParams: SyncProductParams,
+    tenantId: Types.ObjectId,
+  ): Promise<void> {
+    try {
+      const oldLocation = existingProduct?.location;
+      const newLocation = newParams.location;
+      const isComputer = newParams.category === 'Computer';
+
+      // Obtener companyName del tenant
+      const tenantsCollection =
+        this.globalProductModel.db.collection('tenants');
+      const tenant = await tenantsCollection.findOne({ _id: tenantId });
+      const companyName = tenant?.name || newParams.tenantName;
+
+      // CASO 1: Producto ENTRA a FP warehouse
+      if (newLocation === 'FP warehouse' && oldLocation !== 'FP warehouse') {
+        if (newParams.fpWarehouse?.warehouseId) {
+          await this.warehouseMetricsService.updateMetricsOnProductAdd(
+            newParams.fpWarehouse.warehouseId,
+            tenantId,
+            newParams.tenantName,
+            companyName,
+            isComputer,
+          );
+          this.logger.debug(
+            `📊 Metrics updated: Product added to warehouse ${newParams.fpWarehouse.warehouseId}`,
+          );
+        }
+      }
+
+      // CASO 2: Producto SALE de FP warehouse
+      if (oldLocation === 'FP warehouse' && newLocation !== 'FP warehouse') {
+        if (existingProduct?.fpWarehouse?.warehouseId) {
+          await this.warehouseMetricsService.updateMetricsOnProductRemove(
+            existingProduct.fpWarehouse.warehouseId as any,
+            tenantId,
+            existingProduct.isComputer,
+          );
+          this.logger.debug(
+            `📊 Metrics updated: Product removed from warehouse ${existingProduct.fpWarehouse.warehouseId}`,
+          );
+        }
+      }
+
+      // CASO 3: Producto CAMBIA de warehouse (raro, pero posible)
+      if (
+        oldLocation === 'FP warehouse' &&
+        newLocation === 'FP warehouse' &&
+        existingProduct?.fpWarehouse?.warehouseId &&
+        newParams.fpWarehouse?.warehouseId &&
+        existingProduct.fpWarehouse.warehouseId.toString() !==
+          newParams.fpWarehouse.warehouseId.toString()
+      ) {
+        // Remover del warehouse anterior
+        await this.warehouseMetricsService.updateMetricsOnProductRemove(
+          existingProduct.fpWarehouse.warehouseId as any,
+          tenantId,
+          existingProduct.isComputer,
+        );
+
+        // Agregar al warehouse nuevo
+        await this.warehouseMetricsService.updateMetricsOnProductAdd(
+          newParams.fpWarehouse.warehouseId,
+          tenantId,
+          newParams.tenantName,
+          companyName,
+          isComputer,
+        );
+
+        this.logger.debug(
+          `📊 Metrics updated: Product moved between warehouses`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error updating warehouse metrics: ${error.message}`,
+        error.stack,
+      );
+      // No lanzar error para no interrumpir la sincronización
     }
   }
 

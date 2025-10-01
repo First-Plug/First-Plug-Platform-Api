@@ -12,6 +12,7 @@ import { SlackModule } from 'src/slack/slack.module';
 import { AssignmentsModule } from 'src/assignments/assignments.module';
 import { TenantDbModule } from 'src/infra/db/tenant-db.module';
 import { LogisticsModule } from 'src/logistics/logistics.module';
+import { WarehousesModule } from 'src/warehouses/warehouses.module';
 import {
   GlobalProduct,
   GlobalProductSchema,
@@ -27,6 +28,7 @@ import { GlobalProductSyncService } from './services/global-product-sync.service
     HistoryModule,
     SlackModule,
     forwardRef(() => LogisticsModule),
+    WarehousesModule,
     // Registrar GlobalProduct en la conexión firstPlug
     MongooseModule.forFeature(
       [

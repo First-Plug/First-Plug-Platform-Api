@@ -25,6 +25,8 @@
     "cleanup:duplicates": "ts-node -r tsconfig-paths/register scripts/cleanup-duplicates.ts",
     "cleanup:global-products": "ts-node -r tsconfig-paths/register scripts/cleanup-duplicate-global-products.ts",
     "fix:tenantid-types": "ts-node -r tsconfig-paths/register scripts/fix-tenantid-types.ts",
+    "fix:warehouse-ids": "ts-node -r tsconfig-paths/register scripts/fix-warehouse-ids.ts",
+    "populate:warehouse-metrics": "ts-node -r tsconfig-paths/register scripts/populate-warehouse-metrics.ts",
     "init:warehouses": "ts-node -r tsconfig-paths/register src/warehouses/scripts/run-initialization.ts",
     "init:warehouses:direct": "ts-node -r tsconfig-paths/register src/warehouses/scripts/direct-initialization.ts",
     "cleanup:warehouses": "ts-node -r tsconfig-paths/register src/warehouses/scripts/cleanup-warehouses.ts",
