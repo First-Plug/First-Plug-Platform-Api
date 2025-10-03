@@ -31,7 +31,7 @@ export class TenantMetrics {
 export const TenantMetricsSchema = SchemaFactory.createForClass(TenantMetrics);
 
 // Documento principal de métricas por warehouse
-@Schema({ timestamps: true })
+@Schema({ timestamps: true, collection: 'warehouse_metrics' })
 export class WarehouseMetrics extends Document {
   _id: Types.ObjectId;
 

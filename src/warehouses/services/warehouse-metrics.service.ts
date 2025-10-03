@@ -83,33 +83,102 @@ export class WarehouseMetricsService {
 
       // Si no se actualizó ningún documento, el tenant no existe en el array
       if (result.matchedCount === 0) {
-        // Agregar nuevo tenant al array
-        await this.warehouseMetricsModel.updateOne(
-          { warehouseId: warehouseObjectId },
-          {
-            $inc: {
-              totalProducts: 1,
-              totalComputers: isComputer ? 1 : 0,
-              totalOtherProducts: isComputer ? 0 : 1,
-              totalTenants: 1,
-            },
-            $push: {
-              tenantMetrics: {
-                tenantId: tenantObjectId,
-                tenantName,
-                companyName,
+        // Verificar si el documento del warehouse existe
+        const existingMetrics = await this.warehouseMetricsModel.findOne({
+          warehouseId: warehouseObjectId,
+        });
+
+        if (existingMetrics) {
+          // El warehouse existe, solo agregar el tenant
+          await this.warehouseMetricsModel.updateOne(
+            { warehouseId: warehouseObjectId },
+            {
+              $inc: {
                 totalProducts: 1,
-                computers: isComputer ? 1 : 0,
-                otherProducts: isComputer ? 0 : 1,
-                lastUpdated: new Date(),
+                totalComputers: isComputer ? 1 : 0,
+                totalOtherProducts: isComputer ? 0 : 1,
+                totalTenants: 1,
+              },
+              $push: {
+                tenantMetrics: {
+                  tenantId: tenantObjectId,
+                  tenantName,
+                  companyName,
+                  totalProducts: 1,
+                  computers: isComputer ? 1 : 0,
+                  otherProducts: isComputer ? 0 : 1,
+                  lastUpdated: new Date(),
+                },
+              },
+              $set: {
+                lastCalculated: new Date(),
               },
             },
-            $set: {
-              lastCalculated: new Date(),
+          );
+        } else {
+          // El warehouse NO existe, necesitamos crear el documento completo con información del warehouse
+          // Obtener información del warehouse desde la colección warehouses
+          const warehousesCollection =
+            this.warehouseMetricsModel.db.collection('warehouses');
+          const warehouseDoc = await warehousesCollection.findOne({
+            'warehouses._id': warehouseObjectId,
+          });
+
+          let countryCode = 'AR';
+          let country = 'Argentina';
+          let warehouseName = 'Default Warehouse';
+          let partnerType = 'default';
+          let isActive = false;
+
+          if (warehouseDoc) {
+            const warehouse = warehouseDoc.warehouses.find(
+              (w: any) => w._id.toString() === warehouseObjectId.toString(),
+            );
+            if (warehouse) {
+              countryCode = warehouseDoc.countryCode;
+              country = warehouseDoc.country;
+              warehouseName = warehouse.name || 'Default Warehouse';
+              partnerType = warehouse.partnerType || 'default';
+              isActive = warehouse.isActive || false;
+            }
+          }
+
+          // Crear documento completo
+          await this.warehouseMetricsModel.updateOne(
+            { warehouseId: warehouseObjectId },
+            {
+              $setOnInsert: {
+                warehouseId: warehouseObjectId,
+                countryCode,
+                country,
+                warehouseName,
+                partnerType,
+                isActive,
+              },
+              $inc: {
+                totalProducts: 1,
+                totalComputers: isComputer ? 1 : 0,
+                totalOtherProducts: isComputer ? 0 : 1,
+                totalTenants: 1,
+              },
+              $push: {
+                tenantMetrics: {
+                  tenantId: tenantObjectId,
+                  tenantName,
+                  companyName,
+                  totalProducts: 1,
+                  computers: isComputer ? 1 : 0,
+                  otherProducts: isComputer ? 0 : 1,
+                  lastUpdated: new Date(),
+                },
+              },
+              $set: {
+                lastCalculated: new Date(),
+              },
             },
-          },
-          { upsert: true },
-        );
+            { upsert: true },
+          );
+        }
       }
 
       this.logger.debug(
