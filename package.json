@@ -25,8 +25,6 @@
     "cleanup:duplicates": "ts-node -r tsconfig-paths/register scripts/cleanup-duplicates.ts",
     "cleanup:global-products": "ts-node -r tsconfig-paths/register scripts/cleanup-duplicate-global-products.ts",
     "fix:tenantid-types": "ts-node -r tsconfig-paths/register scripts/fix-tenantid-types.ts",
-    "fix:warehouse-ids": "ts-node -r tsconfig-paths/register scripts/fix-warehouse-ids.ts",
-    "populate:warehouse-metrics": "ts-node -r tsconfig-paths/register scripts/populate-warehouse-metrics.ts",
     "init:warehouses": "ts-node -r tsconfig-paths/register src/warehouses/scripts/run-initialization.ts",
     "init:warehouses:direct": "ts-node -r tsconfig-paths/register src/warehouses/scripts/direct-initialization.ts",
     "cleanup:warehouses": "ts-node -r tsconfig-paths/register src/warehouses/scripts/cleanup-warehouses.ts",
@@ -44,7 +42,14 @@
     "migrate:prepare-warehouses": "ts-node -r tsconfig-paths/register src/scripts/migration/phase1-simple.ts",
     "migrate:members-to-global": "ts-node -r tsconfig-paths/register src/scripts/migration/phase2-simple.ts",
     "migrate:products-to-global": "ts-node -r tsconfig-paths/register src/scripts/migration/phase3-simple.ts",
-    "fix:tenant-ids": "ts-node -r tsconfig-paths/register src/scripts/migration/fix-tenant-ids.ts"
+    "fix:tenant-ids": "ts-node -r tsconfig-paths/register src/scripts/migration/fix-tenant-ids.ts",
+    "fix:tenant-warehouse-ids": "ts-node -r tsconfig-paths/register scripts/fix-tenant-warehouse-ids.ts",
+    "check:members-countries": "ts-node -r tsconfig-paths/register scripts/check-members-countries.ts",
+    "check:members-country-field": "ts-node -r tsconfig-paths/register scripts/check-members-have-country.ts",
+    "diagnose:products": "ts-node -r tsconfig-paths/register scripts/diagnose-products-distribution.ts",
+    "investigate:warehouse": "ts-node -r tsconfig-paths/register scripts/investigate-warehouse-issue.ts",
+    "fix:warehouse-data": "ts-node -r tsconfig-paths/register scripts/fix-warehouse-data.ts",
+    "clean:migration": "ts-node -r tsconfig-paths/register scripts/clean-and-remigrate.ts"
   },
   "dependencies": {
     "@anatine/zod-nestjs": "^2.0.8",
