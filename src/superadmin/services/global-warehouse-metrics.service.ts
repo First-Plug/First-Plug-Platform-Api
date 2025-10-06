@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GlobalProductSyncService } from '../../products/services/global-product-sync.service';
 import { WarehousesService } from '../../warehouses/warehouses.service';
-import { WarehouseMetricsService } from '../../warehouses/services/warehouse-metrics.service';
 
 export interface GlobalWarehouseMetrics {
   countryCode: string;
@@ -37,7 +36,7 @@ export interface GlobalCountryMetrics {
 
 /**
  * Servicio de SuperAdmin para métricas globales de warehouses
- * Usa métricas pre-calculadas de WarehouseMetricsService
+ * Usa agregaciones en tiempo real desde global_products
  */
 @Injectable()
 export class GlobalWarehouseMetricsService {
@@ -46,20 +45,19 @@ export class GlobalWarehouseMetricsService {
   constructor(
     private readonly globalProductSyncService: GlobalProductSyncService,
     private readonly warehousesService: WarehousesService,
-    private readonly warehouseMetricsService: WarehouseMetricsService,
   ) {}
 
   /**
-   * Obtener métricas completas de un warehouse específico (usa métricas pre-calculadas)
+   * Obtener métricas completas de un warehouse específico (usa agregaciones en tiempo real)
    */
   async getWarehouseMetrics(
     countryCode: string,
     warehouseId: string,
   ): Promise<GlobalWarehouseMetrics | null> {
     try {
-      // Obtener métricas pre-calculadas
+      // Obtener métricas en tiempo real
       const metrics =
-        await this.warehouseMetricsService.getWarehouseMetrics(warehouseId);
+        await this.warehousesService.getWarehouseMetricsRealTime(warehouseId);
 
       if (!metrics) {
         this.logger.warn(
@@ -71,7 +69,7 @@ export class GlobalWarehouseMetricsService {
       return {
         countryCode: metrics.countryCode,
         country: metrics.country,
-        warehouseId: metrics.warehouseId.toString(),
+        warehouseId: metrics.warehouseId,
         warehouseName: metrics.warehouseName,
         partnerType: metrics.partnerType || 'FirstPlug',
         isActive: metrics.isActive,
@@ -90,18 +88,18 @@ export class GlobalWarehouseMetricsService {
   }
 
   /**
-   * Obtener métricas de todos los warehouses (usa métricas pre-calculadas)
+   * Obtener métricas de todos los warehouses (usa agregaciones en tiempo real)
    */
   async getAllWarehouseMetrics(): Promise<GlobalWarehouseMetrics[]> {
     try {
-      // Obtener todas las métricas pre-calculadas
+      // Obtener todas las métricas en tiempo real
       const allMetrics =
-        await this.warehouseMetricsService.getAllWarehouseMetrics();
+        await this.warehousesService.getAllWarehouseMetricsRealTime();
 
       return allMetrics.map((metrics) => ({
         countryCode: metrics.countryCode,
         country: metrics.country,
-        warehouseId: metrics.warehouseId.toString(),
+        warehouseId: metrics.warehouseId,
         warehouseName: metrics.warehouseName,
         partnerType: metrics.partnerType || 'FirstPlug',
         isActive: metrics.isActive,
@@ -123,9 +121,14 @@ export class GlobalWarehouseMetricsService {
     warehouseId: string,
   ): Promise<TenantMetricsDetail[]> {
     try {
-      return await this.warehouseMetricsService.getWarehouseTenantDetails(
-        warehouseId,
-      );
+      const metrics =
+        await this.warehousesService.getWarehouseMetricsRealTime(warehouseId);
+
+      if (!metrics) {
+        return [];
+      }
+
+      return metrics.tenantMetrics;
     } catch (error) {
       this.logger.error(
         `Error getting warehouse tenant details for ${warehouseId}:`,

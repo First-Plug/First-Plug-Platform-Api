@@ -44,11 +44,13 @@
     "migrate:products-to-global": "ts-node -r tsconfig-paths/register src/scripts/migration/phase3-simple.ts",
     "fix:tenant-ids": "ts-node -r tsconfig-paths/register src/scripts/migration/fix-tenant-ids.ts",
     "fix:tenant-warehouse-ids": "ts-node -r tsconfig-paths/register scripts/fix-tenant-warehouse-ids.ts",
+    "fix:missing-fpwarehouse": "ts-node -r tsconfig-paths/register scripts/fix-missing-fpwarehouse.ts",
+    "create:warehouse-indexes": "ts-node -r tsconfig-paths/register scripts/create-warehouse-metrics-indexes.ts",
+    "cleanup:old-metrics": "ts-node -r tsconfig-paths/register scripts/cleanup-old-metrics-collection.ts",
     "check:members-countries": "ts-node -r tsconfig-paths/register scripts/check-members-countries.ts",
     "check:members-country-field": "ts-node -r tsconfig-paths/register scripts/check-members-have-country.ts",
     "diagnose:products": "ts-node -r tsconfig-paths/register scripts/diagnose-products-distribution.ts",
     "investigate:warehouse": "ts-node -r tsconfig-paths/register scripts/investigate-warehouse-issue.ts",
-    "fix:warehouse-data": "ts-node -r tsconfig-paths/register scripts/fix-warehouse-data.ts",
     "clean:migration": "ts-node -r tsconfig-paths/register scripts/clean-and-remigrate.ts"
   },
   "dependencies": {

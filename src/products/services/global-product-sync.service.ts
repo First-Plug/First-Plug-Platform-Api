@@ -8,7 +8,6 @@ import {
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { ProductSchema } from '../schemas/product.schema';
 import { MemberSchema } from 'src/members/schemas/member.schema';
-import { WarehouseMetricsService } from 'src/warehouses/services/warehouse-metrics.service';
 
 export interface SyncProductParams {
   tenantId: string;
@@ -67,7 +66,6 @@ export class GlobalProductSyncService {
     @InjectModel(GlobalProduct.name, 'firstPlug')
     private globalProductModel: Model<GlobalProductDocument>,
     private readonly tenantConnectionService: TenantConnectionService,
-    private readonly warehouseMetricsService: WarehouseMetricsService,
   ) {}
 
   /**
@@ -110,6 +108,36 @@ export class GlobalProductSyncService {
         );
       }
 
+      // 🏭 PRESERVAR fpWarehouse: Si el producto está en FP warehouse y no viene fpWarehouse,
+      // usar el existente en lugar de null
+      let fpWarehouseValue =
+        params.fpWarehouse !== undefined ? params.fpWarehouse : null;
+      if (
+        (!params.fpWarehouse || params.fpWarehouse === null) &&
+        params.location === 'FP warehouse' &&
+        existingProduct?.fpWarehouse
+      ) {
+        fpWarehouseValue = existingProduct.fpWarehouse as any;
+        this.logger.debug(
+          `🏭 Preserving existing fpWarehouse for product ${params.originalProductId}`,
+        );
+      }
+
+      // 👤 PRESERVAR memberData: Si el producto tiene member asignado y no viene memberData,
+      // usar el existente en lugar de null
+      let memberDataValue =
+        params.memberData !== undefined ? params.memberData : null;
+      if (
+        (!params.memberData || params.memberData === null) &&
+        params.assignedMember &&
+        existingProduct?.memberData
+      ) {
+        memberDataValue = existingProduct.memberData as any;
+        this.logger.debug(
+          `👤 Preserving existing memberData for product ${params.originalProductId}`,
+        );
+      }
+
       const updateData = {
         tenantId: resolvedTenantId,
         tenantName: params.tenantName,
@@ -136,11 +164,9 @@ export class GlobalProductSyncService {
         imageUrl: params.imageUrl,
         isDeleted: params.isDeleted || false,
 
-        // Datos de ubicación
-        // ✅ FIX: Convertir undefined a null para que MongoDB elimine el campo
-        fpWarehouse:
-          params.fpWarehouse !== undefined ? params.fpWarehouse : null,
-        memberData: params.memberData !== undefined ? params.memberData : null,
+        // Datos de ubicación (con preservación de valores existentes)
+        fpWarehouse: fpWarehouseValue,
+        memberData: memberDataValue,
 
         // Campos calculados (porque updateOne no dispara pre('save') middleware)
         isComputer: params.category === 'Computer',
@@ -161,12 +187,9 @@ export class GlobalProductSyncService {
         { upsert: true },
       );
 
-      // ==================== ACTUALIZAR MÉTRICAS DE WAREHOUSE ====================
-      await this.updateWarehouseMetrics(
-        existingProduct,
-        params,
-        resolvedTenantId,
-      );
+      // ==================== MÉTRICAS DE WAREHOUSE ====================
+      // Las métricas ahora se calculan en tiempo real mediante agregaciones
+      // No es necesario actualizar métricas pre-calculadas
 
       this.logger.debug(
         `✅ Synced product ${params.name} from tenant ${params.tenantName}`,
@@ -612,93 +635,6 @@ export class GlobalProductSyncService {
         assignedProducts: 0,
         availableProducts: 0,
       };
-    }
-  }
-
-  /**
-   * Actualizar métricas de warehouse cuando un producto cambia de ubicación
-   */
-  private async updateWarehouseMetrics(
-    existingProduct: GlobalProductDocument | null,
-    newParams: SyncProductParams,
-    tenantId: Types.ObjectId,
-  ): Promise<void> {
-    try {
-      const oldLocation = existingProduct?.location;
-      const newLocation = newParams.location;
-      const isComputer = newParams.category === 'Computer';
-
-      // Obtener companyName del tenant
-      const tenantsCollection =
-        this.globalProductModel.db.collection('tenants');
-      const tenant = await tenantsCollection.findOne({ _id: tenantId });
-      const companyName = tenant?.name || newParams.tenantName;
-
-      // CASO 1: Producto ENTRA a FP warehouse
-      if (newLocation === 'FP warehouse' && oldLocation !== 'FP warehouse') {
-        if (newParams.fpWarehouse?.warehouseId) {
-          await this.warehouseMetricsService.updateMetricsOnProductAdd(
-            newParams.fpWarehouse.warehouseId,
-            tenantId,
-            newParams.tenantName,
-            companyName,
-            isComputer,
-          );
-          this.logger.debug(
-            `📊 Metrics updated: Product added to warehouse ${newParams.fpWarehouse.warehouseId}`,
-          );
-        }
-      }
-
-      // CASO 2: Producto SALE de FP warehouse
-      if (oldLocation === 'FP warehouse' && newLocation !== 'FP warehouse') {
-        if (existingProduct?.fpWarehouse?.warehouseId) {
-          await this.warehouseMetricsService.updateMetricsOnProductRemove(
-            existingProduct.fpWarehouse.warehouseId as any,
-            tenantId,
-            existingProduct.isComputer,
-          );
-          this.logger.debug(
-            `📊 Metrics updated: Product removed from warehouse ${existingProduct.fpWarehouse.warehouseId}`,
-          );
-        }
-      }
-
-      // CASO 3: Producto CAMBIA de warehouse (raro, pero posible)
-      if (
-        oldLocation === 'FP warehouse' &&
-        newLocation === 'FP warehouse' &&
-        existingProduct?.fpWarehouse?.warehouseId &&
-        newParams.fpWarehouse?.warehouseId &&
-        existingProduct.fpWarehouse.warehouseId.toString() !==
-          newParams.fpWarehouse.warehouseId.toString()
-      ) {
-        // Remover del warehouse anterior
-        await this.warehouseMetricsService.updateMetricsOnProductRemove(
-          existingProduct.fpWarehouse.warehouseId as any,
-          tenantId,
-          existingProduct.isComputer,
-        );
-
-        // Agregar al warehouse nuevo
-        await this.warehouseMetricsService.updateMetricsOnProductAdd(
-          newParams.fpWarehouse.warehouseId,
-          tenantId,
-          newParams.tenantName,
-          companyName,
-          isComputer,
-        );
-
-        this.logger.debug(
-          `📊 Metrics updated: Product moved between warehouses`,
-        );
-      }
-    } catch (error) {
-      this.logger.error(
-        `Error updating warehouse metrics: ${error.message}`,
-        error.stack,
-      );
-      // No lanzar error para no interrumpir la sincronización
     }
   }
 

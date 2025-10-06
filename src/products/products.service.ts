@@ -968,6 +968,30 @@ export class ProductsService {
           continue;
         }
 
+        // 🏭 PRESERVAR fpWarehouse: No sobrescribir con null si el producto está en FP warehouse
+        if (
+          key === 'fpWarehouse' &&
+          updateProductDto[key] === null &&
+          product.location === 'FP warehouse'
+        ) {
+          console.log(
+            '⚠️ Producto en FP warehouse, preservando fpWarehouse existente',
+          );
+          continue;
+        }
+
+        // 👤 PRESERVAR memberData: No sobrescribir con null si el producto tiene member asignado
+        if (
+          key === 'memberData' &&
+          updateProductDto[key] === null &&
+          product.assignedMember
+        ) {
+          console.log(
+            '⚠️ Producto con member asignado, preservando memberData existente',
+          );
+          continue;
+        }
+
         updatedFields[key] = updateProductDto[key];
       }
     }

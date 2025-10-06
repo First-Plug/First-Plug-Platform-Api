@@ -26,6 +26,228 @@ export class WarehousesService {
   ) {}
 
   /**
+   * Obtener métricas de un warehouse en tiempo real mediante agregación
+   * Reemplaza las métricas pre-calculadas con cálculo directo desde global_products
+   */
+  async getWarehouseMetricsRealTime(warehouseId: string): Promise<{
+    warehouseId: string;
+    country: string;
+    countryCode: string;
+    warehouseName: string;
+    partnerType: string;
+    isActive: boolean;
+    totalProducts: number;
+    totalComputers: number;
+    totalOtherProducts: number;
+    totalTenants: number;
+    tenantMetrics: Array<{
+      tenantId: string;
+      tenantName: string;
+      companyName: string;
+      totalProducts: number;
+      computers: number;
+      otherProducts: number;
+    }>;
+  } | null> {
+    try {
+      const warehouseObjectId = new Types.ObjectId(warehouseId);
+
+      // 1. Obtener información del warehouse
+      const warehouseDoc = await this.warehouseModel.findOne({
+        'warehouses._id': warehouseObjectId,
+      });
+
+      if (!warehouseDoc) {
+        this.logger.warn(`Warehouse ${warehouseId} not found`);
+        return null;
+      }
+
+      const warehouse = warehouseDoc.warehouses.find(
+        (w) => w._id.toString() === warehouseId,
+      );
+
+      if (!warehouse) {
+        this.logger.warn(
+          `Warehouse ${warehouseId} not found in warehouses array`,
+        );
+        return null;
+      }
+
+      // 2. Calcular métricas en tiempo real desde global_products
+      const globalProductsCollection =
+        this.firstPlugConnection.db.collection('global_products');
+
+      const tenantMetricsResult = await globalProductsCollection
+        .aggregate([
+          {
+            $match: {
+              'fpWarehouse.warehouseId': warehouseObjectId,
+              inFpWarehouse: true,
+              isDeleted: { $ne: true },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                tenantId: '$tenantId',
+                tenantName: '$tenantName',
+              },
+              totalProducts: { $sum: 1 },
+              computers: { $sum: { $cond: ['$isComputer', 1, 0] } },
+              otherProducts: { $sum: { $cond: ['$isComputer', 0, 1] } },
+            },
+          },
+          {
+            $sort: { '_id.tenantName': 1 },
+          },
+        ])
+        .toArray();
+
+      // 3. Obtener companyName de cada tenant
+      const tenantsCollection =
+        this.firstPlugConnection.db.collection('tenants');
+      const tenantIds = tenantMetricsResult.map((t) => t._id.tenantId);
+      const tenants = await tenantsCollection
+        .find({ _id: { $in: tenantIds } })
+        .toArray();
+
+      const tenantMap = new Map(
+        tenants.map((t) => [t._id.toString(), t.name || t.tenantName]),
+      );
+
+      // 4. Calcular totales
+      const totalProducts = tenantMetricsResult.reduce(
+        (sum, t) => sum + t.totalProducts,
+        0,
+      );
+      const totalComputers = tenantMetricsResult.reduce(
+        (sum, t) => sum + t.computers,
+        0,
+      );
+      const totalOtherProducts = tenantMetricsResult.reduce(
+        (sum, t) => sum + t.otherProducts,
+        0,
+      );
+
+      // 5. Formatear resultado
+      return {
+        warehouseId,
+        country: warehouseDoc.country,
+        countryCode: warehouseDoc.countryCode,
+        warehouseName: warehouse.name || 'Default Warehouse',
+        partnerType: warehouse.partnerType || 'default',
+        isActive: warehouse.isActive || false,
+        totalProducts,
+        totalComputers,
+        totalOtherProducts,
+        totalTenants: tenantMetricsResult.length,
+        tenantMetrics: tenantMetricsResult.map((t) => ({
+          tenantId: t._id.tenantId.toString(),
+          tenantName: t._id.tenantName,
+          companyName:
+            tenantMap.get(t._id.tenantId.toString()) || t._id.tenantName,
+          totalProducts: t.totalProducts,
+          computers: t.computers,
+          otherProducts: t.otherProducts,
+        })),
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error calculating real-time metrics for warehouse ${warehouseId}:`,
+        error,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Obtener métricas de todos los warehouses en tiempo real
+   * OPTIMIZADO: Solo calcula métricas para warehouses que tienen productos
+   */
+  async getAllWarehouseMetricsRealTime(): Promise<
+    Array<{
+      warehouseId: string;
+      country: string;
+      countryCode: string;
+      warehouseName: string;
+      partnerType: string;
+      isActive: boolean;
+      totalProducts: number;
+      totalComputers: number;
+      totalOtherProducts: number;
+      totalTenants: number;
+    }>
+  > {
+    try {
+      // 1. Obtener lista de warehouses que tienen productos (mucho más rápido)
+      const globalProductsCollection =
+        this.firstPlugConnection.db.collection('global_products');
+
+      const warehousesWithProducts = await globalProductsCollection
+        .aggregate([
+          {
+            $match: {
+              inFpWarehouse: true,
+              isDeleted: { $ne: true },
+            },
+          },
+          {
+            $group: {
+              _id: '$fpWarehouse.warehouseId',
+            },
+          },
+        ])
+        .toArray();
+
+      const warehouseIds = warehousesWithProducts.map((w) => w._id);
+
+      this.logger.debug(
+        `Found ${warehouseIds.length} warehouses with products`,
+      );
+
+      // 2. Solo calcular métricas para warehouses que tienen productos
+      const allMetrics: Array<{
+        warehouseId: string;
+        country: string;
+        countryCode: string;
+        warehouseName: string;
+        partnerType: string;
+        isActive: boolean;
+        totalProducts: number;
+        totalComputers: number;
+        totalOtherProducts: number;
+        totalTenants: number;
+      }> = [];
+
+      for (const warehouseId of warehouseIds) {
+        const metrics = await this.getWarehouseMetricsRealTime(
+          warehouseId.toString(),
+        );
+
+        if (metrics) {
+          allMetrics.push({
+            warehouseId: metrics.warehouseId,
+            country: metrics.country,
+            countryCode: metrics.countryCode,
+            warehouseName: metrics.warehouseName,
+            partnerType: metrics.partnerType,
+            isActive: metrics.isActive,
+            totalProducts: metrics.totalProducts,
+            totalComputers: metrics.totalComputers,
+            totalOtherProducts: metrics.totalOtherProducts,
+            totalTenants: metrics.totalTenants,
+          });
+        }
+      }
+
+      return allMetrics;
+    } catch (error) {
+      this.logger.error('Error getting all warehouse metrics:', error);
+      return [];
+    }
+  }
+
+  /**
    * Obtener todos los países con sus warehouses
    */
   async findAll(): Promise<WarehouseDocument[]> {
