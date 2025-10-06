@@ -21,7 +21,12 @@ import { UpdateTenantOfficeDto } from './dto/update-tenant-office.dto';
 import { CreateProductForTenantDto } from './dto/create-product-for-tenant.dto';
 import { Request } from 'express';
 import { WarehousesService } from '../warehouses/warehouses.service';
-import { CreateWarehouseDto, UpdateWarehouseDto } from '../warehouses/dto';
+import {
+  CreateWarehouseDto,
+  UpdateWarehouseDto,
+  UpdateWarehouseDataDto,
+  ToggleWarehouseActiveDto,
+} from '../warehouses/dto';
 import { InitializeWarehousesScript } from '../warehouses/scripts/initialize-warehouses.script';
 import { GlobalWarehouseMetricsService } from './services/global-warehouse-metrics.service';
 
@@ -232,7 +237,42 @@ export class SuperAdminController {
   }
 
   /**
+   * Actualizar datos de un warehouse (sin cambiar isActive) (SuperAdmin only)
+   * Para cambiar isActive, usar el endpoint /toggle-active
+   */
+  @Patch('warehouses/:country/:warehouseId/data')
+  async updateWarehouseData(
+    @Param('country') country: string,
+    @Param('warehouseId') warehouseId: string,
+    @Body() updateWarehouseDataDto: UpdateWarehouseDataDto,
+  ) {
+    return await this.warehousesService.updateWarehouseData(
+      country,
+      warehouseId,
+      updateWarehouseDataDto,
+    );
+  }
+
+  /**
+   * Toggle del estado isActive de un warehouse (SuperAdmin only)
+   * Requiere confirmación del frontend antes de llamar
+   */
+  @Patch('warehouses/:country/:warehouseId/toggle-active')
+  async toggleWarehouseActive(
+    @Param('country') country: string,
+    @Param('warehouseId') warehouseId: string,
+    @Body() toggleDto: ToggleWarehouseActiveDto,
+  ) {
+    return await this.warehousesService.toggleWarehouseActive(
+      country,
+      warehouseId,
+      toggleDto.isActive,
+    );
+  }
+
+  /**
    * Actualizar un warehouse específico (SuperAdmin only)
+   * @deprecated Usar /data para actualizar datos y /toggle-active para cambiar estado
    */
   @Patch('warehouses/:country/:warehouseId')
   async updateWarehouse(
@@ -249,6 +289,7 @@ export class SuperAdminController {
 
   /**
    * Activar un warehouse específico (SuperAdmin only)
+   * @deprecated Usar /toggle-active con isActive: true
    */
   @Post('warehouses/:country/:warehouseId/activate')
   async activateWarehouse(

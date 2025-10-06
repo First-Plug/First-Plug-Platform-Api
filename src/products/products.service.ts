@@ -335,6 +335,8 @@ export class ProductsService {
       const member = await this.assignmentsService.assignProduct(
         assignedEmail,
         createData,
+        undefined, // session
+        tenantName, // ✅ FIX: Pasar tenantName para sincronización global
       );
 
       if (member) {
@@ -457,6 +459,11 @@ export class ProductsService {
       );
 
       const createdProducts: ProductDocument[] = [];
+      // Map para guardar relación producto-miembro para sincronización
+      const productMemberMap = new Map<
+        string,
+        { memberId: any; memberEmail: string; memberName: string }
+      >();
 
       const assignProductPromises = productsWithAssignedEmail.map(
         async (product) => {
@@ -474,6 +481,19 @@ export class ProductsService {
             await member.save({ session });
             await ProductModel.deleteOne({ _id: product._id }).session(session);
             createdProducts.push(productDocument);
+
+            // Guardar relación para sincronización usando el _id original del producto
+            // El product._id es el que se generó en la línea 449 y es el que se usa en la colección
+            const productIdStr = product._id.toString();
+            productMemberMap.set(productIdStr, {
+              memberId: member._id,
+              memberEmail: member.email,
+              memberName: this.getFullName(member),
+            });
+
+            this.logger.log(
+              `🔄 [bulkCreate] Saved to map - Product ${productIdStr} (original: ${productDocument._id?.toString()}) -> Member ${member.email}`,
+            );
           } else {
             const createdProduct = await ProductModel.create([product], {
               session,
@@ -491,6 +511,77 @@ export class ProductsService {
       await Promise.all(assignProductPromises);
 
       await session.commitTransaction();
+
+      // 🔄 SYNC: Sincronizar productos creados en bulk a colección global
+      this.logger.log(
+        `🔄 [bulkCreate] Syncing ${createdProducts.length} products to global collection...`,
+      );
+      this.logger.log(
+        `🔄 [bulkCreate] productMemberMap size: ${productMemberMap.size}`,
+      );
+      this.logger.log(
+        `🔄 [bulkCreate] productMemberMap keys: ${Array.from(productMemberMap.keys()).join(', ')}`,
+      );
+
+      for (const product of createdProducts) {
+        try {
+          // Determinar sourceCollection basado en si tiene assignedEmail
+          const sourceCollection = product.assignedEmail
+            ? 'members'
+            : 'products';
+
+          // Obtener memberData si el producto está asignado
+          const productId = product._id?.toString();
+          const memberInfo = productId
+            ? productMemberMap.get(productId)
+            : undefined;
+
+          this.logger.log(
+            `🔄 [bulkCreate] Product ${productId} - assignedEmail: ${product.assignedEmail}, memberInfo: ${memberInfo ? 'FOUND' : 'NOT FOUND'}`,
+          );
+
+          // Sincronizar con memberData si existe
+          if (memberInfo) {
+            this.logger.log(
+              `🔄 [bulkCreate] Syncing with memberData for product ${productId}`,
+            );
+            await this.syncProductToGlobal(
+              product,
+              tenantName,
+              sourceCollection,
+              {
+                memberId: memberInfo.memberId,
+                memberEmail: memberInfo.memberEmail,
+                memberName: memberInfo.memberName,
+                assignedAt: new Date(),
+              },
+            );
+          } else {
+            this.logger.log(
+              `🔄 [bulkCreate] Syncing WITHOUT memberData for product ${productId}`,
+            );
+            await this.syncProductToGlobal(
+              product,
+              tenantName,
+              sourceCollection,
+            );
+          }
+
+          this.logger.debug(
+            `✅ [bulkCreate] Synced product ${product._id} to global collection`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `❌ [bulkCreate] Error syncing product ${product._id} to global collection:`,
+            error,
+          );
+          // No fallar el bulk create si falla la sincronización
+        }
+      }
+
+      this.logger.log(
+        `✅ [bulkCreate] Completed sync of ${createdProducts.length} products`,
+      );
 
       // Registrar el historial
       await this.historyService.create({
