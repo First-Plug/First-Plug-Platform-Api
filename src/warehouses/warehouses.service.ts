@@ -494,7 +494,103 @@ export class WarehousesService {
   }
 
   /**
+   * Actualizar solo los datos de un warehouse (sin cambiar isActive)
+   * Para cambiar isActive, usar toggleWarehouseActive()
+   */
+  async updateWarehouseData(
+    country: string,
+    warehouseId: string,
+    updateData: Partial<WarehouseItem>,
+  ): Promise<{
+    warehouse: WarehouseItem;
+    autoActivated?: boolean;
+    message: string;
+  }> {
+    try {
+      const countryDoc = await this.findByCountry(country);
+      if (!countryDoc) {
+        throw new NotFoundException(`Country ${country} not found`);
+      }
+
+      const warehouseIndex = countryDoc.warehouses.findIndex(
+        (w) => w._id.toString() === warehouseId && !w.isDeleted,
+      );
+
+      if (warehouseIndex === -1) {
+        throw new NotFoundException(
+          `Warehouse ${warehouseId} not found in ${country}`,
+        );
+      }
+
+      const warehouse = countryDoc.warehouses[warehouseIndex];
+      const wasComplete = this.isWarehouseComplete(warehouse);
+
+      // Actualizar solo los datos (sin isActive)
+      const { isActive, ...dataToUpdate } = updateData;
+      Object.assign(warehouse, dataToUpdate, { updatedAt: new Date() });
+
+      const isNowComplete = this.isWarehouseComplete(warehouse);
+      let autoActivated = false;
+
+      // Si el warehouse se completó y no hay otro activo, activarlo automáticamente
+      if (!wasComplete && isNowComplete) {
+        const hasActiveWarehouse = countryDoc.warehouses.some(
+          (w, index) => index !== warehouseIndex && w.isActive && !w.isDeleted,
+        );
+
+        if (!hasActiveWarehouse) {
+          warehouse.isActive = true;
+          autoActivated = true;
+          this.logger.log(
+            `✅ Warehouse auto-activated (first complete warehouse in ${country})`,
+          );
+        }
+      }
+
+      // Si el warehouse se volvió incompleto y estaba activo, desactivarlo
+      if (wasComplete && !isNowComplete && warehouse.isActive) {
+        warehouse.isActive = false;
+
+        // Buscar otro warehouse completo para activar
+        const bestCandidate = this.findBestActiveCandidate(
+          countryDoc.warehouses.filter((_, i) => i !== warehouseIndex),
+        );
+
+        if (bestCandidate) {
+          bestCandidate.isActive = true;
+          this.logger.log(
+            `✅ Activated alternative warehouse: ${bestCandidate.name}`,
+          );
+        } else {
+          this.logger.warn(`⚠️  No complete warehouse available in ${country}`);
+        }
+      }
+
+      await countryDoc.save();
+
+      const message = autoActivated
+        ? `Warehouse updated and auto-activated in ${country}`
+        : `Warehouse updated successfully in ${country}`;
+
+      this.logger.log(`✅ ${message}: ${warehouse.name || 'Unnamed'}`);
+
+      return {
+        warehouse,
+        autoActivated: autoActivated ? true : undefined,
+        message,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error updating warehouse data ${warehouseId} in ${country}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Actualizar un warehouse específico con validaciones inteligentes
+   * @deprecated Usar updateWarehouseData() para datos y toggleWarehouseActive() para cambiar estado
    */
   async updateWarehouse(
     country: string,
@@ -678,7 +774,8 @@ export class WarehousesService {
   }
 
   /**
-   * Activar un warehouse específico (solo si está completo) con migración automática
+   * Activar un warehouse específico (solo si está completo)
+   * Nota: La migración de productos debe ser manejada por un servicio transversal
    */
   async activateWarehouse(
     country: string,
@@ -687,8 +784,9 @@ export class WarehousesService {
     activated: boolean;
     message: string;
     deactivatedWarehouses?: string[];
-    migratedProducts?: number;
-    affectedTenants?: number;
+    countryCode?: string;
+    warehouseId?: string;
+    warehouseName?: string;
   }> {
     try {
       const countryDoc = await this.findByCountry(country);
@@ -736,32 +834,14 @@ export class WarehousesService {
 
       await countryDoc.save();
 
-      // 5. Migrar productos automáticamente si había warehouses activos antes
-      let migratedProducts = 0;
-      let affectedTenants = 0;
-
-      if (deactivatedWarehouses.length > 0) {
-        this.logger.log(
-          `🔄 Starting automatic product migration to new warehouse...`,
-        );
-
-        const migrationResult = await this.migrateProductsToNewWarehouse(
-          countryDoc.countryCode,
-          warehouseId,
-          warehouse.name || 'Unnamed',
-        );
-
-        migratedProducts = migrationResult.migratedProducts;
-        affectedTenants = migrationResult.affectedTenants;
-      }
-
       const result = {
         activated: true,
         message: `Warehouse activated successfully: ${warehouse.name || 'Unnamed'}`,
         deactivatedWarehouses:
           deactivatedWarehouses.length > 0 ? deactivatedWarehouses : undefined,
-        migratedProducts: migratedProducts > 0 ? migratedProducts : undefined,
-        affectedTenants: affectedTenants > 0 ? affectedTenants : undefined,
+        countryCode: countryDoc.countryCode,
+        warehouseId: warehouseId,
+        warehouseName: warehouse.name || 'Unnamed',
       };
 
       this.logger.log(`✅ ${result.message}`);
@@ -769,10 +849,8 @@ export class WarehousesService {
         this.logger.log(
           `📋 Deactivated warehouses: ${deactivatedWarehouses.join(', ')}`,
         );
-      }
-      if (migratedProducts > 0) {
         this.logger.log(
-          `🚚 Migrated ${migratedProducts} products from ${affectedTenants} tenants`,
+          `ℹ️  Note: Products migration should be handled by a transversal service (e.g., ProductWarehouseMigrationService)`,
         );
       }
 
@@ -780,6 +858,133 @@ export class WarehousesService {
     } catch (error) {
       this.logger.error(
         `Error activating warehouse ${warehouseId} in ${country}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Toggle del estado isActive de un warehouse con validaciones
+   * Este método es específico para cambiar solo el estado de activación
+   * Nota: La migración de productos debe ser manejada por un servicio transversal
+   */
+  async toggleWarehouseActive(
+    country: string,
+    warehouseId: string,
+    isActive: boolean,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    warehouse: WarehouseItem;
+    deactivatedWarehouses?: string[];
+    countryCode?: string;
+    warehouseId?: string;
+    warehouseName?: string;
+    warning?: string;
+  }> {
+    try {
+      const countryDoc = await this.findByCountry(country);
+      if (!countryDoc) {
+        throw new NotFoundException(`Country ${country} not found`);
+      }
+
+      const warehouse = countryDoc.warehouses.find(
+        (w) => w._id.toString() === warehouseId && !w.isDeleted,
+      );
+
+      if (!warehouse) {
+        throw new NotFoundException(
+          `Warehouse ${warehouseId} not found in ${country}`,
+        );
+      }
+
+      // Si ya tiene el estado solicitado
+      if (warehouse.isActive === isActive) {
+        return {
+          success: false,
+          message: `Warehouse is already ${isActive ? 'active' : 'inactive'}`,
+          warehouse,
+        };
+      }
+
+      // Si se quiere activar
+      if (isActive) {
+        // Verificar que esté completo
+        if (!this.isWarehouseComplete(warehouse)) {
+          throw new BadRequestException(
+            `Cannot activate incomplete warehouse. Missing required fields: ${this.getMissingFields(warehouse).join(', ')}`,
+          );
+        }
+
+        // Desactivar otros warehouses
+        const deactivatedWarehouses: string[] = [];
+        countryDoc.warehouses.forEach((w) => {
+          if (w.isActive && !w.isDeleted && w._id.toString() !== warehouseId) {
+            w.isActive = false;
+            w.updatedAt = new Date();
+            deactivatedWarehouses.push(w.name || 'Unnamed');
+          }
+        });
+
+        // Activar el warehouse
+        warehouse.isActive = true;
+        warehouse.updatedAt = new Date();
+
+        await countryDoc.save();
+
+        if (deactivatedWarehouses.length > 0) {
+          this.logger.log(
+            `ℹ️  Note: Products migration should be handled by a transversal service (e.g., ProductWarehouseMigrationService)`,
+          );
+        }
+
+        return {
+          success: true,
+          message: `Warehouse activated successfully in ${country}`,
+          warehouse,
+          deactivatedWarehouses:
+            deactivatedWarehouses.length > 0
+              ? deactivatedWarehouses
+              : undefined,
+          countryCode: countryDoc.countryCode,
+          warehouseId: warehouseId,
+          warehouseName: warehouse.name || 'Unnamed',
+        };
+      } else {
+        // Si se quiere desactivar
+        warehouse.isActive = false;
+        warehouse.updatedAt = new Date();
+
+        // Buscar otro warehouse para activar automáticamente
+        const bestCandidate = this.findBestActiveCandidate(
+          countryDoc.warehouses.filter((w) => w._id.toString() !== warehouseId),
+        );
+
+        let warning: string | undefined;
+        if (bestCandidate) {
+          bestCandidate.isActive = true;
+          bestCandidate.updatedAt = new Date();
+          this.logger.log(
+            `✅ Auto-activated alternative warehouse: ${bestCandidate.name}`,
+          );
+        } else {
+          warning = `Warning: ${country} now has no active warehouses. Products cannot be assigned to FP warehouse until a warehouse is activated.`;
+          this.logger.warn(`⚠️  ${warning}`);
+        }
+
+        await countryDoc.save();
+
+        return {
+          success: true,
+          message: `Warehouse deactivated successfully in ${country}`,
+          warehouse,
+          warning,
+        };
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error toggling warehouse active state ${warehouseId} in ${country}:`,
         error,
       );
       throw error;
@@ -842,172 +1047,6 @@ export class WarehousesService {
         error,
       );
       throw error;
-    }
-  }
-
-  /**
-   * Migrar productos de un país a un nuevo warehouse activo
-   */
-  private async migrateProductsToNewWarehouse(
-    countryCode: string,
-    newWarehouseId: string,
-    newWarehouseName: string,
-  ): Promise<{
-    migratedProducts: number;
-    affectedTenants: number;
-    errors?: string[];
-  }> {
-    try {
-      const errors: string[] = [];
-      let totalMigratedProducts = 0;
-      let affectedTenants = 0;
-
-      // 1. Obtener lista de todas las bases de datos de tenants
-      // Nota: Necesitarás implementar este método o inyectar un servicio que lo haga
-      const tenantDatabases = await this.getAllTenantDatabases();
-
-      // 2. Migrar productos en cada tenant
-      for (const tenantName of tenantDatabases) {
-        try {
-          const migratedInTenant = await this.migrateProductsInTenant(
-            tenantName,
-            countryCode,
-            newWarehouseId,
-            newWarehouseName,
-          );
-
-          if (migratedInTenant > 0) {
-            totalMigratedProducts += migratedInTenant;
-            affectedTenants++;
-            this.logger.log(
-              `✅ Migrated ${migratedInTenant} products in tenant ${tenantName}`,
-            );
-          }
-        } catch (error) {
-          const errorMsg = `Error migrating products in tenant ${tenantName}: ${error.message}`;
-          errors.push(errorMsg);
-          this.logger.error(errorMsg, error);
-        }
-      }
-
-      // 3. TODO: Actualizar colección global de productos
-      // Esto se implementará con el nuevo GlobalProductSyncService
-      this.logger.log(
-        '📊 Global product sync will be implemented with new architecture',
-      );
-
-      this.logger.log(
-        `🎯 Migration completed: ${totalMigratedProducts} products from ${affectedTenants} tenants`,
-      );
-
-      return {
-        migratedProducts: totalMigratedProducts,
-        affectedTenants,
-        errors: errors.length > 0 ? errors : undefined,
-      };
-    } catch (error) {
-      this.logger.error(`Error during product migration:`, error);
-      return {
-        migratedProducts: 0,
-        affectedTenants: 0,
-        errors: [`Migration failed: ${error.message}`],
-      };
-    }
-  }
-
-  /**
-   * Migrar productos en un tenant específico
-   */
-  private async migrateProductsInTenant(
-    tenantName: string,
-    countryCode: string,
-    newWarehouseId: string,
-    newWarehouseName: string,
-  ): Promise<number> {
-    try {
-      // Conectar a la base de datos del tenant
-      const tenantConnection = this.firstPlugConnection.useDb(tenantName);
-
-      // Verificar si la colección products existe
-      const collections = await tenantConnection.db
-        .listCollections({ name: 'products' })
-        .toArray();
-      if (collections.length === 0) {
-        this.logger.log(
-          `📦 No products collection found in tenant ${tenantName}`,
-        );
-        return 0;
-      }
-
-      // Obtener el modelo de Product para este tenant
-      const ProductModel = tenantConnection.model('Product');
-
-      // Actualizar productos que están en FP warehouse en este país
-      const result = await ProductModel.updateMany(
-        {
-          location: 'FP warehouse',
-          $or: [
-            { 'fpWarehouse.warehouseCountryCode': countryCode },
-            // También migrar productos que no tienen fpWarehouse pero están en FP warehouse
-            // (productos antiguos antes de implementar fpWarehouse)
-            {
-              'fpWarehouse.warehouseCountryCode': { $exists: false },
-              location: 'FP warehouse',
-            },
-          ],
-        },
-        {
-          $set: {
-            'fpWarehouse.warehouseId': new Types.ObjectId(newWarehouseId),
-            'fpWarehouse.warehouseCountryCode': countryCode,
-            'fpWarehouse.warehouseName': newWarehouseName,
-            'fpWarehouse.assignedAt': new Date(),
-            'fpWarehouse.status': 'STORED',
-          },
-        },
-      );
-
-      if (result.modifiedCount > 0) {
-        this.logger.log(
-          `✅ Migrated ${result.modifiedCount} products in tenant ${tenantName}`,
-        );
-      }
-
-      return result.modifiedCount;
-    } catch (error) {
-      this.logger.error(
-        `Error migrating products in tenant ${tenantName}:`,
-        error,
-      );
-      throw error;
-    }
-  }
-
-  /**
-   * Obtener lista de todas las bases de datos de tenants
-   */
-  private async getAllTenantDatabases(): Promise<string[]> {
-    try {
-      // Listar todas las bases de datos y filtrar las de tenants
-      const databases = await this.firstPlugConnection.db
-        .admin()
-        .listDatabases();
-
-      const tenantDbs = databases.databases
-        .filter((db) => {
-          // Filtrar DBs del sistema
-          const systemDbs = ['firstPlug', 'admin', 'local', 'config'];
-          return !systemDbs.includes(db.name);
-        })
-        .map((db) => db.name);
-
-      this.logger.log(
-        `📋 Found ${tenantDbs.length} tenant databases: ${tenantDbs.join(', ')}`,
-      );
-      return tenantDbs;
-    } catch (error) {
-      this.logger.error('Error getting tenant databases:', error);
-      return [];
     }
   }
 
