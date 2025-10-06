@@ -176,6 +176,14 @@ export class WarehousesService {
       totalComputers: number;
       totalOtherProducts: number;
       totalTenants: number;
+      tenantMetrics: Array<{
+        tenantId: string;
+        tenantName: string;
+        companyName: string;
+        totalProducts: number;
+        computers: number;
+        otherProducts: number;
+      }>;
     }>
   > {
     try {
@@ -217,6 +225,14 @@ export class WarehousesService {
         totalComputers: number;
         totalOtherProducts: number;
         totalTenants: number;
+        tenantMetrics: Array<{
+          tenantId: string;
+          tenantName: string;
+          companyName: string;
+          totalProducts: number;
+          computers: number;
+          otherProducts: number;
+        }>;
       }> = [];
 
       for (const warehouseId of warehouseIds) {
@@ -236,6 +252,7 @@ export class WarehousesService {
             totalComputers: metrics.totalComputers,
             totalOtherProducts: metrics.totalOtherProducts,
             totalTenants: metrics.totalTenants,
+            tenantMetrics: metrics.tenantMetrics,
           });
         }
       }

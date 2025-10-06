@@ -327,6 +327,21 @@ export class SuperAdminController {
   }
 
   /**
+   * Obtener métricas de todos los warehouses CON detalle de tenants (SuperAdmin only)
+   * Incluye tabla principal + tabla desplegable de tenants
+   * Ordenados: primero los que tienen productos
+   */
+  @Get('metrics/warehouses-with-tenants')
+  async getAllWarehousesWithTenants() {
+    const warehouses =
+      await this.globalWarehouseMetricsService.getAllWarehousesWithTenants();
+    return {
+      success: true,
+      data: warehouses,
+    };
+  }
+
+  /**
    * Obtener métricas de un warehouse específico (SuperAdmin only)
    */
   @Get('metrics/warehouses/:countryCode/:warehouseId')

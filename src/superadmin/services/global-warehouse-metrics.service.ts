@@ -24,6 +24,11 @@ export interface TenantMetricsDetail {
   totalProducts: number;
 }
 
+export interface WarehouseWithTenants extends GlobalWarehouseMetrics {
+  tenants: TenantMetricsDetail[];
+  hasStoredProducts: boolean; // Para habilitar/deshabilitar acciones (ej: no borrar si tiene productos)
+}
+
 export interface GlobalCountryMetrics {
   countryCode: string;
   country: string;
@@ -110,6 +115,89 @@ export class GlobalWarehouseMetricsService {
       }));
     } catch (error) {
       this.logger.error('Error getting all warehouse metrics:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Obtener TODOS los warehouses CON detalle de tenants
+   * Incluye warehouses con y sin productos
+   * Ordenados: primero los que tienen productos, luego los vacíos
+   * OPTIMIZADO: Una sola query para warehouses con productos
+   */
+  async getAllWarehousesWithTenants(): Promise<WarehouseWithTenants[]> {
+    try {
+      // 1. Obtener métricas de warehouses que TIENEN productos (rápido)
+      const warehousesWithProducts =
+        await this.warehousesService.getAllWarehouseMetricsRealTime();
+
+      // Crear Map para búsqueda rápida por warehouseId
+      const metricsMap = new Map(
+        warehousesWithProducts.map((m) => [m.warehouseId, m]),
+      );
+
+      // 2. Obtener TODOS los países con sus warehouses
+      const allCountries = await this.warehousesService.findAll();
+
+      const warehousesWithTenants: WarehouseWithTenants[] = [];
+
+      // 3. Iterar sobre cada país y cada warehouse
+      for (const countryDoc of allCountries) {
+        for (const warehouse of countryDoc.warehouses) {
+          // Saltar warehouses eliminados
+          if (warehouse.isDeleted) {
+            continue;
+          }
+
+          const warehouseId = warehouse._id.toString();
+          const metrics = metricsMap.get(warehouseId);
+
+          // 4. Si tiene métricas (tiene productos), usar esos datos
+          if (metrics) {
+            warehousesWithTenants.push({
+              countryCode: metrics.countryCode,
+              country: metrics.country,
+              warehouseId: metrics.warehouseId,
+              warehouseName: metrics.warehouseName,
+              partnerType: metrics.partnerType || 'FirstPlug',
+              isActive: metrics.isActive,
+              totalProducts: metrics.totalProducts,
+              computers: metrics.totalComputers,
+              otherProducts: metrics.totalOtherProducts,
+              distinctTenants: metrics.totalTenants,
+              tenants: metrics.tenantMetrics,
+              hasStoredProducts: true, // Tiene productos almacenados
+            });
+          } else {
+            // 5. Si no tiene productos, crear entrada vacía
+            warehousesWithTenants.push({
+              countryCode: countryDoc.countryCode,
+              country: countryDoc.country,
+              warehouseId: warehouseId,
+              warehouseName: warehouse.name || 'Default Warehouse',
+              partnerType: warehouse.partnerType || 'FirstPlug',
+              isActive: warehouse.isActive,
+              totalProducts: 0,
+              computers: 0,
+              otherProducts: 0,
+              distinctTenants: 0,
+              tenants: [],
+              hasStoredProducts: false, // No tiene productos almacenados
+            });
+          }
+        }
+      }
+
+      // 6. Ordenar: primero los que tienen productos (descendente por totalProducts)
+      warehousesWithTenants.sort((a, b) => {
+        if (a.totalProducts > 0 && b.totalProducts === 0) return -1;
+        if (a.totalProducts === 0 && b.totalProducts > 0) return 1;
+        return b.totalProducts - a.totalProducts;
+      });
+
+      return warehousesWithTenants;
+    } catch (error) {
+      this.logger.error('Error getting all warehouses with tenants:', error);
       return [];
     }
   }
