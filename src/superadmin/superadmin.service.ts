@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { ShipmentsService } from '../shipments/shipments.service';
 import { TenantConnectionService } from '../infra/db/tenant-connection.service';
@@ -12,9 +13,14 @@ import { UsersService } from '../users/users.service';
 import { OfficesService } from '../offices/offices.service';
 import { LogisticsService } from '../logistics/logistics.sevice';
 import { UpdateShipmentCompleteDto } from './dto/update-shipment-complete.dto';
+import { CreateProductForTenantDto } from './dto/create-product-for-tenant.dto';
+import { WarehousesService } from '../warehouses/warehouses.service';
+import { GlobalProductSyncService } from '../products/services/global-product-sync.service';
 
 @Injectable()
 export class SuperAdminService {
+  private readonly logger = new Logger(SuperAdminService.name);
+
   constructor(
     private readonly shipmentsService: ShipmentsService,
     private readonly tenantConnectionService: TenantConnectionService,
@@ -23,6 +29,8 @@ export class SuperAdminService {
     private readonly usersService: UsersService,
     private readonly officesService: OfficesService,
     private readonly logisticsService: LogisticsService,
+    private readonly warehousesService: WarehousesService,
+    private readonly globalProductSyncService: GlobalProductSyncService,
   ) {}
 
   // ==================== SHIPMENTS CROSS-TENANT ====================
@@ -95,7 +103,7 @@ export class SuperAdminService {
 
           allShipmentsFlat.push({
             ...shipmentPlain,
-            tenantName: tenantData.tenantName, // Agregar tenantName a cada shipment
+            tenantName: tenantData.tenantName,
           });
         });
       });
@@ -220,9 +228,6 @@ export class SuperAdminService {
           price,
           shipment,
         });
-        console.log(
-          `📡 Websocket notification sent for shipment ${shipmentId} - price updated`,
-        );
       } catch (error) {
         console.error(
           `❌ Error sending websocket notification for shipment ${shipmentId}:`,
@@ -328,7 +333,7 @@ export class SuperAdminService {
       console.log(`📊 Status actualizado: ${oldStatus} → ${newStatus}`);
 
       // ✅ Si el status cambió a "Received" o "Cancelled", actualizar productos y members
- if (newStatus === 'Received' || newStatus === 'Cancelled') {
+      if (newStatus === 'Received' || newStatus === 'Cancelled') {
         const actionText = newStatus === 'Received' ? 'recibido' : 'cancelado';
         console.log(
           `🎯 Shipment ${actionText} - actualizando productos y members...`,
@@ -356,7 +361,6 @@ export class SuperAdminService {
                 tenantName,
               );
             }
-            console.log(`✅ Producto ${productId} actualizado correctamente`);
           } catch (error) {
             console.error(
               `❌ Error actualizando producto ${productId}:`,
@@ -400,7 +404,7 @@ export class SuperAdminService {
         }
 
         // Actualizar activeShipment para cada member involucrado
-        console.log(`🔍 Total de emails encontrados: ${memberEmails.size}`);
+
         for (const memberEmail of memberEmails) {
           try {
             console.log(`🔄 Procesando member: ${memberEmail}`);
@@ -548,28 +552,23 @@ export class SuperAdminService {
       const enrichedTenants = await Promise.all(
         tenants.map(async (tenant) => {
           try {
-            // Obtener usuarios del tenant desde los mapas (más eficiente)
             const tenantUsersById =
               usersByTenantId.get(tenant._id.toString()) || [];
             const tenantUsersByName =
               usersByTenantName.get(tenant.tenantName) || [];
 
-            // Combinar usuarios de ambos sistemas (tenantId y tenantName)
             const allTenantUsers = [...tenantUsersById, ...tenantUsersByName];
 
-            // Eliminar duplicados basándose en el _id
             const uniqueUsers = allTenantUsers.filter(
               (user, index, self) =>
                 index ===
                 self.findIndex((u) => u._id.toString() === user._id.toString()),
             );
 
-            // Contar usuarios activos
             const activeUsersCount = uniqueUsers.filter(
               (user) => user.isActive && !user.isDeleted,
             ).length;
 
-            // Transformar usuarios al formato esperado
             const transformedUsers = uniqueUsers.map((user) => ({
               _id: user._id,
               firstName: user.firstName,
@@ -580,7 +579,6 @@ export class SuperAdminService {
               createdAt: (user as any).createdAt,
             }));
 
-            // Obtener oficina del tenant
             let office: any = null;
             try {
               const offices = await this.officesService.findOfficesByTenant(
@@ -594,7 +592,6 @@ export class SuperAdminService {
               );
             }
 
-            // Transformar al formato del frontend
             return this.transformTenantForFrontend(
               tenant.toObject ? tenant.toObject() : tenant,
               transformedUsers,
@@ -606,7 +603,7 @@ export class SuperAdminService {
               `❌ Error procesando tenant ${tenant.tenantName}:`,
               error,
             );
-            // Devolver un tenant básico en caso de error para no romper toda la respuesta
+
             return this.transformTenantForFrontend(
               tenant.toObject ? tenant.toObject() : tenant,
               [],
@@ -1127,132 +1124,198 @@ export class SuperAdminService {
     }
   }
 
-  // ==================== MIGRATION METHODS ====================
+  // ==================== PRODUCT CREATION FOR TENANTS ====================
 
   /**
-   * Migrar tenant del modelo viejo (acoplado) al nuevo (separado) - Esto no esta en uso, la migracion va desde la terminal
+   * Crear producto para un tenant específico desde SuperAdmin
+   * El producto se asigna automáticamente a FP warehouse del país seleccionado
    */
-  async migrateTenantArchitecture(tenantName: string) {
+  async createProductForTenant(createProductDto: CreateProductForTenantDto) {
+    const { tenantName, warehouseCountryCode, ...productData } =
+      createProductDto;
+
     try {
-      // 1. Buscar el tenant viejo (con datos de usuario mezclados)
-      const oldTenant = await this.tenantsService.getByTenantName(tenantName);
-      if (!oldTenant) {
+      // 1. Validar que el tenant existe
+      const tenant = await this.tenantsService.getByTenantName(tenantName);
+      if (!tenant) {
         throw new NotFoundException(`Tenant ${tenantName} not found`);
       }
 
-      // Verificar si ya está migrado (si no tiene email, ya está migrado)
-      const oldTenantAny = oldTenant as any;
-      if (!oldTenantAny.email) {
-        return {
-          success: false,
-          message: `Tenant ${tenantName} ya está migrado (no tiene datos de usuario)`,
-          tenantName,
-        };
+      // 2. Buscar warehouse para asignación (activo o default) en el país especificado
+      const warehouseInfo =
+        await this.warehousesService.findWarehouseForProductAssignment(
+          warehouseCountryCode,
+        );
+
+      if (!warehouseInfo) {
+        throw new BadRequestException(
+          `No warehouse found in country ${warehouseCountryCode}. Please initialize the country first.`,
+        );
       }
 
-      // 2. Verificar si ya existe un usuario con este email
-      const existingUser = await this.usersService.findByEmail(
-        oldTenantAny.email,
+      // 2.1. Verificar si es un warehouse real o default (para logging/alertas futuras)
+      const isRealPartner = warehouseInfo.partnerType !== 'default';
+      if (!isRealPartner) {
+        console.warn(
+          `⚠️ Using default warehouse for ${warehouseCountryCode}. Consider finding a real logistics partner.`,
+        );
+      }
+
+      // 3. Conectar a la base de datos del tenant
+      const tenantConnection =
+        await this.tenantConnectionService.getTenantConnection(tenantName);
+      // Importar el schema correctamente
+      const { ProductSchema } = await import(
+        '../products/schemas/product.schema'
       );
-      if (existingUser) {
-        return {
-          success: false,
-          message: `Usuario ya migrado: ${oldTenantAny.email}`,
-          tenantName,
-        };
-      }
+      const ProductModel = tenantConnection.model('Product', ProductSchema);
 
-      // 3. Crear usuario en la colección users
+      // 4. Crear el producto en la colección del tenant
+      const newProduct = new ProductModel({
+        name: productData.name,
+        category: productData.category,
+        attributes: productData.attributes,
+        serialNumber: productData.serialNumber,
+        productCondition: productData.productCondition,
+        recoverable: productData.recoverable ?? true,
 
-      const newUser = await this.usersService.create({
-        firstName: oldTenant.name?.split(' ')[0] || 'Usuario',
-        lastName: oldTenant.name?.split(' ').slice(1).join(' ') || '',
-        email: oldTenantAny.email,
-        accountProvider: oldTenantAny.accountProvider || 'credentials',
-        password: oldTenantAny.password || 'temp-password',
-        image: oldTenantAny.image || '',
+        // Asignación automática a FP warehouse
+        location: 'FP warehouse',
+        status: 'Available',
+        fp_shipment: false,
+        activeShipment: false,
+
+        // Información del warehouse
+        fpWarehouse: {
+          warehouseId: warehouseInfo._id,
+          warehouseCountryCode: warehouseCountryCode.toUpperCase(),
+          warehouseName:
+            warehouseInfo.name ||
+            `Default Warehouse ${warehouseCountryCode.toUpperCase()}`,
+          assignedAt: new Date(),
+          status: 'STORED',
+        },
+
+        createdBy: 'SuperAdmin',
       });
 
-      // Actualizar el usuario con campos adicionales que no están en CreateUserDto
-      const updatedUser = await this.usersService.updateUserProfile(
-        newUser._id,
-        {
-          tenantId: oldTenant._id.toString(),
-          tenantName: oldTenant.tenantName,
-          widgets: oldTenantAny.widgets || [],
-          role: 'user',
-          isActive: true,
-          isDeleted: false,
-        } as any,
-      );
+      const savedProduct = await newProduct.save();
 
-      // 4. Crear oficina si hay datos de oficina
-      let createdOffice: any = null;
-      const hasOfficeData =
-        oldTenantAny.phone ||
-        oldTenantAny.country ||
-        oldTenantAny.city ||
-        oldTenantAny.address;
+      // 5. Sincronizar automáticamente a la colección global
+      await this.globalProductSyncService.syncProduct({
+        tenantId: tenantName,
+        tenantName: tenantName,
+        originalProductId: savedProduct._id as any,
+        sourceCollection: 'products',
 
-      if (hasOfficeData) {
-        console.log(`🏢 Creando oficina para tenant: ${tenantName}`);
-        createdOffice = await this.officesService.create({
-          name: 'Oficina Principal',
-          email: oldTenantAny.email,
-          phone: oldTenantAny.phone || '',
-          country: oldTenantAny.country || '',
-          city: oldTenantAny.city || '',
-          state: oldTenantAny.state || '',
-          zipCode: oldTenantAny.zipCode || '',
-          address: oldTenantAny.address || '',
-          apartment: oldTenantAny.apartment || '',
-          tenantId: oldTenant._id.toString(),
-        });
-        console.log(`✅ Oficina creada: ${createdOffice._id}`);
-      }
+        name: savedProduct.name || '',
+        category: savedProduct.category,
+        status: savedProduct.status,
+        location: savedProduct.location || 'FP warehouse',
 
-      // 5. Limpiar el tenant (remover datos de usuario y oficina)
-      console.log(`🧹 Limpiando tenant: ${tenantName}`);
-      const updatedTenant = await this.tenantsService.update(
-        oldTenant._id as any,
-        {
-          name: `${oldTenant.name} Company`,
-          createdBy: updatedUser?._id || newUser._id,
-          isActive: true,
-          // Remover campos de usuario y oficina se hace con $unset en el servicio
-        } as any,
-      );
+        attributes:
+          savedProduct.attributes?.map((attr) => ({
+            key: attr.key,
+            value: String(attr.value),
+          })) || [],
+        serialNumber: savedProduct.serialNumber || undefined,
+        productCondition: savedProduct.productCondition,
+        recoverable: savedProduct.recoverable,
+        fp_shipment: savedProduct.fp_shipment,
+        activeShipment: savedProduct.activeShipment,
 
-      console.log(`✅ Tenant actualizado: ${updatedTenant?.name}`);
+        // Validar que fpWarehouse tenga los campos requeridos
+        fpWarehouse:
+          savedProduct.fpWarehouse &&
+          savedProduct.fpWarehouse.warehouseId &&
+          savedProduct.fpWarehouse.warehouseCountryCode &&
+          savedProduct.fpWarehouse.warehouseName
+            ? {
+                warehouseId: savedProduct.fpWarehouse.warehouseId as any,
+                warehouseCountryCode:
+                  savedProduct.fpWarehouse.warehouseCountryCode,
+                warehouseName: savedProduct.fpWarehouse.warehouseName,
+                assignedAt: savedProduct.fpWarehouse.assignedAt,
+                // Mapear 'IN_TRANSIT' a 'IN_TRANSIT_IN' para compatibilidad
+                status:
+                  savedProduct.fpWarehouse.status === 'IN_TRANSIT'
+                    ? 'IN_TRANSIT_IN'
+                    : (savedProduct.fpWarehouse.status as
+                        | 'STORED'
+                        | 'IN_TRANSIT_IN'
+                        | 'IN_TRANSIT_OUT'
+                        | undefined),
+              }
+            : undefined,
+
+        // Información adicional
+        createdBy: 'SuperAdmin',
+      });
 
       return {
         success: true,
-        message: `Migración completada exitosamente para tenant: ${tenantName}`,
-        tenantName,
-        migratedUser: {
-          id: updatedUser?._id || newUser._id,
-          email: updatedUser?.email || newUser.email,
-          firstName: updatedUser?.firstName || newUser.firstName,
-        },
-        createdOffice: createdOffice
-          ? {
-              id: createdOffice._id,
-              name: createdOffice.name,
-            }
-          : null,
-        updatedTenant: {
-          id: updatedTenant?._id,
-          name: updatedTenant?.name,
+        message: `Product created successfully for tenant ${tenantName}`,
+        data: {
+          productId: savedProduct._id,
+          tenantName,
+          warehouseInfo: {
+            country: warehouseCountryCode,
+            warehouseName:
+              warehouseInfo.name ||
+              `Default Warehouse ${warehouseCountryCode.toUpperCase()}`,
+            warehouseId: warehouseInfo._id,
+            isRealPartner,
+          },
+          product: {
+            name: savedProduct.name,
+            category: savedProduct.category,
+            serialNumber: savedProduct.serialNumber,
+            location: savedProduct.location,
+            status: savedProduct.status,
+          },
         },
       };
     } catch (error) {
-      console.error(`❌ Error en migración de ${tenantName}:`, error);
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+
+      throw new BadRequestException(
+        `Error creating product for tenant ${tenantName}: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Obtener productos de la colección global
+   */
+  async getGlobalProducts(
+    limit: number = 100,
+    skip: number = 0,
+  ): Promise<{
+    products: any[];
+    total: number;
+    limit: number;
+    skip: number;
+  }> {
+    try {
+      const [products, total] = await Promise.all([
+        this.globalProductSyncService.getGlobalProducts(limit, skip),
+        this.globalProductSyncService.getTotalGlobalProducts(),
+      ]);
+
       return {
-        success: false,
-        message: `Error en migración: ${error.message}`,
-        tenantName,
-        error: error.message,
+        products,
+        total,
+        limit,
+        skip,
       };
+    } catch (error) {
+      this.logger.error(`❌ Error getting global products:`, error);
+      throw error;
     }
   }
 }

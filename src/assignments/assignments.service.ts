@@ -38,6 +38,8 @@ import {
   CurrencyCode,
   CURRENCY_CODES,
 } from 'src/products/validations/create-product.zod';
+import { GlobalProductSyncService } from 'src/products/services/global-product-sync.service';
+import { WarehousesService } from 'src/warehouses/warehouses.service';
 
 @Injectable()
 export class AssignmentsService {
@@ -59,7 +61,298 @@ export class AssignmentsService {
     private readonly tenantModelRegistry: TenantModelRegistry,
     @Inject(forwardRef(() => LogisticsService))
     private readonly logisticsService: LogisticsService,
+    private readonly globalProductSyncService: GlobalProductSyncService,
+    private readonly warehousesService: WarehousesService,
   ) {}
+
+  /**
+   * Helper para obtener el país de origen de un member por email
+   */
+  private async getMemberOriginCountry(
+    memberEmail: string,
+    tenantName: string,
+  ): Promise<string | null> {
+    try {
+      const MemberModel =
+        await this.tenantModelRegistry.getMemberModel(tenantName);
+
+      const member = await MemberModel.findOne({ email: memberEmail }).lean();
+
+      if (!member) {
+        this.logger.warn(`Member not found: ${memberEmail}`);
+        return null;
+      }
+
+      if (!member.country) {
+        this.logger.warn(
+          `No country found for member ${memberEmail} (member exists but country field is empty)`,
+        );
+        return null;
+      }
+
+      this.logger.log(
+        `✅ Found country for member ${memberEmail}: ${member.country}`,
+      );
+      return member.country;
+    } catch (error) {
+      this.logger.error(
+        `Error getting member origin country for ${memberEmail}:`,
+        error,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Helper para asignar warehouse cuando location cambia a "FP warehouse"
+   * @param memberEmail - Email del member de origen (opcional, si se conoce)
+   */
+  private async assignWarehouseIfNeeded(
+    updateDto: UpdateProductDto,
+    product: any,
+    tenantName: string,
+    memberEmail?: string,
+  ): Promise<any> {
+    // Solo procesar si location cambia a "FP warehouse"
+    if (updateDto.location !== 'FP warehouse') {
+      return {};
+    }
+
+    try {
+      this.logger.log(
+        `🏭 [assignWarehouseIfNeeded] Product ${product._id} - lastAssigned: ${product.lastAssigned}, assignedEmail: ${product.assignedEmail}`,
+      );
+
+      // 1. Determinar país de origen
+      let originCountry: string | null = null;
+
+      // Si se proporciona memberEmail directamente (más confiable), usar ese
+      if (memberEmail) {
+        this.logger.log(
+          `🏭 [assignWarehouseIfNeeded] Trying to get country from provided memberEmail: ${memberEmail}`,
+        );
+        originCountry = await this.getMemberOriginCountry(
+          memberEmail,
+          tenantName,
+        );
+        this.logger.log(
+          `🏭 [assignWarehouseIfNeeded] Country from provided memberEmail: ${originCountry}`,
+        );
+      }
+
+      // Si no se proporcionó memberEmail, intentar con lastAssigned
+      if (!originCountry && product.lastAssigned) {
+        this.logger.log(
+          `🏭 [assignWarehouseIfNeeded] Trying to get country from lastAssigned: ${product.lastAssigned}`,
+        );
+        originCountry = await this.getMemberOriginCountry(
+          product.lastAssigned,
+          tenantName,
+        );
+        this.logger.log(
+          `🏭 [assignWarehouseIfNeeded] Country from lastAssigned: ${originCountry}`,
+        );
+      }
+
+      // Si no tiene lastAssigned pero tiene assignedEmail actual, usar ese
+      if (!originCountry && product.assignedEmail) {
+        this.logger.log(
+          `🏭 [assignWarehouseIfNeeded] Trying to get country from assignedEmail: ${product.assignedEmail}`,
+        );
+        originCountry = await this.getMemberOriginCountry(
+          product.assignedEmail,
+          tenantName,
+        );
+        this.logger.log(
+          `🏭 [assignWarehouseIfNeeded] Country from assignedEmail: ${originCountry}`,
+        );
+      }
+
+      // Si no se puede determinar el país, usar Argentina por defecto
+      if (!originCountry) {
+        this.logger.warn(
+          `No origin country found for product ${product._id}, using Argentina as default`,
+        );
+        originCountry = 'Argentina';
+      }
+
+      this.logger.log(
+        `🏭 [assignWarehouseIfNeeded] Final origin country: ${originCountry}`,
+      );
+
+      // 2. Buscar warehouse para ese país
+      this.logger.log(
+        `🏭 [assignWarehouseIfNeeded] Searching warehouse for country: ${originCountry}`,
+      );
+      const warehouse =
+        await this.warehousesService.findWarehouseForProductAssignment(
+          originCountry,
+        );
+
+      if (!warehouse) {
+        this.logger.error(
+          `❌ [assignWarehouseIfNeeded] No warehouse found for country: ${originCountry}`,
+        );
+        return {};
+      }
+
+      this.logger.log(
+        `✅ [assignWarehouseIfNeeded] Warehouse found: ${warehouse.name || 'Unnamed'} (${warehouse._id})`,
+      );
+
+      // 3. Obtener el countryCode del país
+      let countryCode = 'AR'; // Default
+      let countryName = originCountry;
+
+      try {
+        // Intentar buscar por código primero (si originCountry es "BR")
+        let countryDoc =
+          await this.warehousesService.findByCountryCode(originCountry);
+
+        // Si no se encuentra por código, buscar por nombre
+        if (!countryDoc) {
+          countryDoc =
+            await this.warehousesService.findByCountry(originCountry);
+        }
+
+        if (countryDoc) {
+          countryCode = countryDoc.countryCode;
+          countryName = countryDoc.country;
+          this.logger.log(
+            `✅ [assignWarehouseIfNeeded] Country resolved: ${countryName} (${countryCode})`,
+          );
+        } else {
+          this.logger.warn(
+            `⚠️ [assignWarehouseIfNeeded] Could not resolve country ${originCountry}, using defaults`,
+          );
+        }
+      } catch (error) {
+        this.logger.warn(
+          `⚠️ [assignWarehouseIfNeeded] Error resolving country ${originCountry}, using AR as default:`,
+          error,
+        );
+      }
+
+      // 4. Crear esquema fpWarehouse
+      const fpWarehouseData = {
+        warehouseId: warehouse._id,
+        warehouseCountryCode: countryCode,
+        warehouseName: warehouse.name || 'Default Warehouse',
+        assignedAt: new Date(),
+        status: 'STORED' as const,
+      };
+
+      this.logger.log(
+        `✅ [assignWarehouseIfNeeded] Assigned product ${product._id} to warehouse ${warehouse.name || 'Unnamed'} in ${countryName} (${countryCode})`,
+      );
+      this.logger.log(
+        `✅ [assignWarehouseIfNeeded] fpWarehouse data: ${JSON.stringify(fpWarehouseData)}`,
+      );
+
+      return { fpWarehouse: fpWarehouseData };
+    } catch (error) {
+      this.logger.error(
+        `Error assigning warehouse for product ${product._id}:`,
+        error,
+      );
+      return {};
+    }
+  }
+
+  /**
+   * Helper method para sincronizar producto a la colección global
+   * No falla la operación principal si hay error en sincronización
+   */
+  private async syncProductToGlobal(
+    product: ProductDocument | any,
+    tenantName: string,
+    sourceCollection: 'products' | 'members' = 'products',
+    memberData?: {
+      memberId: Types.ObjectId;
+      memberEmail: string;
+      memberName: string;
+      assignedAt?: Date;
+    },
+  ): Promise<void> {
+    this.logger.log(
+      `🔄 [syncProductToGlobal] Starting sync for product ${product._id}`,
+    );
+    this.logger.log(
+      `🔄 [syncProductToGlobal] tenantName: ${tenantName}, sourceCollection: ${sourceCollection}`,
+    );
+
+    try {
+      await this.globalProductSyncService.syncProduct({
+        tenantId: tenantName,
+        tenantName: tenantName,
+        originalProductId: product._id as any,
+        sourceCollection,
+
+        // Datos básicos del producto
+        name: product.name || '',
+        category: product.category,
+        status: product.status,
+        location: product.location || 'Our office',
+
+        // Atributos convertidos al formato correcto
+        attributes:
+          product.attributes?.map((attr: any) => ({
+            key: attr.key,
+            value: String(attr.value),
+          })) || [],
+
+        serialNumber: product.serialNumber || undefined,
+        assignedEmail: product.assignedEmail,
+        assignedMember: product.assignedMember,
+        lastAssigned: product.lastAssigned,
+        acquisitionDate: product.acquisitionDate,
+        price: product.price,
+        additionalInfo: product.additionalInfo,
+        productCondition: product.productCondition,
+        recoverable: product.recoverable,
+        fp_shipment: product.fp_shipment,
+        activeShipment: product.activeShipment,
+        imageUrl: product.imageUrl,
+        isDeleted: product.isDeleted || false,
+
+        // Datos de warehouse si existen
+        fpWarehouse:
+          product.fpWarehouse &&
+          product.fpWarehouse.warehouseId &&
+          product.fpWarehouse.warehouseCountryCode &&
+          product.fpWarehouse.warehouseName
+            ? {
+                warehouseId: product.fpWarehouse.warehouseId as any,
+                warehouseCountryCode: product.fpWarehouse.warehouseCountryCode,
+                warehouseName: product.fpWarehouse.warehouseName,
+                assignedAt: product.fpWarehouse.assignedAt,
+                status:
+                  product.fpWarehouse.status === 'IN_TRANSIT'
+                    ? 'IN_TRANSIT_IN'
+                    : (product.fpWarehouse.status as any),
+              }
+            : undefined,
+
+        // Datos del member si está asignado
+        memberData,
+
+        // Metadatos
+        createdBy: product.createdBy,
+        sourceUpdatedAt: product.updatedAt || new Date(),
+      });
+
+      this.logger.log(
+        `✅ [syncProductToGlobal] Product ${product._id} synced successfully to global collection for tenant ${tenantName}`,
+      );
+    } catch (error) {
+      // Log el error pero no fallar la operación principal
+      this.logger.error(
+        `❌ [syncProductToGlobal] Failed to sync product ${product._id} to global collection for tenant ${tenantName}:`,
+        error,
+      );
+      // Opcional: Aquí podrías agregar el producto a una cola de retry
+    }
+  }
 
   public async assignProductsToMemberByEmail(
     memberEmail: string,
@@ -163,6 +456,7 @@ export class AssignmentsService {
     email: string,
     createProductDto: CreateProductDto,
     session?: ClientSession,
+    tenantName?: string,
   ) {
     const member = await this.membersService.findByEmailNotThrowError(email);
 
@@ -205,6 +499,28 @@ export class AssignmentsService {
 
     member.products.push(productData);
     await member.save({ session });
+
+    // 🔄 SYNC: Sincronizar producto asignado a colección global
+    if (tenantName) {
+      // Crear objeto producto completo para sincronización
+      const productForSync = {
+        _id: new Types.ObjectId(), // Generar ID nuevo
+        ...productData,
+        updatedAt: new Date(),
+      };
+
+      await this.syncProductToGlobal(
+        productForSync,
+        tenantName,
+        'members', // Producto está en colección members
+        {
+          memberId: member._id as any,
+          memberEmail: member.email,
+          memberName: `${member.firstName} ${member.lastName}`,
+          assignedAt: new Date(),
+        },
+      );
+    }
 
     return member;
   }
@@ -475,6 +791,16 @@ export class AssignmentsService {
       updateProductDto,
     );
 
+    // 🏭 WAREHOUSE ASSIGNMENT: Si location cambia a "FP warehouse", asignar warehouse
+    const warehouseFields = await this.assignWarehouseIfNeeded(
+      updateProductDto,
+      product,
+      tenantName,
+    );
+
+    // Agregar campos de warehouse a updatedFields si existen
+    Object.assign(updatedFields, warehouseFields);
+
     if (updatedFields.assignedEmail === '') {
       updatedFields.lastAssigned = product.assignedEmail;
     }
@@ -588,6 +914,21 @@ export class AssignmentsService {
     await this.productsService.findByIdAndDelete(tenantName, product._id!, {
       session,
     });
+
+    // 🔄 SYNC: Sincronizar producto movido a member
+    if (tenantName) {
+      await this.syncProductToGlobal(
+        updateData,
+        tenantName,
+        'members', // Ahora está en colección members
+        {
+          memberId: newMember._id as any,
+          memberEmail: newMember.email,
+          memberName: `${newMember.firstName} ${newMember.lastName}`,
+          assignedAt: new Date(),
+        },
+      );
+    }
   }
 
   // Metodo para mover un producto de un miembro a la colección de productos
@@ -596,14 +937,19 @@ export class AssignmentsService {
     product: ProductDocument,
     member: MemberDocument,
     updateProductDto: UpdateProductDto,
-    // tenantName?: string,
     connection: Connection,
+    tenantName?: string,
   ) {
-    console.log(
-      '📦 [moveToProductsCollection] Producto a mover:',
-      product._id?.toString(),
+    this.logger.log(
+      `📦 [moveToProductsCollection] Producto a mover: ${product._id?.toString()}`,
     );
-    console.log('📍 Origen: member -> Destino: products');
+    this.logger.log(
+      `📦 [moveToProductsCollection] Member: ${member.email} (${member.firstName} ${member.lastName})`,
+    );
+    this.logger.log(
+      `📦 [moveToProductsCollection] Product lastAssigned: ${product.lastAssigned}, assignedEmail: ${product.assignedEmail}`,
+    );
+    this.logger.log('📍 Origen: member -> Destino: products');
     const productIndex = member.products.findIndex(
       (prod) => prod._id!.toString() === product._id!.toString(),
     );
@@ -613,6 +959,20 @@ export class AssignmentsService {
     } else {
       throw new Error('Product not found in member collection');
     }
+
+    // 🏭 WAREHOUSE ASSIGNMENT: Si location es "FP warehouse", asignar warehouse
+    this.logger.log(
+      `🏭 [moveToProductsCollection] Checking warehouse assignment for location: ${updateProductDto.location}`,
+    );
+    const warehouseFields = await this.assignWarehouseIfNeeded(
+      updateProductDto,
+      product,
+      tenantName || '',
+      member.email, // ✅ FIX: Pasar el email del member de origen
+    );
+    this.logger.log(
+      `🏭 [moveToProductsCollection] Warehouse fields assigned: ${JSON.stringify(warehouseFields)}`,
+    );
 
     const updateData = {
       _id: product._id,
@@ -652,12 +1012,71 @@ export class AssignmentsService {
                 currencyCode: product.price.currencyCode,
               }
             : undefined,
+      // Agregar campos de warehouse si existen
+      ...warehouseFields,
     };
     const productModel = connection.model(Product.name, ProductSchema);
+
+    this.logger.log(
+      `📦 [moveToProductsCollection] Creating product with data: ${JSON.stringify(
+        {
+          _id: updateData._id,
+          location: updateData.location,
+          fpWarehouse: updateData.fpWarehouse,
+          lastAssigned: updateData.lastAssigned,
+        },
+      )}`,
+    );
+
     const createdProducts = await productModel.create([updateData], {
       session,
     });
     console.log('✅ Producto movido a colección de productos');
+
+    // 🔄 SYNC: Sincronizar producto movido a products collection
+    this.logger.log(
+      `🔄 [moveToProductsCollection] Starting sync to global collection...`,
+    );
+    this.logger.log(
+      `🔄 [moveToProductsCollection] tenantName: ${tenantName}, createdProducts.length: ${createdProducts.length}`,
+    );
+
+    if (tenantName && createdProducts.length > 0) {
+      this.logger.log(
+        `🔄 [moveToProductsCollection] Syncing product ${updateData._id} to global collection`,
+      );
+      this.logger.log(
+        `🔄 [moveToProductsCollection] updateData to sync: ${JSON.stringify({
+          _id: updateData._id,
+          location: updateData.location,
+          fpWarehouse: updateData.fpWarehouse,
+          lastAssigned: updateData.lastAssigned,
+          assignedEmail: updateData.assignedEmail,
+        })}`,
+      );
+
+      try {
+        await this.syncProductToGlobal(
+          updateData, // ✅ FIX: Usar updateData que incluye warehouse fields
+          tenantName,
+          'products', // Ahora está en colección products
+          undefined, // No hay memberData porque se desasignó
+        );
+        this.logger.log(
+          `✅ [moveToProductsCollection] Product ${updateData._id} synced successfully to global collection`,
+        );
+      } catch (error) {
+        this.logger.error(
+          `❌ [moveToProductsCollection] Error syncing product ${updateData._id} to global collection:`,
+          error,
+        );
+      }
+    } else {
+      this.logger.warn(
+        `⚠️ [moveToProductsCollection] Sync skipped - tenantName: ${tenantName}, createdProducts.length: ${createdProducts.length}`,
+      );
+    }
+
     return createdProducts;
   }
 
@@ -1204,6 +1623,7 @@ export class AssignmentsService {
         { ...updateDto, recoverable: isRecoverable, status: calculatedStatus },
         connection,
         member,
+        tenantName, // ✅ FIX: Pasar tenantName para sincronización
       );
       const updatedProduct = unassigned?.[0];
       if (!updatedProduct) throw new Error('Failed to unassign product');
@@ -1286,7 +1706,7 @@ export class AssignmentsService {
     updateProductDto: UpdateProductDto,
     connection: Connection,
     currentMember?: MemberDocument,
-    // tenantName?: string,
+    tenantName?: string,
   ) {
     if (currentMember) {
       console.log('🔁 Llamando a moveToProductsCollection...');
@@ -1295,8 +1715,8 @@ export class AssignmentsService {
         product,
         currentMember,
         updateProductDto,
-        // tenantName,
         connection,
+        tenantName,
       );
       return created;
     } else {
@@ -1486,6 +1906,14 @@ export class AssignmentsService {
       }
 
       await session.commitTransaction();
+
+      // 🔄 SYNC: Sincronizar productos después de bulk reassign
+      // Nota: Los productos individuales ya se sincronizan en updateWithinTransaction,
+      // pero agregamos este log para tracking
+      this.logger.debug(
+        `✅ Bulk reassign completed for ${items.length} products in tenant ${tenantName}`,
+      );
+
       return { message: 'Bulk reassign completed successfully' };
     } catch (error) {
       await session.abortTransaction();
