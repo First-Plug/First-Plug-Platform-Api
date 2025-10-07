@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Warehouse, WarehouseDocument } from '../schemas/warehouse.schema';
 import { countryCodes } from '../../shipments/helpers/countryCodes';
+import { SlackService } from '../../slack/slack.service';
 
 export interface WarehouseAssignmentResult {
   success: boolean;
@@ -22,6 +23,7 @@ export class WarehouseAssignmentService {
   constructor(
     @InjectModel(Warehouse.name, 'firstPlug')
     private warehouseModel: Model<WarehouseDocument>,
+    private readonly slackService: SlackService,
   ) {}
 
   /**
@@ -175,5 +177,100 @@ export class WarehouseAssignmentService {
     return allCountries.filter(
       (country) => !countriesWithActiveWarehouses.includes(country),
     );
+  }
+
+  /**
+   * Asignar producto a warehouse con notificación automática si es warehouse default
+   * Este método extiende assignProductToWarehouse con notificaciones Slack
+   */
+  async assignProductToWarehouseWithNotification(
+    originCountry: string,
+    tenantName: string,
+    productId: string,
+    productCategory: string,
+    userName: string,
+    action: 'assign' | 'reassign' | 'return',
+    productCount: number = 1,
+  ): Promise<WarehouseAssignmentResult> {
+    try {
+      // 1. Realizar asignación normal
+      const assignmentResult = await this.assignProductToWarehouse(
+        originCountry,
+        tenantName,
+        productId,
+        productCategory,
+      );
+
+      // 2. Si la asignación fue exitosa, verificar si es warehouse default
+      if (assignmentResult.success && assignmentResult.warehouseId) {
+        const countryCode = this.getCountryCode(originCountry);
+        if (countryCode) {
+          const isDefaultWarehouse = await this.checkIfWarehouseIsDefault(
+            countryCode,
+            assignmentResult.warehouseId,
+          );
+
+          // 3. Si es warehouse default, enviar notificación Slack
+          if (isDefaultWarehouse) {
+            this.logger.warn(
+              `🏭 Default warehouse detected for ${originCountry} - sending Slack notification`,
+            );
+
+            await this.slackService.notifyDefaultWarehouseUsage(
+              userName,
+              tenantName,
+              originCountry,
+              countryCode,
+              action,
+              productCount,
+            );
+
+            // Actualizar el resultado para indicar que se envió notificación
+            assignmentResult.requiresSlackNotification = true;
+            assignmentResult.slackMessage = `Default warehouse notification sent for ${originCountry}`;
+          }
+        }
+      }
+
+      return assignmentResult;
+    } catch (error) {
+      this.logger.error(
+        `Error in assignProductToWarehouseWithNotification:`,
+        error,
+      );
+      return {
+        success: false,
+        message: `Error during warehouse assignment with notification: ${error.message}`,
+        requiresSlackNotification: true,
+        slackMessage: `🔥 Error assigning product ${productId} for tenant ${tenantName}: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Verificar si un warehouse es de tipo default
+   */
+  private async checkIfWarehouseIsDefault(
+    countryCode: string,
+    warehouseId: string,
+  ): Promise<boolean> {
+    try {
+      const countryDoc = await this.warehouseModel.findOne({ countryCode });
+      if (!countryDoc) return false;
+
+      const warehouse = countryDoc.warehouses.find(
+        (w) => w._id.toString() === warehouseId && !w.isDeleted,
+      );
+
+      if (!warehouse) return false;
+
+      // Es default si: isActive = false Y partnerType = 'default'
+      return !warehouse.isActive && warehouse.partnerType === 'default';
+    } catch (error) {
+      this.logger.error(
+        `Error checking if warehouse is default: ${error.message}`,
+      );
+      return false;
+    }
   }
 }

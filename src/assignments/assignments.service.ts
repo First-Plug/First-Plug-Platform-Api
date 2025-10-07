@@ -39,7 +39,7 @@ import {
   CURRENCY_CODES,
 } from 'src/products/validations/create-product.zod';
 import { GlobalProductSyncService } from 'src/products/services/global-product-sync.service';
-import { WarehousesService } from 'src/warehouses/warehouses.service';
+import { WarehouseAssignmentService } from 'src/warehouses/services/warehouse-assignment.service';
 
 @Injectable()
 export class AssignmentsService {
@@ -62,7 +62,7 @@ export class AssignmentsService {
     @Inject(forwardRef(() => LogisticsService))
     private readonly logisticsService: LogisticsService,
     private readonly globalProductSyncService: GlobalProductSyncService,
-    private readonly warehousesService: WarehousesService,
+    private readonly warehouseAssignmentService: WarehouseAssignmentService,
   ) {}
 
   /**
@@ -104,14 +104,63 @@ export class AssignmentsService {
   }
 
   /**
+   * Determinar el status correcto del warehouse basado en el estado del producto
+   */
+  private determineWarehouseStatus(
+    product: any,
+    isComingToWarehouse: boolean = true,
+  ): 'STORED' | 'IN_TRANSIT_IN' | 'IN_TRANSIT_OUT' {
+    this.logger.log(
+      `🔄 [determineWarehouseStatus] Product ${product._id || 'unknown'}: status=${product.status}, fp_shipment=${product.fp_shipment}, activeShipment=${product.activeShipment}, location=${product.location}, isComingToWarehouse=${isComingToWarehouse}`,
+    );
+
+    // Si el producto tiene shipment activo
+    if (product.fp_shipment === true || product.activeShipment === true) {
+      const status = isComingToWarehouse ? 'IN_TRANSIT_IN' : 'IN_TRANSIT_OUT';
+      this.logger.log(
+        `📦 [determineWarehouseStatus] Product has active shipment → ${status}`,
+      );
+      return status;
+    }
+
+    // Si el producto está disponible y no tiene shipment activo
+    if (product.status === 'Available' && !product.activeShipment) {
+      this.logger.log(
+        `✅ [determineWarehouseStatus] Product is Available and no active shipment → STORED`,
+      );
+      return 'STORED';
+    }
+
+    // Si el producto está en tránsito hacia el warehouse
+    if (
+      (product.status === 'In Transit' ||
+        product.status === 'In Transit - Missing Data') &&
+      product.location === 'FP warehouse'
+    ) {
+      this.logger.log(
+        `🚚 [determineWarehouseStatus] Product in transit to FP warehouse → IN_TRANSIT_IN`,
+      );
+      return 'IN_TRANSIT_IN';
+    }
+
+    // Default: STORED
+    this.logger.log(`🏪 [determineWarehouseStatus] Default case → STORED`);
+    return 'STORED';
+  }
+
+  /**
    * Helper para asignar warehouse cuando location cambia a "FP warehouse"
    * @param memberEmail - Email del member de origen (opcional, si se conoce)
+   * @param userName - Nombre del usuario que realiza la acción (para notificaciones)
+   * @param action - Tipo de acción: assign, reassign, return
    */
   private async assignWarehouseIfNeeded(
     updateDto: UpdateProductDto,
     product: any,
     tenantName: string,
     memberEmail?: string,
+    userName?: string,
+    action?: 'assign' | 'reassign' | 'return',
   ): Promise<any> {
     // Solo procesar si location cambia a "FP warehouse"
     if (updateDto.location !== 'FP warehouse') {
@@ -180,74 +229,54 @@ export class AssignmentsService {
         `🏭 [assignWarehouseIfNeeded] Final origin country: ${originCountry}`,
       );
 
-      // 2. Buscar warehouse para ese país
+      // 2. 🔄 USAR SERVICIO TRANSVERSAL - WarehouseAssignmentService con notificación
       this.logger.log(
-        `🏭 [assignWarehouseIfNeeded] Searching warehouse for country: ${originCountry}`,
+        `🏭 [assignWarehouseIfNeeded] Using WarehouseAssignmentService for country: ${originCountry}`,
       );
-      const warehouse =
-        await this.warehousesService.findWarehouseForProductAssignment(
+
+      const assignmentResult =
+        await this.warehouseAssignmentService.assignProductToWarehouseWithNotification(
           originCountry,
+          tenantName,
+          product._id.toString(),
+          product.category || 'Unknown',
+          userName || 'Unknown User',
+          action || 'assign',
+          1,
         );
 
-      if (!warehouse) {
+      if (!assignmentResult.success || !assignmentResult.warehouseId) {
         this.logger.error(
-          `❌ [assignWarehouseIfNeeded] No warehouse found for country: ${originCountry}`,
+          `❌ [assignWarehouseIfNeeded] ${assignmentResult.message}`,
         );
         return {};
       }
 
-      this.logger.log(
-        `✅ [assignWarehouseIfNeeded] Warehouse found: ${warehouse.name || 'Unnamed'} (${warehouse._id})`,
+      // 3. Crear esquema fpWarehouse con datos del servicio transversal
+      // 🔄 DETERMINAR STATUS CORRECTO basado en el estado del producto
+      const warehouseStatus = this.determineWarehouseStatus(
+        { ...product, ...updateDto }, // Combinar datos actuales con updates
+        true, // isComingToWarehouse = true (producto viene hacia warehouse)
       );
 
-      // 3. Obtener el countryCode del país
-      let countryCode = 'AR'; // Default
-      let countryName = originCountry;
-
-      try {
-        // Intentar buscar por código primero (si originCountry es "BR")
-        let countryDoc =
-          await this.warehousesService.findByCountryCode(originCountry);
-
-        // Si no se encuentra por código, buscar por nombre
-        if (!countryDoc) {
-          countryDoc =
-            await this.warehousesService.findByCountry(originCountry);
-        }
-
-        if (countryDoc) {
-          countryCode = countryDoc.countryCode;
-          countryName = countryDoc.country;
-          this.logger.log(
-            `✅ [assignWarehouseIfNeeded] Country resolved: ${countryName} (${countryCode})`,
-          );
-        } else {
-          this.logger.warn(
-            `⚠️ [assignWarehouseIfNeeded] Could not resolve country ${originCountry}, using defaults`,
-          );
-        }
-      } catch (error) {
-        this.logger.warn(
-          `⚠️ [assignWarehouseIfNeeded] Error resolving country ${originCountry}, using AR as default:`,
-          error,
-        );
-      }
-
-      // 4. Crear esquema fpWarehouse
       const fpWarehouseData = {
-        warehouseId: warehouse._id,
-        warehouseCountryCode: countryCode,
-        warehouseName: warehouse.name || 'Default Warehouse',
+        warehouseId: assignmentResult.warehouseId,
+        warehouseCountryCode: assignmentResult.warehouseCountryCode!,
+        warehouseName: assignmentResult.warehouseName!,
         assignedAt: new Date(),
-        status: 'STORED' as const,
+        status: warehouseStatus,
       };
 
       this.logger.log(
-        `✅ [assignWarehouseIfNeeded] Assigned product ${product._id} to warehouse ${warehouse.name || 'Unnamed'} in ${countryName} (${countryCode})`,
+        `✅ [assignWarehouseIfNeeded] Assigned product ${product._id} to warehouse ${assignmentResult.warehouseName} in ${assignmentResult.country} (${assignmentResult.warehouseCountryCode}) with status: ${warehouseStatus}`,
       );
-      this.logger.log(
-        `✅ [assignWarehouseIfNeeded] fpWarehouse data: ${JSON.stringify(fpWarehouseData)}`,
-      );
+
+      // Log si se envió notificación Slack
+      if (assignmentResult.requiresSlackNotification) {
+        this.logger.log(
+          `📢 [assignWarehouseIfNeeded] Slack notification: ${assignmentResult.slackMessage}`,
+        );
+      }
 
       return { fpWarehouse: fpWarehouseData };
     } catch (error) {
@@ -370,6 +399,10 @@ export class AssignmentsService {
 
     if (!productsToUpdate.length) return [];
 
+    this.logger.log(
+      `🔄 [assignProductsToMemberByEmail] Found ${productsToUpdate.length} products with unknown email ${memberEmail} - updating global sync`,
+    );
+
     const productIds = productsToUpdate.map((p) => p._id);
 
     await ProductModel.updateMany(
@@ -377,6 +410,71 @@ export class AssignmentsService {
       { $set: { assignedMember: memberFullName } },
       { session },
     );
+
+    // 🔄 SYNC: Actualizar productos en global collection con memberData
+    // Estos productos ya existían en global pero sin memberData (unknown email)
+    // Ahora que se creó el member, actualizamos con memberData completa
+    for (const product of productsToUpdate) {
+      try {
+        await this.globalProductSyncService.syncProduct({
+          tenantId: tenantName,
+          tenantName: tenantName,
+          originalProductId: new Types.ObjectId(product._id!.toString()),
+          sourceCollection: 'products', // Aún están en products collection
+          name: product.name || '',
+          category: product.category,
+          status: product.status,
+          location: product.location || 'FP warehouse',
+          attributes:
+            product.attributes?.map((attr: any) => ({
+              key: attr.key,
+              value: String(attr.value),
+            })) || [],
+          serialNumber: product.serialNumber || undefined,
+          assignedEmail: memberEmail,
+          assignedMember: memberFullName,
+          lastAssigned: product.lastAssigned,
+          acquisitionDate: product.acquisitionDate,
+          price: product.price,
+          additionalInfo: product.additionalInfo,
+          productCondition: product.productCondition,
+          recoverable: product.recoverable,
+          fp_shipment: product.fp_shipment,
+          activeShipment: product.activeShipment,
+          fpWarehouse: product.fpWarehouse
+            ? {
+                warehouseId: new Types.ObjectId(
+                  product.fpWarehouse.warehouseId!.toString(),
+                ),
+                warehouseCountryCode: product.fpWarehouse.warehouseCountryCode!,
+                warehouseName: product.fpWarehouse.warehouseName!,
+                assignedAt: product.fpWarehouse.assignedAt,
+                status: this.determineWarehouseStatus(product, true),
+              }
+            : undefined,
+          // 👤 AHORA SÍ: Agregar memberData porque el member existe
+          memberData: {
+            memberId: new Types.ObjectId(), // Se actualizará cuando se mueva a members
+            memberEmail: memberEmail,
+            memberName: memberFullName,
+            assignedAt: new Date(),
+          },
+          sourceUpdatedAt:
+            (product as any).updatedAt instanceof Date
+              ? (product as any).updatedAt
+              : new Date(),
+        });
+
+        this.logger.log(
+          `✅ [assignProductsToMemberByEmail] Updated global sync for product ${product._id} with memberData`,
+        );
+      } catch (error) {
+        this.logger.error(
+          `❌ [assignProductsToMemberByEmail] Error updating global sync for product ${product._id}:`,
+          error,
+        );
+      }
+    }
 
     await ProductModel.deleteMany({ _id: { $in: productIds } }).session(
       session,
@@ -424,6 +522,69 @@ export class AssignmentsService {
     }
 
     await member.save({ session });
+
+    // 🔄 SYNC: Actualizar productos en global collection - ahora están en members collection
+    for (const product of reassignedProducts) {
+      try {
+        await this.globalProductSyncService.syncProduct({
+          tenantId: tenantName,
+          tenantName: tenantName,
+          originalProductId: new Types.ObjectId(product._id!.toString()),
+          sourceCollection: 'members', // AHORA están en members collection
+          name: product.name || '',
+          category: product.category,
+          status: product.status,
+          location: 'Employee', // Siempre Employee en members
+          attributes:
+            product.attributes?.map((attr: any) => ({
+              key: attr.key,
+              value: String(attr.value),
+            })) || [],
+          serialNumber: product.serialNumber || undefined,
+          assignedEmail: member.email,
+          assignedMember: fullName,
+          lastAssigned: product.lastAssigned,
+          acquisitionDate: product.acquisitionDate,
+          price: product.price,
+          additionalInfo: product.additionalInfo,
+          productCondition: product.productCondition,
+          recoverable: product.recoverable,
+          fp_shipment: product.fp_shipment,
+          activeShipment: product.activeShipment,
+          fpWarehouse: product.fpWarehouse
+            ? {
+                warehouseId: new Types.ObjectId(
+                  product.fpWarehouse.warehouseId!.toString(),
+                ),
+                warehouseCountryCode: product.fpWarehouse.warehouseCountryCode!,
+                warehouseName: product.fpWarehouse.warehouseName!,
+                assignedAt: product.fpWarehouse.assignedAt,
+                status: this.determineWarehouseStatus(product, false), // false = producto puede estar saliendo
+              }
+            : undefined,
+          // 👤 MEMBERDATA COMPLETA: Ahora con memberId real
+          memberData: {
+            memberId: member._id as any,
+            memberEmail: member.email,
+            memberName: fullName,
+            assignedAt: new Date(),
+          },
+          sourceUpdatedAt:
+            (product as any).updatedAt instanceof Date
+              ? (product as any).updatedAt
+              : new Date(),
+        });
+
+        this.logger.log(
+          `✅ [assignAndDetachProductsFromPool] Updated global sync for product ${product._id} - moved to members collection`,
+        );
+      } catch (error) {
+        this.logger.error(
+          `❌ [assignAndDetachProductsFromPool] Error updating global sync for product ${product._id}:`,
+          error,
+        );
+      }
+    }
 
     const productIds = products.map((p) => p._id);
 
@@ -785,6 +946,7 @@ export class AssignmentsService {
     product: ProductDocument,
     updateProductDto: UpdateProductDto,
     tenantName: string,
+    userId?: string,
   ) {
     const updatedFields = this.productsService.getUpdatedFields(
       product,
@@ -796,6 +958,13 @@ export class AssignmentsService {
       updateProductDto,
       product,
       tenantName,
+      undefined, // memberEmail - no disponible en este contexto
+      userId ? `User ${userId}` : 'Unknown User', // userName
+      updateProductDto.actionType === 'return'
+        ? 'return'
+        : updateProductDto.actionType === 'reassign'
+          ? 'reassign'
+          : 'assign', // action
     );
 
     // Agregar campos de warehouse a updatedFields si existen
@@ -939,6 +1108,7 @@ export class AssignmentsService {
     updateProductDto: UpdateProductDto,
     connection: Connection,
     tenantName?: string,
+    userId?: string,
   ) {
     this.logger.log(
       `📦 [moveToProductsCollection] Producto a mover: ${product._id?.toString()}`,
@@ -969,6 +1139,12 @@ export class AssignmentsService {
       product,
       tenantName || '',
       member.email, // ✅ FIX: Pasar el email del member de origen
+      userId ? `User ${userId}` : `${member.firstName} ${member.lastName}`, // userName
+      updateProductDto.actionType === 'return'
+        ? 'return'
+        : updateProductDto.actionType === 'reassign'
+          ? 'reassign'
+          : 'assign', // action
     );
     this.logger.log(
       `🏭 [moveToProductsCollection] Warehouse fields assigned: ${JSON.stringify(warehouseFields)}`,
@@ -1279,6 +1455,7 @@ export class AssignmentsService {
           recoverable: isRecoverable,
         },
         tenantName,
+        userId, // ✅ FIX: Pasar userId para notificaciones warehouse
       );
 
       await this.recordAssetHistoryIfNeeded(
@@ -1624,6 +1801,7 @@ export class AssignmentsService {
         connection,
         member,
         tenantName, // ✅ FIX: Pasar tenantName para sincronización
+        userId, // ✅ FIX: Pasar userId para notificaciones warehouse
       );
       const updatedProduct = unassigned?.[0];
       if (!updatedProduct) throw new Error('Failed to unassign product');
@@ -1707,6 +1885,7 @@ export class AssignmentsService {
     connection: Connection,
     currentMember?: MemberDocument,
     tenantName?: string,
+    userId?: string,
   ) {
     if (currentMember) {
       console.log('🔁 Llamando a moveToProductsCollection...');
@@ -1717,6 +1896,7 @@ export class AssignmentsService {
         updateProductDto,
         connection,
         tenantName,
+        userId,
       );
       return created;
     } else {

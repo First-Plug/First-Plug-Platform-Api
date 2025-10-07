@@ -145,4 +145,94 @@ export class SlackService {
       throw new Error('Failed to send notification to Slack');
     }
   }
+
+  /**
+   * Notificar cuando se envían productos a un warehouse default
+   * Indica que se necesita buscar un partner real en esa ubicación
+   */
+  async notifyDefaultWarehouseUsage(
+    userName: string,
+    tenantName: string,
+    countryName: string,
+    countryCode: string,
+    action: 'assign' | 'reassign' | 'return',
+    productCount: number = 1,
+  ): Promise<void> {
+    try {
+      // TODO: Definir canal específico para warehouse notifications
+      const webhookUrl = process.env.SLACK_WEBHOOK_URL_WAREHOUSE_ALERTS;
+
+      if (!webhookUrl) {
+        this.logger.warn(
+          'Slack webhook URL for warehouse alerts not configured (SLACK_WEBHOOK_URL_WAREHOUSE_ALERTS)',
+        );
+        return;
+      }
+
+      const actionText = {
+        assign: 'asignado',
+        reassign: 'reasignado',
+        return: 'devuelto',
+      }[action];
+
+      const productText = productCount === 1 ? 'producto' : 'productos';
+
+      const message = {
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `🏭 *Warehouse Default Detectado*`,
+            },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `El usuario *${userName}* del tenant *${tenantName}* ha ${actionText} ${productCount} ${productText} al warehouse del país *${countryName}* (${countryCode}).`,
+            },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `⚠️ *Es necesario buscar un partner en esta ubicación* para reemplazar el warehouse temporal.`,
+            },
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: `Tenant: ${tenantName} | País: ${countryName} | Acción: ${action}`,
+              },
+            ],
+          },
+        ],
+      };
+
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to send Slack message: ${response.statusText}`);
+      }
+
+      this.logger.log(
+        `📢 Slack notification sent: Default warehouse usage in ${countryName} by ${userName} (${tenantName})`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error sending default warehouse notification to Slack:`,
+        error,
+      );
+      // No lanzar error para no fallar la operación principal
+    }
+  }
 }

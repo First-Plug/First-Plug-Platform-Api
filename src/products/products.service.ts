@@ -62,6 +62,13 @@ export class ProductsService {
       memberName: string;
       assignedAt?: Date;
     },
+    fpWarehouseData?: {
+      warehouseId: Types.ObjectId;
+      warehouseCountryCode: string;
+      warehouseName: string;
+      assignedAt?: Date;
+      status?: 'STORED' | 'IN_TRANSIT_IN' | 'IN_TRANSIT_OUT';
+    },
   ): Promise<void> {
     try {
       await this.globalProductSyncService.syncProduct({
@@ -97,6 +104,9 @@ export class ProductsService {
 
         // Datos del member si aplica
         memberData: memberData,
+
+        // Datos del warehouse si aplica
+        fpWarehouse: fpWarehouseData,
 
         sourceUpdatedAt: (product as any).updatedAt || new Date(),
       });
@@ -464,6 +474,23 @@ export class ProductsService {
         string,
         { memberId: any; memberEmail: string; memberName: string }
       >();
+      // Map para guardar relación producto-warehouse para sincronización
+      const productWarehouseMap = new Map<
+        string,
+        {
+          warehouseId: Types.ObjectId;
+          warehouseCountryCode: string;
+          warehouseName: string;
+          assignedAt: Date;
+          status: 'STORED' | 'IN_TRANSIT_IN' | 'IN_TRANSIT_OUT';
+        }
+      >();
+
+      // 🏭 NOTA: Ya no se asigna warehouse por defecto en CSV
+      // Los productos FP warehouse deben venir con país específico desde el frontend
+      this.logger.log(
+        `🏭 [bulkCreate] CSV products with FP warehouse should have country specified`,
+      );
 
       const assignProductPromises = productsWithAssignedEmail.map(
         async (product) => {
@@ -536,12 +563,33 @@ export class ProductsService {
             ? productMemberMap.get(productId)
             : undefined;
 
+          // Obtener fpWarehouseData si el producto está en FP warehouse
+          const warehouseInfo = productId
+            ? productWarehouseMap.get(productId)
+            : undefined;
+
           this.logger.log(
-            `🔄 [bulkCreate] Product ${productId} - assignedEmail: ${product.assignedEmail}, memberInfo: ${memberInfo ? 'FOUND' : 'NOT FOUND'}`,
+            `🔄 [bulkCreate] Product ${productId} - assignedEmail: ${product.assignedEmail}, memberInfo: ${memberInfo ? 'FOUND' : 'NOT FOUND'}, warehouseInfo: ${warehouseInfo ? 'FOUND' : 'NOT FOUND'}`,
           );
 
-          // Sincronizar con memberData si existe
-          if (memberInfo) {
+          // Sincronizar con memberData y/o fpWarehouseData según corresponda
+          if (memberInfo && warehouseInfo) {
+            this.logger.log(
+              `🔄 [bulkCreate] Syncing with BOTH memberData AND warehouseData for product ${productId}`,
+            );
+            await this.syncProductToGlobal(
+              product,
+              tenantName,
+              sourceCollection,
+              {
+                memberId: memberInfo.memberId,
+                memberEmail: memberInfo.memberEmail,
+                memberName: memberInfo.memberName,
+                assignedAt: new Date(),
+              },
+              warehouseInfo,
+            );
+          } else if (memberInfo) {
             this.logger.log(
               `🔄 [bulkCreate] Syncing with memberData for product ${productId}`,
             );
@@ -556,9 +604,20 @@ export class ProductsService {
                 assignedAt: new Date(),
               },
             );
+          } else if (warehouseInfo) {
+            this.logger.log(
+              `🔄 [bulkCreate] Syncing with warehouseData for product ${productId}`,
+            );
+            await this.syncProductToGlobal(
+              product,
+              tenantName,
+              sourceCollection,
+              undefined, // no memberData
+              warehouseInfo,
+            );
           } else {
             this.logger.log(
-              `🔄 [bulkCreate] Syncing WITHOUT memberData for product ${productId}`,
+              `🔄 [bulkCreate] Syncing WITHOUT memberData or warehouseData for product ${productId}`,
             );
             await this.syncProductToGlobal(
               product,
@@ -1537,6 +1596,10 @@ export class ProductsService {
   // TODO: extraer lógica de recuperación desde miembros y limpieza a AssignmentsService
   // TODO: dividir en helpers internos para mayor trazabilidad y testeabilidad
   async softDelete(id: ObjectId, userId: string, tenantName: string) {
+    console.log(
+      `🗑️ [softDelete] Starting deletion for product ${id} in tenant ${tenantName} by user ${userId}`,
+    );
+
     await new Promise((resolve) => process.nextTick(resolve));
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
@@ -1547,9 +1610,11 @@ export class ProductsService {
     while (retries < maxRetries) {
       try {
         session.startTransaction();
-        const ProductModel = (await this.tenantModelRegistry.getProductModel(
-          tenantName,
-        )) as any;
+        // Usar el modelo de la misma conexión para evitar conflictos de sesión
+        const ProductModel = connection.model('Product', ProductSchema) as any;
+        console.log(
+          `🔍 [softDelete] Looking for product ${id} in products collection`,
+        );
         const product = await ProductModel.findById(id).session(session);
         const changes: {
           oldData: Product | null;
@@ -1560,29 +1625,57 @@ export class ProductsService {
         };
 
         if (product) {
+          console.log(
+            `✅ [softDelete] Found product ${id} in products collection: ${product.name} (${product.category})`,
+          );
+          console.log(
+            `📊 [softDelete] Product status: ${product.status}, activeShipment: ${product.activeShipment}, location: ${product.location}`,
+          );
+
           // ✅ VALIDACIÓN: No permitir eliminar productos con active shipment
           if (product.activeShipment) {
+            console.error(
+              `❌ [softDelete] Cannot delete product ${id} - has active shipment`,
+            );
             throw new BadRequestException(
               'Cannot delete product that is part of an active shipment',
             );
           }
 
+          console.log(
+            `🔄 [softDelete] Updating product ${id} - setting status to Deprecated and isDeleted to true`,
+          );
           product.status = 'Deprecated';
-          product.lastSerialNumber = product.serialNumber;
+          product.lastSerialNumber = product.serialNumber || undefined;
           product.serialNumber = undefined;
           product.isDeleted = true;
 
           await product.save();
+          console.log(`💾 [softDelete] Product ${id} saved successfully`);
+
           await ProductModel.softDelete({ _id: id }, { session });
+          console.log(
+            `🗑️ [softDelete] Product ${id} soft deleted from products collection`,
+          );
 
           // 🔄 SYNC: Marcar producto como eliminado en colección global
+          console.log(
+            `🌐 [softDelete] Syncing deletion to global collection for product ${id}`,
+          );
           await this.globalProductSyncService.markProductAsDeleted(
             tenantName, // Se corregirá automáticamente en GlobalProductSyncService
             id as any,
+            product.lastSerialNumber, // Pasar el lastSerialNumber para sincronización
+          );
+          console.log(
+            `✅ [softDelete] Global sync completed for product ${id}`,
           );
 
           changes.oldData = product;
         } else {
+          console.log(
+            `❌ [softDelete] Product ${id} not found in products collection, checking members collection`,
+          );
           console.log(
             '🪵 ID recibido en Logistics antes de getProductByMembers desde softDelete:',
             id,
@@ -1595,6 +1688,9 @@ export class ProductsService {
               connection,
               session,
             );
+          console.log(
+            `🔍 [softDelete] Member product search result: ${memberProduct ? 'Found' : 'Not found'}`,
+          );
 
           if (memberProduct && memberProduct.product) {
             // ✅ VALIDACIÓN: No permitir eliminar productos con active shipment
@@ -1629,6 +1725,19 @@ export class ProductsService {
 
             await ProductModel.softDelete({ _id: id }, { session });
 
+            // 🔄 SYNC: Marcar producto como eliminado en colección global
+            console.log(
+              `🌐 [softDelete] Syncing member product deletion to global collection for product ${id}`,
+            );
+            await this.globalProductSyncService.markProductAsDeleted(
+              tenantName,
+              id as any,
+              memberProduct.product.serialNumber || undefined, // Pasar el serialNumber original
+            );
+            console.log(
+              `✅ [softDelete] Global sync completed for member product ${id}`,
+            );
+
             const memberId = memberProduct.member._id;
             await this.assignmentsService.deleteProductFromMember(
               memberId,
@@ -1652,15 +1761,21 @@ export class ProductsService {
           },
         });
 
+        console.log(
+          `📝 [softDelete] Creating history record for product ${id}`,
+        );
         await session.commitTransaction();
+        console.log(
+          `✅ [softDelete] Transaction committed successfully for product ${id}`,
+        );
         session.endSession();
 
+        console.log(
+          `🎉 [softDelete] Product ${id} deletion completed successfully`,
+        );
         return { message: `Product with id ${id} has been soft deleted` };
       } catch (error) {
-        console.error(
-          `Error en softDelete para el producto con id ${id}:`,
-          error,
-        );
+        console.error(`❌ [softDelete] Error deleting product ${id}:`, error);
 
         if (error.message.includes('catalog changes')) {
           retries++;
