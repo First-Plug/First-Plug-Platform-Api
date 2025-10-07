@@ -162,10 +162,21 @@ export class AssignmentsService {
     userName?: string,
     action?: 'assign' | 'reassign' | 'return',
   ): Promise<any> {
+    console.log(
+      `🔍 [assignWarehouseIfNeeded] ENTRY - location: ${updateDto.location}`,
+    );
+
     // Solo procesar si location cambia a "FP warehouse"
     if (updateDto.location !== 'FP warehouse') {
+      console.log(
+        `🔍 [assignWarehouseIfNeeded] SKIP - location is not FP warehouse: ${updateDto.location}`,
+      );
       return {};
     }
+
+    console.log(
+      `🔍 [assignWarehouseIfNeeded] PROCESSING - location is FP warehouse`,
+    );
 
     try {
       this.logger.log(
@@ -1134,6 +1145,22 @@ export class AssignmentsService {
     this.logger.log(
       `🏭 [moveToProductsCollection] Checking warehouse assignment for location: ${updateProductDto.location}`,
     );
+
+    console.log(`🔍 [moveToProductsCollection] DEBUG - updateProductDto:`, {
+      location: updateProductDto.location,
+      actionType: updateProductDto.actionType,
+      assignedEmail: updateProductDto.assignedEmail,
+    });
+    console.log(`🔍 [moveToProductsCollection] DEBUG - product:`, {
+      _id: product._id,
+      lastAssigned: product.lastAssigned,
+      assignedEmail: product.assignedEmail,
+    });
+    console.log(`🔍 [moveToProductsCollection] DEBUG - member:`, {
+      email: member.email,
+      country: member.country,
+    });
+
     const warehouseFields = await this.assignWarehouseIfNeeded(
       updateProductDto,
       product,
@@ -1145,6 +1172,11 @@ export class AssignmentsService {
         : updateProductDto.actionType === 'reassign'
           ? 'reassign'
           : 'assign', // action
+    );
+
+    console.log(
+      `🔍 [moveToProductsCollection] DEBUG - warehouseFields result:`,
+      warehouseFields,
     );
     this.logger.log(
       `🏭 [moveToProductsCollection] Warehouse fields assigned: ${JSON.stringify(warehouseFields)}`,
@@ -1805,6 +1837,31 @@ export class AssignmentsService {
       );
       const updatedProduct = unassigned?.[0];
       if (!updatedProduct) throw new Error('Failed to unassign product');
+
+      // 🏭 WAREHOUSE ASSIGNMENT: Si location es "FP warehouse", asignar warehouse
+      if (updateDto.location === 'FP warehouse') {
+        this.logger.log(
+          `🏭 [handleProductFromProductsCollection] Product moving to FP warehouse, assigning warehouse`,
+        );
+        const warehouseFields = await this.assignWarehouseIfNeeded(
+          updateDto,
+          updatedProduct,
+          tenantName,
+          product.lastAssigned || product.assignedEmail, // memberEmail de origen
+          userId ? `User ${userId}` : 'Unknown User', // userName
+          updateDto.actionType === 'return' ? 'return' : 'reassign', // action
+        );
+
+        // Aplicar los campos de warehouse al producto actualizado
+        if (warehouseFields.fpWarehouse) {
+          Object.assign(updatedProduct, {
+            fpWarehouse: warehouseFields.fpWarehouse,
+          });
+          this.logger.log(
+            `🏭 [handleProductFromProductsCollection] Warehouse fields applied: ${JSON.stringify(warehouseFields.fpWarehouse)}`,
+          );
+        }
+      }
 
       let shipment: ShipmentDocument | null = null;
 

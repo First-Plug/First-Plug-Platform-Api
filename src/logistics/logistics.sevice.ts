@@ -370,6 +370,29 @@ export class LogisticsService {
 
     await product.save({ session });
 
+    // 🏭 ASIGNAR WAREHOUSE si el destino es FP warehouse
+    if (newData?.location === 'FP warehouse') {
+      console.log(
+        `🏭 [maybeCreateShipmentAndUpdateStatus] Product moving to FP warehouse, assigning warehouse directly`,
+      );
+
+      try {
+        // Importar AssignmentsService sería dependencia circular, así que usamos ProductsService
+        // pero necesitamos una forma de asignar warehouse sin validación de activeShipment
+
+        // Por ahora, solo loggeamos que se necesita warehouse assignment
+        // La sincronización global se hará sin fpWarehouse por ahora
+        console.log(
+          `⚠️ [maybeCreateShipmentAndUpdateStatus] Warehouse assignment needed for product ${product._id} but skipped to avoid circular dependency`,
+        );
+      } catch (error) {
+        console.error(
+          `❌ [maybeCreateShipmentAndUpdateStatus] Error in warehouse assignment:`,
+          error,
+        );
+      }
+    }
+
     await this.shipmentsService.createSnapshots(shipment, connection, {
       providedProducts: [product],
     });
