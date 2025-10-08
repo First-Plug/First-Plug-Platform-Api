@@ -22,6 +22,7 @@ export interface SyncProductParams {
   location: string;
   attributes?: Array<{ key: string; value: string }>;
   serialNumber?: string;
+  lastSerialNumber?: string;
   assignedEmail?: string;
   assignedMember?: string;
   lastAssigned?: string;
@@ -151,6 +152,7 @@ export class GlobalProductSyncService {
         location: params.location,
         attributes: params.attributes || [],
         serialNumber: params.serialNumber,
+        lastSerialNumber: params.lastSerialNumber,
         assignedEmail: params.assignedEmail,
         assignedMember: params.assignedMember,
         lastAssigned: calculatedLastAssigned,
@@ -230,15 +232,20 @@ export class GlobalProductSyncService {
 
   /**
    * Marcar producto como eliminado (soft delete)
+   * Actualiza status, serialNumber, lastSerialNumber e isDeleted
    */
   async markProductAsDeleted(
     tenantId: string,
     originalProductId: Types.ObjectId,
+    lastSerialNumber?: string,
   ): Promise<void> {
     try {
       // Resolver tenantId real si viene como string
       let resolvedTenantId: any = tenantId;
       if (typeof tenantId === 'string') {
+        this.logger.log(
+          `🔍 [markProductAsDeleted] Resolving tenant name ${tenantId} to ObjectId`,
+        );
         // Buscar el tenant real por tenantName
         const tenantsCollection =
           this.globalProductModel.db.collection('tenants');
@@ -247,25 +254,48 @@ export class GlobalProductSyncService {
         });
         if (tenant) {
           resolvedTenantId = tenant._id;
+        } else {
+          this.logger.error(
+            `❌ [markProductAsDeleted] Tenant ${tenantId} not found in tenants collection`,
+          );
         }
       }
 
-      await this.globalProductModel.updateOne(
-        { tenantId: resolvedTenantId, originalProductId },
-        {
-          $set: {
-            isDeleted: true,
-            lastSyncedAt: new Date(),
-          },
-        },
+      this.logger.log(
+        `🔄 [markProductAsDeleted] Updating global product with tenantId: ${resolvedTenantId}, originalProductId: ${originalProductId}`,
       );
 
-      this.logger.debug(
-        `🗑️ Marked product ${originalProductId} as deleted in tenant ${tenantId}`,
+      // Preparar la actualización completa del soft delete
+      const updateFields: any = {
+        status: 'Deprecated',
+        isDeleted: true,
+        serialNumber: null,
+        sourceCollection: 'products', // Los productos eliminados siempre van a la colección products
+        lastSyncedAt: new Date(),
+      };
+
+      // Agregar lastSerialNumber si se proporciona
+      if (lastSerialNumber) {
+        updateFields.lastSerialNumber = lastSerialNumber;
+      }
+
+      const updateResult = await this.globalProductModel.updateOne(
+        { tenantId: resolvedTenantId, originalProductId },
+        { $set: updateFields },
       );
+
+      if (updateResult.matchedCount === 0) {
+        this.logger.warn(
+          `⚠️ [markProductAsDeleted] No global product found for tenantId: ${resolvedTenantId}, originalProductId: ${originalProductId}`,
+        );
+      } else {
+        this.logger.log(
+          `✅ [markProductAsDeleted] Successfully marked product ${originalProductId} as deleted in tenant ${tenantId}`,
+        );
+      }
     } catch (error) {
       this.logger.error(
-        `❌ Error marking product as deleted ${originalProductId} from tenant ${tenantId}:`,
+        `❌ [markProductAsDeleted] Error marking product as deleted ${originalProductId} from tenant ${tenantId}:`,
         error,
       );
       throw error;
@@ -766,4 +796,27 @@ export class GlobalProductSyncService {
     }
   }
   */
+
+  /**
+   * Buscar un producto en la colección global para preservar datos existentes
+   */
+  async findGlobalProduct(
+    tenantName: string,
+    originalProductId: Types.ObjectId,
+  ): Promise<GlobalProductDocument | null> {
+    try {
+      const globalProduct = await this.globalProductModel.findOne({
+        tenantName: tenantName,
+        originalProductId: originalProductId,
+      });
+
+      return globalProduct;
+    } catch (error) {
+      this.logger.error(
+        `❌ Error finding global product ${originalProductId} for tenant ${tenantName}:`,
+        error,
+      );
+      return null;
+    }
+  }
 }

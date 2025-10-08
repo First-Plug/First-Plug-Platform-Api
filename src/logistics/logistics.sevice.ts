@@ -42,6 +42,7 @@ import { AddressData } from 'src/infra/event-bus/tenant-address-update.event';
 import { MembersService } from 'src/members/members.service';
 import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
+import { GlobalProductSyncService } from 'src/products/services/global-product-sync.service';
 
 @Injectable()
 export class LogisticsService {
@@ -64,6 +65,7 @@ export class LogisticsService {
     private readonly officesService: OfficesService,
     private readonly usersService: UsersService,
     private readonly eventsGateway: EventsGateway,
+    private readonly globalProductSyncService: GlobalProductSyncService,
   ) {}
 
   /**
@@ -369,6 +371,29 @@ export class LogisticsService {
     updateDto.status = newStatus;
 
     await product.save({ session });
+
+    // 🏭 ASIGNAR WAREHOUSE si el destino es FP warehouse
+    if (newData?.location === 'FP warehouse') {
+      console.log(
+        `🏭 [maybeCreateShipmentAndUpdateStatus] Product moving to FP warehouse, assigning warehouse directly`,
+      );
+
+      try {
+        // Importar AssignmentsService sería dependencia circular, así que usamos ProductsService
+        // pero necesitamos una forma de asignar warehouse sin validación de activeShipment
+
+        // Por ahora, solo loggeamos que se necesita warehouse assignment
+        // La sincronización global se hará sin fpWarehouse por ahora
+        console.log(
+          `⚠️ [maybeCreateShipmentAndUpdateStatus] Warehouse assignment needed for product ${product._id} but skipped to avoid circular dependency`,
+        );
+      } catch (error) {
+        console.error(
+          `❌ [maybeCreateShipmentAndUpdateStatus] Error in warehouse assignment:`,
+          error,
+        );
+      }
+    }
 
     await this.shipmentsService.createSnapshots(shipment, connection, {
       providedProducts: [product],
@@ -871,6 +896,85 @@ export class LogisticsService {
         product.status = status;
         await product.save();
         assignedEmail = product.assignedEmail;
+
+        // 🌐 SINCRONIZAR A GLOBAL COLLECTION - PRESERVANDO DATOS EXISTENTES
+        try {
+          // Obtener datos existentes del producto global para preservar fpWarehouse y memberData
+          const existingGlobalProduct =
+            await this.globalProductSyncService.findGlobalProduct(
+              tenantName,
+              new Types.ObjectId(productId),
+            );
+
+          await this.globalProductSyncService.syncProduct({
+            tenantId: tenantName,
+            tenantName: tenantName,
+            originalProductId: new Types.ObjectId(productId),
+            sourceCollection: 'products',
+            name: product.name || '',
+            category: product.category || '',
+            status: status,
+            location: product.location || '',
+            attributes: (product.attributes || []).map((attr) => ({
+              key: attr.key || '',
+              value: String(attr.value || ''),
+            })),
+            serialNumber: product.serialNumber || undefined,
+            assignedEmail: product.assignedEmail,
+            assignedMember: product.assignedMember,
+            lastAssigned: product.lastAssigned,
+            acquisitionDate: product.acquisitionDate,
+            price: product.price,
+            additionalInfo: product.additionalInfo,
+            productCondition: product.productCondition,
+            recoverable: product.recoverable,
+            fp_shipment: false,
+            activeShipment: false,
+            isDeleted: product.isDeleted,
+            // 🔄 PRESERVAR fpWarehouse existente si el producto está en FP warehouse
+            fpWarehouse:
+              product.location === 'FP warehouse'
+                ? existingGlobalProduct?.fpWarehouse
+                  ? {
+                      warehouseId: existingGlobalProduct.fpWarehouse
+                        .warehouseId as any,
+                      warehouseCountryCode:
+                        existingGlobalProduct.fpWarehouse.warehouseCountryCode,
+                      warehouseName:
+                        existingGlobalProduct.fpWarehouse.warehouseName,
+                      assignedAt: existingGlobalProduct.fpWarehouse.assignedAt,
+                      status: 'STORED' as const, // Producto cancelado en FP warehouse = STORED
+                    }
+                  : product.fpWarehouse && product.fpWarehouse.warehouseId
+                    ? {
+                        warehouseId: product.fpWarehouse.warehouseId as any,
+                        warehouseCountryCode:
+                          product.fpWarehouse.warehouseCountryCode || '',
+                        warehouseName: product.fpWarehouse.warehouseName || '',
+                        assignedAt: product.fpWarehouse.assignedAt,
+                        status: 'STORED' as const,
+                      }
+                    : undefined
+                : undefined,
+            // 🔄 PRESERVAR memberData existente si existe
+            memberData: existingGlobalProduct?.memberData
+              ? {
+                  memberId: existingGlobalProduct.memberData.memberId as any,
+                  memberEmail: existingGlobalProduct.memberData.memberEmail,
+                  memberName: existingGlobalProduct.memberData.memberName,
+                  assignedAt: existingGlobalProduct.memberData.assignedAt,
+                }
+              : undefined,
+          });
+          console.log(
+            `🌐 [cancelAllProductsInShipment] Global sync completed for product ${productId} - fpWarehouse preserved: ${!!existingGlobalProduct?.fpWarehouse}`,
+          );
+        } catch (error) {
+          console.error(
+            `❌ [cancelAllProductsInShipment] Global sync failed for product ${productId}:`,
+            error,
+          );
+        }
       } else {
         const member = await MemberModel.findOne({
           'products._id': new Types.ObjectId(productId),
@@ -910,6 +1014,69 @@ export class LogisticsService {
             id: productId,
             status,
           });
+
+          // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+          try {
+            await this.globalProductSyncService.syncProduct({
+              tenantId: tenantName,
+              tenantName: tenantName,
+              originalProductId: new Types.ObjectId(productId),
+              sourceCollection: 'members',
+              name: embeddedProduct.name || '',
+              category: embeddedProduct.category || '',
+              status: status,
+              location: embeddedProduct.location || '',
+              attributes: (embeddedProduct.attributes || []).map((attr) => ({
+                key: attr.key || '',
+                value: String(attr.value || ''),
+              })),
+              serialNumber: embeddedProduct.serialNumber || undefined,
+              assignedEmail: embeddedProduct.assignedEmail,
+              assignedMember: embeddedProduct.assignedMember,
+              lastAssigned: embeddedProduct.lastAssigned,
+              acquisitionDate: embeddedProduct.acquisitionDate,
+              price: embeddedProduct.price,
+              additionalInfo: embeddedProduct.additionalInfo,
+              productCondition: embeddedProduct.productCondition,
+              recoverable: embeddedProduct.recoverable,
+              fp_shipment: false,
+              activeShipment: false,
+              isDeleted: embeddedProduct.isDeleted,
+              fpWarehouse:
+                embeddedProduct.fpWarehouse &&
+                embeddedProduct.fpWarehouse.warehouseId
+                  ? {
+                      warehouseId: embeddedProduct.fpWarehouse
+                        .warehouseId as any,
+                      warehouseCountryCode:
+                        embeddedProduct.fpWarehouse.warehouseCountryCode || '',
+                      warehouseName:
+                        embeddedProduct.fpWarehouse.warehouseName || '',
+                      assignedAt: embeddedProduct.fpWarehouse.assignedAt,
+                      status:
+                        embeddedProduct.fpWarehouse.status === 'IN_TRANSIT'
+                          ? undefined
+                          : embeddedProduct.fpWarehouse.status,
+                    }
+                  : undefined,
+              memberData: member
+                ? {
+                    memberId: member._id as any,
+                    memberEmail: member.email,
+                    memberName: `${member.firstName} ${member.lastName}`,
+                    assignedAt: new Date(),
+                  }
+                : undefined,
+            });
+            console.log(
+              `🌐 [cancelAllProductsInShipment] Global sync completed for member product ${productId}`,
+            );
+          } catch (error) {
+            console.error(
+              `❌ [cancelAllProductsInShipment] Global sync failed for member product ${productId}:`,
+              error,
+            );
+          }
         } else {
           console.log('❌ Product not found in any collection');
           continue;
@@ -1122,6 +1289,85 @@ export class LogisticsService {
       );
       await product.save();
 
+      // 🌐 SINCRONIZAR A GLOBAL COLLECTION - PRESERVANDO DATOS EXISTENTES
+      try {
+        // Obtener datos existentes del producto global para preservar fpWarehouse y memberData
+        const existingGlobalProduct =
+          await this.globalProductSyncService.findGlobalProduct(
+            tenantName,
+            new Types.ObjectId(productId),
+          );
+
+        await this.globalProductSyncService.syncProduct({
+          tenantId: tenantName,
+          tenantName: tenantName,
+          originalProductId: new Types.ObjectId(productId),
+          sourceCollection: 'products',
+          name: product.name || '',
+          category: product.category || '',
+          status: product.status,
+          location: product.location || '',
+          attributes: (product.attributes || []).map((attr) => ({
+            key: attr.key || '',
+            value: String(attr.value || ''),
+          })),
+          serialNumber: product.serialNumber || undefined,
+          assignedEmail: product.assignedEmail,
+          assignedMember: product.assignedMember,
+          lastAssigned: product.lastAssigned,
+          acquisitionDate: product.acquisitionDate,
+          price: product.price,
+          additionalInfo: product.additionalInfo,
+          productCondition: product.productCondition,
+          recoverable: product.recoverable,
+          fp_shipment: false,
+          activeShipment: false,
+          isDeleted: product.isDeleted,
+          // 🔄 PRESERVAR fpWarehouse existente si el producto está en FP warehouse
+          fpWarehouse:
+            product.location === 'FP warehouse'
+              ? existingGlobalProduct?.fpWarehouse
+                ? {
+                    warehouseId: existingGlobalProduct.fpWarehouse
+                      .warehouseId as any,
+                    warehouseCountryCode:
+                      existingGlobalProduct.fpWarehouse.warehouseCountryCode,
+                    warehouseName:
+                      existingGlobalProduct.fpWarehouse.warehouseName,
+                    assignedAt: existingGlobalProduct.fpWarehouse.assignedAt,
+                    status: 'STORED' as const, // Producto recibido = STORED
+                  }
+                : product.fpWarehouse && product.fpWarehouse.warehouseId
+                  ? {
+                      warehouseId: product.fpWarehouse.warehouseId as any,
+                      warehouseCountryCode:
+                        product.fpWarehouse.warehouseCountryCode || '',
+                      warehouseName: product.fpWarehouse.warehouseName || '',
+                      assignedAt: product.fpWarehouse.assignedAt,
+                      status: 'STORED' as const,
+                    }
+                  : undefined
+              : undefined,
+          // 🔄 PRESERVAR memberData existente si existe
+          memberData: existingGlobalProduct?.memberData
+            ? {
+                memberId: existingGlobalProduct.memberData.memberId as any,
+                memberEmail: existingGlobalProduct.memberData.memberEmail,
+                memberName: existingGlobalProduct.memberData.memberName,
+                assignedAt: existingGlobalProduct.memberData.assignedAt,
+              }
+            : undefined,
+        });
+        console.log(
+          `🌐 [updateProductOnShipmentReceived] Global sync completed for product ${productId} - fpWarehouse preserved: ${!!existingGlobalProduct?.fpWarehouse}`,
+        );
+      } catch (error) {
+        console.error(
+          `❌ [updateProductOnShipmentReceived] Global sync failed for product ${productId}:`,
+          error,
+        );
+      }
+
       return;
     }
 
@@ -1154,6 +1400,66 @@ export class LogisticsService {
             },
           },
         );
+
+        // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+        try {
+          await this.globalProductSyncService.syncProduct({
+            tenantId: tenantName,
+            tenantName: tenantName,
+            originalProductId: new Types.ObjectId(productId),
+            sourceCollection: 'members',
+            name: embeddedProduct.name || '',
+            category: embeddedProduct.category || '',
+            status: newStatus,
+            location: 'Employee',
+            attributes: (embeddedProduct.attributes || []).map((attr) => ({
+              key: attr.key || '',
+              value: String(attr.value || ''),
+            })),
+            serialNumber: embeddedProduct.serialNumber || undefined,
+            assignedEmail: embeddedProduct.assignedEmail,
+            assignedMember: embeddedProduct.assignedMember,
+            lastAssigned: embeddedProduct.lastAssigned,
+            acquisitionDate: embeddedProduct.acquisitionDate,
+            price: embeddedProduct.price,
+            additionalInfo: embeddedProduct.additionalInfo,
+            productCondition: embeddedProduct.productCondition,
+            recoverable: embeddedProduct.recoverable,
+            fp_shipment: false,
+            activeShipment: false,
+            isDeleted: embeddedProduct.isDeleted,
+            fpWarehouse:
+              embeddedProduct.fpWarehouse &&
+              embeddedProduct.fpWarehouse.warehouseId
+                ? {
+                    warehouseId: embeddedProduct.fpWarehouse.warehouseId as any,
+                    warehouseCountryCode:
+                      embeddedProduct.fpWarehouse.warehouseCountryCode || '',
+                    warehouseName:
+                      embeddedProduct.fpWarehouse.warehouseName || '',
+                    assignedAt: embeddedProduct.fpWarehouse.assignedAt,
+                    status:
+                      embeddedProduct.fpWarehouse.status === 'IN_TRANSIT'
+                        ? undefined
+                        : embeddedProduct.fpWarehouse.status,
+                  }
+                : undefined,
+            memberData: {
+              memberId: memberWithProduct._id as any,
+              memberEmail: memberWithProduct.email,
+              memberName: `${memberWithProduct.firstName} ${memberWithProduct.lastName}`,
+              assignedAt: new Date(),
+            },
+          });
+          console.log(
+            `🌐 [updateProductOnShipmentReceived] Global sync completed for member product ${productId}`,
+          );
+        } catch (error) {
+          console.error(
+            `❌ [updateProductOnShipmentReceived] Global sync failed for member product ${productId}:`,
+            error,
+          );
+        }
       }
     }
   }
@@ -1530,7 +1836,10 @@ export class LogisticsService {
 
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
-    const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
+    const ShipmentModel = connection.model<ShipmentDocument>(
+      'Shipment',
+      ShipmentSchema,
+    );
     const originalShipment = await ShipmentModel.findById(shipmentId);
 
     if (!originalShipment) {
@@ -1675,6 +1984,7 @@ export class LogisticsService {
     productId: string,
     connection: mongoose.Connection,
     session: ClientSession,
+    tenantName?: string,
   ): Promise<ProductDocument | null> {
     const ProductModel =
       connection.models.Product || connection.model('Product', ProductSchema);
@@ -1687,6 +1997,46 @@ export class LogisticsService {
     if (product && product.status === 'In Transit') {
       product.status = 'In Transit - Missing Data';
       await product.save({ session });
+
+      // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+      if (tenantName) {
+        try {
+          await this.globalProductSyncService.syncProduct({
+            tenantId: tenantName,
+            tenantName: tenantName,
+            originalProductId: new Types.ObjectId(productId),
+            sourceCollection: 'products',
+            name: product.name || '',
+            category: product.category || '',
+            status: 'In Transit - Missing Data',
+            location: product.location || '',
+            attributes: product.attributes || [],
+            serialNumber: product.serialNumber,
+            assignedEmail: product.assignedEmail,
+            assignedMember: product.assignedMember,
+            lastAssigned: product.lastAssigned,
+            acquisitionDate: product.acquisitionDate,
+            price: product.price,
+            additionalInfo: product.additionalInfo,
+            productCondition: product.productCondition,
+            recoverable: product.recoverable,
+            fp_shipment: product.fp_shipment,
+            activeShipment: product.activeShipment,
+            imageUrl: product.imageUrl,
+            isDeleted: product.isDeleted,
+            fpWarehouse: product.fpWarehouse,
+          });
+          console.log(
+            `🌐 [updateProductStatusToMissingData] Global sync completed for product ${productId}`,
+          );
+        } catch (error) {
+          console.error(
+            `❌ [updateProductStatusToMissingData] Global sync failed for product ${productId}:`,
+            error,
+          );
+        }
+      }
+
       return product;
     }
     if (!product) {
@@ -1758,6 +2108,51 @@ export class LogisticsService {
           assignedMember: `${member.firstName} ${member.lastName}`,
         };
 
+        // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+        if (tenantName) {
+          try {
+            await this.globalProductSyncService.syncProduct({
+              tenantId: tenantName,
+              tenantName: tenantName,
+              originalProductId: new Types.ObjectId(productId),
+              sourceCollection: 'members',
+              name: enrichedProduct.name || '',
+              category: enrichedProduct.category || '',
+              status: 'In Transit - Missing Data',
+              location: enrichedProduct.location || '',
+              attributes: enrichedProduct.attributes || [],
+              serialNumber: enrichedProduct.serialNumber,
+              assignedEmail: enrichedProduct.assignedEmail,
+              assignedMember: enrichedProduct.assignedMember,
+              lastAssigned: enrichedProduct.lastAssigned,
+              acquisitionDate: enrichedProduct.acquisitionDate,
+              price: enrichedProduct.price,
+              additionalInfo: enrichedProduct.additionalInfo,
+              productCondition: enrichedProduct.productCondition,
+              recoverable: enrichedProduct.recoverable,
+              fp_shipment: enrichedProduct.fp_shipment,
+              activeShipment: enrichedProduct.activeShipment,
+              imageUrl: enrichedProduct.imageUrl,
+              isDeleted: enrichedProduct.isDeleted,
+              fpWarehouse: enrichedProduct.fpWarehouse,
+              memberData: {
+                memberId: member._id,
+                memberEmail: member.email,
+                memberName: `${member.firstName} ${member.lastName}`,
+                assignedAt: new Date(),
+              },
+            });
+            console.log(
+              `🌐 [updateProductStatusToMissingData] Global sync completed for member product ${productId}`,
+            );
+          } catch (error) {
+            console.error(
+              `❌ [updateProductStatusToMissingData] Global sync failed for member product ${productId}:`,
+              error,
+            );
+          }
+        }
+
         return enrichedProduct as ProductDocument;
       }
     }
@@ -1769,6 +2164,7 @@ export class LogisticsService {
     productId: string,
     connection: mongoose.Connection,
     session: ClientSession,
+    tenantName?: string,
   ): Promise<ProductDocument | null> {
     try {
       const ProductModel =
@@ -1787,6 +2183,45 @@ export class LogisticsService {
           product.status = 'In Transit';
           await product.save({ session });
           console.log(`✅ Producto actualizado a In Transit`);
+
+          // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+          if (tenantName) {
+            try {
+              await this.globalProductSyncService.syncProduct({
+                tenantId: tenantName,
+                tenantName: tenantName,
+                originalProductId: new Types.ObjectId(productId),
+                sourceCollection: 'products',
+                name: product.name || '',
+                category: product.category || '',
+                status: 'In Transit',
+                location: product.location || '',
+                attributes: product.attributes || [],
+                serialNumber: product.serialNumber,
+                assignedEmail: product.assignedEmail,
+                assignedMember: product.assignedMember,
+                lastAssigned: product.lastAssigned,
+                acquisitionDate: product.acquisitionDate,
+                price: product.price,
+                additionalInfo: product.additionalInfo,
+                productCondition: product.productCondition,
+                recoverable: product.recoverable,
+                fp_shipment: product.fp_shipment,
+                activeShipment: product.activeShipment,
+                imageUrl: product.imageUrl,
+                isDeleted: product.isDeleted,
+                fpWarehouse: product.fpWarehouse,
+              });
+              console.log(
+                `🌐 [updateProductStatusToInTransit] Global sync completed for product ${productId}`,
+              );
+            } catch (error) {
+              console.error(
+                `❌ [updateProductStatusToInTransit] Global sync failed for product ${productId}:`,
+                error,
+              );
+            }
+          }
         }
         return product;
       }
@@ -1876,6 +2311,51 @@ export class LogisticsService {
             assignedMember: `${member.firstName} ${member.lastName}`,
           };
 
+          // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+          if (tenantName) {
+            try {
+              await this.globalProductSyncService.syncProduct({
+                tenantId: tenantName,
+                tenantName: tenantName,
+                originalProductId: new Types.ObjectId(productId),
+                sourceCollection: 'members',
+                name: enrichedProduct.name || '',
+                category: enrichedProduct.category || '',
+                status: 'In Transit',
+                location: enrichedProduct.location || '',
+                attributes: enrichedProduct.attributes || [],
+                serialNumber: enrichedProduct.serialNumber,
+                assignedEmail: enrichedProduct.assignedEmail,
+                assignedMember: enrichedProduct.assignedMember,
+                lastAssigned: enrichedProduct.lastAssigned,
+                acquisitionDate: enrichedProduct.acquisitionDate,
+                price: enrichedProduct.price,
+                additionalInfo: enrichedProduct.additionalInfo,
+                productCondition: enrichedProduct.productCondition,
+                recoverable: enrichedProduct.recoverable,
+                fp_shipment: enrichedProduct.fp_shipment,
+                activeShipment: enrichedProduct.activeShipment,
+                imageUrl: enrichedProduct.imageUrl,
+                isDeleted: enrichedProduct.isDeleted,
+                fpWarehouse: enrichedProduct.fpWarehouse,
+                memberData: {
+                  memberId: member._id,
+                  memberEmail: member.email,
+                  memberName: `${member.firstName} ${member.lastName}`,
+                  assignedAt: new Date(),
+                },
+              });
+              console.log(
+                `🌐 [updateProductStatusToInTransit] Global sync completed for member product ${productId}`,
+              );
+            } catch (error) {
+              console.error(
+                `❌ [updateProductStatusToInTransit] Global sync failed for member product ${productId}:`,
+                error,
+              );
+            }
+          }
+
           return enrichedProduct as ProductDocument;
         }
       } else {
@@ -1952,6 +2432,7 @@ export class LogisticsService {
             productId.toString(),
             connection,
             session,
+            tenantName,
           );
 
           const product = await this.findProductAcrossCollections(
@@ -1981,6 +2462,7 @@ export class LogisticsService {
             productId.toString(),
             connection,
             session,
+            tenantName,
           );
           if (updatedProduct) {
             updatedProducts.push(updatedProduct);

@@ -14,6 +14,7 @@ import { LogisticsModule } from 'src/logistics/logistics.module';
 import { WarehousesModule } from 'src/warehouses/warehouses.module';
 import { GlobalProductSyncService } from 'src/products/services/global-product-sync.service';
 import { MongooseModule } from '@nestjs/mongoose';
+import { UsersModule } from 'src/users/users.module';
 import {
   GlobalProduct,
   GlobalProductSchema,
@@ -29,6 +30,7 @@ import {
     HistoryModule,
     SlackModule,
     TenantsModule,
+    UsersModule,
     MongooseModule.forFeature(
       [{ name: GlobalProduct.name, schema: GlobalProductSchema }],
       'firstPlug',

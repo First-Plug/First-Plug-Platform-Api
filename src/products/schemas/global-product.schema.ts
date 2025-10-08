@@ -91,6 +91,9 @@ export class GlobalProduct {
   serialNumber?: string;
 
   @Prop()
+  lastSerialNumber?: string;
+
+  @Prop()
   assignedEmail?: string;
 
   @Prop()

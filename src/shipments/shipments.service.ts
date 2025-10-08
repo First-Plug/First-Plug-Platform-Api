@@ -727,6 +727,7 @@ export class ShipmentsService {
             productId.toString(),
             connection,
             session,
+            tenantName,
           );
         }
       }
