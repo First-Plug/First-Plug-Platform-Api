@@ -12,4 +12,5 @@ export const ZodEnvironmentsSchema = z.object({
   SLACK_WEBHOOK_URL_COMPUTER_UPGRADE: z.string().min(1),
   FRONTEND_URL: z.string().min(1),
   SLACK_WEBHOOK_URL_SHIPMENTS: z.string().min(1),
+  SLACK_WEBHOOK_URL_WAREHOUSE_ALERTS: z.string().min(1),
 });

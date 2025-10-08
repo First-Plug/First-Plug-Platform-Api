@@ -1,9 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { IncomingWebhook } from '@slack/webhook';
+import { countryCodes } from 'src/shipments/helpers/countryCodes';
 
 @Injectable()
 export class SlackService {
   private readonly logger = new Logger(SlackService.name);
+
+  /**
+   * Obtener nombre del país desde código de país
+   */
+  private getCountryNameFromCode(countryCode: string): string {
+    // Crear un mapa inverso: código -> nombre
+    const codeToName = Object.entries(countryCodes).reduce(
+      (acc, [name, code]) => {
+        acc[code] = name;
+        return acc;
+      },
+      {} as Record<string, string>,
+    );
+
+    return codeToName[countryCode] || countryCode;
+  }
 
   async sendMessage(message: any): Promise<void> {
     try {
@@ -177,20 +194,23 @@ export class SlackService {
 
       const productText = productCount === 1 ? 'producto' : 'productos';
 
+      // Obtener el nombre real del país desde el código
+      const realCountryName = this.getCountryNameFromCode(countryCode);
+
       const message = {
         blocks: [
           {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `🏭 *Warehouse Default Detectado*`,
+              text: `*${realCountryName} no tiene un warehouse activo*`,
             },
           },
           {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `El usuario *${userName}* del tenant *${tenantName}* ha ${actionText} ${productCount} ${productText} al warehouse del país *${countryName}* (${countryCode}).`,
+              text: `El usuario *${userName}* del tenant *${tenantName}* ha ${actionText} ${productCount} ${productText} al warehouse del país *${realCountryName}* (${countryCode}).`,
             },
           },
           {
@@ -205,7 +225,7 @@ export class SlackService {
             elements: [
               {
                 type: 'mrkdwn',
-                text: `Tenant: ${tenantName} | País: ${countryName} | Acción: ${action}`,
+                text: `Tenant: *${tenantName}* | País: ${realCountryName} (${countryCode}) | Acción: ${action}`,
               },
             ],
           },
@@ -221,7 +241,10 @@ export class SlackService {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to send Slack message: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(
+          `Failed to send Slack message: ${response.statusText} - ${errorText}`,
+        );
       }
 
       this.logger.log(

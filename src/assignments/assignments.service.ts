@@ -29,6 +29,7 @@ import { UpdateProductDto } from 'src/products/dto';
 import { TenantsService } from 'src/tenants/tenants.service';
 import { TenantUserAdapterService } from 'src/common/services/tenant-user-adapter.service';
 import { HistoryActionType } from 'src/history/validations/create-history.zod';
+import { UsersService } from 'src/users/users.service';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
 import { BulkReassignDto } from 'src/assignments/dto/bulk-reassign.dto';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
@@ -63,7 +64,39 @@ export class AssignmentsService {
     private readonly logisticsService: LogisticsService,
     private readonly globalProductSyncService: GlobalProductSyncService,
     private readonly warehouseAssignmentService: WarehouseAssignmentService,
+    @Inject(forwardRef(() => UsersService))
+    private readonly usersService: UsersService,
   ) {}
+
+  /**
+   * Obtiene información del usuario para incluir en mensajes de Slack
+   */
+  private async getUserInfoFromUserId(userId: string): Promise<
+    | {
+        userName: string;
+        userEmail: string;
+        userPhone: string;
+      }
+    | undefined
+  > {
+    try {
+      const user = await this.usersService.findById(userId);
+      if (!user) {
+        console.log('⚠️ Usuario no encontrado para Slack:', { userId });
+        return undefined;
+      }
+
+      return {
+        userName:
+          `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Usuario',
+        userEmail: user.email || '',
+        userPhone: user.phone || '',
+      };
+    } catch (error) {
+      console.error('❌ Error obteniendo info de usuario para Slack:', error);
+      return undefined;
+    }
+  }
 
   /**
    * Helper para obtener el país de origen de un member por email
@@ -965,18 +998,30 @@ export class AssignmentsService {
     );
 
     // 🏭 WAREHOUSE ASSIGNMENT: Si location cambia a "FP warehouse", asignar warehouse
-    const warehouseFields = await this.assignWarehouseIfNeeded(
-      updateProductDto,
-      product,
-      tenantName,
-      undefined, // memberEmail - no disponible en este contexto
-      userId ? `User ${userId}` : 'Unknown User', // userName
-      updateProductDto.actionType === 'return'
-        ? 'return'
-        : updateProductDto.actionType === 'reassign'
-          ? 'reassign'
-          : 'assign', // action
-    );
+    // NOTA: Solo llamar aquí si NO se va a llamar en handleProductFromProductsCollection
+    let warehouseFields = {};
+    if (
+      updateProductDto.location === 'FP warehouse' &&
+      !updateProductDto.actionType
+    ) {
+      // Solo asignar warehouse aquí si no es una acción específica (return/reassign)
+      // Las acciones específicas se manejan en handleProductFromProductsCollection
+      // Obtener información del usuario para el mensaje de Slack
+      const userInfo = userId
+        ? await this.getUserInfoFromUserId(userId)
+        : undefined;
+      const userName =
+        userInfo?.userEmail || (userId ? `User ${userId}` : 'Unknown User');
+
+      warehouseFields = await this.assignWarehouseIfNeeded(
+        updateProductDto,
+        product,
+        tenantName,
+        undefined, // memberEmail - no disponible en este contexto
+        userName, // userName con email real
+        'assign', // action por defecto
+      );
+    }
 
     // Agregar campos de warehouse a updatedFields si existen
     Object.assign(updatedFields, warehouseFields);
@@ -1119,17 +1164,7 @@ export class AssignmentsService {
     updateProductDto: UpdateProductDto,
     connection: Connection,
     tenantName?: string,
-    userId?: string,
   ) {
-    this.logger.log(
-      `📦 [moveToProductsCollection] Producto a mover: ${product._id?.toString()}`,
-    );
-    this.logger.log(
-      `📦 [moveToProductsCollection] Member: ${member.email} (${member.firstName} ${member.lastName})`,
-    );
-    this.logger.log(
-      `📦 [moveToProductsCollection] Product lastAssigned: ${product.lastAssigned}, assignedEmail: ${product.assignedEmail}`,
-    );
     this.logger.log('📍 Origen: member -> Destino: products');
     const productIndex = member.products.findIndex(
       (prod) => prod._id!.toString() === product._id!.toString(),
@@ -1161,26 +1196,9 @@ export class AssignmentsService {
       country: member.country,
     });
 
-    const warehouseFields = await this.assignWarehouseIfNeeded(
-      updateProductDto,
-      product,
-      tenantName || '',
-      member.email, // ✅ FIX: Pasar el email del member de origen
-      userId ? `User ${userId}` : `${member.firstName} ${member.lastName}`, // userName
-      updateProductDto.actionType === 'return'
-        ? 'return'
-        : updateProductDto.actionType === 'reassign'
-          ? 'reassign'
-          : 'assign', // action
-    );
-
-    console.log(
-      `🔍 [moveToProductsCollection] DEBUG - warehouseFields result:`,
-      warehouseFields,
-    );
-    this.logger.log(
-      `🏭 [moveToProductsCollection] Warehouse fields assigned: ${JSON.stringify(warehouseFields)}`,
-    );
+    // 🚫 NO asignar warehouse aquí - se hará en handleProductFromProductsCollection
+    // para evitar duplicados. Solo preparar los campos vacíos.
+    const warehouseFields = {};
 
     const updateData = {
       _id: product._id,
@@ -1230,7 +1248,6 @@ export class AssignmentsService {
         {
           _id: updateData._id,
           location: updateData.location,
-          fpWarehouse: updateData.fpWarehouse,
           lastAssigned: updateData.lastAssigned,
         },
       )}`,
@@ -1257,7 +1274,6 @@ export class AssignmentsService {
         `🔄 [moveToProductsCollection] updateData to sync: ${JSON.stringify({
           _id: updateData._id,
           location: updateData.location,
-          fpWarehouse: updateData.fpWarehouse,
           lastAssigned: updateData.lastAssigned,
           assignedEmail: updateData.assignedEmail,
         })}`,
@@ -1833,7 +1849,6 @@ export class AssignmentsService {
         connection,
         member,
         tenantName, // ✅ FIX: Pasar tenantName para sincronización
-        userId, // ✅ FIX: Pasar userId para notificaciones warehouse
       );
       const updatedProduct = unassigned?.[0];
       if (!updatedProduct) throw new Error('Failed to unassign product');
@@ -1843,12 +1858,20 @@ export class AssignmentsService {
         this.logger.log(
           `🏭 [handleProductFromProductsCollection] Product moving to FP warehouse, assigning warehouse`,
         );
+
+        // Obtener información del usuario para el mensaje de Slack
+        const userInfo = userId
+          ? await this.getUserInfoFromUserId(userId)
+          : undefined;
+        const userName =
+          userInfo?.userEmail || (userId ? `User ${userId}` : 'Unknown User');
+
         const warehouseFields = await this.assignWarehouseIfNeeded(
           updateDto,
           updatedProduct,
           tenantName,
           product.lastAssigned || product.assignedEmail, // memberEmail de origen
-          userId ? `User ${userId}` : 'Unknown User', // userName
+          userName, // userName con email real
           updateDto.actionType === 'return' ? 'return' : 'reassign', // action
         );
 
@@ -1942,7 +1965,6 @@ export class AssignmentsService {
     connection: Connection,
     currentMember?: MemberDocument,
     tenantName?: string,
-    userId?: string,
   ) {
     if (currentMember) {
       console.log('🔁 Llamando a moveToProductsCollection...');
@@ -1953,7 +1975,6 @@ export class AssignmentsService {
         updateProductDto,
         connection,
         tenantName,
-        userId,
       );
       return created;
     } else {
