@@ -896,6 +896,58 @@ export class LogisticsService {
         product.status = status;
         await product.save();
         assignedEmail = product.assignedEmail;
+
+        // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+        try {
+          await this.globalProductSyncService.syncProduct({
+            tenantId: tenantName,
+            tenantName: tenantName,
+            originalProductId: new Types.ObjectId(productId),
+            sourceCollection: 'products',
+            name: product.name || '',
+            category: product.category || '',
+            status: status,
+            location: product.location || '',
+            attributes: (product.attributes || []).map((attr) => ({
+              key: attr.key || '',
+              value: String(attr.value || ''),
+            })),
+            serialNumber: product.serialNumber || undefined,
+            assignedEmail: product.assignedEmail,
+            assignedMember: product.assignedMember,
+            lastAssigned: product.lastAssigned,
+            acquisitionDate: product.acquisitionDate,
+            price: product.price,
+            additionalInfo: product.additionalInfo,
+            productCondition: product.productCondition,
+            recoverable: product.recoverable,
+            fp_shipment: false,
+            activeShipment: false,
+            isDeleted: product.isDeleted,
+            fpWarehouse:
+              product.fpWarehouse && product.fpWarehouse.warehouseId
+                ? {
+                    warehouseId: product.fpWarehouse.warehouseId as any,
+                    warehouseCountryCode:
+                      product.fpWarehouse.warehouseCountryCode || '',
+                    warehouseName: product.fpWarehouse.warehouseName || '',
+                    assignedAt: product.fpWarehouse.assignedAt,
+                    status:
+                      product.fpWarehouse.status === 'IN_TRANSIT'
+                        ? undefined
+                        : product.fpWarehouse.status,
+                  }
+                : undefined,
+          });
+          console.log(
+            `🌐 [cancelAllProductsInShipment] Global sync completed for product ${productId}`,
+          );
+        } catch (error) {
+          console.error(
+            `❌ [cancelAllProductsInShipment] Global sync failed for product ${productId}:`,
+            error,
+          );
+        }
       } else {
         const member = await MemberModel.findOne({
           'products._id': new Types.ObjectId(productId),
@@ -935,6 +987,69 @@ export class LogisticsService {
             id: productId,
             status,
           });
+
+          // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+          try {
+            await this.globalProductSyncService.syncProduct({
+              tenantId: tenantName,
+              tenantName: tenantName,
+              originalProductId: new Types.ObjectId(productId),
+              sourceCollection: 'members',
+              name: embeddedProduct.name || '',
+              category: embeddedProduct.category || '',
+              status: status,
+              location: embeddedProduct.location || '',
+              attributes: (embeddedProduct.attributes || []).map((attr) => ({
+                key: attr.key || '',
+                value: String(attr.value || ''),
+              })),
+              serialNumber: embeddedProduct.serialNumber || undefined,
+              assignedEmail: embeddedProduct.assignedEmail,
+              assignedMember: embeddedProduct.assignedMember,
+              lastAssigned: embeddedProduct.lastAssigned,
+              acquisitionDate: embeddedProduct.acquisitionDate,
+              price: embeddedProduct.price,
+              additionalInfo: embeddedProduct.additionalInfo,
+              productCondition: embeddedProduct.productCondition,
+              recoverable: embeddedProduct.recoverable,
+              fp_shipment: false,
+              activeShipment: false,
+              isDeleted: embeddedProduct.isDeleted,
+              fpWarehouse:
+                embeddedProduct.fpWarehouse &&
+                embeddedProduct.fpWarehouse.warehouseId
+                  ? {
+                      warehouseId: embeddedProduct.fpWarehouse
+                        .warehouseId as any,
+                      warehouseCountryCode:
+                        embeddedProduct.fpWarehouse.warehouseCountryCode || '',
+                      warehouseName:
+                        embeddedProduct.fpWarehouse.warehouseName || '',
+                      assignedAt: embeddedProduct.fpWarehouse.assignedAt,
+                      status:
+                        embeddedProduct.fpWarehouse.status === 'IN_TRANSIT'
+                          ? undefined
+                          : embeddedProduct.fpWarehouse.status,
+                    }
+                  : undefined,
+              memberData: member
+                ? {
+                    memberId: member._id as any,
+                    memberEmail: member.email,
+                    memberName: `${member.firstName} ${member.lastName}`,
+                    assignedAt: new Date(),
+                  }
+                : undefined,
+            });
+            console.log(
+              `🌐 [cancelAllProductsInShipment] Global sync completed for member product ${productId}`,
+            );
+          } catch (error) {
+            console.error(
+              `❌ [cancelAllProductsInShipment] Global sync failed for member product ${productId}:`,
+              error,
+            );
+          }
         } else {
           console.log('❌ Product not found in any collection');
           continue;
@@ -1147,6 +1262,58 @@ export class LogisticsService {
       );
       await product.save();
 
+      // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+      try {
+        await this.globalProductSyncService.syncProduct({
+          tenantId: tenantName,
+          tenantName: tenantName,
+          originalProductId: new Types.ObjectId(productId),
+          sourceCollection: 'products',
+          name: product.name || '',
+          category: product.category || '',
+          status: product.status,
+          location: product.location || '',
+          attributes: (product.attributes || []).map((attr) => ({
+            key: attr.key || '',
+            value: String(attr.value || ''),
+          })),
+          serialNumber: product.serialNumber || undefined,
+          assignedEmail: product.assignedEmail,
+          assignedMember: product.assignedMember,
+          lastAssigned: product.lastAssigned,
+          acquisitionDate: product.acquisitionDate,
+          price: product.price,
+          additionalInfo: product.additionalInfo,
+          productCondition: product.productCondition,
+          recoverable: product.recoverable,
+          fp_shipment: false,
+          activeShipment: false,
+          isDeleted: product.isDeleted,
+          fpWarehouse:
+            product.fpWarehouse && product.fpWarehouse.warehouseId
+              ? {
+                  warehouseId: product.fpWarehouse.warehouseId as any,
+                  warehouseCountryCode:
+                    product.fpWarehouse.warehouseCountryCode || '',
+                  warehouseName: product.fpWarehouse.warehouseName || '',
+                  assignedAt: product.fpWarehouse.assignedAt,
+                  status:
+                    product.fpWarehouse.status === 'IN_TRANSIT'
+                      ? undefined
+                      : product.fpWarehouse.status,
+                }
+              : undefined,
+        });
+        console.log(
+          `🌐 [updateProductOnShipmentReceived] Global sync completed for product ${productId}`,
+        );
+      } catch (error) {
+        console.error(
+          `❌ [updateProductOnShipmentReceived] Global sync failed for product ${productId}:`,
+          error,
+        );
+      }
+
       return;
     }
 
@@ -1179,6 +1346,66 @@ export class LogisticsService {
             },
           },
         );
+
+        // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+        try {
+          await this.globalProductSyncService.syncProduct({
+            tenantId: tenantName,
+            tenantName: tenantName,
+            originalProductId: new Types.ObjectId(productId),
+            sourceCollection: 'members',
+            name: embeddedProduct.name || '',
+            category: embeddedProduct.category || '',
+            status: newStatus,
+            location: 'Employee',
+            attributes: (embeddedProduct.attributes || []).map((attr) => ({
+              key: attr.key || '',
+              value: String(attr.value || ''),
+            })),
+            serialNumber: embeddedProduct.serialNumber || undefined,
+            assignedEmail: embeddedProduct.assignedEmail,
+            assignedMember: embeddedProduct.assignedMember,
+            lastAssigned: embeddedProduct.lastAssigned,
+            acquisitionDate: embeddedProduct.acquisitionDate,
+            price: embeddedProduct.price,
+            additionalInfo: embeddedProduct.additionalInfo,
+            productCondition: embeddedProduct.productCondition,
+            recoverable: embeddedProduct.recoverable,
+            fp_shipment: false,
+            activeShipment: false,
+            isDeleted: embeddedProduct.isDeleted,
+            fpWarehouse:
+              embeddedProduct.fpWarehouse &&
+              embeddedProduct.fpWarehouse.warehouseId
+                ? {
+                    warehouseId: embeddedProduct.fpWarehouse.warehouseId as any,
+                    warehouseCountryCode:
+                      embeddedProduct.fpWarehouse.warehouseCountryCode || '',
+                    warehouseName:
+                      embeddedProduct.fpWarehouse.warehouseName || '',
+                    assignedAt: embeddedProduct.fpWarehouse.assignedAt,
+                    status:
+                      embeddedProduct.fpWarehouse.status === 'IN_TRANSIT'
+                        ? undefined
+                        : embeddedProduct.fpWarehouse.status,
+                  }
+                : undefined,
+            memberData: {
+              memberId: memberWithProduct._id as any,
+              memberEmail: memberWithProduct.email,
+              memberName: `${memberWithProduct.firstName} ${memberWithProduct.lastName}`,
+              assignedAt: new Date(),
+            },
+          });
+          console.log(
+            `🌐 [updateProductOnShipmentReceived] Global sync completed for member product ${productId}`,
+          );
+        } catch (error) {
+          console.error(
+            `❌ [updateProductOnShipmentReceived] Global sync failed for member product ${productId}:`,
+            error,
+          );
+        }
       }
     }
   }
@@ -1555,7 +1782,10 @@ export class LogisticsService {
 
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
-    const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
+    const ShipmentModel = connection.model<ShipmentDocument>(
+      'Shipment',
+      ShipmentSchema,
+    );
     const originalShipment = await ShipmentModel.findById(shipmentId);
 
     if (!originalShipment) {
