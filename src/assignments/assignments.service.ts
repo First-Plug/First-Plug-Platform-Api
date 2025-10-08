@@ -195,88 +195,45 @@ export class AssignmentsService {
     userName?: string,
     action?: 'assign' | 'reassign' | 'return',
   ): Promise<any> {
-    console.log(
-      `🔍 [assignWarehouseIfNeeded] ENTRY - location: ${updateDto.location}`,
-    );
-
     // Solo procesar si location cambia a "FP warehouse"
     if (updateDto.location !== 'FP warehouse') {
-      console.log(
-        `🔍 [assignWarehouseIfNeeded] SKIP - location is not FP warehouse: ${updateDto.location}`,
-      );
       return {};
     }
 
-    console.log(
-      `🔍 [assignWarehouseIfNeeded] PROCESSING - location is FP warehouse`,
-    );
-
     try {
-      this.logger.log(
-        `🏭 [assignWarehouseIfNeeded] Product ${product._id} - lastAssigned: ${product.lastAssigned}, assignedEmail: ${product.assignedEmail}`,
-      );
-
       // 1. Determinar país de origen
       let originCountry: string | null = null;
 
       // Si se proporciona memberEmail directamente (más confiable), usar ese
       if (memberEmail) {
-        this.logger.log(
-          `🏭 [assignWarehouseIfNeeded] Trying to get country from provided memberEmail: ${memberEmail}`,
-        );
         originCountry = await this.getMemberOriginCountry(
           memberEmail,
           tenantName,
-        );
-        this.logger.log(
-          `🏭 [assignWarehouseIfNeeded] Country from provided memberEmail: ${originCountry}`,
         );
       }
 
       // Si no se proporcionó memberEmail, intentar con lastAssigned
       if (!originCountry && product.lastAssigned) {
-        this.logger.log(
-          `🏭 [assignWarehouseIfNeeded] Trying to get country from lastAssigned: ${product.lastAssigned}`,
-        );
         originCountry = await this.getMemberOriginCountry(
           product.lastAssigned,
           tenantName,
-        );
-        this.logger.log(
-          `🏭 [assignWarehouseIfNeeded] Country from lastAssigned: ${originCountry}`,
         );
       }
 
       // Si no tiene lastAssigned pero tiene assignedEmail actual, usar ese
       if (!originCountry && product.assignedEmail) {
-        this.logger.log(
-          `🏭 [assignWarehouseIfNeeded] Trying to get country from assignedEmail: ${product.assignedEmail}`,
-        );
         originCountry = await this.getMemberOriginCountry(
           product.assignedEmail,
           tenantName,
-        );
-        this.logger.log(
-          `🏭 [assignWarehouseIfNeeded] Country from assignedEmail: ${originCountry}`,
         );
       }
 
       // Si no se puede determinar el país, usar Argentina por defecto
       if (!originCountry) {
-        this.logger.warn(
-          `No origin country found for product ${product._id}, using Argentina as default`,
-        );
         originCountry = 'Argentina';
       }
 
-      this.logger.log(
-        `🏭 [assignWarehouseIfNeeded] Final origin country: ${originCountry}`,
-      );
-
       // 2. 🔄 USAR SERVICIO TRANSVERSAL - WarehouseAssignmentService con notificación
-      this.logger.log(
-        `🏭 [assignWarehouseIfNeeded] Using WarehouseAssignmentService for country: ${originCountry}`,
-      );
 
       const assignmentResult =
         await this.warehouseAssignmentService.assignProductToWarehouseWithNotification(
@@ -311,10 +268,6 @@ export class AssignmentsService {
         status: warehouseStatus,
       };
 
-      this.logger.log(
-        `✅ [assignWarehouseIfNeeded] Assigned product ${product._id} to warehouse ${assignmentResult.warehouseName} in ${assignmentResult.country} (${assignmentResult.warehouseCountryCode}) with status: ${warehouseStatus}`,
-      );
-
       // Log si se envió notificación Slack
       if (assignmentResult.requiresSlackNotification) {
         this.logger.log(
@@ -336,7 +289,7 @@ export class AssignmentsService {
    * Helper method para sincronizar producto a la colección global
    * No falla la operación principal si hay error en sincronización
    */
-  private async syncProductToGlobal(
+  public async syncProductToGlobal(
     product: ProductDocument | any,
     tenantName: string,
     sourceCollection: 'products' | 'members' = 'products',
@@ -347,13 +300,6 @@ export class AssignmentsService {
       assignedAt?: Date;
     },
   ): Promise<void> {
-    this.logger.log(
-      `🔄 [syncProductToGlobal] Starting sync for product ${product._id}`,
-    );
-    this.logger.log(
-      `🔄 [syncProductToGlobal] tenantName: ${tenantName}, sourceCollection: ${sourceCollection}`,
-    );
-
     try {
       await this.globalProductSyncService.syncProduct({
         tenantId: tenantName,
@@ -413,10 +359,6 @@ export class AssignmentsService {
         createdBy: product.createdBy,
         sourceUpdatedAt: product.updatedAt || new Date(),
       });
-
-      this.logger.log(
-        `✅ [syncProductToGlobal] Product ${product._id} synced successfully to global collection for tenant ${tenantName}`,
-      );
     } catch (error) {
       // Log el error pero no fallar la operación principal
       this.logger.error(
@@ -442,10 +384,6 @@ export class AssignmentsService {
     }).session(session);
 
     if (!productsToUpdate.length) return [];
-
-    this.logger.log(
-      `🔄 [assignProductsToMemberByEmail] Found ${productsToUpdate.length} products with unknown email ${memberEmail} - updating global sync`,
-    );
 
     const productIds = productsToUpdate.map((p) => p._id);
 
@@ -508,10 +446,6 @@ export class AssignmentsService {
               ? (product as any).updatedAt
               : new Date(),
         });
-
-        this.logger.log(
-          `✅ [assignProductsToMemberByEmail] Updated global sync for product ${product._id} with memberData`,
-        );
       } catch (error) {
         this.logger.error(
           `❌ [assignProductsToMemberByEmail] Error updating global sync for product ${product._id}:`,
@@ -618,10 +552,6 @@ export class AssignmentsService {
               ? (product as any).updatedAt
               : new Date(),
         });
-
-        this.logger.log(
-          `✅ [assignAndDetachProductsFromPool] Updated global sync for product ${product._id} - moved to members collection`,
-        );
       } catch (error) {
         this.logger.error(
           `❌ [assignAndDetachProductsFromPool] Error updating global sync for product ${product._id}:`,
@@ -632,15 +562,9 @@ export class AssignmentsService {
 
     const productIds = products.map((p) => p._id);
 
-    console.log(
-      `✅ Member updated. Deleting ${productIds.length} products from pool...`,
-    );
-
     await ProductModel.deleteMany({ _id: { $in: productIds } }).session(
       session,
     );
-
-    console.log(`✅ Products deleted from pool.`);
 
     return reassignedProducts;
   }
@@ -1205,7 +1129,7 @@ export class AssignmentsService {
       name: updateProductDto.name || product.name,
       category: product.category,
       attributes: updateProductDto.attributes || product.attributes,
-      status: updateProductDto.status,
+      status: updateProductDto.status || product.status,
       // recoverable: product.recoverable,
       recoverable:
         updateProductDto.recoverable !== undefined
@@ -1266,25 +1190,18 @@ export class AssignmentsService {
       `🔄 [moveToProductsCollection] tenantName: ${tenantName}, createdProducts.length: ${createdProducts.length}`,
     );
 
+    // 🌐 SINCRONIZACIÓN SIMPLE: Siempre sincronizar
     if (tenantName && createdProducts.length > 0) {
       this.logger.log(
         `🔄 [moveToProductsCollection] Syncing product ${updateData._id} to global collection`,
       );
-      this.logger.log(
-        `🔄 [moveToProductsCollection] updateData to sync: ${JSON.stringify({
-          _id: updateData._id,
-          location: updateData.location,
-          lastAssigned: updateData.lastAssigned,
-          assignedEmail: updateData.assignedEmail,
-        })}`,
-      );
 
       try {
         await this.syncProductToGlobal(
-          updateData, // ✅ FIX: Usar updateData que incluye warehouse fields
+          createdProducts[0],
           tenantName,
-          'products', // Ahora está en colección products
-          undefined, // No hay memberData porque se desasignó
+          'products',
+          undefined,
         );
         this.logger.log(
           `✅ [moveToProductsCollection] Product ${updateData._id} synced successfully to global collection`,

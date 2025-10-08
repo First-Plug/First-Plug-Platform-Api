@@ -1432,6 +1432,39 @@ export class ProductsService {
         internalSession.endSession();
       }
 
+      // � RESINCRONIZACIÓN FINAL: Para productos con fp_shipment
+      if (updateProductDto.fp_shipment && result.updatedProduct) {
+        try {
+          // Buscar el producto en la colección local para obtener el status final correcto
+          const ProductModel = internalConnection.model(
+            'Product',
+            ProductSchema,
+          );
+          const localProduct = await ProductModel.findById(
+            result.updatedProduct._id,
+          );
+
+          if (localProduct) {
+            // Resincronizar con el status correcto después del shipment
+            await this.assignmentsService.syncProductToGlobal(
+              localProduct,
+              tenantName,
+              'products',
+              undefined,
+            );
+
+            this.logger.log(
+              `✅ [ProductsService] Product ${result.updatedProduct._id} re-synced with final status: ${localProduct.status}`,
+            );
+          }
+        } catch (error) {
+          this.logger.error(
+            `❌ [ProductsService] Final re-sync failed for product ${result.updatedProduct._id}:`,
+            error,
+          );
+        }
+      }
+
       return {
         message: `Product with id "${id}" updated successfully`,
         shipment: result.shipment ?? null,
