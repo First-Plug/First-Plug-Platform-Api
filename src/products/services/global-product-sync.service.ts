@@ -239,10 +239,6 @@ export class GlobalProductSyncService {
     originalProductId: Types.ObjectId,
     lastSerialNumber?: string,
   ): Promise<void> {
-    this.logger.log(
-      `🗑️ [markProductAsDeleted] Starting deletion sync for product ${originalProductId} in tenant ${tenantId}`,
-    );
-
     try {
       // Resolver tenantId real si viene como string
       let resolvedTenantId: any = tenantId;
@@ -258,9 +254,6 @@ export class GlobalProductSyncService {
         });
         if (tenant) {
           resolvedTenantId = tenant._id;
-          this.logger.log(
-            `✅ [markProductAsDeleted] Resolved tenant ${tenantId} to ObjectId: ${resolvedTenantId}`,
-          );
         } else {
           this.logger.error(
             `❌ [markProductAsDeleted] Tenant ${tenantId} not found in tenants collection`,
@@ -286,17 +279,9 @@ export class GlobalProductSyncService {
         updateFields.lastSerialNumber = lastSerialNumber;
       }
 
-      this.logger.log(
-        `📝 [markProductAsDeleted] Update fields: ${JSON.stringify(updateFields)}`,
-      );
-
       const updateResult = await this.globalProductModel.updateOne(
         { tenantId: resolvedTenantId, originalProductId },
         { $set: updateFields },
-      );
-
-      this.logger.log(
-        `📊 [markProductAsDeleted] Update result: matched ${updateResult.matchedCount}, modified ${updateResult.modifiedCount}`,
       );
 
       if (updateResult.matchedCount === 0) {
