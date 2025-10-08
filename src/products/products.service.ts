@@ -1485,13 +1485,6 @@ export class ProductsService {
       if (existingProduct?.fp_shipment === true) {
         updateProductDto.fp_shipment = true;
       } else {
-        console.log(
-          '🪵 ID recibido en Logistics antes de getProductByMembers desde normalizeFpShipmentFlag dos:',
-          productId,
-          typeof productId,
-          productId instanceof Types.ObjectId,
-        );
-
         const memberProduct = await this.assignmentsService.getProductByMembers(
           productId,
           connection,
