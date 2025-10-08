@@ -811,4 +811,27 @@ export class GlobalProductSyncService {
     }
   }
   */
+
+  /**
+   * Buscar un producto en la colección global para preservar datos existentes
+   */
+  async findGlobalProduct(
+    tenantName: string,
+    originalProductId: Types.ObjectId,
+  ): Promise<GlobalProductDocument | null> {
+    try {
+      const globalProduct = await this.globalProductModel.findOne({
+        tenantName: tenantName,
+        originalProductId: originalProductId,
+      });
+
+      return globalProduct;
+    } catch (error) {
+      this.logger.error(
+        `❌ Error finding global product ${originalProductId} for tenant ${tenantName}:`,
+        error,
+      );
+      return null;
+    }
+  }
 }
