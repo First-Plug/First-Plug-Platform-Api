@@ -42,6 +42,7 @@ import { AddressData } from 'src/infra/event-bus/tenant-address-update.event';
 import { MembersService } from 'src/members/members.service';
 import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
+import { GlobalProductSyncService } from 'src/products/services/global-product-sync.service';
 
 @Injectable()
 export class LogisticsService {
@@ -64,6 +65,7 @@ export class LogisticsService {
     private readonly officesService: OfficesService,
     private readonly usersService: UsersService,
     private readonly eventsGateway: EventsGateway,
+    private readonly globalProductSyncService: GlobalProductSyncService,
   ) {}
 
   /**
@@ -1698,6 +1700,7 @@ export class LogisticsService {
     productId: string,
     connection: mongoose.Connection,
     session: ClientSession,
+    tenantName?: string,
   ): Promise<ProductDocument | null> {
     const ProductModel =
       connection.models.Product || connection.model('Product', ProductSchema);
@@ -1710,6 +1713,46 @@ export class LogisticsService {
     if (product && product.status === 'In Transit') {
       product.status = 'In Transit - Missing Data';
       await product.save({ session });
+
+      // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+      if (tenantName) {
+        try {
+          await this.globalProductSyncService.syncProduct({
+            tenantId: tenantName,
+            tenantName: tenantName,
+            originalProductId: new Types.ObjectId(productId),
+            sourceCollection: 'products',
+            name: product.name || '',
+            category: product.category || '',
+            status: 'In Transit - Missing Data',
+            location: product.location || '',
+            attributes: product.attributes || [],
+            serialNumber: product.serialNumber,
+            assignedEmail: product.assignedEmail,
+            assignedMember: product.assignedMember,
+            lastAssigned: product.lastAssigned,
+            acquisitionDate: product.acquisitionDate,
+            price: product.price,
+            additionalInfo: product.additionalInfo,
+            productCondition: product.productCondition,
+            recoverable: product.recoverable,
+            fp_shipment: product.fp_shipment,
+            activeShipment: product.activeShipment,
+            imageUrl: product.imageUrl,
+            isDeleted: product.isDeleted,
+            fpWarehouse: product.fpWarehouse,
+          });
+          console.log(
+            `🌐 [updateProductStatusToMissingData] Global sync completed for product ${productId}`,
+          );
+        } catch (error) {
+          console.error(
+            `❌ [updateProductStatusToMissingData] Global sync failed for product ${productId}:`,
+            error,
+          );
+        }
+      }
+
       return product;
     }
     if (!product) {
@@ -1781,6 +1824,51 @@ export class LogisticsService {
           assignedMember: `${member.firstName} ${member.lastName}`,
         };
 
+        // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+        if (tenantName) {
+          try {
+            await this.globalProductSyncService.syncProduct({
+              tenantId: tenantName,
+              tenantName: tenantName,
+              originalProductId: new Types.ObjectId(productId),
+              sourceCollection: 'members',
+              name: enrichedProduct.name || '',
+              category: enrichedProduct.category || '',
+              status: 'In Transit - Missing Data',
+              location: enrichedProduct.location || '',
+              attributes: enrichedProduct.attributes || [],
+              serialNumber: enrichedProduct.serialNumber,
+              assignedEmail: enrichedProduct.assignedEmail,
+              assignedMember: enrichedProduct.assignedMember,
+              lastAssigned: enrichedProduct.lastAssigned,
+              acquisitionDate: enrichedProduct.acquisitionDate,
+              price: enrichedProduct.price,
+              additionalInfo: enrichedProduct.additionalInfo,
+              productCondition: enrichedProduct.productCondition,
+              recoverable: enrichedProduct.recoverable,
+              fp_shipment: enrichedProduct.fp_shipment,
+              activeShipment: enrichedProduct.activeShipment,
+              imageUrl: enrichedProduct.imageUrl,
+              isDeleted: enrichedProduct.isDeleted,
+              fpWarehouse: enrichedProduct.fpWarehouse,
+              memberData: {
+                memberId: member._id,
+                memberEmail: member.email,
+                memberName: `${member.firstName} ${member.lastName}`,
+                assignedAt: new Date(),
+              },
+            });
+            console.log(
+              `🌐 [updateProductStatusToMissingData] Global sync completed for member product ${productId}`,
+            );
+          } catch (error) {
+            console.error(
+              `❌ [updateProductStatusToMissingData] Global sync failed for member product ${productId}:`,
+              error,
+            );
+          }
+        }
+
         return enrichedProduct as ProductDocument;
       }
     }
@@ -1792,6 +1880,7 @@ export class LogisticsService {
     productId: string,
     connection: mongoose.Connection,
     session: ClientSession,
+    tenantName?: string,
   ): Promise<ProductDocument | null> {
     try {
       const ProductModel =
@@ -1810,6 +1899,45 @@ export class LogisticsService {
           product.status = 'In Transit';
           await product.save({ session });
           console.log(`✅ Producto actualizado a In Transit`);
+
+          // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+          if (tenantName) {
+            try {
+              await this.globalProductSyncService.syncProduct({
+                tenantId: tenantName,
+                tenantName: tenantName,
+                originalProductId: new Types.ObjectId(productId),
+                sourceCollection: 'products',
+                name: product.name || '',
+                category: product.category || '',
+                status: 'In Transit',
+                location: product.location || '',
+                attributes: product.attributes || [],
+                serialNumber: product.serialNumber,
+                assignedEmail: product.assignedEmail,
+                assignedMember: product.assignedMember,
+                lastAssigned: product.lastAssigned,
+                acquisitionDate: product.acquisitionDate,
+                price: product.price,
+                additionalInfo: product.additionalInfo,
+                productCondition: product.productCondition,
+                recoverable: product.recoverable,
+                fp_shipment: product.fp_shipment,
+                activeShipment: product.activeShipment,
+                imageUrl: product.imageUrl,
+                isDeleted: product.isDeleted,
+                fpWarehouse: product.fpWarehouse,
+              });
+              console.log(
+                `🌐 [updateProductStatusToInTransit] Global sync completed for product ${productId}`,
+              );
+            } catch (error) {
+              console.error(
+                `❌ [updateProductStatusToInTransit] Global sync failed for product ${productId}:`,
+                error,
+              );
+            }
+          }
         }
         return product;
       }
@@ -1899,6 +2027,51 @@ export class LogisticsService {
             assignedMember: `${member.firstName} ${member.lastName}`,
           };
 
+          // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+          if (tenantName) {
+            try {
+              await this.globalProductSyncService.syncProduct({
+                tenantId: tenantName,
+                tenantName: tenantName,
+                originalProductId: new Types.ObjectId(productId),
+                sourceCollection: 'members',
+                name: enrichedProduct.name || '',
+                category: enrichedProduct.category || '',
+                status: 'In Transit',
+                location: enrichedProduct.location || '',
+                attributes: enrichedProduct.attributes || [],
+                serialNumber: enrichedProduct.serialNumber,
+                assignedEmail: enrichedProduct.assignedEmail,
+                assignedMember: enrichedProduct.assignedMember,
+                lastAssigned: enrichedProduct.lastAssigned,
+                acquisitionDate: enrichedProduct.acquisitionDate,
+                price: enrichedProduct.price,
+                additionalInfo: enrichedProduct.additionalInfo,
+                productCondition: enrichedProduct.productCondition,
+                recoverable: enrichedProduct.recoverable,
+                fp_shipment: enrichedProduct.fp_shipment,
+                activeShipment: enrichedProduct.activeShipment,
+                imageUrl: enrichedProduct.imageUrl,
+                isDeleted: enrichedProduct.isDeleted,
+                fpWarehouse: enrichedProduct.fpWarehouse,
+                memberData: {
+                  memberId: member._id,
+                  memberEmail: member.email,
+                  memberName: `${member.firstName} ${member.lastName}`,
+                  assignedAt: new Date(),
+                },
+              });
+              console.log(
+                `🌐 [updateProductStatusToInTransit] Global sync completed for member product ${productId}`,
+              );
+            } catch (error) {
+              console.error(
+                `❌ [updateProductStatusToInTransit] Global sync failed for member product ${productId}:`,
+                error,
+              );
+            }
+          }
+
           return enrichedProduct as ProductDocument;
         }
       } else {
@@ -1975,6 +2148,7 @@ export class LogisticsService {
             productId.toString(),
             connection,
             session,
+            tenantName,
           );
 
           const product = await this.findProductAcrossCollections(
@@ -2004,6 +2178,7 @@ export class LogisticsService {
             productId.toString(),
             connection,
             session,
+            tenantName,
           );
           if (updatedProduct) {
             updatedProducts.push(updatedProduct);
