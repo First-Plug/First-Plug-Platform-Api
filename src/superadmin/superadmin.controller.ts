@@ -19,6 +19,7 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { UpdateTenantOfficeDto } from './dto/update-tenant-office.dto';
 import { CreateProductForTenantDto } from './dto/create-product-for-tenant.dto';
+import { BulkCreateProductsForTenantDto } from './dto/bulk-create-products-for-tenant.dto';
 import { Request } from 'express';
 import { WarehousesService } from '../warehouses/warehouses.service';
 import {
@@ -485,6 +486,19 @@ export class SuperAdminController {
   ) {
     return await this.superAdminService.createProductForTenant(
       createProductDto,
+    );
+  }
+
+  /**
+   * Crear múltiples productos del mismo tipo para un tenant específico (SuperAdmin only)
+   * Cada producto puede asignarse a diferentes warehouses
+   */
+  @Post('products/bulk-create-for-tenant')
+  async bulkCreateProductsForTenant(
+    @Body() bulkCreateDto: BulkCreateProductsForTenantDto,
+  ) {
+    return await this.superAdminService.bulkCreateProductsForTenant(
+      bulkCreateDto,
     );
   }
 

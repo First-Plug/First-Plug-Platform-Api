@@ -14,6 +14,7 @@ import { OfficesService } from '../offices/offices.service';
 import { LogisticsService } from '../logistics/logistics.sevice';
 import { UpdateShipmentCompleteDto } from './dto/update-shipment-complete.dto';
 import { CreateProductForTenantDto } from './dto/create-product-for-tenant.dto';
+import { BulkCreateProductsForTenantDto } from './dto/bulk-create-products-for-tenant.dto';
 import { WarehousesService } from '../warehouses/warehouses.service';
 import { GlobalProductSyncService } from '../products/services/global-product-sync.service';
 
@@ -1316,6 +1317,215 @@ export class SuperAdminService {
     } catch (error) {
       this.logger.error(`❌ Error getting global products:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Crear múltiples productos del mismo tipo para un tenant específico desde SuperAdmin
+   * Cada producto puede asignarse a diferentes warehouses
+   */
+  async bulkCreateProductsForTenant(
+    bulkCreateDto: BulkCreateProductsForTenantDto,
+  ) {
+    const { tenantName, products, quantity, ...commonProductData } =
+      bulkCreateDto;
+
+    try {
+      // 1. Validar que quantity coincida con products.length
+      if (products.length !== quantity) {
+        throw new BadRequestException(
+          `Quantity (${quantity}) must match the number of products provided (${products.length})`,
+        );
+      }
+
+      // 2. Validar que el tenant existe
+      const tenant = await this.tenantsService.getByTenantName(tenantName);
+      if (!tenant) {
+        throw new NotFoundException(`Tenant ${tenantName} not found`);
+      }
+
+      // 3. Validar serial numbers únicos
+      const serialNumbers = products.map((p) => p.serialNumber);
+      const uniqueSerials = new Set(serialNumbers);
+      if (uniqueSerials.size !== serialNumbers.length) {
+        throw new BadRequestException(
+          'Duplicate serial numbers found in the request',
+        );
+      }
+
+      // 4. Conectar a la base de datos del tenant
+      const tenantConnection =
+        await this.tenantConnectionService.getTenantConnection(tenantName);
+      const { ProductSchema } = await import(
+        '../products/schemas/product.schema'
+      );
+      const ProductModel = tenantConnection.model('Product', ProductSchema);
+
+      // 5. Iniciar transacción
+      const session = await tenantConnection.startSession();
+      session.startTransaction();
+
+      try {
+        const createdProducts: any[] = [];
+        const warehouseCache = new Map(); // Cache para warehouses
+
+        // 6. Procesar cada producto
+        for (const productInstance of products) {
+          const { serialNumber, warehouseCountryCode, additionalInfo } =
+            productInstance;
+
+          // 6.1. Buscar warehouse (con cache)
+          let warehouseInfo = warehouseCache.get(warehouseCountryCode);
+          if (!warehouseInfo) {
+            warehouseInfo =
+              await this.warehousesService.findWarehouseForProductAssignment(
+                warehouseCountryCode,
+              );
+
+            if (!warehouseInfo) {
+              throw new BadRequestException(
+                `No warehouse found in country ${warehouseCountryCode}. Please initialize the country first.`,
+              );
+            }
+            warehouseCache.set(warehouseCountryCode, warehouseInfo);
+          }
+
+          // 6.2. Crear el producto
+          const newProduct = new ProductModel({
+            name: commonProductData.name,
+            category: commonProductData.category,
+            attributes: commonProductData.attributes,
+            serialNumber: serialNumber,
+            productCondition: commonProductData.productCondition,
+            recoverable: commonProductData.recoverable ?? true,
+            acquisitionDate: commonProductData.acquisitionDate,
+            price: commonProductData.price,
+            additionalInfo: additionalInfo,
+
+            // Asignación automática a FP warehouse
+            location: 'FP warehouse',
+            status: 'Available',
+            fp_shipment: false,
+            activeShipment: false,
+
+            // Información del warehouse
+            fpWarehouse: {
+              warehouseId: warehouseInfo._id,
+              warehouseCountryCode: warehouseCountryCode.toUpperCase(),
+              warehouseName:
+                warehouseInfo.name ||
+                `Default Warehouse ${warehouseCountryCode.toUpperCase()}`,
+              assignedAt: new Date(),
+              status: 'STORED',
+            },
+
+            createdBy: 'SuperAdmin',
+          });
+
+          const savedProduct = await newProduct.save({ session });
+          createdProducts.push(savedProduct);
+        }
+
+        // 7. Commit transacción
+        await session.commitTransaction();
+
+        // 8. Sincronizar todos los productos a la colección global (en paralelo)
+        const syncPromises = createdProducts.map(async (savedProduct: any) => {
+          try {
+            await this.globalProductSyncService.syncProduct({
+              tenantId: tenantName,
+              tenantName: tenantName,
+              originalProductId: savedProduct._id as any,
+              sourceCollection: 'products',
+
+              name: savedProduct.name || '',
+              category: savedProduct.category,
+              status: savedProduct.status,
+              location: savedProduct.location || 'FP warehouse',
+
+              attributes:
+                savedProduct.attributes?.map((attr) => ({
+                  key: attr.key,
+                  value: String(attr.value),
+                })) || [],
+              serialNumber: savedProduct.serialNumber || undefined,
+              productCondition: savedProduct.productCondition,
+              recoverable: savedProduct.recoverable,
+              fp_shipment: savedProduct.fp_shipment,
+              activeShipment: savedProduct.activeShipment,
+              acquisitionDate: savedProduct.acquisitionDate,
+              price: savedProduct.price,
+              additionalInfo: savedProduct.additionalInfo,
+
+              fpWarehouse:
+                savedProduct.fpWarehouse &&
+                savedProduct.fpWarehouse.warehouseId &&
+                savedProduct.fpWarehouse.warehouseCountryCode &&
+                savedProduct.fpWarehouse.warehouseName
+                  ? {
+                      warehouseId: savedProduct.fpWarehouse.warehouseId as any,
+                      warehouseCountryCode:
+                        savedProduct.fpWarehouse.warehouseCountryCode,
+                      warehouseName: savedProduct.fpWarehouse.warehouseName,
+                      assignedAt: savedProduct.fpWarehouse.assignedAt,
+                      status:
+                        savedProduct.fpWarehouse.status === 'IN_TRANSIT'
+                          ? 'IN_TRANSIT_IN'
+                          : (savedProduct.fpWarehouse.status as
+                              | 'STORED'
+                              | 'IN_TRANSIT_IN'
+                              | 'IN_TRANSIT_OUT'
+                              | undefined),
+                    }
+                  : undefined,
+
+              isDeleted: false,
+            });
+          } catch (syncError) {
+            console.error(
+              `Error syncing product ${savedProduct._id} to global collection:`,
+              syncError,
+            );
+            // No fallar el bulk create si falla la sincronización
+          }
+        });
+
+        await Promise.all(syncPromises);
+
+        return {
+          success: true,
+          message: `Successfully created ${createdProducts.length} products for tenant ${tenantName}`,
+          data: {
+            tenantName,
+            productsCreated: createdProducts.length,
+            products: createdProducts.map((product: any) => ({
+              _id: product._id,
+              name: product.name,
+              serialNumber: product.serialNumber,
+              warehouseCountryCode: product.fpWarehouse?.warehouseCountryCode,
+              warehouseName: product.fpWarehouse?.warehouseName,
+            })),
+          },
+        };
+      } catch (error) {
+        await session.abortTransaction();
+        throw error;
+      } finally {
+        await session.endSession();
+      }
+    } catch (error) {
+      console.error('Error in bulkCreateProductsForTenant:', error);
+
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+
+      throw new BadRequestException(
+        `Error creating products for tenant ${tenantName}: ${error.message}`,
+      );
     }
   }
 }
