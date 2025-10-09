@@ -223,6 +223,20 @@ export class SuperAdminController {
   }
 
   /**
+   * Obtener datos específicos de un warehouse para edición (SuperAdmin only)
+   */
+  @Get('warehouses/:country/:warehouseId')
+  async getWarehouseById(
+    @Param('country') country: string,
+    @Param('warehouseId') warehouseId: string,
+  ) {
+    return await this.warehousesService.getWarehouseForEdit(
+      country,
+      warehouseId,
+    );
+  }
+
+  /**
    * Crear un nuevo warehouse en un país (SuperAdmin only)
    */
   @Post('warehouses/:country')

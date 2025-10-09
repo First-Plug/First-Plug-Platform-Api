@@ -15,6 +15,24 @@ export interface GlobalWarehouseMetrics {
   distinctTenants: number;
 }
 
+export interface GlobalWarehouseMetricsWithDetails
+  extends GlobalWarehouseMetrics {
+  // Datos completos del warehouse para edición
+  address: string;
+  apartment: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  email: string;
+  phone: string;
+  contactPerson: string;
+  canal: string;
+  additionalInfo: string;
+  isDeleted: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface TenantMetricsDetail {
   tenantId: string;
   tenantName: string;
@@ -24,7 +42,8 @@ export interface TenantMetricsDetail {
   totalProducts: number;
 }
 
-export interface WarehouseWithTenants extends GlobalWarehouseMetrics {
+export interface WarehouseWithTenants
+  extends GlobalWarehouseMetricsWithDetails {
   tenants: TenantMetricsDetail[];
   hasStoredProducts: boolean; // Para habilitar/deshabilitar acciones (ej: no borrar si tiene productos)
 }
@@ -152,7 +171,7 @@ export class GlobalWarehouseMetricsService {
           const warehouseId = warehouse._id.toString();
           const metrics = metricsMap.get(warehouseId);
 
-          // 4. Si tiene métricas (tiene productos), usar esos datos
+          // 4. Si tiene métricas (tiene productos), usar esos datos + datos completos del warehouse
           if (metrics) {
             warehousesWithTenants.push({
               countryCode: metrics.countryCode,
@@ -165,11 +184,25 @@ export class GlobalWarehouseMetricsService {
               computers: metrics.totalComputers,
               otherProducts: metrics.totalOtherProducts,
               distinctTenants: metrics.totalTenants,
+              // Datos completos del warehouse
+              address: warehouse.address || '',
+              apartment: warehouse.apartment || '',
+              city: warehouse.city || '',
+              state: warehouse.state || '',
+              zipCode: warehouse.zipCode || '',
+              email: warehouse.email || '',
+              phone: warehouse.phone || '',
+              contactPerson: warehouse.contactPerson || '',
+              canal: warehouse.canal || '',
+              additionalInfo: warehouse.additionalInfo || '',
+              isDeleted: warehouse.isDeleted || false,
+              createdAt: warehouse.createdAt,
+              updatedAt: warehouse.updatedAt,
               tenants: metrics.tenantMetrics,
               hasStoredProducts: true, // Tiene productos almacenados
             });
           } else {
-            // 5. Si no tiene productos, crear entrada vacía
+            // 5. Si no tiene productos, crear entrada con datos completos del warehouse
             warehousesWithTenants.push({
               countryCode: countryDoc.countryCode,
               country: countryDoc.country,
@@ -181,6 +214,20 @@ export class GlobalWarehouseMetricsService {
               computers: 0,
               otherProducts: 0,
               distinctTenants: 0,
+              // Datos completos del warehouse
+              address: warehouse.address || '',
+              apartment: warehouse.apartment || '',
+              city: warehouse.city || '',
+              state: warehouse.state || '',
+              zipCode: warehouse.zipCode || '',
+              email: warehouse.email || '',
+              phone: warehouse.phone || '',
+              contactPerson: warehouse.contactPerson || '',
+              canal: warehouse.canal || '',
+              additionalInfo: warehouse.additionalInfo || '',
+              isDeleted: warehouse.isDeleted || false,
+              createdAt: warehouse.createdAt,
+              updatedAt: warehouse.updatedAt,
               tenants: [],
               hasStoredProducts: false, // No tiene productos almacenados
             });

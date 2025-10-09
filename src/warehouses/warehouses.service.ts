@@ -302,6 +302,47 @@ export class WarehousesService {
   }
 
   /**
+   * Obtener datos específicos de un warehouse para edición
+   */
+  async getWarehouseForEdit(
+    country: string,
+    warehouseId: string,
+  ): Promise<{
+    warehouse: WarehouseItem;
+    country: string;
+    countryCode: string;
+  } | null> {
+    try {
+      const countryDoc = await this.findByCountry(country);
+      if (!countryDoc) {
+        throw new NotFoundException(`Country ${country} not found`);
+      }
+
+      const warehouse = countryDoc.warehouses.find(
+        (w) => w._id.toString() === warehouseId && !w.isDeleted,
+      );
+
+      if (!warehouse) {
+        throw new NotFoundException(
+          `Warehouse ${warehouseId} not found in ${country}`,
+        );
+      }
+
+      return {
+        warehouse: warehouse,
+        country: countryDoc.country,
+        countryCode: countryDoc.countryCode,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error fetching warehouse ${warehouseId} for edit in ${country}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Obtener warehouses por código de país
    */
   async findByCountryCode(
@@ -657,21 +698,26 @@ export class WarehousesService {
         }
       }
 
-      // Si se solicita activación explícita
+      // Si se solicita activación explícita, validar completitud
       if (updateWarehouseDto.isActive === true) {
-        if (isComplete) {
-          // Desactivar otros warehouses
-          countryDoc.warehouses.forEach((w, index) => {
-            if (index !== warehouseIndex && !w.isDeleted) {
-              w.isActive = false;
-            }
-          });
-          warehouse.isActive = true;
-        } else {
+        if (!isComplete) {
           throw new BadRequestException(
             `Cannot activate incomplete warehouse. Missing required fields: ${this.getMissingFields(warehouse).join(', ')}`,
           );
         }
+
+        // Desactivar otros warehouses
+        countryDoc.warehouses.forEach((w, index) => {
+          if (index !== warehouseIndex && !w.isDeleted) {
+            w.isActive = false;
+          }
+        });
+        warehouse.isActive = true;
+      }
+
+      // Si se solicita desactivación explícita, permitir sin validación
+      if (updateWarehouseDto.isActive === false) {
+        warehouse.isActive = false;
       }
 
       await countryDoc.save();
