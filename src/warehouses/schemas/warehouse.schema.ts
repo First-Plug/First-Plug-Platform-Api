@@ -15,22 +15,22 @@ export type WarehouseDocument = Warehouse & Document;
 export class WarehouseItem {
   _id: Types.ObjectId;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: false })
   name: string;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: false })
   address: string;
 
   @Prop({ type: String, required: false })
   apartment: string;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: false })
   city: string;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: false })
   state: string;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: false })
   zipCode: string;
 
   @Prop({ type: String, required: false })
@@ -50,8 +50,9 @@ export class WarehouseItem {
 
   @Prop({
     type: String,
-    enum: COMMUNICATION_CHANNELS,
+    enum: [...COMMUNICATION_CHANNELS, ''], // Permitir string vacío
     default: DEFAULT_COMMUNICATION_CHANNEL,
+    required: false,
   })
   canal: string;
 
