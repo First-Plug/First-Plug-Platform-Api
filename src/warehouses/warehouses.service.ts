@@ -207,7 +207,9 @@ export class WarehousesService {
         ])
         .toArray();
 
-      const warehouseIds = warehousesWithProducts.map((w) => w._id);
+      const warehouseIds = warehousesWithProducts
+        .map((w) => w._id)
+        .filter((id) => id !== null && id !== undefined);
 
       this.logger.debug(
         `Found ${warehouseIds.length} warehouses with products`,
