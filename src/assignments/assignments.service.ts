@@ -40,6 +40,7 @@ import {
   CURRENCY_CODES,
 } from 'src/products/validations/create-product.zod';
 import { GlobalProductSyncService } from 'src/products/services/global-product-sync.service';
+import { LastAssignedHelper } from 'src/products/helpers/last-assigned.helper';
 import { WarehouseAssignmentService } from 'src/warehouses/services/warehouse-assignment.service';
 
 @Injectable()
@@ -63,6 +64,7 @@ export class AssignmentsService {
     @Inject(forwardRef(() => LogisticsService))
     private readonly logisticsService: LogisticsService,
     private readonly globalProductSyncService: GlobalProductSyncService,
+    private readonly lastAssignedHelper: LastAssignedHelper,
     private readonly warehouseAssignmentService: WarehouseAssignmentService,
     @Inject(forwardRef(() => UsersService))
     private readonly usersService: UsersService,
@@ -951,7 +953,20 @@ export class AssignmentsService {
     Object.assign(updatedFields, warehouseFields);
 
     if (updatedFields.assignedEmail === '') {
-      updatedFields.lastAssigned = product.assignedEmail;
+      updatedFields.lastAssigned =
+        this.lastAssignedHelper.calculateForProductUpdate(
+          product,
+          updateProductDto.location as
+            | 'Employee'
+            | 'FP warehouse'
+            | 'Our office',
+          updateProductDto.actionType as
+            | 'assign'
+            | 'reassign'
+            | 'return'
+            | 'relocate'
+            | 'offboarding',
+        );
     }
 
     updatedFields.fp_shipment =
@@ -1138,7 +1153,16 @@ export class AssignmentsService {
       serialNumber: updateProductDto.serialNumber || product.serialNumber,
       assignedEmail: '',
       assignedMember: '',
-      lastAssigned: member.email,
+      lastAssigned: this.lastAssignedHelper.calculateForProductUpdate(
+        product,
+        updateProductDto.location as 'Employee' | 'FP warehouse' | 'Our office',
+        updateProductDto.actionType as
+          | 'assign'
+          | 'reassign'
+          | 'return'
+          | 'relocate'
+          | 'offboarding',
+      ),
       acquisitionDate:
         updateProductDto.acquisitionDate || product.acquisitionDate,
       location: updateProductDto.location || product.location,
@@ -1483,12 +1507,25 @@ export class AssignmentsService {
         );
       }
 
+      // Calcular lastAssigned usando el helper
+      const calculatedLastAssigned =
+        this.lastAssignedHelper.calculateForProductUpdate(
+          product,
+          'Employee', // newLocation
+          updateDto.actionType as
+            | 'assign'
+            | 'reassign'
+            | 'return'
+            | 'relocate'
+            | 'offboarding',
+        );
+
       await this.moveToMemberCollection(
         session,
         product,
         newMember,
         { ...updateDto, recoverable: isRecoverable },
-        product.assignedEmail || '',
+        calculatedLastAssigned || '',
         tenantName,
         connection, // ✅ FIX: Pasar la conexión
       );
@@ -1708,12 +1745,25 @@ export class AssignmentsService {
         );
       }
 
+      // Calcular lastAssigned usando el helper
+      const calculatedLastAssigned =
+        this.lastAssignedHelper.calculateForProductUpdate(
+          product as ProductDocument,
+          'Employee', // newLocation
+          updateDto.actionType as
+            | 'assign'
+            | 'reassign'
+            | 'return'
+            | 'relocate'
+            | 'offboarding',
+        );
+
       await this.moveToMemberCollection(
         session,
         product as ProductDocument,
         newMember,
         { ...updateDto, recoverable: isRecoverable },
-        product.assignedEmail || '',
+        calculatedLastAssigned || '',
         tenantName,
         connection, // ✅ FIX: Pasar la conexión
       );

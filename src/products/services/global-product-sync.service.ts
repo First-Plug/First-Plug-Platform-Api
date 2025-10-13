@@ -6,6 +6,7 @@ import {
   GlobalProductDocument,
 } from '../schemas/global-product.schema';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
+import { LastAssignedHelper } from '../helpers/last-assigned.helper';
 import { ProductSchema } from '../schemas/product.schema';
 import { MemberSchema } from 'src/members/schemas/member.schema';
 
@@ -67,6 +68,7 @@ export class GlobalProductSyncService {
     @InjectModel(GlobalProduct.name, 'firstPlug')
     private globalProductModel: Model<GlobalProductDocument>,
     private readonly tenantConnectionService: TenantConnectionService,
+    private readonly lastAssignedHelper: LastAssignedHelper,
   ) {}
 
   /**
@@ -670,28 +672,37 @@ export class GlobalProductSyncService {
 
   /**
    * Calcular el valor de lastAssigned basado en cambios de ubicación
-   *
-   * REGLA: lastAssigned debe reflejar el member inmediatamente anterior,
-   * no preservar historial completo. Debe ser consistente con la colección
-   * de productos del tenant.
+   * usando el helper centralizado
    */
   private calculateLastAssigned(
     existingProduct: GlobalProductDocument,
     newParams: SyncProductParams,
   ): string | undefined {
-    const oldLocation = existingProduct.location;
-    const newLocation = newParams.location;
-
-    // CASO 1: Si sale de Employee (member) hacia cualquier otro lugar
-    // → Guardar el email del member como lastAssigned
-    if (oldLocation === 'Employee' && newLocation !== 'Employee') {
-      return existingProduct.assignedEmail || existingProduct.lastAssigned;
+    // Si viene lastAssigned desde el tenant, usarlo (ya fue calculado por el helper)
+    if (newParams.lastAssigned !== undefined) {
+      return newParams.lastAssigned;
     }
 
-    // CASO 2: Para todos los demás casos (incluyendo asignación a nuevo member)
-    // → Usar el valor que viene del tenant (params.lastAssigned)
-    // Esto asegura consistencia con la colección de productos del tenant
-    return newParams.lastAssigned;
+    // Si no viene lastAssigned, calcular usando el helper
+    return this.lastAssignedHelper.calculateLastAssigned({
+      currentLocation: existingProduct.location as
+        | 'Employee'
+        | 'FP warehouse'
+        | 'Our office',
+      newLocation: newParams.location as
+        | 'Employee'
+        | 'FP warehouse'
+        | 'Our office',
+      currentAssignedEmail: existingProduct.assignedEmail,
+      currentLastAssigned: existingProduct.lastAssigned,
+      currentFpWarehouse: existingProduct.fpWarehouse
+        ? {
+            warehouseCountryCode:
+              existingProduct.fpWarehouse.warehouseCountryCode,
+            warehouseName: existingProduct.fpWarehouse.warehouseName,
+          }
+        : undefined,
+    });
   }
 
   /**
