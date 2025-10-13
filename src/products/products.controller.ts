@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -56,10 +57,19 @@ export class ProductsController {
       res.status(HttpStatus.CREATED).json(products);
     } catch (error) {
       console.error('Error en bulkcreate:', error);
-      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
-        message: 'Error al crear productos',
-        error: error.message,
-      });
+
+      // Si es un error de validación (BadRequestException o ZodError), devolver 400
+      if (error instanceof BadRequestException || error.name === 'ZodError') {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          message: 'Error de validación en los datos del CSV',
+          error: error.message,
+        });
+      } else {
+        res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+          message: 'Error al crear productos',
+          error: error.message,
+        });
+      }
     }
   }
 
