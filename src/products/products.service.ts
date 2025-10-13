@@ -110,10 +110,6 @@ export class ProductsService {
 
         sourceUpdatedAt: (product as any).updatedAt || new Date(),
       });
-
-      this.logger.debug(
-        `✅ Product ${product._id} synced to global collection`,
-      );
     } catch (error) {
       this.logger.error(
         `❌ Error syncing product ${product._id} to global:`,
@@ -1433,7 +1429,17 @@ export class ProductsService {
       }
 
       // � RESINCRONIZACIÓN FINAL: Para productos con fp_shipment
-      if (updateProductDto.fp_shipment && result.updatedProduct) {
+      // NOTA: No resincronizar si el producto viene de moveToProductsCollection (reassign/return desde member)
+      // porque ya se sincronizó en ese método
+      const isFromMemberCollection =
+        updateProductDto.actionType === 'reassign' ||
+        updateProductDto.actionType === 'return';
+
+      if (
+        updateProductDto.fp_shipment &&
+        result.updatedProduct &&
+        !isFromMemberCollection
+      ) {
         try {
           // Buscar el producto en la colección local para obtener el status final correcto
           const ProductModel = internalConnection.model(
@@ -1452,10 +1458,6 @@ export class ProductsService {
               'products',
               undefined,
             );
-
-            this.logger.log(
-              `✅ [ProductsService] Product ${result.updatedProduct._id} re-synced with final status: ${localProduct.status}`,
-            );
           }
         } catch (error) {
           this.logger.error(
@@ -1463,6 +1465,10 @@ export class ProductsService {
             error,
           );
         }
+      } else if (isFromMemberCollection) {
+        this.logger.log(
+          `⏭️ [ProductsService] Skipping final re-sync for product ${result.updatedProduct?._id} - already synced in moveToProductsCollection`,
+        );
       }
 
       return {

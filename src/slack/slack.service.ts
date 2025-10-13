@@ -180,9 +180,6 @@ export class SlackService {
       const webhookUrl = process.env.SLACK_WEBHOOK_URL_WAREHOUSE_ALERTS;
 
       if (!webhookUrl) {
-        this.logger.warn(
-          'Slack webhook URL for warehouse alerts not configured (SLACK_WEBHOOK_URL_WAREHOUSE_ALERTS)',
-        );
         return;
       }
 
@@ -246,10 +243,6 @@ export class SlackService {
           `Failed to send Slack message: ${response.statusText} - ${errorText}`,
         );
       }
-
-      this.logger.log(
-        `📢 Slack notification sent: Default warehouse usage in ${countryName} by ${userName} (${tenantName})`,
-      );
     } catch (error) {
       this.logger.error(
         `Error sending default warehouse notification to Slack:`,

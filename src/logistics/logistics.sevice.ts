@@ -127,15 +127,6 @@ export class LogisticsService {
     userId: string,
     ourOfficeEmail: string,
   ) {
-    console.log(
-      '🎯 [MEMBER UPDATE] Emitting MEMBER_ADDRESS_UPDATED event (post-commit):',
-      {
-        memberEmail: updatedMember.email,
-        tenantName,
-      },
-    );
-    this.logger.debug('Emitting MEMBER_ADDRESS_UPDATED event');
-
     this.eventEmitter.emit(
       EventTypes.MEMBER_ADDRESS_UPDATED,
       new MemberAddressUpdatedEvent(
@@ -210,12 +201,6 @@ export class LogisticsService {
           : afterVal;
 
       if (normalizedBefore !== normalizedAfter) {
-        console.log(
-          `🔄 [PERSONAL DATA CHECK] Campo ${field} ha cambiado: "${normalizedBefore}" -> "${normalizedAfter}"`,
-        );
-        this.logger.debug(
-          `🔄 Campo ${field} ha cambiado: ${normalizedBefore} -> ${normalizedAfter}`,
-        );
         changes.push({
           field,
           before: normalizedBefore,
@@ -1662,7 +1647,6 @@ export class LogisticsService {
         member = refreshed;
 
         const fullName = `${member.firstName} ${member.lastName}`;
-        this.logger.debug(`Searching shipments for member: ${fullName}`);
 
         const shipments = await ShipmentModel.find({
           $or: [{ origin: fullName }, { destination: fullName }],
@@ -1670,8 +1654,6 @@ export class LogisticsService {
             $in: ['In Preparation', 'On Hold - Missing Data'],
           },
         }).session(session);
-
-        this.logger.debug(`Found ${shipments.length} shipments to update`);
 
         for (const shipment of shipments) {
           let updated = false;
@@ -1711,9 +1693,6 @@ export class LogisticsService {
 
             shipment.originDetails = updatedShipment?.originDetails;
             updated = true;
-            this.logger.debug(
-              `✅ Replaced originDetails for shipment ${shipment._id}`,
-            );
           }
 
           if (shipment.destination === fullName) {
@@ -1742,9 +1721,6 @@ export class LogisticsService {
 
             shipment.destinationDetails = updatedShipment?.destinationDetails;
             updated = true;
-            this.logger.debug(
-              `✅ Replaced destinationDetails for shipment ${shipment._id}`,
-            );
           }
 
           if (updated) {
@@ -1772,7 +1748,6 @@ export class LogisticsService {
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      this.logger.error('Error updating shipments for member:', error);
       throw error;
     } finally {
       await session.endSession();

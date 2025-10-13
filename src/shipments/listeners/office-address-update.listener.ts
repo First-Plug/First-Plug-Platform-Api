@@ -13,14 +13,6 @@ export class OfficeAddressUpdatedListener {
   @OnEvent(EventTypes.OFFICE_ADDRESS_UPDATED)
   async handleTenantAddressUpdated(event: OfficeAddressUpdatedEvent) {
     try {
-      this.logger.debug(
-        `Processing address update for tenant: ${event.tenantName}`,
-        {
-          oldAddress: event.oldAddress,
-          newAddress: event.newAddress,
-        },
-      );
-
       if (!event.newAddress || !event.oldAddress) {
         this.logger.error('Missing address data in event');
         return;
@@ -34,15 +26,7 @@ export class OfficeAddressUpdatedListener {
         userId,
         ourOfficeEmail,
       );
-
-      this.logger.debug(
-        `Successfully processed address update for tenant: ${event.tenantName}`,
-      );
     } catch (error) {
-      this.logger.error(
-        `Failed to process address update for tenant: ${event.tenantName}`,
-        error.stack,
-      );
       throw error;
     }
   }
