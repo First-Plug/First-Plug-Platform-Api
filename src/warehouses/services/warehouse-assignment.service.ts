@@ -85,9 +85,6 @@ export class WarehouseAssignmentService {
 
       if (!countryDoc) {
         // 🏭 AUTO-CREATE: Crear warehouse default automáticamente
-        this.logger.log(
-          `🏭 No warehouse found for ${originCountry} (${countryCode}), creating default warehouse`,
-        );
 
         try {
           const createdCountryDoc =
@@ -95,10 +92,6 @@ export class WarehouseAssignmentService {
               originCountry,
               countryCode,
             );
-
-          this.logger.log(
-            `✅ Default warehouse created for ${originCountry} (${countryCode})`,
-          );
 
           // Buscar el warehouse default recién creado
           const defaultWarehouse = createdCountryDoc.warehouses.find(
@@ -157,9 +150,6 @@ export class WarehouseAssignmentService {
       }
 
       // 4. Asignación exitosa
-      this.logger.log(
-        `✅ Product ${productId} assigned to warehouse ${selectedWarehouse.name || 'Unnamed Warehouse'} in ${originCountry}`,
-      );
 
       return {
         success: true,
@@ -299,10 +289,6 @@ export class WarehouseAssignmentService {
 
           // 3. Si es warehouse default, enviar notificación Slack
           if (isDefaultWarehouse) {
-            this.logger.warn(
-              `🏭 Default warehouse detected for ${originCountry} - sending Slack notification`,
-            );
-
             await this.slackService.notifyDefaultWarehouseUsage(
               userName,
               tenantName,
@@ -354,9 +340,6 @@ export class WarehouseAssignmentService {
       // Es default si: isActive = false Y partnerType = 'default'
       return !warehouse.isActive && warehouse.partnerType === 'default';
     } catch (error) {
-      this.logger.error(
-        `Error checking if warehouse is default: ${error.message}`,
-      );
       return false;
     }
   }

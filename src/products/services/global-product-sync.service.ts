@@ -6,6 +6,7 @@ import {
   GlobalProductDocument,
 } from '../schemas/global-product.schema';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
+import { LastAssignedHelper } from '../helpers/last-assigned.helper';
 import { ProductSchema } from '../schemas/product.schema';
 import { MemberSchema } from 'src/members/schemas/member.schema';
 
@@ -67,6 +68,7 @@ export class GlobalProductSyncService {
     @InjectModel(GlobalProduct.name, 'firstPlug')
     private globalProductModel: Model<GlobalProductDocument>,
     private readonly tenantConnectionService: TenantConnectionService,
+    private readonly lastAssignedHelper: LastAssignedHelper,
   ) {}
 
   /**
@@ -94,6 +96,7 @@ export class GlobalProductSyncService {
       }
 
       // Obtener el producto existente para comparar ubicaciones
+
       const existingProduct = await this.globalProductModel.findOne({
         tenantId: resolvedTenantId,
         originalProductId: params.originalProductId,
@@ -119,9 +122,6 @@ export class GlobalProductSyncService {
         existingProduct?.fpWarehouse
       ) {
         fpWarehouseValue = existingProduct.fpWarehouse as any;
-        this.logger.debug(
-          `🏭 Preserving existing fpWarehouse for product ${params.originalProductId}`,
-        );
       }
 
       // 👤 PRESERVAR memberData: Si el producto tiene member asignado y no viene memberData,
@@ -134,9 +134,6 @@ export class GlobalProductSyncService {
         existingProduct?.memberData
       ) {
         memberDataValue = existingProduct.memberData as any;
-        this.logger.debug(
-          `👤 Preserving existing memberData for product ${params.originalProductId}`,
-        );
       }
 
       const updateData = {
@@ -180,27 +177,25 @@ export class GlobalProductSyncService {
         lastSyncedAt: new Date(),
       };
 
-      await this.globalProductModel.updateOne(
-        {
-          tenantId: resolvedTenantId,
-          originalProductId: params.originalProductId,
-        },
+      const upsertQuery = {
+        tenantId: resolvedTenantId,
+        originalProductId: params.originalProductId,
+      };
+
+      const upsertResult = await this.globalProductModel.updateOne(
+        upsertQuery,
         { $set: updateData },
         { upsert: true },
+      );
+
+      this.logger.debug(
+        `✅ [syncProduct] Upsert result: matched=${upsertResult.matchedCount}, modified=${upsertResult.modifiedCount}, upserted=${upsertResult.upsertedCount}`,
       );
 
       // ==================== MÉTRICAS DE WAREHOUSE ====================
       // Las métricas ahora se calculan en tiempo real mediante agregaciones
       // No es necesario actualizar métricas pre-calculadas
-
-      this.logger.debug(
-        `✅ Synced product ${params.name} from tenant ${params.tenantName}`,
-      );
     } catch (error) {
-      this.logger.error(
-        `❌ Error syncing product ${params.originalProductId} from tenant ${params.tenantName}:`,
-        error,
-      );
       throw error;
     }
   }
@@ -217,15 +212,7 @@ export class GlobalProductSyncService {
         tenantId,
         originalProductId,
       });
-
-      this.logger.debug(
-        `🗑️ Removed product ${originalProductId} from tenant ${tenantId}`,
-      );
     } catch (error) {
-      this.logger.error(
-        `❌ Error removing product ${originalProductId} from tenant ${tenantId}:`,
-        error,
-      );
       throw error;
     }
   }
@@ -243,9 +230,6 @@ export class GlobalProductSyncService {
       // Resolver tenantId real si viene como string
       let resolvedTenantId: any = tenantId;
       if (typeof tenantId === 'string') {
-        this.logger.log(
-          `🔍 [markProductAsDeleted] Resolving tenant name ${tenantId} to ObjectId`,
-        );
         // Buscar el tenant real por tenantName
         const tenantsCollection =
           this.globalProductModel.db.collection('tenants');
@@ -260,10 +244,6 @@ export class GlobalProductSyncService {
           );
         }
       }
-
-      this.logger.log(
-        `🔄 [markProductAsDeleted] Updating global product with tenantId: ${resolvedTenantId}, originalProductId: ${originalProductId}`,
-      );
 
       // Preparar la actualización completa del soft delete
       const updateFields: any = {
@@ -313,8 +293,6 @@ export class GlobalProductSyncService {
     let synced = 0;
 
     try {
-      this.logger.log(`🔄 Starting sync for tenant ${tenantName}`);
-
       // 1. Obtener conexión al tenant
       const tenantConnection =
         await this.tenantConnectionService.getTenantConnection(tenantName);
@@ -434,7 +412,6 @@ export class GlobalProductSyncService {
         }
       }
 
-      this.logger.log(`✅ Synced ${synced} products from tenant ${tenantName}`);
       return { synced, errors };
     } catch (error) {
       this.logger.error(`❌ Error syncing tenant ${tenantName}:`, error);
@@ -454,15 +431,9 @@ export class GlobalProductSyncService {
     try {
       // Por ahora, devolver null - la lógica de warehouse se implementará después
       // TODO: Integrar con WarehousesService para resolver warehouse por país
-      this.logger.debug(
-        `⚠️ Product ${product._id} has "FP warehouse" but no warehouse data - will be resolved later`,
-      );
+
       return null;
     } catch (error) {
-      this.logger.error(
-        `Error resolving warehouse for product ${product._id}:`,
-        error,
-      );
       return null;
     }
   }
@@ -483,7 +454,6 @@ export class GlobalProductSyncService {
         .lean()
         .exec();
     } catch (error) {
-      this.logger.error('Error getting global products:', error);
       throw error;
     }
   }
@@ -495,7 +465,6 @@ export class GlobalProductSyncService {
     try {
       return await this.globalProductModel.countDocuments();
     } catch (error) {
-      this.logger.error('Error counting global products:', error);
       throw error;
     }
   }
@@ -547,7 +516,6 @@ export class GlobalProductSyncService {
         }
       );
     } catch (error) {
-      this.logger.error(`❌ Error getting warehouse metrics:`, error);
       return { total: 0, computers: 0, nonComputers: 0, distinctTenants: 0 };
     }
   }
@@ -599,7 +567,6 @@ export class GlobalProductSyncService {
         }
       );
     } catch (error) {
-      this.logger.error(`❌ Error getting country metrics:`, error);
       return { total: 0, computers: 0, nonComputers: 0, distinctTenants: 0 };
     }
   }
@@ -657,7 +624,6 @@ export class GlobalProductSyncService {
         }
       );
     } catch (error) {
-      this.logger.error(`❌ Error getting global stats:`, error);
       return {
         totalProducts: 0,
         totalTenants: 0,
@@ -670,28 +636,37 @@ export class GlobalProductSyncService {
 
   /**
    * Calcular el valor de lastAssigned basado en cambios de ubicación
-   *
-   * REGLA: lastAssigned debe reflejar el member inmediatamente anterior,
-   * no preservar historial completo. Debe ser consistente con la colección
-   * de productos del tenant.
+   * usando el helper centralizado
    */
   private calculateLastAssigned(
     existingProduct: GlobalProductDocument,
     newParams: SyncProductParams,
   ): string | undefined {
-    const oldLocation = existingProduct.location;
-    const newLocation = newParams.location;
-
-    // CASO 1: Si sale de Employee (member) hacia cualquier otro lugar
-    // → Guardar el email del member como lastAssigned
-    if (oldLocation === 'Employee' && newLocation !== 'Employee') {
-      return existingProduct.assignedEmail || existingProduct.lastAssigned;
+    // Si viene lastAssigned desde el tenant, usarlo (ya fue calculado por el helper)
+    if (newParams.lastAssigned !== undefined) {
+      return newParams.lastAssigned;
     }
 
-    // CASO 2: Para todos los demás casos (incluyendo asignación a nuevo member)
-    // → Usar el valor que viene del tenant (params.lastAssigned)
-    // Esto asegura consistencia con la colección de productos del tenant
-    return newParams.lastAssigned;
+    // Si no viene lastAssigned, calcular usando el helper
+    return this.lastAssignedHelper.calculateLastAssigned({
+      currentLocation: existingProduct.location as
+        | 'Employee'
+        | 'FP warehouse'
+        | 'Our office',
+      newLocation: newParams.location as
+        | 'Employee'
+        | 'FP warehouse'
+        | 'Our office',
+      currentAssignedEmail: existingProduct.assignedEmail,
+      currentLastAssigned: existingProduct.lastAssigned,
+      currentFpWarehouse: existingProduct.fpWarehouse
+        ? {
+            warehouseCountryCode:
+              existingProduct.fpWarehouse.warehouseCountryCode,
+            warehouseName: existingProduct.fpWarehouse.warehouseName,
+          }
+        : undefined,
+    });
   }
 
   /**
@@ -812,10 +787,6 @@ export class GlobalProductSyncService {
 
       return globalProduct;
     } catch (error) {
-      this.logger.error(
-        `❌ Error finding global product ${originalProductId} for tenant ${tenantName}:`,
-        error,
-      );
       return null;
     }
   }

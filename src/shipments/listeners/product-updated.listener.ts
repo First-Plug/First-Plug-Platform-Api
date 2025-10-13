@@ -16,9 +16,6 @@ export class ProductUpdatedListener {
     try {
       const recentEventKey = `${event.productId}-${Math.floor(Date.now() / 2000)}`;
       if (this.processedEvents.has(recentEventKey)) {
-        this.logger.debug(
-          `Skipping duplicate event for product: ${event.productId}`,
-        );
         return;
       }
 

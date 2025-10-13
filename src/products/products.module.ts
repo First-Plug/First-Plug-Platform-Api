@@ -18,6 +18,7 @@ import {
   GlobalProductSchema,
 } from './schemas/global-product.schema';
 import { GlobalProductSyncService } from './services/global-product-sync.service';
+import { LastAssignedHelper } from './helpers/last-assigned.helper';
 
 @Module({
   imports: [
@@ -46,11 +47,13 @@ import { GlobalProductSyncService } from './services/global-product-sync.service
     tenantModels.productModel,
     JwtService,
     GlobalProductSyncService,
+    LastAssignedHelper,
   ],
   exports: [
     ProductsService,
     tenantModels.productModel,
     GlobalProductSyncService,
+    LastAssignedHelper,
   ],
 })
 export class ProductsModule {

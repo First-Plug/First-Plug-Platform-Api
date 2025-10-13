@@ -40,6 +40,7 @@ import {
   CURRENCY_CODES,
 } from 'src/products/validations/create-product.zod';
 import { GlobalProductSyncService } from 'src/products/services/global-product-sync.service';
+import { LastAssignedHelper } from 'src/products/helpers/last-assigned.helper';
 import { WarehouseAssignmentService } from 'src/warehouses/services/warehouse-assignment.service';
 
 @Injectable()
@@ -63,6 +64,7 @@ export class AssignmentsService {
     @Inject(forwardRef(() => LogisticsService))
     private readonly logisticsService: LogisticsService,
     private readonly globalProductSyncService: GlobalProductSyncService,
+    private readonly lastAssignedHelper: LastAssignedHelper,
     private readonly warehouseAssignmentService: WarehouseAssignmentService,
     @Inject(forwardRef(() => UsersService))
     private readonly usersService: UsersService,
@@ -112,26 +114,15 @@ export class AssignmentsService {
       const member = await MemberModel.findOne({ email: memberEmail }).lean();
 
       if (!member) {
-        this.logger.warn(`Member not found: ${memberEmail}`);
         return null;
       }
 
       if (!member.country) {
-        this.logger.warn(
-          `No country found for member ${memberEmail} (member exists but country field is empty)`,
-        );
         return null;
       }
 
-      this.logger.log(
-        `✅ Found country for member ${memberEmail}: ${member.country}`,
-      );
       return member.country;
     } catch (error) {
-      this.logger.error(
-        `Error getting member origin country for ${memberEmail}:`,
-        error,
-      );
       return null;
     }
   }
@@ -143,24 +134,15 @@ export class AssignmentsService {
     product: any,
     isComingToWarehouse: boolean = true,
   ): 'STORED' | 'IN_TRANSIT_IN' | 'IN_TRANSIT_OUT' {
-    this.logger.log(
-      `🔄 [determineWarehouseStatus] Product ${product._id || 'unknown'}: status=${product.status}, fp_shipment=${product.fp_shipment}, activeShipment=${product.activeShipment}, location=${product.location}, isComingToWarehouse=${isComingToWarehouse}`,
-    );
-
     // Si el producto tiene shipment activo
     if (product.fp_shipment === true || product.activeShipment === true) {
       const status = isComingToWarehouse ? 'IN_TRANSIT_IN' : 'IN_TRANSIT_OUT';
-      this.logger.log(
-        `📦 [determineWarehouseStatus] Product has active shipment → ${status}`,
-      );
+
       return status;
     }
 
     // Si el producto está disponible y no tiene shipment activo
     if (product.status === 'Available' && !product.activeShipment) {
-      this.logger.log(
-        `✅ [determineWarehouseStatus] Product is Available and no active shipment → STORED`,
-      );
       return 'STORED';
     }
 
@@ -170,14 +152,11 @@ export class AssignmentsService {
         product.status === 'In Transit - Missing Data') &&
       product.location === 'FP warehouse'
     ) {
-      this.logger.log(
-        `🚚 [determineWarehouseStatus] Product in transit to FP warehouse → IN_TRANSIT_IN`,
-      );
       return 'IN_TRANSIT_IN';
     }
 
     // Default: STORED
-    this.logger.log(`🏪 [determineWarehouseStatus] Default case → STORED`);
+
     return 'STORED';
   }
 
@@ -247,9 +226,6 @@ export class AssignmentsService {
         );
 
       if (!assignmentResult.success || !assignmentResult.warehouseId) {
-        this.logger.error(
-          `❌ [assignWarehouseIfNeeded] ${assignmentResult.message}`,
-        );
         return {};
       }
 
@@ -277,10 +253,6 @@ export class AssignmentsService {
 
       return { fpWarehouse: fpWarehouseData };
     } catch (error) {
-      this.logger.error(
-        `Error assigning warehouse for product ${product._id}:`,
-        error,
-      );
       return {};
     }
   }
@@ -301,6 +273,10 @@ export class AssignmentsService {
     },
   ): Promise<void> {
     try {
+      // 🔒 VERIFICAR SI YA FUE SINCRONIZADO: Evitar duplicados
+      if ((product as any)._alreadySyncedToGlobal) {
+        return;
+      }
       await this.globalProductSyncService.syncProduct({
         tenantId: tenantName,
         tenantName: tenantName,
@@ -631,24 +607,26 @@ export class AssignmentsService {
 
     // 🔄 SYNC: Sincronizar producto asignado a colección global
     if (tenantName) {
-      // Crear objeto producto completo para sincronización
-      const productForSync = {
-        _id: new Types.ObjectId(), // Generar ID nuevo
-        ...productData,
-        updatedAt: new Date(),
-      };
+      // Buscar el producto recién guardado para obtener su _id generado
+      const savedProduct = member.products[member.products.length - 1];
 
-      await this.syncProductToGlobal(
-        productForSync,
-        tenantName,
-        'members', // Producto está en colección members
-        {
-          memberId: member._id as any,
-          memberEmail: member.email,
-          memberName: `${member.firstName} ${member.lastName}`,
-          assignedAt: new Date(),
-        },
-      );
+      if (savedProduct && savedProduct._id) {
+        await this.syncProductToGlobal(
+          savedProduct,
+          tenantName,
+          'members', // Producto está en colección members
+          {
+            memberId: member._id as any,
+            memberEmail: member.email,
+            memberName: `${member.firstName} ${member.lastName}`,
+            assignedAt: new Date(),
+          },
+        );
+      } else {
+        this.logger.error(
+          `❌ [assignProduct] Could not sync product - no _id found after save`,
+        );
+      }
     }
 
     return member;
@@ -951,7 +929,20 @@ export class AssignmentsService {
     Object.assign(updatedFields, warehouseFields);
 
     if (updatedFields.assignedEmail === '') {
-      updatedFields.lastAssigned = product.assignedEmail;
+      updatedFields.lastAssigned =
+        this.lastAssignedHelper.calculateForProductUpdate(
+          product,
+          updateProductDto.location as
+            | 'Employee'
+            | 'FP warehouse'
+            | 'Our office',
+          updateProductDto.actionType as
+            | 'assign'
+            | 'reassign'
+            | 'return'
+            | 'relocate'
+            | 'offboarding',
+        );
     }
 
     updatedFields.fp_shipment =
@@ -1089,7 +1080,6 @@ export class AssignmentsService {
     connection: Connection,
     tenantName?: string,
   ) {
-    this.logger.log('📍 Origen: member -> Destino: products');
     const productIndex = member.products.findIndex(
       (prod) => prod._id!.toString() === product._id!.toString(),
     );
@@ -1101,24 +1091,6 @@ export class AssignmentsService {
     }
 
     // 🏭 WAREHOUSE ASSIGNMENT: Si location es "FP warehouse", asignar warehouse
-    this.logger.log(
-      `🏭 [moveToProductsCollection] Checking warehouse assignment for location: ${updateProductDto.location}`,
-    );
-
-    console.log(`🔍 [moveToProductsCollection] DEBUG - updateProductDto:`, {
-      location: updateProductDto.location,
-      actionType: updateProductDto.actionType,
-      assignedEmail: updateProductDto.assignedEmail,
-    });
-    console.log(`🔍 [moveToProductsCollection] DEBUG - product:`, {
-      _id: product._id,
-      lastAssigned: product.lastAssigned,
-      assignedEmail: product.assignedEmail,
-    });
-    console.log(`🔍 [moveToProductsCollection] DEBUG - member:`, {
-      email: member.email,
-      country: member.country,
-    });
 
     // 🚫 NO asignar warehouse aquí - se hará en handleProductFromProductsCollection
     // para evitar duplicados. Solo preparar los campos vacíos.
@@ -1138,7 +1110,16 @@ export class AssignmentsService {
       serialNumber: updateProductDto.serialNumber || product.serialNumber,
       assignedEmail: '',
       assignedMember: '',
-      lastAssigned: member.email,
+      lastAssigned: this.lastAssignedHelper.calculateForProductUpdate(
+        product,
+        updateProductDto.location as 'Employee' | 'FP warehouse' | 'Our office',
+        updateProductDto.actionType as
+          | 'assign'
+          | 'reassign'
+          | 'return'
+          | 'relocate'
+          | 'offboarding',
+      ),
       acquisitionDate:
         updateProductDto.acquisitionDate || product.acquisitionDate,
       location: updateProductDto.location || product.location,
@@ -1167,35 +1148,12 @@ export class AssignmentsService {
     };
     const productModel = connection.model(Product.name, ProductSchema);
 
-    this.logger.log(
-      `📦 [moveToProductsCollection] Creating product with data: ${JSON.stringify(
-        {
-          _id: updateData._id,
-          location: updateData.location,
-          lastAssigned: updateData.lastAssigned,
-        },
-      )}`,
-    );
-
     const createdProducts = await productModel.create([updateData], {
       session,
     });
-    console.log('✅ Producto movido a colección de productos');
-
-    // 🔄 SYNC: Sincronizar producto movido a products collection
-    this.logger.log(
-      `🔄 [moveToProductsCollection] Starting sync to global collection...`,
-    );
-    this.logger.log(
-      `🔄 [moveToProductsCollection] tenantName: ${tenantName}, createdProducts.length: ${createdProducts.length}`,
-    );
 
     // 🌐 SINCRONIZACIÓN SIMPLE: Siempre sincronizar
     if (tenantName && createdProducts.length > 0) {
-      this.logger.log(
-        `🔄 [moveToProductsCollection] Syncing product ${updateData._id} to global collection`,
-      );
-
       try {
         await this.syncProductToGlobal(
           createdProducts[0],
@@ -1203,9 +1161,9 @@ export class AssignmentsService {
           'products',
           undefined,
         );
-        this.logger.log(
-          `✅ [moveToProductsCollection] Product ${updateData._id} synced successfully to global collection`,
-        );
+
+        // 🔒 MARCAR COMO SINCRONIZADO: Evitar sincronizaciones adicionales en este flujo
+        (createdProducts[0] as any)._alreadySyncedToGlobal = true;
       } catch (error) {
         this.logger.error(
           `❌ [moveToProductsCollection] Error syncing product ${updateData._id} to global collection:`,
@@ -1483,12 +1441,25 @@ export class AssignmentsService {
         );
       }
 
+      // Calcular lastAssigned usando el helper
+      const calculatedLastAssigned =
+        this.lastAssignedHelper.calculateForProductUpdate(
+          product,
+          'Employee', // newLocation
+          updateDto.actionType as
+            | 'assign'
+            | 'reassign'
+            | 'return'
+            | 'relocate'
+            | 'offboarding',
+        );
+
       await this.moveToMemberCollection(
         session,
         product,
         newMember,
         { ...updateDto, recoverable: isRecoverable },
-        product.assignedEmail || '',
+        calculatedLastAssigned || '',
         tenantName,
         connection, // ✅ FIX: Pasar la conexión
       );
@@ -1708,12 +1679,25 @@ export class AssignmentsService {
         );
       }
 
+      // Calcular lastAssigned usando el helper
+      const calculatedLastAssigned =
+        this.lastAssignedHelper.calculateForProductUpdate(
+          product as ProductDocument,
+          'Employee', // newLocation
+          updateDto.actionType as
+            | 'assign'
+            | 'reassign'
+            | 'return'
+            | 'relocate'
+            | 'offboarding',
+        );
+
       await this.moveToMemberCollection(
         session,
         product as ProductDocument,
         newMember,
         { ...updateDto, recoverable: isRecoverable },
-        product.assignedEmail || '',
+        calculatedLastAssigned || '',
         tenantName,
         connection, // ✅ FIX: Pasar la conexión
       );
@@ -1772,10 +1756,6 @@ export class AssignmentsService {
 
       // 🏭 WAREHOUSE ASSIGNMENT: Si location es "FP warehouse", asignar warehouse
       if (updateDto.location === 'FP warehouse') {
-        this.logger.log(
-          `🏭 [handleProductFromProductsCollection] Product moving to FP warehouse, assigning warehouse`,
-        );
-
         // Obtener información del usuario para el mensaje de Slack
         const userInfo = userId
           ? await this.getUserInfoFromUserId(userId)
@@ -2085,9 +2065,6 @@ export class AssignmentsService {
       // 🔄 SYNC: Sincronizar productos después de bulk reassign
       // Nota: Los productos individuales ya se sincronizan en updateWithinTransaction,
       // pero agregamos este log para tracking
-      this.logger.debug(
-        `✅ Bulk reassign completed for ${items.length} products in tenant ${tenantName}`,
-      );
 
       return { message: 'Bulk reassign completed successfully' };
     } catch (error) {

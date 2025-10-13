@@ -207,9 +207,7 @@ export class WarehousesService {
         ])
         .toArray();
 
-      const warehouseIds = warehousesWithProducts
-        .map((w) => w._id)
-        .filter((id) => id !== null && id !== undefined);
+      const warehouseIds = warehousesWithProducts.map((w) => w._id);
 
       this.logger.debug(
         `Found ${warehouseIds.length} warehouses with products`,
@@ -569,6 +567,7 @@ export class WarehousesService {
       const wasComplete = this.isWarehouseComplete(warehouse);
 
       // Actualizar solo los datos (sin isActive)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { isActive, ...dataToUpdate } = updateData;
       Object.assign(warehouse, dataToUpdate, { updatedAt: new Date() });
 
@@ -698,26 +697,21 @@ export class WarehousesService {
         }
       }
 
-      // Si se solicita activación explícita, validar completitud
+      // Si se solicita activación explícita
       if (updateWarehouseDto.isActive === true) {
-        if (!isComplete) {
+        if (isComplete) {
+          // Desactivar otros warehouses
+          countryDoc.warehouses.forEach((w, index) => {
+            if (index !== warehouseIndex && !w.isDeleted) {
+              w.isActive = false;
+            }
+          });
+          warehouse.isActive = true;
+        } else {
           throw new BadRequestException(
             `Cannot activate incomplete warehouse. Missing required fields: ${this.getMissingFields(warehouse).join(', ')}`,
           );
         }
-
-        // Desactivar otros warehouses
-        countryDoc.warehouses.forEach((w, index) => {
-          if (index !== warehouseIndex && !w.isDeleted) {
-            w.isActive = false;
-          }
-        });
-        warehouse.isActive = true;
-      }
-
-      // Si se solicita desactivación explícita, permitir sin validación
-      if (updateWarehouseDto.isActive === false) {
-        warehouse.isActive = false;
       }
 
       await countryDoc.save();

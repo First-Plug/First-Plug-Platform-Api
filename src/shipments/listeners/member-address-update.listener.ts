@@ -23,9 +23,6 @@ export class MemberAddressUpdatedListener {
         },
       );
 
-      this.logger.debug(
-        `Processing address update for member: ${event.memberEmail}`,
-      );
       const userId = event.userId || 'system';
       const ourOfficeEmail = event.ourOfficeEmail;
 

@@ -408,4 +408,17 @@ export const ProductSchemaZod = z
     },
   );
 
-export const ProductSchemaZodArray = z.array(ProductSchemaZod);
+export const ProductSchemaZodArray = z.array(ProductSchemaZod).refine(
+  (products) => {
+    // Validar que ningún producto tenga location "FP warehouse"
+    const fpWarehouseProducts = products.filter(
+      (product) => product.location === 'FP warehouse',
+    );
+    return fpWarehouseProducts.length === 0;
+  },
+  {
+    message:
+      'FP warehouse location is not allowed for CSV uploads. Please use "Our office" instead.',
+    path: ['location'],
+  },
+);
