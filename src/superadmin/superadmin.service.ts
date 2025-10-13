@@ -1128,6 +1128,43 @@ export class SuperAdminService {
   // ==================== PRODUCT CREATION FOR TENANTS ====================
 
   /**
+   * Validar que el serial number sea único en el tenant
+   */
+  private async validateSerialNumberUnique(
+    serialNumber: string,
+    tenantName: string,
+    tenantConnection: any,
+  ) {
+    if (!serialNumber || serialNumber.trim() === '') {
+      return;
+    }
+
+    // Importar el schema correctamente
+    const { ProductSchema } = await import(
+      '../products/schemas/product.schema'
+    );
+    const ProductModel = tenantConnection.model('Product', ProductSchema);
+
+    // Buscar en la colección de productos
+    const productWithSameSerialNumber = await ProductModel.findOne({
+      serialNumber: serialNumber.toLowerCase(),
+    });
+
+    // Buscar en la colección de miembros (productos asignados)
+    const { MemberSchema } = await import('../members/schemas/member.schema');
+    const MemberModel = tenantConnection.model('Member', MemberSchema);
+    const memberWithProduct = await MemberModel.findOne({
+      'products.serialNumber': serialNumber.toLowerCase(),
+    });
+
+    if (productWithSameSerialNumber || memberWithProduct) {
+      throw new BadRequestException(
+        `Serial Number '${serialNumber}' already exists in tenant ${tenantName}`,
+      );
+    }
+  }
+
+  /**
    * Crear producto para un tenant específico desde SuperAdmin
    * El producto se asigna automáticamente a FP warehouse del país seleccionado
    */
@@ -1171,7 +1208,16 @@ export class SuperAdminService {
       );
       const ProductModel = tenantConnection.model('Product', ProductSchema);
 
-      // 4. Crear el producto en la colección del tenant
+      // 4. Validar serial number único (si se proporciona)
+      if (productData.serialNumber) {
+        await this.validateSerialNumberUnique(
+          productData.serialNumber,
+          tenantName,
+          tenantConnection,
+        );
+      }
+
+      // 5. Crear el producto en la colección del tenant
       const newProduct = new ProductModel({
         name: productData.name,
         category: productData.category,
@@ -1344,7 +1390,7 @@ export class SuperAdminService {
         throw new NotFoundException(`Tenant ${tenantName} not found`);
       }
 
-      // 3. Validar serial numbers únicos
+      // 3. Validar serial numbers únicos dentro del request
       const serialNumbers = products.map((p) => p.serialNumber);
       const uniqueSerials = new Set(serialNumbers);
       if (uniqueSerials.size !== serialNumbers.length) {
@@ -1356,6 +1402,17 @@ export class SuperAdminService {
       // 4. Conectar a la base de datos del tenant
       const tenantConnection =
         await this.tenantConnectionService.getTenantConnection(tenantName);
+
+      // 5. Validar que cada serial number sea único en el tenant
+      for (const product of products) {
+        if (product.serialNumber) {
+          await this.validateSerialNumberUnique(
+            product.serialNumber,
+            tenantName,
+            tenantConnection,
+          );
+        }
+      }
       const { ProductSchema } = await import(
         '../products/schemas/product.schema'
       );
@@ -1444,7 +1501,7 @@ export class SuperAdminService {
               location: savedProduct.location || 'FP warehouse',
 
               attributes:
-                savedProduct.attributes?.map((attr) => ({
+                savedProduct.attributes?.map((attr: any) => ({
                   key: attr.key,
                   value: String(attr.value),
                 })) || [],

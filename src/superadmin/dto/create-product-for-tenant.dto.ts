@@ -1,55 +1,108 @@
+import { createZodDto } from '@anatine/zod-nestjs';
+import { z } from 'zod';
 import {
-  IsString,
-  IsNotEmpty,
-  IsOptional,
-  IsArray,
-  ValidateNested,
-  IsEnum,
-} from 'class-validator';
-import { Type } from 'class-transformer';
+  CATEGORIES,
+  ATTRIBUTES,
+  CONDITION,
+} from '../../products/interfaces/product.interface';
+import { CURRENCY_CODES } from '../../products/validations/create-product.zod';
 
-class ProductAttributeDto {
-  @IsString()
-  @IsNotEmpty()
-  key: string;
+// Schema específico para SuperAdmin que extiende las validaciones del usuario
+const CreateProductForTenantSchema = z
+  .object({
+    // === INFORMACIÓN DEL TENANT ===
+    tenantName: z.string().min(1, { message: 'Tenant name is required' }),
+    warehouseCountryCode: z
+      .string()
+      .min(1, { message: 'Warehouse country code is required' }),
 
-  @IsString()
-  @IsNotEmpty()
-  value: string;
-}
+    // === INFORMACIÓN DEL PRODUCTO ===
+    // Usar las mismas validaciones que el usuario para el producto
+    name: z.string().optional(), // Opcional, se valida condicionalmente en superRefine
+    category: z.enum(CATEGORIES),
+    attributes: z
+      .array(
+        z.object({
+          key: z.enum(ATTRIBUTES),
+          value: z.string().optional().default(''),
+        }),
+      )
+      .refine(
+        (attrs) => {
+          const keys = attrs.map((attr) => attr.key);
+          return new Set(keys).size === keys.length;
+        },
+        {
+          message: 'Attribute keys must be unique.',
+        },
+      ),
+    serialNumber: z
+      .string()
+      .transform((val) => val.toLowerCase())
+      .optional()
+      .nullable(),
+    productCondition: z.enum(CONDITION),
+    recoverable: z.boolean().optional(),
 
-export class CreateProductForTenantDto {
-  // === INFORMACIÓN DEL TENANT ===
-  @IsString()
-  @IsNotEmpty()
-  tenantName: string; // Tenant donde crear el producto
+    // === CAMPOS ADICIONALES PARA SUPERADMIN ===
+    acquisitionDate: z.string().optional(),
+    price: z
+      .object({
+        amount: z
+          .number()
+          .min(0, { message: 'Amount must be non-negative' })
+          .optional(),
+        currencyCode: z
+          .enum(CURRENCY_CODES, { message: 'Invalid currency code' })
+          .optional(),
+      })
+      .partial()
+      .refine(
+        (data) =>
+          (data.amount !== undefined && data.currencyCode !== undefined) ||
+          (data.amount === undefined && data.currencyCode === undefined),
+        {
+          message:
+            'Both amount and currencyCode must be defined if price is set',
+          path: ['price'],
+        },
+      )
+      .optional()
+      .nullable(),
+    additionalInfo: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    // Aplicar las mismas validaciones que el usuario
 
-  @IsString()
-  @IsNotEmpty()
-  warehouseCountryCode: string; // País del warehouse (AR, US, etc.)
+    // 1. Name requerido solo para Merchandising
+    if (data.category === 'Merchandising' && !data.name) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Name is required for Merchandising category.',
+        path: ['name'],
+      });
+    }
 
-  // === INFORMACIÓN DEL PRODUCTO ===
-  @IsString()
-  @IsNotEmpty()
-  name: string;
+    // 2. Brand y Model requeridos para categorías que no sean Merchandising
+    if (data.category !== 'Merchandising') {
+      const attributeKeys = data.attributes.map((attr) => attr.key);
+      if (!attributeKeys.includes('brand')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Brand is required for this category.',
+          path: ['attributes'],
+        });
+      }
+      if (!attributeKeys.includes('model')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Model is required for this category.',
+          path: ['attributes'],
+        });
+      }
+    }
+  });
 
-  @IsString()
-  @IsNotEmpty()
-  category: string;
-
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => ProductAttributeDto)
-  attributes: ProductAttributeDto[];
-
-  @IsString()
-  @IsOptional()
-  serialNumber?: string;
-
-  @IsString()
-  @IsEnum(['Optimal', 'Good', 'Fair', 'Poor'])
-  productCondition: string;
-
-  @IsOptional()
-  recoverable?: boolean;
-}
+export class CreateProductForTenantDto extends createZodDto(
+  CreateProductForTenantSchema,
+) {}
