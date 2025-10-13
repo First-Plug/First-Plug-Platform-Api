@@ -47,6 +47,9 @@ lerna-debug.log*
 .env.production.local
 .env.local
 
+# Augment config
+.augment-config.md
+
 # temp directory
 .temp
 .tmp
