@@ -47,18 +47,13 @@ export class LastAssignedHelper {
 
     // Si no hay cambio de ubicación, mantener lastAssigned actual
     if (currentLocation === newLocation) {
-      this.logger.debug(
-        `📍 No location change, keeping current lastAssigned: ${currentLastAssigned}`,
-      );
       return currentLastAssigned;
     }
 
     // CASO 1: Sale de Employee (member) → preservar email del member
     if (currentLocation === 'Employee' && newLocation !== 'Employee') {
       const lastAssigned = currentAssignedEmail || currentLastAssigned;
-      this.logger.debug(
-        `👤 From Employee to ${newLocation}, lastAssigned: ${lastAssigned}`,
-      );
+
       return lastAssigned;
     }
 
@@ -66,24 +61,17 @@ export class LastAssignedHelper {
     if (currentLocation === 'FP warehouse' && newLocation !== 'FP warehouse') {
       const warehouseInfo =
         this.formatWarehouseLastAssigned(currentFpWarehouse);
-      this.logger.log(
-        `🏭 From FP warehouse to ${newLocation}, lastAssigned: ${warehouseInfo}`,
-      );
+
       return warehouseInfo || currentLastAssigned;
     }
 
     // CASO 3: Sale de Our office → preservar "Our office"
     if (currentLocation === 'Our office' && newLocation !== 'Our office') {
-      this.logger.debug(
-        `🏢 From Our office to ${newLocation}, lastAssigned: "Our office"`,
-      );
       return 'Our office';
     }
 
     // CASO 4: Otros casos → mantener lastAssigned actual
-    this.logger.debug(
-      `🔄 Other case, keeping current lastAssigned: ${currentLastAssigned}`,
-    );
+
     return currentLastAssigned;
   }
 
