@@ -121,7 +121,7 @@ export class GlobalProduct {
   additionalInfo?: string;
 
   @Prop()
-  productCondition?: string; // 'Optimal', 'Good', 'Fair', 'Poor', 'Defective', 'Unusable'
+  productCondition?: string; // 'Optimal', 'Defective', 'Unusable'
 
   @Prop({ type: Boolean, default: false })
   recoverable?: boolean;

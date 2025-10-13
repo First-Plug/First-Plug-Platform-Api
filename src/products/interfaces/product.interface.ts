@@ -44,14 +44,7 @@ export const STATES = [
 
 export type Status = (typeof STATES)[number];
 
-export const CONDITION = [
-  'Optimal',
-  'Good',
-  'Fair',
-  'Poor',
-  'Defective',
-  'Unusable',
-] as const;
+export const CONDITION = ['Optimal', 'Defective', 'Unusable'] as const;
 
 export type Condition = (typeof CONDITION)[number];
 
