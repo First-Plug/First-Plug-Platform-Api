@@ -1,86 +1,138 @@
+import { createZodDto } from '@anatine/zod-nestjs';
+import { z } from 'zod';
 import {
-  IsString,
-  IsNotEmpty,
-  IsOptional,
-  IsArray,
-  ValidateNested,
-  IsEnum,
-  IsNumber,
-  Min,
-  Max,
-} from 'class-validator';
-import { Type } from 'class-transformer';
+  CATEGORIES,
+  ATTRIBUTES,
+  CONDITION,
+} from '../../products/interfaces/product.interface';
+import { CURRENCY_CODES } from '../../products/validations/create-product.zod';
 
-class ProductAttributeDto {
-  @IsString()
-  @IsNotEmpty()
-  key: string;
+// Schema para cada instancia de producto específico
+const ProductInstanceSchema = z.object({
+  serialNumber: z
+    .string()
+    .min(1, { message: 'Serial number is required for each product' })
+    .transform((val) => val.toLowerCase()),
+  warehouseCountryCode: z
+    .string()
+    .min(1, { message: 'Warehouse country code is required for each product' }),
+  additionalInfo: z.string().optional(),
+});
 
-  @IsString()
-  @IsNotEmpty()
-  value: string;
-}
+// Schema principal para bulk create
+const BulkCreateProductsForTenantSchema = z
+  .object({
+    // === INFORMACIÓN DEL TENANT ===
+    tenantName: z.string().min(1, { message: 'Tenant name is required' }),
 
-class ProductInstanceDto {
-  @IsString()
-  @IsNotEmpty()
-  serialNumber: string;
+    // === INFORMACIÓN COMÚN DEL PRODUCTO ===
+    name: z.string().optional(), // Opcional, se valida condicionalmente en superRefine
+    category: z.enum(CATEGORIES),
+    attributes: z
+      .array(
+        z.object({
+          key: z.enum(ATTRIBUTES),
+          value: z.string().optional().default(''),
+        }),
+      )
+      .refine(
+        (attrs) => {
+          const keys = attrs.map((attr) => attr.key);
+          return new Set(keys).size === keys.length;
+        },
+        {
+          message: 'Attribute keys must be unique.',
+        },
+      ),
+    productCondition: z.enum(CONDITION),
+    recoverable: z.boolean().optional(),
+    acquisitionDate: z.string().optional(),
+    price: z
+      .object({
+        amount: z
+          .number()
+          .min(0, { message: 'Amount must be non-negative' })
+          .optional(),
+        currencyCode: z
+          .enum(CURRENCY_CODES, { message: 'Invalid currency code' })
+          .optional(),
+      })
+      .partial()
+      .refine(
+        (data) =>
+          (data.amount !== undefined && data.currencyCode !== undefined) ||
+          (data.amount === undefined && data.currencyCode === undefined),
+        {
+          message:
+            'Both amount and currencyCode must be defined if price is set',
+          path: ['price'],
+        },
+      )
+      .optional()
+      .nullable(),
 
-  @IsString()
-  @IsNotEmpty()
-  warehouseCountryCode: string; // País del warehouse para este producto específico
+    // === INFORMACIÓN ESPECÍFICA DE CADA PRODUCTO ===
+    products: z
+      .array(ProductInstanceSchema)
+      .min(1, { message: 'At least one product is required' })
+      .max(100, { message: 'Maximum 100 products allowed' }),
 
-  @IsString()
-  @IsOptional()
-  additionalInfo?: string;
-}
+    // === VALIDACIÓN DE CANTIDAD ===
+    quantity: z
+      .number()
+      .min(1, { message: 'Quantity must be at least 1' })
+      .max(100, { message: 'Maximum 100 products allowed' }),
+  })
+  .superRefine((data, ctx) => {
+    // 1. Validar que quantity coincida con products.length
+    if (data.products.length !== data.quantity) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Quantity (${data.quantity}) must match the number of products provided (${data.products.length})`,
+        path: ['quantity'],
+      });
+    }
 
-export class BulkCreateProductsForTenantDto {
-  // === INFORMACIÓN DEL TENANT ===
-  @IsString()
-  @IsNotEmpty()
-  tenantName: string; // Tenant donde crear los productos
+    // 2. Validar serial numbers únicos dentro del request
+    const serialNumbers = data.products.map((p) => p.serialNumber);
+    const uniqueSerials = new Set(serialNumbers);
+    if (uniqueSerials.size !== serialNumbers.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Duplicate serial numbers found in the request',
+        path: ['products'],
+      });
+    }
 
-  // === INFORMACIÓN COMÚN DEL PRODUCTO ===
-  @IsString()
-  @IsNotEmpty()
-  name: string;
+    // 3. Name requerido solo para Merchandising
+    if (data.category === 'Merchandising' && !data.name) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Name is required for Merchandising category.',
+        path: ['name'],
+      });
+    }
 
-  @IsString()
-  @IsNotEmpty()
-  category: string;
+    // 4. Brand y Model requeridos para categorías que no sean Merchandising
+    if (data.category !== 'Merchandising') {
+      const attributeKeys = data.attributes.map((attr) => attr.key);
+      if (!attributeKeys.includes('brand')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Brand is required for this category.',
+          path: ['attributes'],
+        });
+      }
+      if (!attributeKeys.includes('model')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Model is required for this category.',
+          path: ['attributes'],
+        });
+      }
+    }
+  });
 
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => ProductAttributeDto)
-  attributes: ProductAttributeDto[];
-
-  @IsString()
-  @IsEnum(['Optimal', 'Good', 'Fair', 'Poor'])
-  productCondition: string;
-
-  @IsOptional()
-  recoverable?: boolean;
-
-  @IsString()
-  @IsOptional()
-  acquisitionDate?: string;
-
-  @IsOptional()
-  price?: {
-    amount: number;
-    currencyCode: string;
-  };
-
-  // === INFORMACIÓN ESPECÍFICA DE CADA PRODUCTO ===
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => ProductInstanceDto)
-  products: ProductInstanceDto[]; // Array con serial number y warehouse para cada producto
-
-  // === VALIDACIÓN DE CANTIDAD ===
-  @IsNumber()
-  @Min(1)
-  @Max(100) // Límite razonable para bulk create
-  quantity: number; // Debe coincidir con products.length
-}
+export class BulkCreateProductsForTenantDto extends createZodDto(
+  BulkCreateProductsForTenantSchema,
+) {}
