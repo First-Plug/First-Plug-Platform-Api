@@ -197,6 +197,7 @@ export class WarehousesService {
             $match: {
               inFpWarehouse: true,
               isDeleted: { $ne: true },
+              'fpWarehouse.warehouseId': { $ne: null }, // Filtrar valores null
             },
           },
           {
@@ -207,7 +208,10 @@ export class WarehousesService {
         ])
         .toArray();
 
-      const warehouseIds = warehousesWithProducts.map((w) => w._id);
+      // Filtrar valores null/undefined antes de mapear
+      const warehouseIds = warehousesWithProducts
+        .map((w) => w._id)
+        .filter((id) => id != null);
 
       this.logger.debug(
         `Found ${warehouseIds.length} warehouses with products`,
