@@ -84,6 +84,9 @@ export class GlobalProduct {
   @Prop({ required: true, index: true })
   location: string;
 
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Office', required: false })
+  officeId?: MongooseSchema.Types.ObjectId;
+
   @Prop([ProductAttribute])
   attributes: ProductAttribute[];
 

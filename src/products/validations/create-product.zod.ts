@@ -201,6 +201,7 @@ export const ProductSchemaZod = z
     assignedMember: z.string().optional(),
     acquisitionDate: z.string().optional(),
     location: z.enum(LOCATIONS),
+    officeId: z.string().optional(),
     status: z.enum(STATES),
     additionalInfo: z.string().trim().optional(),
     productCondition: z.enum(CONDITION),

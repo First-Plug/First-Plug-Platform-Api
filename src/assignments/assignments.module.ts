@@ -12,6 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { LogisticsModule } from 'src/logistics/logistics.module';
 import { WarehousesModule } from 'src/warehouses/warehouses.module';
+import { OfficesModule } from 'src/offices/offices.module';
 import { GlobalProductSyncService } from 'src/products/services/global-product-sync.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UsersModule } from 'src/users/users.module';
@@ -26,6 +27,7 @@ import {
     forwardRef(() => ProductsModule),
     forwardRef(() => ShipmentsModule),
     forwardRef(() => LogisticsModule),
+    forwardRef(() => OfficesModule),
     WarehousesModule,
     HistoryModule,
     SlackModule,

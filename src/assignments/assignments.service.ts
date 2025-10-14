@@ -42,6 +42,7 @@ import {
 import { GlobalProductSyncService } from 'src/products/services/global-product-sync.service';
 import { LastAssignedHelper } from 'src/products/helpers/last-assigned.helper';
 import { WarehouseAssignmentService } from 'src/warehouses/services/warehouse-assignment.service';
+import { OfficesService } from 'src/offices/offices.service';
 
 @Injectable()
 export class AssignmentsService {
@@ -68,6 +69,8 @@ export class AssignmentsService {
     private readonly warehouseAssignmentService: WarehouseAssignmentService,
     @Inject(forwardRef(() => UsersService))
     private readonly usersService: UsersService,
+    @Inject(forwardRef(() => OfficesService))
+    private readonly officesService: OfficesService,
   ) {}
 
   /**
@@ -567,8 +570,14 @@ export class AssignmentsService {
 
     if (!member) return null;
 
-    const { serialNumber, price, productCondition, fp_shipment, ...rest } =
-      createProductDto;
+    const {
+      serialNumber,
+      price,
+      productCondition,
+      fp_shipment,
+      officeId,
+      ...rest
+    } = createProductDto;
 
     const location = 'Employee';
 
@@ -600,6 +609,12 @@ export class AssignmentsService {
         ? { price: { amount: price.amount, currencyCode: price.currencyCode } }
         : {}),
       fp_shipment: !!fp_shipment,
+      // Agregar officeId si está presente (convertir string a ObjectId si es necesario)
+      ...(officeId ? { officeId: officeId as any } : {}),
+      // Agregar objeto office si está presente
+      ...(officeId && tenantName
+        ? await this.buildOfficeObject(officeId as string, tenantName as string)
+        : {}),
     };
 
     member.products.push(productData);
@@ -1042,6 +1057,23 @@ export class AssignmentsService {
       activeShipment: updateProductDto.fp_shipment ?? product.fp_shipment,
       isDeleted: product.isDeleted,
       lastAssigned: lastAssigned,
+      // Agregar officeId si está presente en el DTO o en el producto original
+      ...(updateProductDto.officeId || product.officeId
+        ? {
+            officeId: updateProductDto.officeId
+              ? (updateProductDto.officeId as any)
+              : product.officeId,
+          }
+        : {}),
+      // Agregar objeto office si está presente
+      ...(updateProductDto.officeId
+        ? await this.buildOfficeObject(
+            updateProductDto.officeId as string,
+            tenantName,
+          )
+        : product.office
+          ? { office: product.office }
+          : {}),
     };
 
     newMember.products.push(updateData);
@@ -1145,6 +1177,23 @@ export class AssignmentsService {
             : undefined,
       // Agregar campos de warehouse si existen
       ...warehouseFields,
+      // Agregar officeId si está presente en el DTO o en el producto original
+      ...(updateProductDto.officeId || product.officeId
+        ? {
+            officeId: updateProductDto.officeId
+              ? (updateProductDto.officeId as any)
+              : product.officeId,
+          }
+        : {}),
+      // Agregar objeto office si está presente
+      ...(updateProductDto.officeId && tenantName
+        ? await this.buildOfficeObject(
+            updateProductDto.officeId as string,
+            tenantName as string,
+          )
+        : product.office
+          ? { office: product.office }
+          : {}),
     };
     const productModel = connection.model(Product.name, ProductSchema);
 
@@ -2097,5 +2146,44 @@ export class AssignmentsService {
 
     member.products = updatedProducts;
     await member.save({ session });
+  }
+
+  /**
+   * Construir objeto office para un producto (similar a fpWarehouse)
+   */
+  private async buildOfficeObject(
+    officeId: string,
+    tenantName: string,
+  ): Promise<{ office?: any }> {
+    if (!officeId) {
+      return {};
+    }
+
+    try {
+      const office = await this.officesService.findByIdAndTenant(
+        new Types.ObjectId(officeId),
+        tenantName,
+      );
+
+      if (!office) {
+        console.warn(
+          `⚠️ Office ${officeId} no encontrado para tenant ${tenantName}`,
+        );
+        return {};
+      }
+
+      return {
+        office: {
+          officeId: office._id,
+          officeCountryCode: office.country,
+          officeName: office.name,
+          assignedAt: new Date(),
+          isDefault: office.isDefault,
+        },
+      };
+    } catch (error) {
+      console.error('Error construyendo objeto office:', error);
+      return {};
+    }
   }
 }
