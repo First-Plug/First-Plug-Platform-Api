@@ -1777,8 +1777,32 @@ export class AssignmentsService {
           Object.assign(updatedProduct, {
             fpWarehouse: warehouseFields.fpWarehouse,
           });
+
+          // 💾 GUARDAR EL PRODUCTO: Necesario para persistir los campos del warehouse
+          await updatedProduct.save({ session });
+
+          // 🔄 SYNC: Forzar sincronización con campos de warehouse a colección global
+          if (tenantName) {
+            try {
+              // Remover la marca de sincronización para forzar la actualización
+              delete (updatedProduct as any)._alreadySyncedToGlobal;
+
+              await this.syncProductToGlobal(
+                updatedProduct,
+                tenantName,
+                'products',
+                undefined,
+              );
+            } catch (error) {
+              this.logger.error(
+                `❌ [handleProductFromMemberCollection] Error syncing product with warehouse fields to global collection:`,
+                error,
+              );
+            }
+          }
+
           this.logger.log(
-            `🏭 [handleProductFromProductsCollection] Warehouse fields applied: ${JSON.stringify(warehouseFields.fpWarehouse)}`,
+            `🏭 [handleProductFromMemberCollection] Warehouse fields applied, saved and synced: ${JSON.stringify(warehouseFields.fpWarehouse)}`,
           );
         }
       }
