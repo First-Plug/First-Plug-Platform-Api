@@ -194,6 +194,21 @@ export class OfficesService {
       return currentOffice;
     }
 
+    // Validar que el nombre no se repita en el tenant (case-insensitive) si se está actualizando el nombre
+    if (updateData.name && updateData.name !== currentOffice.name) {
+      const existingOfficeWithName = await OfficeModel.findOne({
+        name: { $regex: new RegExp(`^${updateData.name}$`, 'i') },
+        _id: { $ne: currentOffice._id },
+        isDeleted: false,
+      });
+
+      if (existingOfficeWithName) {
+        throw new BadRequestException(
+          `Ya existe una oficina con el nombre "${updateData.name}" en este tenant`,
+        );
+      }
+    }
+
     const oldAddress = {
       address: currentOffice.address,
       apartment: currentOffice.apartment,
@@ -319,9 +334,9 @@ export class OfficesService {
     const OfficeModel =
       await this.tenantModelRegistry.getOfficeModel(tenantName);
 
-    // Validar que el nombre no se repita en el tenant
+    // Validar que el nombre no se repita en el tenant (case-insensitive)
     const existingOfficeWithName = await OfficeModel.findOne({
-      name: createOfficeDto.name,
+      name: { $regex: new RegExp(`^${createOfficeDto.name}$`, 'i') },
       isDeleted: false,
     });
 
@@ -411,6 +426,21 @@ export class OfficesService {
 
     const office = await OfficeModel.findOne({ _id: id, isDeleted: false });
     if (!office) throw new NotFoundException('Office not found');
+
+    // Validar que el nombre no se repita en el tenant (case-insensitive) si se está actualizando el nombre
+    if (updateOfficeDto.name && updateOfficeDto.name !== office.name) {
+      const existingOfficeWithName = await OfficeModel.findOne({
+        name: { $regex: new RegExp(`^${updateOfficeDto.name}$`, 'i') },
+        _id: { $ne: id },
+        isDeleted: false,
+      });
+
+      if (existingOfficeWithName) {
+        throw new BadRequestException(
+          `Ya existe una oficina con el nombre "${updateOfficeDto.name}" en este tenant`,
+        );
+      }
+    }
 
     // Si se marca como default, desmarcar las demás
     if (updateOfficeDto.isDefault) {
