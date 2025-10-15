@@ -18,6 +18,7 @@ import { LogisticsModule } from 'src/logistics/logistics.module';
 import { OfficesModule } from '../offices/offices.module';
 import { UsersModule } from '../users/users.module';
 import { EventsGateway } from '../infra/event-bus/events.gateway';
+import { ShipmentOfficeCoordinatorService } from './services/shipment-office-coordinator.service';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { EventsGateway } from '../infra/event-bus/events.gateway';
   controllers: [ShipmentsController],
   providers: [
     ShipmentsService,
+    ShipmentOfficeCoordinatorService,
     EventsGateway,
     OfficeAddressUpdatedListener,
     MemberAddressUpdatedListener,

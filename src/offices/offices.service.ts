@@ -427,6 +427,24 @@ export class OfficesService {
     const office = await OfficeModel.findOne({ _id: id, isDeleted: false });
     if (!office) throw new NotFoundException('Office not found');
 
+    // 🚫 VALIDACIÓN: No permitir edición si hay shipments "On The Way"
+    const hasOnTheWayShipments = await this.hasOnTheWayShipments(
+      id,
+      tenantName,
+    );
+    if (hasOnTheWayShipments) {
+      throw new BadRequestException(
+        'No se puede editar la oficina porque tiene envíos "On The Way". Espere a que los envíos se completen.',
+      );
+    }
+
+    // 🚫 VALIDACIÓN: No permitir cambiar country si se está intentando
+    if (updateOfficeDto.country && updateOfficeDto.country !== office.country) {
+      throw new BadRequestException(
+        'No se puede cambiar el país de la oficina. Este campo no es editable.',
+      );
+    }
+
     // Validar que el nombre no se repita en el tenant (case-insensitive) si se está actualizando el nombre
     if (updateOfficeDto.name && updateOfficeDto.name !== office.name) {
       const existingOfficeWithName = await OfficeModel.findOne({
@@ -634,6 +652,81 @@ export class OfficesService {
     } catch (error) {
       console.error('Error checking active shipments:', error);
       return false;
+    }
+  }
+
+  /**
+   * Verificar si una oficina tiene shipments "On The Way" específicamente
+   */
+  async hasOnTheWayShipments(
+    officeId: Types.ObjectId,
+    tenantName: string,
+  ): Promise<boolean> {
+    try {
+      const ShipmentModel =
+        await this.tenantModelRegistry.getShipmentModel(tenantName);
+
+      const shipmentCount = await ShipmentModel.countDocuments({
+        $or: [{ originOfficeId: officeId }, { destinationOfficeId: officeId }],
+        shipment_status: 'On The Way',
+        isDeleted: { $ne: true },
+      });
+
+      return shipmentCount > 0;
+    } catch (error) {
+      console.error('Error checking On The Way shipments:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Actualizar el flag activeShipments para una oficina específica
+   */
+  async updateActiveShipmentsFlag(
+    officeId: Types.ObjectId,
+    tenantName: string,
+  ): Promise<void> {
+    try {
+      const OfficeModel =
+        await this.tenantModelRegistry.getOfficeModel(tenantName);
+
+      const hasOnTheWay = await this.hasOnTheWayShipments(officeId, tenantName);
+
+      await OfficeModel.findByIdAndUpdate(
+        officeId,
+        { $set: { activeShipments: hasOnTheWay } },
+        { new: true },
+      );
+
+      console.log(
+        `🏢 [updateActiveShipmentsFlag] Office ${officeId} activeShipments flag updated to: ${hasOnTheWay}`,
+      );
+    } catch (error) {
+      console.error('Error updating activeShipments flag:', error);
+    }
+  }
+
+  /**
+   * Actualizar flags activeShipments para todas las oficinas involucradas en un shipment
+   */
+  async updateActiveShipmentsFlagsForShipment(
+    originOfficeId: Types.ObjectId | null,
+    destinationOfficeId: Types.ObjectId | null,
+    tenantName: string,
+  ): Promise<void> {
+    try {
+      const officeIds = [originOfficeId, destinationOfficeId].filter(
+        (id) => id !== null,
+      ) as Types.ObjectId[];
+
+      for (const officeId of officeIds) {
+        await this.updateActiveShipmentsFlag(officeId, tenantName);
+      }
+    } catch (error) {
+      console.error(
+        'Error updating activeShipments flags for shipment:',
+        error,
+      );
     }
   }
 

@@ -57,6 +57,9 @@ export class Office extends Document {
 
   @Prop({ default: false })
   isDeleted: boolean;
+
+  @Prop({ default: false })
+  activeShipments: boolean; // Flag para indicar si tiene shipments "On The Way"
 }
 
 export const OfficeSchema =

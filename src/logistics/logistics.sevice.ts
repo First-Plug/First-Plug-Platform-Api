@@ -9,6 +9,7 @@ import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { BadRequestException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EventTypes } from 'src/infra/event-bus/types';
+
 import { MemberAddressUpdatedEvent } from 'src/infra/event-bus/member-address-update.event';
 import {
   MemberDocument,
@@ -37,6 +38,7 @@ import { TenantUserAdapterService } from 'src/common/services/tenant-user-adapte
 import { ProductsService } from 'src/products/products.service';
 import { OfficesService } from '../offices/offices.service';
 import { UsersService } from '../users/users.service';
+import { ShipmentOfficeCoordinatorService } from '../shipments/services/shipment-office-coordinator.service';
 import { Status } from 'src/products/interfaces/product.interface';
 import { AddressData } from 'src/infra/event-bus/tenant-address-update.event';
 import { MembersService } from 'src/members/members.service';
@@ -50,7 +52,7 @@ export class LogisticsService {
 
   constructor(
     private readonly tenantModels: TenantModelRegistry,
-    private eventEmitter: EventEmitter2,
+    private readonly eventEmitter: EventEmitter2,
     private readonly connectionService: TenantConnectionService,
     @Inject(forwardRef(() => ShipmentsService))
     private readonly shipmentsService: ShipmentsService,
@@ -66,6 +68,7 @@ export class LogisticsService {
     private readonly usersService: UsersService,
     private readonly eventsGateway: EventsGateway,
     private readonly globalProductSyncService: GlobalProductSyncService,
+    private readonly shipmentOfficeCoordinator: ShipmentOfficeCoordinatorService,
   ) {}
 
   /**
@@ -2537,6 +2540,8 @@ export class LogisticsService {
       }
 
       if (newStatus !== shipment.shipment_status) {
+        const oldStatus = shipment.shipment_status;
+
         await ShipmentModel.updateOne(
           { _id: shipment._id },
           {
@@ -2547,6 +2552,7 @@ export class LogisticsService {
           },
           { session },
         );
+
         await this.historyService.create({
           actionType: 'update',
           itemType: 'shipments',
@@ -2561,6 +2567,22 @@ export class LogisticsService {
             },
           },
         });
+
+        // 🏢 UPDATE: Coordinar actualización de flags de oficinas si el estado cambió
+        const originOfficeId = shipment.originOfficeId
+          ? new mongoose.Types.ObjectId(shipment.originOfficeId.toString())
+          : null;
+        const destinationOfficeId = shipment.destinationOfficeId
+          ? new mongoose.Types.ObjectId(shipment.destinationOfficeId.toString())
+          : null;
+
+        await this.shipmentOfficeCoordinator.handleShipmentStatusChange(
+          originOfficeId,
+          destinationOfficeId,
+          oldStatus,
+          newStatus,
+          tenantName,
+        );
       }
 
       // TODO: Status On Hold - Missing Data
