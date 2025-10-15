@@ -17,5 +17,8 @@ export class OfficeAddressUpdatedEvent {
     public readonly updatedAt: Date = new Date(),
     public readonly userId: string,
     public readonly ourOfficeEmail: string,
+    public readonly officeId?: string,
+    public readonly officeName?: string,
+    public readonly isDefault?: boolean,
   ) {}
 }

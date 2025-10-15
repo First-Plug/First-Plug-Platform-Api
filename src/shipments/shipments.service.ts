@@ -171,6 +171,7 @@ export class ShipmentsService {
     assignedEmail?: string,
     assignedMember?: string,
     desirableDate?: string,
+    officeId?: string,
   ): Promise<{
     name: string;
     code: string;
@@ -187,14 +188,31 @@ export class ShipmentsService {
     }
 
     if (location === 'Our office') {
-      const office = await this.officesService.getDefaultOffice(tenantId);
-      if (!office)
-        throw new NotFoundException(
-          `Default office not found for tenant ${tenantId}`,
+      let office;
+
+      // Si se proporciona officeId específico, usar esa oficina
+      if (officeId) {
+        office = await this.officesService.findByIdAndTenant(
+          new Types.ObjectId(officeId),
+          tenantId,
         );
+        if (!office) {
+          throw new NotFoundException(
+            `Office with id ${officeId} not found for tenant ${tenantId}`,
+          );
+        }
+      } else {
+        // Fallback a oficina default para compatibilidad
+        office = await this.officesService.getDefaultOffice(tenantId);
+        if (!office) {
+          throw new NotFoundException(
+            `Default office not found for tenant ${tenantId}`,
+          );
+        }
+      }
 
       return {
-        name: 'Our office',
+        name: office.name || 'Our office',
         code: 'OO',
         details: {
           address: office.address || '',
@@ -317,11 +335,13 @@ export class ShipmentsService {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string;
     },
     newData?: {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string;
     },
     desirableOriginDate?: string,
     desirableDestinationDate?: string,
@@ -335,6 +355,7 @@ export class ShipmentsService {
       oldData?.assignedEmail || '',
       oldData?.assignedMember || '',
       desirableOriginDate,
+      oldData?.officeId,
     );
 
     const destinationInfo = await this.getLocationInfo(
@@ -343,6 +364,7 @@ export class ShipmentsService {
       newData?.assignedEmail || '',
       newData?.assignedMember || '',
       desirableDestinationDate,
+      newData?.officeId,
     );
 
     return {

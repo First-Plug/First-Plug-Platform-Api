@@ -252,6 +252,13 @@ export class Shipment {
   })
   originDetails?: Record<string, string>;
 
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Office',
+    required: false,
+  })
+  originOfficeId?: mongoose.Schema.Types.ObjectId;
+
   @Prop({ type: String, required: true })
   destination: string;
 
@@ -260,6 +267,13 @@ export class Shipment {
     required: false,
   })
   destinationDetails?: Record<string, string>;
+
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Office',
+    required: false,
+  })
+  destinationOfficeId?: mongoose.Schema.Types.ObjectId;
 
   @Prop({ type: String, required: true, default: 'shipments' })
   type: string;

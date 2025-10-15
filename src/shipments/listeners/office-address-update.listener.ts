@@ -17,6 +17,18 @@ export class OfficeAddressUpdatedListener {
         this.logger.error('Missing address data in event');
         return;
       }
+
+      console.log(
+        '📍 [EVENT LISTENER] Received OFFICE_ADDRESS_UPDATED event:',
+        {
+          tenantName: event.tenantName,
+          officeId: event.officeId,
+          officeName: event.officeName,
+          isDefault: event.isDefault,
+          timestamp: new Date().toISOString(),
+        },
+      );
+
       const userId = event.userId;
       const ourOfficeEmail = event.ourOfficeEmail;
       await this.logisticsService.checkAndUpdateShipmentsForOurOffice(
@@ -25,8 +37,10 @@ export class OfficeAddressUpdatedListener {
         event.newAddress,
         userId,
         ourOfficeEmail,
+        event.officeId,
       );
     } catch (error) {
+      this.logger.error('Error handling office address update:', error);
       throw error;
     }
   }

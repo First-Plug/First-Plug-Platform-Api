@@ -65,6 +65,43 @@ export class Product {
   @Prop({ type: String })
   location?: string;
 
+  @Prop({ type: Schema.Types.ObjectId, ref: 'Office', required: false })
+  officeId?: Schema.Types.ObjectId;
+
+  @Prop({
+    type: {
+      officeId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Office',
+        required: false,
+      },
+      officeCountryCode: {
+        type: String,
+        required: false,
+      },
+      officeName: {
+        type: String,
+        required: false,
+      },
+      assignedAt: {
+        type: Date,
+        required: false,
+      },
+      isDefault: {
+        type: Boolean,
+        required: false,
+      },
+    },
+    required: false,
+  })
+  office?: {
+    officeId?: mongoose.Schema.Types.ObjectId;
+    officeCountryCode?: string;
+    officeName?: string;
+    assignedAt?: Date;
+    isDefault?: boolean;
+  };
+
   @Prop({
     type: {
       amount: { type: Number },

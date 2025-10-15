@@ -651,7 +651,7 @@ export class ProductsService {
 
     const productsFromRepository = await ProductModel.find({
       isDeleted: false,
-    });
+    }).lean();
 
     const productsFromMembers =
       await this.assignmentsService.getAllProductsWithMembers(tenantConnection);
@@ -680,6 +680,26 @@ export class ProductsService {
           additionalInfo,
           activeShipment,
         } = product;
+
+        // Extraer objetos completos según location (pueden no existir)
+        const memberData = (product as any).memberData || null;
+        const fpWarehouse = (product as any).fpWarehouse || null;
+        const office = (product as any).office || null;
+        const warehouseId = (product as any).warehouseId || null;
+        const officeId = (product as any).officeId || null;
+
+        // Debug: verificar si el producto tiene office cuando location es "Our office"
+        if (location === 'Our office') {
+          console.log('🏢 Producto Our office:', {
+            productId: _id,
+            hasOffice: !!office,
+            hasOfficeId: !!officeId,
+            officeKeys: office ? Object.keys(office) : 'null',
+            productKeys: Object.keys(product).filter((key) =>
+              key.includes('office'),
+            ),
+          });
+        }
         const filteredAttributes = attributes.filter(
           (attribute: Attribute) =>
             attribute.key !== 'keyboardLanguage' && attribute.key !== 'gpu',
@@ -756,6 +776,13 @@ export class ProductsService {
           shipmentDestination,
           shipmentId,
           shipmentStatus,
+          // Objetos completos según location
+          memberData,
+          fpWarehouse,
+          office,
+          // IDs de referencia
+          warehouseId,
+          officeId,
         };
       }),
     );

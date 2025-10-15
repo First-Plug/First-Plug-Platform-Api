@@ -530,6 +530,7 @@ export class LogisticsService {
   public async isLocationDataComplete(
     product: Partial<Product>,
     tenantName: string,
+    officeId?: string,
   ): Promise<boolean> {
     if (product.location === 'FP warehouse') {
       return true;
@@ -554,9 +555,25 @@ export class LogisticsService {
     }
 
     if (product.location === 'Our office') {
-      const office = await this.officesService.getDefaultOffice(tenantName);
+      let office: any;
+
+      // Si se proporciona officeId específico, usar esa oficina
+      if (officeId) {
+        office = await this.officesService.findByIdAndTenant(
+          new Types.ObjectId(officeId),
+          tenantName,
+        );
+      } else {
+        // Fallback a oficina default para compatibilidad
+        office = await this.officesService.getDefaultOffice(tenantName);
+      }
 
       if (!office) {
+        console.log('❌ Oficina no encontrada:', {
+          tenantName,
+          officeId,
+          useDefault: !officeId,
+        });
         return false;
       }
 
@@ -572,6 +589,9 @@ export class LogisticsService {
       if (!isComplete) {
         console.log('❌ Oficina incompleta para "Our office":', {
           tenantName,
+          officeId: office._id,
+          officeName: office.name,
+          isDefault: office.isDefault,
           missing: {
             country: !office.country,
             city: !office.city,
@@ -608,11 +628,13 @@ export class LogisticsService {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string;
     },
     newData?: {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string;
     },
     providedProduct?: ProductDocument,
     providedConnection?: Connection,
@@ -671,6 +693,7 @@ export class LogisticsService {
             oldData?.assignedEmail || '',
             oldData?.assignedMember || '',
             originDate,
+            oldData?.officeId,
           )
           .then((res) => res.details);
 
@@ -681,12 +704,14 @@ export class LogisticsService {
         newData?.assignedEmail || '',
         newData?.assignedMember || '',
         destinationDate,
+        newData?.officeId,
       )
       .then((res) => res.details);
 
     const destinationComplete = await this.isLocationDataComplete(
       { ...product, location: destinationLocation, assignedEmail },
       tenantName,
+      newData?.officeId,
     );
 
     const originComplete = await this.isLocationDataComplete(
@@ -696,6 +721,7 @@ export class LogisticsService {
         assignedEmail: oldData?.assignedEmail || '',
       },
       tenantName,
+      oldData?.officeId,
     );
 
     return {
@@ -788,16 +814,51 @@ export class LogisticsService {
 
   async isShipmentDetailsComplete(
     shipment: ShipmentDocument,
+    tenantName?: string,
   ): Promise<boolean> {
-    const originComplete = this.areShipmentDetailsComplete(
+    let originComplete = this.areShipmentDetailsComplete(
       shipment.originDetails,
       shipment.origin,
     );
 
-    const destinationComplete = this.areShipmentDetailsComplete(
+    let destinationComplete = this.areShipmentDetailsComplete(
       shipment.destinationDetails,
       shipment.destination,
     );
+
+    // Si hay officeIds específicos y tenantName, validar que las oficinas existan y estén completas
+    if (tenantName) {
+      if (shipment.origin === 'Our office' && shipment.originOfficeId) {
+        const office = await this.officesService.findByIdAndTenant(
+          new Types.ObjectId(shipment.originOfficeId.toString()),
+          tenantName,
+        );
+        if (!office) {
+          console.log('❌ Oficina de origen no encontrada:', {
+            tenantName,
+            officeId: shipment.originOfficeId,
+          });
+          originComplete = false;
+        }
+      }
+
+      if (
+        shipment.destination === 'Our office' &&
+        shipment.destinationOfficeId
+      ) {
+        const office = await this.officesService.findByIdAndTenant(
+          new Types.ObjectId(shipment.destinationOfficeId.toString()),
+          tenantName,
+        );
+        if (!office) {
+          console.log('❌ Oficina de destino no encontrada:', {
+            tenantName,
+            officeId: shipment.destinationOfficeId,
+          });
+          destinationComplete = false;
+        }
+      }
+    }
 
     return originComplete && destinationComplete;
   }
@@ -1518,6 +1579,7 @@ export class LogisticsService {
     newAddress: AddressData,
     userId: string,
     ourOfficeEmail: string,
+    officeId?: string,
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection = await this.tenantModels.getConnection(tenantName);
@@ -1526,13 +1588,36 @@ export class LogisticsService {
 
     try {
       await session.withTransaction(async () => {
-        const shipments = await ShipmentModel.find({
+        // Construir query para filtrar por oficina específica si se proporciona officeId
+        const query: any = {
           $or: [{ origin: 'Our office' }, { destination: 'Our office' }],
           shipment_status: {
             $in: ['In Preparation', 'On Hold - Missing Data'],
           },
           isDeleted: { $ne: true },
-        }).session(session);
+        };
+
+        // Si se proporciona officeId, filtrar solo shipments de esa oficina específica
+        if (officeId) {
+          query.$or = [
+            {
+              origin: 'Our office',
+              originOfficeId: new Types.ObjectId(officeId),
+            },
+            {
+              destination: 'Our office',
+              destinationOfficeId: new Types.ObjectId(officeId),
+            },
+          ];
+        }
+
+        console.log('🔍 Buscando shipments para actualizar oficina:', {
+          tenantName,
+          officeId,
+          query: JSON.stringify(query, null, 2),
+        });
+
+        const shipments = await ShipmentModel.find(query).session(session);
 
         for (const shipment of shipments) {
           let updated = false;
