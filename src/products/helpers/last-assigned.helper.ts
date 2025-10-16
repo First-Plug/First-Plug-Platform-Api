@@ -10,6 +10,10 @@ export interface LocationChangeParams {
     warehouseCountryCode?: string;
     warehouseName?: string;
   };
+  currentOffice?: {
+    officeCountryCode?: string;
+    officeName?: string;
+  };
   actionType?: 'assign' | 'reassign' | 'return' | 'relocate' | 'offboarding';
 }
 
@@ -22,8 +26,8 @@ export class LastAssignedHelper {
    *
    * REGLAS:
    * 1. Si sale de Employee → preservar email del member
-   * 2. Si sale de FP warehouse → preservar "FP warehouse - {countryCode}"
-   * 3. Si sale de Our office → preservar "Our office"
+   * 2. Si sale de FP warehouse → preservar "FP warehouse - {countryCode} - {warehouseName}"
+   * 3. Si sale de Our office → preservar "Our office - {countryCode} - {officeName}"
    * 4. Si no hay cambio de ubicación → mantener lastAssigned actual
    */
   calculateLastAssigned(params: LocationChangeParams): string | undefined {
@@ -33,6 +37,7 @@ export class LastAssignedHelper {
       currentAssignedEmail,
       currentLastAssigned,
       currentFpWarehouse,
+      currentOffice,
       actionType,
     } = params;
 
@@ -42,6 +47,7 @@ export class LastAssignedHelper {
       currentAssignedEmail,
       currentLastAssigned,
       currentFpWarehouse,
+      currentOffice,
       actionType,
     });
 
@@ -65,9 +71,11 @@ export class LastAssignedHelper {
       return warehouseInfo || currentLastAssigned;
     }
 
-    // CASO 3: Sale de Our office → preservar "Our office"
+    // CASO 3: Sale de Our office → preservar office info
     if (currentLocation === 'Our office' && newLocation !== 'Our office') {
-      return 'Our office';
+      const officeInfo = this.formatOfficeLastAssigned(currentOffice);
+
+      return officeInfo || currentLastAssigned;
     }
 
     // CASO 4: Otros casos → mantener lastAssigned actual
@@ -86,7 +94,35 @@ export class LastAssignedHelper {
       return undefined;
     }
 
-    return `FP warehouse - ${fpWarehouse.warehouseCountryCode}`;
+    // Formato: "FP warehouse - {countryCode} - {warehouseName}"
+    const parts = ['FP warehouse', fpWarehouse.warehouseCountryCode];
+
+    if (fpWarehouse.warehouseName) {
+      parts.push(fpWarehouse.warehouseName);
+    }
+
+    return parts.join(' - ');
+  }
+
+  /**
+   * Formatea la información de la oficina para lastAssigned
+   */
+  private formatOfficeLastAssigned(office?: {
+    officeCountryCode?: string;
+    officeName?: string;
+  }): string | undefined {
+    if (!office?.officeCountryCode) {
+      return undefined;
+    }
+
+    // Formato: "Our office - {countryCode} - {officeName}"
+    const parts = ['Our office', office.officeCountryCode];
+
+    if (office.officeName) {
+      parts.push(office.officeName);
+    }
+
+    return parts.join(' - ');
   }
 
   /**
@@ -100,6 +136,10 @@ export class LastAssignedHelper {
       warehouseCountryCode?: string;
       warehouseName?: string;
     };
+    office?: {
+      officeCountryCode?: string;
+      officeName?: string;
+    };
   } {
     return {
       location: product.location as 'Employee' | 'FP warehouse' | 'Our office',
@@ -109,6 +149,12 @@ export class LastAssignedHelper {
         ? {
             warehouseCountryCode: product.fpWarehouse.warehouseCountryCode,
             warehouseName: product.fpWarehouse.warehouseName,
+          }
+        : undefined,
+      office: product.office
+        ? {
+            officeCountryCode: product.office.officeCountryCode,
+            officeName: product.office.officeName,
           }
         : undefined,
     };
@@ -130,6 +176,35 @@ export class LastAssignedHelper {
       currentAssignedEmail: currentInfo.assignedEmail,
       currentLastAssigned: currentInfo.lastAssigned,
       currentFpWarehouse: currentInfo.fpWarehouse,
+      currentOffice: currentInfo.office,
+      actionType,
+    });
+  }
+
+  /**
+   * Calcula lastAssigned para un producto específico con información adicional de oficina
+   */
+  calculateForProductUpdateWithOfficeInfo(
+    currentProduct: ProductDocument,
+    newLocation: 'Employee' | 'FP warehouse' | 'Our office',
+    additionalOfficeInfo?: {
+      officeCountryCode?: string;
+      officeName?: string;
+    },
+    actionType?: 'assign' | 'reassign' | 'return' | 'relocate' | 'offboarding',
+  ): string | undefined {
+    const currentInfo = this.extractLocationInfo(currentProduct);
+
+    // Si tenemos información adicional de oficina, usarla en lugar de la del producto
+    const officeInfo = additionalOfficeInfo || currentInfo.office;
+
+    return this.calculateLastAssigned({
+      currentLocation: currentInfo.location,
+      newLocation,
+      currentAssignedEmail: currentInfo.assignedEmail,
+      currentLastAssigned: currentInfo.lastAssigned,
+      currentFpWarehouse: currentInfo.fpWarehouse,
+      currentOffice: officeInfo,
       actionType,
     });
   }

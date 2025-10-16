@@ -768,7 +768,13 @@ export class OfficesService {
 
     const updated = await OfficeModel.findByIdAndUpdate(
       id,
-      { $set: { isDeleted: true } },
+      {
+        $set: {
+          isDeleted: true,
+          isActive: false,
+          deletedAt: new Date(),
+        },
+      },
       { new: true },
     );
 

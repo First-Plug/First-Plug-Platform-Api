@@ -945,12 +945,13 @@ export class AssignmentsService {
 
     if (updatedFields.assignedEmail === '') {
       updatedFields.lastAssigned =
-        this.lastAssignedHelper.calculateForProductUpdate(
+        await this.calculateLastAssignedWithOfficeInfo(
           product,
           updateProductDto.location as
             | 'Employee'
             | 'FP warehouse'
             | 'Our office',
+          tenantName || '',
           updateProductDto.actionType as
             | 'assign'
             | 'reassign'
@@ -1065,15 +1066,13 @@ export class AssignmentsService {
               : product.officeId,
           }
         : {}),
-      // Agregar objeto office si está presente
-      ...(updateProductDto.officeId
-        ? await this.buildOfficeObject(
-            updateProductDto.officeId as string,
-            tenantName,
-          )
-        : product.office
-          ? { office: product.office }
-          : {}),
+      // Agregar objeto office si está presente o si location es "Our office"
+      ...(await this.handleOfficeAssignment(
+        updateProductDto.officeId as string,
+        updateProductDto.location,
+        product.office,
+        tenantName,
+      )),
     };
 
     newMember.products.push(updateData);
@@ -1142,9 +1141,10 @@ export class AssignmentsService {
       serialNumber: updateProductDto.serialNumber || product.serialNumber,
       assignedEmail: '',
       assignedMember: '',
-      lastAssigned: this.lastAssignedHelper.calculateForProductUpdate(
+      lastAssigned: await this.calculateLastAssignedWithOfficeInfo(
         product,
         updateProductDto.location as 'Employee' | 'FP warehouse' | 'Our office',
+        tenantName || '',
         updateProductDto.actionType as
           | 'assign'
           | 'reassign'
@@ -1185,15 +1185,13 @@ export class AssignmentsService {
               : product.officeId,
           }
         : {}),
-      // Agregar objeto office si está presente
-      ...(updateProductDto.officeId && tenantName
-        ? await this.buildOfficeObject(
-            updateProductDto.officeId as string,
-            tenantName as string,
-          )
-        : product.office
-          ? { office: product.office }
-          : {}),
+      // Agregar objeto office si está presente o si location es "Our office"
+      ...(await this.handleOfficeAssignment(
+        updateProductDto.officeId as string,
+        updateProductDto.location,
+        product.office,
+        tenantName as string,
+      )),
     };
     const productModel = connection.model(Product.name, ProductSchema);
 
@@ -1490,11 +1488,12 @@ export class AssignmentsService {
         );
       }
 
-      // Calcular lastAssigned usando el helper
+      // Calcular lastAssigned usando el helper con información de oficina
       const calculatedLastAssigned =
-        this.lastAssignedHelper.calculateForProductUpdate(
+        await this.calculateLastAssignedWithOfficeInfo(
           product,
           'Employee', // newLocation
+          tenantName,
           updateDto.actionType as
             | 'assign'
             | 'reassign'
@@ -1728,11 +1727,12 @@ export class AssignmentsService {
         );
       }
 
-      // Calcular lastAssigned usando el helper
+      // Calcular lastAssigned usando el helper con información de oficina
       const calculatedLastAssigned =
-        this.lastAssignedHelper.calculateForProductUpdate(
+        await this.calculateLastAssignedWithOfficeInfo(
           product as ProductDocument,
           'Employee', // newLocation
+          tenantName,
           updateDto.actionType as
             | 'assign'
             | 'reassign'
@@ -2209,5 +2209,125 @@ export class AssignmentsService {
       console.error('Error construyendo objeto office:', error);
       return {};
     }
+  }
+
+  /**
+   * Obtener información de oficina para lastAssigned
+   */
+  private async getOfficeInfoForLastAssigned(
+    product: ProductDocument,
+    tenantName: string,
+  ): Promise<{ officeCountryCode?: string; officeName?: string } | undefined> {
+    // Si el producto tiene información de oficina, usarla
+    if (product.office?.officeCountryCode && product.office?.officeName) {
+      return {
+        officeCountryCode: product.office.officeCountryCode,
+        officeName: product.office.officeName,
+      };
+    }
+
+    // Si tiene officeId pero no la información completa, buscarla
+    if (product.officeId) {
+      try {
+        const office = await this.officesService.findByIdAndTenant(
+          new Types.ObjectId(product.officeId.toString()),
+          tenantName,
+        );
+
+        if (office) {
+          return {
+            officeCountryCode: office.country,
+            officeName: office.name,
+          };
+        }
+      } catch (error) {
+        console.warn('Error obteniendo información de oficina:', error);
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Maneja la asignación de oficina: usa officeId proporcionado o oficina default
+   */
+  private async handleOfficeAssignment(
+    officeId: string | undefined,
+    location: string | undefined,
+    currentOffice: any,
+    tenantName: string,
+  ): Promise<{ office?: any; officeId?: any }> {
+    // Si se proporciona officeId explícitamente, usarlo
+    if (officeId && tenantName) {
+      const officeData = await this.buildOfficeObject(officeId, tenantName);
+      return {
+        officeId: officeId as any,
+        ...officeData,
+      };
+    }
+
+    // Si location es "Our office" pero no se proporciona officeId, usar oficina default
+    if (location === 'Our office' && tenantName) {
+      try {
+        const defaultOffice =
+          await this.officesService.getDefaultOffice(tenantName);
+
+        if (defaultOffice) {
+          const officeData = await this.buildOfficeObject(
+            defaultOffice._id.toString(),
+            tenantName,
+          );
+          return {
+            officeId: defaultOffice._id,
+            ...officeData,
+          };
+        } else {
+          console.warn(
+            `⚠️ No se encontró oficina default para tenant ${tenantName}`,
+          );
+        }
+      } catch (error) {
+        console.error('Error obteniendo oficina default:', error);
+      }
+    }
+
+    // Si no es "Our office" o ya tiene office, mantener el actual
+    if (currentOffice) {
+      return { office: currentOffice };
+    }
+
+    return {};
+  }
+
+  /**
+   * Calcula lastAssigned con información completa de oficina si es necesario
+   */
+  private async calculateLastAssignedWithOfficeInfo(
+    product: ProductDocument,
+    newLocation: 'Employee' | 'FP warehouse' | 'Our office',
+    tenantName: string,
+    actionType?: 'assign' | 'reassign' | 'return' | 'relocate' | 'offboarding',
+  ): Promise<string | undefined> {
+    // Si el producto está saliendo de "Our office", obtener información completa
+    if (product.location === 'Our office') {
+      const officeInfo = await this.getOfficeInfoForLastAssigned(
+        product,
+        tenantName,
+      );
+
+      return this.lastAssignedHelper.calculateForProductUpdateWithOfficeInfo(
+        product,
+        newLocation,
+        officeInfo,
+        actionType,
+      );
+    }
+
+    // Para otros casos, usar el método normal
+    return this.lastAssignedHelper.calculateForProductUpdate(
+      product,
+      newLocation,
+      actionType,
+    );
   }
 }

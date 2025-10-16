@@ -87,6 +87,41 @@ export class GlobalProduct {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Office', required: false })
   officeId?: MongooseSchema.Types.ObjectId;
 
+  // Datos de la oficina (cuando location = 'Our office')
+  @Prop({
+    type: {
+      officeId: {
+        type: MongooseSchema.Types.ObjectId,
+        ref: 'Office',
+        required: false,
+      },
+      officeCountryCode: {
+        type: String,
+        required: false,
+      },
+      officeName: {
+        type: String,
+        required: false,
+      },
+      assignedAt: {
+        type: Date,
+        required: false,
+      },
+      isDefault: {
+        type: Boolean,
+        required: false,
+      },
+    },
+    required: false,
+  })
+  office?: {
+    officeId?: MongooseSchema.Types.ObjectId;
+    officeCountryCode?: string;
+    officeName?: string;
+    assignedAt?: Date;
+    isDefault?: boolean;
+  };
+
   @Prop([ProductAttribute])
   attributes: ProductAttribute[];
 
