@@ -149,16 +149,15 @@ async function migrateTenantData(
       // 1. Migrar productos en colección 'products'
       const productsCollection = connection.collection('products');
 
-      // Actualizar productos con officeId
+      // Actualizar productos con objeto office
       const productsResult = await productsCollection.updateMany(
         {
           location: 'Our office',
-          officeId: { $exists: false },
+          office: { $exists: false },
           isDeleted: { $ne: true },
         },
         {
           $set: {
-            officeId: defaultOffice._id,
             office: {
               officeId: defaultOffice._id,
               officeCountryCode: defaultOffice.country,
@@ -180,12 +179,11 @@ async function migrateTenantData(
       const membersResult = await membersCollection.updateMany(
         {
           'products.location': 'Our office',
-          'products.officeId': { $exists: false },
+          'products.office': { $exists: false },
           isDeleted: { $ne: true },
         },
         {
           $set: {
-            'products.$[elem].officeId': defaultOffice._id,
             'products.$[elem].office': {
               officeId: defaultOffice._id,
               officeCountryCode: defaultOffice.country,
@@ -199,7 +197,7 @@ async function migrateTenantData(
           arrayFilters: [
             {
               'elem.location': 'Our office',
-              'elem.officeId': { $exists: false },
+              'elem.office': { $exists: false },
             },
           ],
           session,

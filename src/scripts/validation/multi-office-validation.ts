@@ -138,45 +138,45 @@ async function validateProductsForTenant(
     // Validar productos en colección 'products'
     const productsCollection = connection.collection('products');
 
-    // 1. Productos con location="Our office" sin officeId
-    const productsWithoutOfficeId = await productsCollection
+    // 1. Productos con location="Our office" sin objeto office
+    const productsWithoutOffice = await productsCollection
       .find({
         location: 'Our office',
-        officeId: { $exists: false },
+        office: { $exists: false },
         isDeleted: { $ne: true },
       })
       .toArray();
 
-    if (productsWithoutOfficeId.length > 0) {
+    if (productsWithoutOffice.length > 0) {
       inconsistencies.push(
-        `${tenantName}: ${productsWithoutOfficeId.length} productos con location="Our office" sin officeId`,
+        `${tenantName}: ${productsWithoutOffice.length} productos con location="Our office" sin objeto office`,
       );
-      inconsistenciesCount += productsWithoutOfficeId.length;
+      inconsistenciesCount += productsWithoutOffice.length;
     }
 
-    // 2. Productos con officeId inválido
-    const productsWithInvalidOfficeId = await productsCollection
+    // 2. Productos con officeId inválido en el objeto office
+    const productsWithInvalidOffice = await productsCollection
       .find({
         location: 'Our office',
-        officeId: { $exists: true },
+        'office.officeId': { $exists: true },
         isDeleted: { $ne: true },
       })
       .toArray();
 
-    for (const product of productsWithInvalidOfficeId) {
+    for (const product of productsWithInvalidOffice) {
       if (
-        product.officeId &&
-        !validOfficeIds.has(product.officeId.toString())
+        product.office?.officeId &&
+        !validOfficeIds.has(product.office.officeId.toString())
       ) {
         inconsistencies.push(
-          `${tenantName}: Producto ${product._id} tiene officeId inválido: ${product.officeId}`,
+          `${tenantName}: Producto ${product._id} tiene officeId inválido: ${product.office.officeId}`,
         );
         inconsistenciesCount++;
       }
     }
 
     validated +=
-      productsWithoutOfficeId.length + productsWithInvalidOfficeId.length;
+      productsWithoutOffice.length + productsWithInvalidOffice.length;
 
     // 3. Validar productos embebidos en colección 'members'
     const membersCollection = connection.collection('members');
@@ -192,14 +192,14 @@ async function validateProductsForTenant(
         if (product.location === 'Our office') {
           validated++;
 
-          if (!product.officeId) {
+          if (!product.office) {
             inconsistencies.push(
-              `${tenantName}: Producto embebido ${product._id} en member ${member._id} sin officeId`,
+              `${tenantName}: Producto embebido ${product._id} en member ${member._id} sin objeto office`,
             );
             inconsistenciesCount++;
-          } else if (!validOfficeIds.has(product.officeId.toString())) {
+          } else if (!validOfficeIds.has(product.office.officeId.toString())) {
             inconsistencies.push(
-              `${tenantName}: Producto embebido ${product._id} tiene officeId inválido: ${product.officeId}`,
+              `${tenantName}: Producto embebido ${product._id} tiene officeId inválido: ${product.office.officeId}`,
             );
             inconsistenciesCount++;
           }

@@ -159,12 +159,11 @@ async function migrateTenantData(
     const productsResult = await productsCollection.updateMany(
       {
         location: 'Our office',
-        $or: [{ officeId: { $exists: false } }, { office: { $exists: false } }],
+        office: { $exists: false },
         isDeleted: { $ne: true },
       },
       {
         $set: {
-          officeId: defaultOffice._id,
           office: {
             officeId: defaultOffice._id,
             officeCountryCode: defaultOffice.country,

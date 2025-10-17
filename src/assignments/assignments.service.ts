@@ -609,8 +609,6 @@ export class AssignmentsService {
         ? { price: { amount: price.amount, currencyCode: price.currencyCode } }
         : {}),
       fp_shipment: !!fp_shipment,
-      // Agregar officeId si está presente (convertir string a ObjectId si es necesario)
-      ...(officeId ? { officeId: officeId as any } : {}),
       // Agregar objeto office si está presente
       ...(officeId && tenantName
         ? await this.buildOfficeObject(officeId as string, tenantName as string)
@@ -1058,14 +1056,6 @@ export class AssignmentsService {
       activeShipment: updateProductDto.fp_shipment ?? product.fp_shipment,
       isDeleted: product.isDeleted,
       lastAssigned: lastAssigned,
-      // Agregar officeId si está presente en el DTO o en el producto original
-      ...(updateProductDto.officeId || product.officeId
-        ? {
-            officeId: updateProductDto.officeId
-              ? (updateProductDto.officeId as any)
-              : product.officeId,
-          }
-        : {}),
       // Agregar objeto office si está presente o si location es "Our office"
       ...(await this.handleOfficeAssignment(
         updateProductDto.officeId as string,
@@ -1177,14 +1167,6 @@ export class AssignmentsService {
             : undefined,
       // Agregar campos de warehouse si existen
       ...warehouseFields,
-      // Agregar officeId si está presente en el DTO o en el producto original
-      ...(updateProductDto.officeId || product.officeId
-        ? {
-            officeId: updateProductDto.officeId
-              ? (updateProductDto.officeId as any)
-              : product.officeId,
-          }
-        : {}),
       // Agregar objeto office si está presente o si location es "Our office"
       ...(await this.handleOfficeAssignment(
         updateProductDto.officeId as string,
@@ -2226,11 +2208,11 @@ export class AssignmentsService {
       };
     }
 
-    // Si tiene officeId pero no la información completa, buscarla
-    if (product.officeId) {
+    // Si tiene office.officeId pero no la información completa, buscarla
+    if (product.office?.officeId) {
       try {
         const office = await this.officesService.findByIdAndTenant(
-          new Types.ObjectId(product.officeId.toString()),
+          new Types.ObjectId(product.office.officeId.toString()),
           tenantName,
         );
 

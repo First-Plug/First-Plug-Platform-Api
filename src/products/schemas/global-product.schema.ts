@@ -84,9 +84,6 @@ export class GlobalProduct {
   @Prop({ required: true, index: true })
   location: string;
 
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Office', required: false })
-  officeId?: MongooseSchema.Types.ObjectId;
-
   // Datos de la oficina (cuando location = 'Our office')
   @Prop({
     type: {
