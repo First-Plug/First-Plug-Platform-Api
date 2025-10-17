@@ -86,7 +86,7 @@ export class ProductsController {
   @Get('/table')
   getProductsTable(@Request() req: any) {
     const tenantName = req.user.tenantName;
-    console.log('get Products caller wth tenantName:', tenantName);
+
     return this.productsService.tableGrouping(tenantName);
   }
 
