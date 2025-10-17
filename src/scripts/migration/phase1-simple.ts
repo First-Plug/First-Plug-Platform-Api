@@ -113,33 +113,44 @@ async function runSimpleMigration() {
       });
     }
 
-    let defaultWarehouse = await warehousesCollection.findOne({
+    let countryDoc = await warehousesCollection.findOne({
       countryCode: 'AR',
       isActive: true,
     });
 
-    if (!defaultWarehouse) {
+    if (!countryDoc) {
       // Buscar por nombre de país
-      defaultWarehouse = await warehousesCollection.findOne({
+      countryDoc = await warehousesCollection.findOne({
         country: 'Argentina',
         isActive: true,
       });
     }
 
-    if (!defaultWarehouse) {
+    if (!countryDoc) {
       // Buscar cualquier warehouse de Argentina (sin importar isActive)
-      defaultWarehouse = await warehousesCollection.findOne({
+      countryDoc = await warehousesCollection.findOne({
         $or: [{ countryCode: 'AR' }, { country: 'Argentina' }],
       });
     }
 
+    if (!countryDoc) {
+      console.error('❌ No se encontró país Argentina en warehouses');
+      return;
+    }
+
+    // Obtener el primer warehouse activo del país
+    const activeWarehouse = countryDoc.warehouses?.find(
+      (wh: any) => wh.isActive === true,
+    );
+    const defaultWarehouse = activeWarehouse || countryDoc.warehouses?.[0];
+
     if (!defaultWarehouse) {
-      console.error('❌ No se encontró warehouse para Argentina');
+      console.error('❌ No se encontró warehouse en Argentina');
       return;
     }
 
     console.log(
-      `🏭 Usando warehouse: ${defaultWarehouse.name || 'Default Warehouse AR'}`,
+      `🏭 Usando warehouse: ${defaultWarehouse.name || 'Default Warehouse AR'} (ID: ${defaultWarehouse._id})`,
     );
 
     // 5. Preparar el esquema fpWarehouse

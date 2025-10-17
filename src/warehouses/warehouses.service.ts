@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { Model, Types, Connection } from 'mongoose';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   Warehouse,
   WarehouseDocument,
@@ -14,6 +15,8 @@ import {
 import { CreateWarehouseDto, UpdateWarehouseDto } from './dto';
 import { DEFAULT_PARTNER_TYPE } from './constants/warehouse.constants';
 import { countryCodes } from '../shipments/helpers/countryCodes';
+import { EventTypes } from '../infra/event-bus/types';
+import { WarehouseDataUpdatedEvent } from '../infra/event-bus/warehouse-data-update.event';
 
 @Injectable()
 export class WarehousesService {
@@ -23,6 +26,7 @@ export class WarehousesService {
     @InjectModel(Warehouse.name, 'firstPlug')
     private warehouseModel: Model<WarehouseDocument>,
     @InjectConnection('firstPlug') private firstPlugConnection: Connection,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -134,7 +138,7 @@ export class WarehousesService {
         warehouseId,
         country: warehouseDoc.country,
         countryCode: warehouseDoc.countryCode,
-        warehouseName: warehouse.name || 'Default Warehouse',
+        warehouseName: warehouse.name || '',
         partnerType: warehouse.partnerType || 'default',
         isActive: warehouse.isActive || false,
         totalProducts,
@@ -570,10 +574,39 @@ export class WarehousesService {
       const warehouse = countryDoc.warehouses[warehouseIndex];
       const wasComplete = this.isWarehouseComplete(warehouse);
 
+      // Capturar datos anteriores para el evento
+      const oldData = {
+        name: warehouse.name,
+        address: warehouse.address,
+        city: warehouse.city,
+        state: warehouse.state,
+        zipCode: warehouse.zipCode,
+        email: warehouse.email,
+        phone: warehouse.phone,
+        contactPerson: warehouse.contactPerson,
+      };
+
       // Actualizar solo los datos (sin isActive)
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { isActive, ...dataToUpdate } = updateData;
       Object.assign(warehouse, dataToUpdate, { updatedAt: new Date() });
+
+      // Capturar datos nuevos para el evento
+      const newData = {
+        name: warehouse.name,
+        address: warehouse.address,
+        city: warehouse.city,
+        state: warehouse.state,
+        zipCode: warehouse.zipCode,
+        email: warehouse.email,
+        phone: warehouse.phone,
+        contactPerson: warehouse.contactPerson,
+      };
+
+      // Identificar campos que realmente cambiaron
+      const updatedFields = Object.keys(dataToUpdate).filter(
+        (field) => oldData[field] !== newData[field],
+      );
 
       const isNowComplete = this.isWarehouseComplete(warehouse);
       let autoActivated = false;
@@ -614,11 +647,32 @@ export class WarehousesService {
 
       await countryDoc.save();
 
+      // Emitir evento solo si hubo cambios relevantes
+      if (updatedFields.length > 0) {
+        this.logger.log(
+          `📡 Emitting WAREHOUSE_DATA_UPDATED event for warehouse ${warehouseId}`,
+          { updatedFields, countryCode: countryDoc.countryCode },
+        );
+
+        this.eventEmitter.emit(
+          EventTypes.WAREHOUSE_DATA_UPDATED,
+          new WarehouseDataUpdatedEvent(
+            warehouseId,
+            countryDoc.countryCode,
+            oldData,
+            newData,
+            updatedFields,
+          ),
+        );
+      }
+
       const message = autoActivated
         ? `Warehouse updated and auto-activated in ${country}`
         : `Warehouse updated successfully in ${country}`;
 
-      this.logger.log(`✅ ${message}: ${warehouse.name || 'Unnamed'}`);
+      this.logger.log(
+        `✅ ${message}: ${warehouse.name || 'warehouse without name'}`,
+      );
 
       return {
         warehouse,
@@ -721,7 +775,7 @@ export class WarehousesService {
       await countryDoc.save();
 
       this.logger.log(
-        `✅ Warehouse updated in ${country}: ${warehouse.name || 'Unnamed'}`,
+        `✅ Warehouse updated in ${country}: ${warehouse.name || 'warehouse without name'}`,
       );
       return warehouse;
     } catch (error) {
@@ -882,12 +936,12 @@ export class WarehousesService {
 
       const result = {
         activated: true,
-        message: `Warehouse activated successfully: ${warehouse.name || 'Unnamed'}`,
+        message: `Warehouse activated successfully: ${warehouse.name || 'warehouse without name'}`,
         deactivatedWarehouses:
           deactivatedWarehouses.length > 0 ? deactivatedWarehouses : undefined,
         countryCode: countryDoc.countryCode,
         warehouseId: warehouseId,
-        warehouseName: warehouse.name || 'Unnamed',
+        warehouseName: warehouse.name || '',
       };
 
       this.logger.log(`✅ ${result.message}`);
@@ -1079,7 +1133,7 @@ export class WarehousesService {
 
       const result = {
         deactivated: true,
-        message: `Warehouse deactivated successfully: ${warehouse.name || 'Unnamed'}`,
+        message: `Warehouse deactivated successfully: ${warehouse.name || 'warehouse without name'}`,
         warning: `Warning: ${country} now has no active warehouses. Products cannot be assigned to FP warehouse until another warehouse is activated.`,
       };
 
@@ -1242,7 +1296,7 @@ export class WarehousesService {
 
       return {
         country: countryDoc.country,
-        name: warehouse.name || 'Unnamed Warehouse',
+        name: warehouse.name || '',
         isActive: warehouse.isActive,
       };
     } catch (error) {
@@ -1284,7 +1338,7 @@ export class WarehousesService {
             countryCode: countryDoc.countryCode,
             country: countryDoc.country,
             warehouseId: activeWarehouse._id.toString(),
-            warehouseName: activeWarehouse.name || 'Unnamed Warehouse',
+            warehouseName: activeWarehouse.name || '',
           });
         }
       }
