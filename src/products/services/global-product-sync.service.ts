@@ -249,6 +249,7 @@ export class GlobalProductSyncService {
       const updateFields: any = {
         status: 'Deprecated',
         isDeleted: true,
+        deletedAt: new Date(), // ✅ Agregar deletedAt para consistencia con soft delete
         serialNumber: null,
         sourceCollection: 'products', // Los productos eliminados siempre van a la colección products
         lastSyncedAt: new Date(),

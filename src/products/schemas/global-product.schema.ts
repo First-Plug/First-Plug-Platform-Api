@@ -173,6 +173,9 @@ export class GlobalProduct {
   @Prop({ type: Boolean, default: false })
   isDeleted: boolean;
 
+  @Prop({ type: Date, default: null })
+  deletedAt?: Date;
+
   // === DATOS ESPECÍFICOS DE UBICACIÓN ===
 
   // Datos del warehouse (cuando location = 'FP warehouse')
