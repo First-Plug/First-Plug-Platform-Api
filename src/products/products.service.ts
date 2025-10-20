@@ -442,12 +442,30 @@ export class ProductsService {
         }
       }
 
-      const createData = normalizedProducts.map((product) => {
-        const { serialNumber, ...rest } = product;
-        return serialNumber && serialNumber.trim() !== ''
-          ? { ...rest, serialNumber }
-          : rest;
-      });
+      const createData = await Promise.all(
+        normalizedProducts.map(async (product) => {
+          const { serialNumber, officeId, ...rest } = product;
+
+          // Construir objeto office si officeId está presente y location es "Our office"
+          let officeData = {};
+          if (officeId && product.location === 'Our office') {
+            officeData = await this.assignmentsService.buildOfficeObject(
+              officeId as string,
+              tenantName,
+            );
+          }
+
+          const baseProduct =
+            serialNumber && serialNumber.trim() !== ''
+              ? { ...rest, serialNumber }
+              : rest;
+
+          return {
+            ...baseProduct,
+            ...officeData,
+          };
+        }),
+      );
 
       const productsWithIds = createData.map((product) => {
         return {

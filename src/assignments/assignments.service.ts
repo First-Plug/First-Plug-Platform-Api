@@ -2167,7 +2167,7 @@ export class AssignmentsService {
   /**
    * Construir objeto office para un producto (similar a fpWarehouse)
    */
-  private async buildOfficeObject(
+  public async buildOfficeObject(
     officeId: string,
     tenantName: string,
   ): Promise<{ office?: any }> {
