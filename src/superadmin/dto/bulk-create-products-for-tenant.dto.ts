@@ -11,8 +11,9 @@ import { CURRENCY_CODES } from '../../products/validations/create-product.zod';
 const ProductInstanceSchema = z.object({
   serialNumber: z
     .string()
-    .min(1, { message: 'Serial number is required for each product' })
-    .transform((val) => val.toLowerCase()),
+    .transform((val) => val.toLowerCase())
+    .optional()
+    .nullable(),
   warehouseCountryCode: z
     .string()
     .min(1, { message: 'Warehouse country code is required for each product' }),
@@ -93,10 +94,15 @@ const BulkCreateProductsForTenantSchema = z
       });
     }
 
-    // 2. Validar serial numbers únicos dentro del request
-    const serialNumbers = data.products.map((p) => p.serialNumber);
+    // 2. Validar serial numbers únicos dentro del request (solo los que no son null/undefined)
+    const serialNumbers = data.products
+      .map((p) => p.serialNumber)
+      .filter((serial) => serial != null && serial !== '');
     const uniqueSerials = new Set(serialNumbers);
-    if (uniqueSerials.size !== serialNumbers.length) {
+    if (
+      serialNumbers.length > 0 &&
+      uniqueSerials.size !== serialNumbers.length
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Duplicate serial numbers found in the request',
