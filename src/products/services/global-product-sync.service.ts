@@ -57,6 +57,14 @@ export interface SyncProductParams {
     assignedAt?: Date;
   };
 
+  office?: {
+    officeId: Types.ObjectId;
+    officeCountryCode: string;
+    officeName: string;
+    assignedAt?: Date;
+    isDefault?: boolean;
+  };
+
   sourceUpdatedAt?: Date;
 }
 
@@ -136,6 +144,17 @@ export class GlobalProductSyncService {
         memberDataValue = existingProduct.memberData as any;
       }
 
+      // 🏢 PRESERVAR office: Si el producto está en "Our office" y no viene office,
+      // usar el existente en lugar de null
+      let officeValue = params.office !== undefined ? params.office : null;
+      if (
+        (!params.office || params.office === null) &&
+        params.location === 'Our office' &&
+        existingProduct?.office
+      ) {
+        officeValue = existingProduct.office as any;
+      }
+
       const updateData = {
         tenantId: resolvedTenantId,
         tenantName: params.tenantName,
@@ -166,6 +185,7 @@ export class GlobalProductSyncService {
         // Datos de ubicación (con preservación de valores existentes)
         fpWarehouse: fpWarehouseValue,
         memberData: memberDataValue,
+        office: officeValue,
 
         // Campos calculados (porque updateOne no dispara pre('save') middleware)
         isComputer: params.category === 'Computer',

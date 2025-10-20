@@ -331,6 +331,21 @@ export class AssignmentsService {
               }
             : undefined,
 
+        // Datos de office si existen
+        office:
+          product.office &&
+          product.office.officeId &&
+          product.office.officeCountryCode &&
+          product.office.officeName
+            ? {
+                officeId: product.office.officeId as any,
+                officeCountryCode: product.office.officeCountryCode,
+                officeName: product.office.officeName,
+                assignedAt: product.office.assignedAt,
+                isDefault: product.office.isDefault,
+              }
+            : undefined,
+
         // Datos del member si está asignado
         memberData,
 
@@ -951,6 +966,18 @@ export class AssignmentsService {
     // Agregar campos de warehouse a updatedFields si existen
     Object.assign(updatedFields, warehouseFields);
 
+    // 🏢 OFFICE HANDLING: Construir objeto office si officeId está presente y location es "Our office"
+    if (
+      updateProductDto.officeId &&
+      updateProductDto.location === 'Our office'
+    ) {
+      const officeData = await this.buildOfficeObject(
+        updateProductDto.officeId as string,
+        tenantName,
+      );
+      Object.assign(updatedFields, officeData);
+    }
+
     if (updatedFields.assignedEmail === '') {
       updatedFields.lastAssigned =
         await this.calculateLastAssignedWithOfficeInfo(
@@ -1533,11 +1560,29 @@ export class AssignmentsService {
       },
       tenantName,
     );
-    await this.updateProductAttributes(
-      session,
-      product,
-      { ...updateDto, recoverable: isRecoverable },
-      'products',
+
+    // Preparar campos actualizados
+    const updatedFields = this.productsService.getUpdatedFields(product, {
+      ...updateDto,
+      recoverable: isRecoverable,
+    });
+    updatedFields.status = updateDto.status ?? product.status;
+
+    // 🏢 OFFICE HANDLING: Construir objeto office si officeId está presente y location es "Our office"
+    if (updateDto.officeId && updateDto.location === 'Our office') {
+      const officeData = await this.buildOfficeObject(
+        updateDto.officeId as string,
+        tenantName,
+      );
+      Object.assign(updatedFields, officeData);
+    }
+
+    // Actualizar producto
+    await this.productsService.updateOne(
+      tenantName,
+      { _id: product._id },
+      { $set: updatedFields },
+      { session, runValidators: true, new: true, omitUndefined: true },
     );
 
     return {
@@ -1848,6 +1893,48 @@ export class AssignmentsService {
         }
       }
 
+      // 🏢 OFFICE ASSIGNMENT: Si location es "Our office", asignar office
+      if (updateDto.location === 'Our office' && updateDto.officeId) {
+        const officeData = await this.buildOfficeObject(
+          updateDto.officeId as string,
+          tenantName,
+        );
+
+        // Aplicar los campos de office al producto actualizado
+        if (officeData.office) {
+          Object.assign(updatedProduct, {
+            office: officeData.office,
+          });
+
+          // 💾 GUARDAR EL PRODUCTO: Necesario para persistir los campos de la oficina
+          await updatedProduct.save({ session });
+
+          // 🔄 SYNC: Forzar sincronización con campos de office a colección global
+          if (tenantName) {
+            try {
+              // Remover la marca de sincronización para forzar la actualización
+              delete (updatedProduct as any)._alreadySyncedToGlobal;
+
+              await this.syncProductToGlobal(
+                updatedProduct,
+                tenantName,
+                'products',
+                undefined,
+              );
+            } catch (error) {
+              this.logger.error(
+                `❌ [handleProductFromMemberCollection] Error syncing product with office fields to global collection:`,
+                error,
+              );
+            }
+          }
+
+          this.logger.log(
+            `🏢 [handleProductFromMemberCollection] Office fields applied, saved and synced: ${JSON.stringify(officeData.office)}`,
+          );
+        }
+      }
+
       let shipment: ShipmentDocument | null = null;
 
       if (updateDto.fp_shipment && updatedProduct) {
@@ -1940,15 +2027,33 @@ export class AssignmentsService {
       );
       return created;
     } else {
-      const updated = await this.updateProductAttributes(
-        session,
+      // Preparar campos actualizados para producto sin member
+      const updatedFields = this.productsService.getUpdatedFields(
         product,
         updateProductDto,
-        'products',
-        undefined,
-        // tenantName,
       );
-      return [updated];
+
+      // 🏢 OFFICE HANDLING: Construir objeto office si officeId está presente y location es "Our office"
+      if (
+        updateProductDto.officeId &&
+        updateProductDto.location === 'Our office'
+      ) {
+        const officeData = await this.buildOfficeObject(
+          updateProductDto.officeId as string,
+          tenantName as string,
+        );
+        Object.assign(updatedFields, officeData);
+      }
+
+      // Actualizar producto
+      await this.productsService.updateOne(
+        tenantName as string,
+        { _id: product._id },
+        { $set: updatedFields },
+        { session, runValidators: true, new: true, omitUndefined: true },
+      );
+
+      return [product];
     }
   }
 
