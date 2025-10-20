@@ -1,4 +1,4 @@
-import { MiddlewareConsumer, Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, forwardRef } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { OfficesController } from './offices.controller';
@@ -7,7 +7,7 @@ import { TenantDbModule } from '../infra/db/tenant-db.module';
 import { TenantsModule } from '../tenants/tenants.module';
 import { TenantsMiddleware } from '../common/middlewares/tenants.middleware';
 import { tenantModels } from '../infra/db/tenant-models-provider';
-import { HistoryService } from '../history/history.service';
+import { HistoryModule } from '../history/history.module';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 @Module({
@@ -15,6 +15,7 @@ import { EventsGateway } from 'src/infra/event-bus/events.gateway';
     EventEmitterModule,
     TenantDbModule,
     TenantsModule,
+    forwardRef(() => HistoryModule),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'default-secret',
       signOptions: { expiresIn: '48h' },
@@ -25,9 +26,6 @@ import { EventsGateway } from 'src/infra/event-bus/events.gateway';
     OfficesService,
     tenantModels.officeModel,
     JwtService,
-    HistoryService,
-    tenantModels.historyModel,
-    tenantModels.teamModel,
     EventsGateway,
   ],
   exports: [OfficesService],

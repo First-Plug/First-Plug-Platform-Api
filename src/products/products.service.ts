@@ -681,23 +681,32 @@ export class ProductsService {
           activeShipment,
         } = product;
 
-        // Extraer objetos completos según location (pueden no existir)
-        const memberData = (product as any).memberData || null;
-        const fpWarehouse = (product as any).fpWarehouse || null;
-        const office = (product as any).office || null;
-        const warehouseId = (product as any).warehouseId || null;
-        const officeId = (product as any).officeId || null;
+        // Calcular countryCode según la ubicación del producto
+        let countryCode: string | null = null;
+
+        if (location === 'Employee') {
+          // Para productos asignados a empleados, usar el country del member
+          const memberData = (product as any).memberData;
+          countryCode = memberData?.country || null;
+        } else if (location === 'FP warehouse') {
+          // Para productos en warehouse, usar warehouseCountryCode
+          const fpWarehouse = (product as any).fpWarehouse;
+          countryCode = fpWarehouse?.warehouseCountryCode || null;
+        } else if (location === 'Our office') {
+          // Para productos en oficina, usar officeCountryCode
+          const office = (product as any).office;
+          countryCode = office?.officeCountryCode || null;
+        }
 
         // Debug: verificar si el producto tiene office cuando location es "Our office"
         if (location === 'Our office') {
           console.log('🏢 Producto Our office:', {
             productId: _id,
-            hasOffice: !!office,
-            hasOfficeId: !!officeId,
-            officeKeys: office ? Object.keys(office) : 'null',
-            productKeys: Object.keys(product).filter((key) =>
-              key.includes('office'),
-            ),
+            hasOffice: !!(product as any).office,
+            countryCode,
+            officeKeys: (product as any).office
+              ? Object.keys((product as any).office)
+              : 'null',
           });
         }
         const filteredAttributes = attributes.filter(
@@ -776,13 +785,8 @@ export class ProductsService {
           shipmentDestination,
           shipmentId,
           shipmentStatus,
-          // Objetos completos según location
-          memberData,
-          fpWarehouse,
-          office,
-          // IDs de referencia
-          warehouseId,
-          officeId,
+          // Solo el countryCode según la ubicación
+          countryCode,
         };
       }),
     );

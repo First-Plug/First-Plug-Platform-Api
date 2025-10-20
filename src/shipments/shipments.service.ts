@@ -27,6 +27,7 @@ import { LogisticsService } from 'src/logistics/logistics.sevice';
 import { OfficesService } from '../offices/offices.service';
 import { UsersService } from '../users/users.service';
 import { EventsGateway } from '../infra/event-bus/events.gateway';
+import { ShipmentOfficeCoordinatorService } from './services/shipment-office-coordinator.service';
 
 @Injectable()
 export class ShipmentsService {
@@ -44,6 +45,7 @@ export class ShipmentsService {
     private readonly officesService: OfficesService,
     private readonly usersService: UsersService,
     private readonly eventsGateway: EventsGateway,
+    private readonly shipmentOfficeCoordinator: ShipmentOfficeCoordinatorService,
   ) {}
 
   /**
@@ -576,6 +578,21 @@ export class ShipmentsService {
       );
     }
 
+    // 🏢 UPDATE: Coordinar actualización de flags de oficinas
+    const originOfficeId = newShipment.originOfficeId
+      ? new mongoose.Types.ObjectId(newShipment.originOfficeId.toString())
+      : null;
+    const destinationOfficeId = newShipment.destinationOfficeId
+      ? new mongoose.Types.ObjectId(newShipment.destinationOfficeId.toString())
+      : null;
+
+    await this.shipmentOfficeCoordinator.handleShipmentCreated(
+      originOfficeId,
+      destinationOfficeId,
+      newShipment.shipment_status,
+      tenantName,
+    );
+
     return { shipment: newShipment, isConsolidated: false };
   }
 
@@ -725,11 +742,28 @@ export class ShipmentsService {
         await this.logisticsService.isShipmentDetailsComplete(shipment);
 
       const oldStatus = shipment.shipment_status;
-      shipment.shipment_status = isReady
-        ? 'In Preparation'
-        : 'On Hold - Missing Data';
+      const newStatus = isReady ? 'In Preparation' : 'On Hold - Missing Data';
+      shipment.shipment_status = newStatus;
 
       await shipment.save();
+
+      // 🏢 UPDATE: Coordinar actualización de flags de oficinas si el estado cambió
+      if (oldStatus !== newStatus) {
+        const originOfficeId = shipment.originOfficeId
+          ? new mongoose.Types.ObjectId(shipment.originOfficeId.toString())
+          : null;
+        const destinationOfficeId = shipment.destinationOfficeId
+          ? new mongoose.Types.ObjectId(shipment.destinationOfficeId.toString())
+          : null;
+
+        await this.shipmentOfficeCoordinator.handleShipmentStatusChange(
+          originOfficeId,
+          destinationOfficeId,
+          oldStatus,
+          newStatus,
+          tenantName,
+        );
+      }
 
       await recordShipmentHistory(
         this.historyService,
@@ -869,6 +903,20 @@ export class ShipmentsService {
 
     shipment.shipment_status = 'Cancelled';
     await shipment.save();
+
+    // 🏢 UPDATE: Coordinar actualización de flags de oficinas después de cancelación
+    const originOfficeId = shipment.originOfficeId
+      ? new mongoose.Types.ObjectId(shipment.originOfficeId.toString())
+      : null;
+    const destinationOfficeId = shipment.destinationOfficeId
+      ? new mongoose.Types.ObjectId(shipment.destinationOfficeId.toString())
+      : null;
+
+    await this.shipmentOfficeCoordinator.handleShipmentCancelled(
+      originOfficeId,
+      destinationOfficeId,
+      tenantName,
+    );
 
     return shipment;
   }

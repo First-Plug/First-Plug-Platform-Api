@@ -6,7 +6,6 @@ import {
   Patch,
   Post,
   Delete,
-  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -14,7 +13,6 @@ import { Types } from 'mongoose';
 import { OfficesService } from './offices.service';
 import { CreateOfficeDto, UpdateOfficeDto } from './dto';
 import { GetOfficesByTenantsDto } from './dto/get-offices-by-tenants.dto';
-import { NotFoundException } from '@nestjs/common';
 import { JwtGuard } from '../auth/guard/jwt.guard';
 import { SuperAdminGuard } from '../common/guards/super-admin.guard';
 import { Request } from 'express';
@@ -115,11 +113,17 @@ export class OfficesController {
           office._id,
           tenantName,
         );
+        const hasOnTheWayShipments =
+          await this.officesService.hasOnTheWayShipments(
+            office._id,
+            tenantName,
+          );
 
         return {
           ...office.toObject(),
           hasAssignedProducts,
           hasActiveShipments,
+          hasOnTheWayShipments, // Para bloquear edición
         };
       }),
     );

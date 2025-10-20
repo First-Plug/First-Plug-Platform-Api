@@ -103,7 +103,7 @@ export class WarehouseAssignmentService {
               success: true,
               warehouseId: defaultWarehouse._id.toString(),
               warehouseCountryCode: countryCode,
-              warehouseName: defaultWarehouse.name || 'Default Warehouse',
+              warehouseName: defaultWarehouse.name || '',
               country: originCountry,
               message: `Product assigned to default warehouse in ${originCountry}`,
             };
@@ -155,9 +155,9 @@ export class WarehouseAssignmentService {
         success: true,
         warehouseId: selectedWarehouse._id.toString(),
         warehouseCountryCode: countryCode,
-        warehouseName: selectedWarehouse.name || 'Unnamed Warehouse',
+        warehouseName: selectedWarehouse.name || '',
         country: originCountry,
-        message: `Product assigned to ${selectedWarehouse.name || 'Unnamed Warehouse'} in ${originCountry}`,
+        message: `Product assigned to ${selectedWarehouse.name || 'warehouse without name'} in ${originCountry}`,
       };
     } catch (error) {
       this.logger.error(`Error assigning product to warehouse:`, error);
@@ -232,7 +232,7 @@ export class WarehouseAssignmentService {
       hasWarehouse: true,
       countryCode,
       warehouseId: activeWarehouse._id.toString(),
-      warehouseName: activeWarehouse.name || 'Unnamed Warehouse',
+      warehouseName: activeWarehouse.name || '',
     };
   }
 

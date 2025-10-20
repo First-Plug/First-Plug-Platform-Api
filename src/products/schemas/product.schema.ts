@@ -65,9 +65,6 @@ export class Product {
   @Prop({ type: String })
   location?: string;
 
-  @Prop({ type: Schema.Types.ObjectId, ref: 'Office', required: false })
-  officeId?: Schema.Types.ObjectId;
-
   @Prop({
     type: {
       officeId: {

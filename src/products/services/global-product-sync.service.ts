@@ -666,6 +666,12 @@ export class GlobalProductSyncService {
             warehouseName: existingProduct.fpWarehouse.warehouseName,
           }
         : undefined,
+      currentOffice: existingProduct.office
+        ? {
+            officeCountryCode: existingProduct.office.officeCountryCode,
+            officeName: existingProduct.office.officeName,
+          }
+        : undefined,
     });
   }
 
