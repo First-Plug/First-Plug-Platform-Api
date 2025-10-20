@@ -88,6 +88,7 @@ export class Product {
         type: Boolean,
         required: false,
       },
+      _id: false,
     },
     required: false,
   })

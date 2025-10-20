@@ -295,8 +295,14 @@ export class ProductsService {
     const ProductModel =
       await this.tenantModelRegistry.getProductModel(tenantName);
     const normalizedProduct = this.normalizeProductData(createProductDto);
-    const { assignedEmail, serialNumber, price, productCondition, ...rest } =
-      normalizedProduct;
+    const {
+      assignedEmail,
+      serialNumber,
+      price,
+      productCondition,
+      officeId,
+      ...rest
+    } = normalizedProduct;
 
     const recoverableConfig =
       await this.getRecoverableConfigForTenant(tenantName);
@@ -324,6 +330,15 @@ export class ProductsService {
       }
     }
 
+    // Construir objeto office si officeId está presente y location es "Our office"
+    let officeData = {};
+    if (officeId && location === 'Our office') {
+      officeData = await this.assignmentsService.buildOfficeObject(
+        officeId as string,
+        tenantName,
+      );
+    }
+
     const createData = {
       ...rest,
       recoverable: isRecoverable,
@@ -333,10 +348,11 @@ export class ProductsService {
       location,
       status,
       ...(price?.amount !== undefined && price?.currencyCode ? { price } : {}),
+      ...officeData, // Incluir datos de oficina si existen
     };
 
     let assignedMember = '';
-    console.log('createData before assigning:', createData);
+
     if (assignedEmail) {
       const member = await this.assignmentsService.assignProduct(
         assignedEmail,

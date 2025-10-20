@@ -108,6 +108,7 @@ export class GlobalProduct {
         type: Boolean,
         required: false,
       },
+      _id: false,
     },
     required: false,
   })
