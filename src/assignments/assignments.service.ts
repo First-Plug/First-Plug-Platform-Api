@@ -667,6 +667,16 @@ export class AssignmentsService {
           ...JSON.parse(JSON.stringify(p)),
           assignedEmail: member.email,
           assignedMember: `${member.firstName} ${member.lastName}`,
+          // Agregar datos del member para poder calcular countryCode
+          memberData: {
+            memberId: member._id,
+            memberEmail: member.email,
+            memberName: `${member.firstName} ${member.lastName}`,
+            country: member.country, // ✅ Incluir country del member
+            city: member.city,
+            address: member.address,
+            phone: member.phone,
+          },
         }));
       });
 
