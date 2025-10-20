@@ -1338,9 +1338,11 @@ export class ProductsService {
     while (retries < maxRetries) {
       try {
         session.startTransaction();
-        const ProductModel = (await this.tenantModelRegistry.getProductModel(
-          tenantName,
-        )) as any;
+        // ✅ FIX: Usar la misma conexión para obtener el ProductModel
+        const ProductModel = connection.model(
+          Product.name,
+          ProductSchema,
+        ) as any;
         const product = await ProductModel.findById(id).session(session);
         const changes: {
           oldData: Product | null;
