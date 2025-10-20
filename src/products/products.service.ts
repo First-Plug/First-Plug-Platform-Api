@@ -1364,6 +1364,7 @@ export class ProductsService {
           product.lastSerialNumber = product.serialNumber;
           product.serialNumber = undefined;
           product.isDeleted = true;
+          product.deletedAt = new Date(); // ✅ FIX: Establecer fecha de eliminación
 
           await product.save();
           await ProductModel.softDelete({ _id: id }, { session });
@@ -1409,6 +1410,7 @@ export class ProductsService {
                   lastSerialNumber: memberProduct.product.serialNumber,
                   lastAssigned: memberProduct.member.email,
                   status: 'Deprecated',
+                  deletedAt: new Date(), // ✅ FIX: Establecer fecha de eliminación
                 },
               ],
               { session },
