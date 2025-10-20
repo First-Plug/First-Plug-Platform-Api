@@ -1668,6 +1668,7 @@ export class ProductsService {
           product.lastSerialNumber = product.serialNumber || undefined;
           product.serialNumber = undefined;
           product.isDeleted = true;
+          product.deleteAt = new Date();
 
           await product.save();
 

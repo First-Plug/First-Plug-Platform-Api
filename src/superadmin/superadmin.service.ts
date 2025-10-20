@@ -1390,10 +1390,15 @@ export class SuperAdminService {
         throw new NotFoundException(`Tenant ${tenantName} not found`);
       }
 
-      // 3. Validar serial numbers únicos dentro del request
-      const serialNumbers = products.map((p) => p.serialNumber);
+      // 3. Validar serial numbers únicos dentro del request (solo los que no son null/undefined)
+      const serialNumbers = products
+        .map((p) => p.serialNumber)
+        .filter((serial) => serial != null && serial !== '');
       const uniqueSerials = new Set(serialNumbers);
-      if (uniqueSerials.size !== serialNumbers.length) {
+      if (
+        serialNumbers.length > 0 &&
+        uniqueSerials.size !== serialNumbers.length
+      ) {
         throw new BadRequestException(
           'Duplicate serial numbers found in the request',
         );
