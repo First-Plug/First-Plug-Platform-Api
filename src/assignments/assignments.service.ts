@@ -1568,15 +1568,6 @@ export class AssignmentsService {
     });
     updatedFields.status = updateDto.status ?? product.status;
 
-    // 🏢 OFFICE HANDLING: Construir objeto office si officeId está presente y location es "Our office"
-    if (updateDto.officeId && updateDto.location === 'Our office') {
-      const officeData = await this.buildOfficeObject(
-        updateDto.officeId as string,
-        tenantName,
-      );
-      Object.assign(updatedFields, officeData);
-    }
-
     // Actualizar producto
     await this.productsService.updateOne(
       tenantName,
@@ -2027,33 +2018,16 @@ export class AssignmentsService {
       );
       return created;
     } else {
-      // Preparar campos actualizados para producto sin member
-      const updatedFields = this.productsService.getUpdatedFields(
+      const updated = await this.updateProductAttributes(
+        session,
         product,
         updateProductDto,
+        'products',
+        undefined,
+        tenantName,
       );
 
-      // 🏢 OFFICE HANDLING: Construir objeto office si officeId está presente y location es "Our office"
-      if (
-        updateProductDto.officeId &&
-        updateProductDto.location === 'Our office'
-      ) {
-        const officeData = await this.buildOfficeObject(
-          updateProductDto.officeId as string,
-          tenantName as string,
-        );
-        Object.assign(updatedFields, officeData);
-      }
-
-      // Actualizar producto
-      await this.productsService.updateOne(
-        tenantName as string,
-        { _id: product._id },
-        { $set: updatedFields },
-        { session, runValidators: true, new: true, omitUndefined: true },
-      );
-
-      return [product];
+      return [updated];
     }
   }
 
