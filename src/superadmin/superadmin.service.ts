@@ -1222,7 +1222,7 @@ export class SuperAdminService {
         name: productData.name,
         category: productData.category,
         attributes: productData.attributes,
-        serialNumber: productData.serialNumber,
+        serialNumber: productData.serialNumber?.trim() || undefined,
         productCondition: productData.productCondition,
         recoverable: productData.recoverable ?? true,
 
@@ -1457,7 +1457,7 @@ export class SuperAdminService {
             name: commonProductData.name,
             category: commonProductData.category,
             attributes: commonProductData.attributes,
-            serialNumber: serialNumber,
+            serialNumber: serialNumber?.trim() || undefined,
             productCondition: commonProductData.productCondition,
             recoverable: commonProductData.recoverable ?? true,
             acquisitionDate: commonProductData.acquisitionDate,
