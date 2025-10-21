@@ -38,6 +38,7 @@ import { EventTypes } from 'src/infra/event-bus/types';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { LogisticsService } from 'src/logistics/logistics.sevice';
 import { normalizeSerialForHistory } from './helpers/history.helper';
+import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -57,6 +58,7 @@ export class ProductsService {
     private readonly assignmentsService: AssignmentsService,
     @Inject(forwardRef(() => LogisticsService))
     private readonly logisticsService: LogisticsService,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   onModuleInit() {
@@ -1443,6 +1445,25 @@ export class ProductsService {
 
         await session.commitTransaction();
         session.endSession();
+
+        // 🔔 Notificar al cliente mediante websocket sobre la eliminación del producto
+        const tenant = await this.tenantsService.getByTenantName(tenantName);
+        if (tenant && tenant._id) {
+          this.eventsGateway.notifyTenant(
+            tenant.tenantName.toString(),
+            'data-changed',
+            {
+              data: {
+                productId: id.toString(),
+                message: `Product with id ${id} has been soft deleted`,
+                timestamp: new Date().toISOString(),
+              },
+            },
+          );
+          this.logger.log(
+            `🔔 Websocket notification sent for deleted product ${id} to tenant ${tenant._id}`,
+          );
+        }
 
         return { message: `Product with id ${id} has been soft deleted` };
       } catch (error) {

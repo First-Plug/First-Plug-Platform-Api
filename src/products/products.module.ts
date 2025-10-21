@@ -11,6 +11,7 @@ import { SlackModule } from 'src/slack/slack.module';
 import { AssignmentsModule } from 'src/assignments/assignments.module';
 import { TenantDbModule } from 'src/infra/db/tenant-db.module';
 import { LogisticsModule } from 'src/logistics/logistics.module';
+import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 @Module({
   imports: [
@@ -23,7 +24,12 @@ import { LogisticsModule } from 'src/logistics/logistics.module';
     forwardRef(() => LogisticsModule),
   ],
   controllers: [ProductsController],
-  providers: [ProductsService, tenantModels.productModel, JwtService],
+  providers: [
+    ProductsService,
+    tenantModels.productModel,
+    JwtService,
+    EventsGateway,
+  ],
   exports: [ProductsService, tenantModels.productModel],
 })
 export class ProductsModule {
