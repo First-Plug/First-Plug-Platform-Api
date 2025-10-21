@@ -734,14 +734,14 @@ export class ProductsService {
 
         // Debug: verificar si el producto tiene office cuando location es "Our office"
         if (location === 'Our office') {
-          console.log('🏢 Producto Our office:', {
-            productId: _id,
-            hasOffice: !!(product as any).office,
-            countryCode,
-            officeKeys: (product as any).office
-              ? Object.keys((product as any).office)
-              : 'null',
-          });
+          // console.log('🏢 Producto Our office:', {
+          //   productId: _id,
+          //   hasOffice: !!(product as any).office,
+          //   countryCode,
+          //   officeKeys: (product as any).office
+          //     ? Object.keys((product as any).office)
+          //     : 'null',
+          // });
         }
         const filteredAttributes = attributes.filter(
           (attribute: Attribute) =>
