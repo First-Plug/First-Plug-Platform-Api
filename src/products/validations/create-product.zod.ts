@@ -391,7 +391,7 @@ export const ProductSchemaZod = z
       if (val.status === 'Available') {
         return {
           message:
-            'must be FP warehouse, or Our office when status is Available.',
+            'must be FP warehouse or Our office when status is Available.',
           path: ['location'],
         };
       }
@@ -407,11 +407,26 @@ export const ProductSchemaZod = z
         path: ['location'],
       };
     },
+  )
+  .refine(
+    (data) => {
+      // Solo bloquear FP warehouse para creación inicial (sin actionType)
+      // Permitir FP warehouse para updates/movimientos (con actionType)
+      if (data.location === 'FP warehouse' && !data.actionType) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message:
+        'FP warehouse location is not allowed for initial product creation. Please use "Our office" instead.',
+      path: ['location'],
+    },
   );
 
 export const ProductSchemaZodArray = z.array(ProductSchemaZod).refine(
   (products) => {
-    // Validar que ningún producto tenga location "FP warehouse"
+    // Validar que ningún producto tenga location "FP warehouse" en creación inicial
     const fpWarehouseProducts = products.filter(
       (product) => product.location === 'FP warehouse',
     );
@@ -419,7 +434,7 @@ export const ProductSchemaZodArray = z.array(ProductSchemaZod).refine(
   },
   {
     message:
-      'FP warehouse location is not allowed for CSV uploads. Please use "Our office" instead.',
+      'FP warehouse location is not allowed for initial product creation via CSV. Please use "Our office" instead.',
     path: ['location'],
   },
 );

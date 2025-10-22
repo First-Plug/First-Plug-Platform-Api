@@ -2,6 +2,7 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  BadRequestException,
   Logger,
   forwardRef,
   Inject,
@@ -21,7 +22,7 @@ import {
 } from './schemas/product.schema';
 import { CreateProductDto, UpdateProductDto } from './dto';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
-import { BadRequestException } from '@nestjs/common';
+
 import { TenantsService } from 'src/tenants/tenants.service';
 import { Attribute, Status } from './interfaces/product.interface';
 import { MemberDocument } from 'src/members/schemas/member.schema';
@@ -71,6 +72,18 @@ export class ProductsService {
     },
   ): Promise<void> {
     try {
+      // 🔍 [DEBUG] Log para verificar datos de office antes de sincronizar
+      console.log(
+        `🔄 [SYNC] Sincronizando producto ${product.name} (${product._id}):`,
+        {
+          location: product.location,
+          hasOffice: !!product.office,
+          officeData: product.office,
+          sourceCollection,
+          hasMemberData: !!memberData,
+          hasFpWarehouseData: !!fpWarehouseData,
+        },
+      );
       await this.globalProductSyncService.syncProduct({
         tenantId: tenantName, // Se corregirá automáticamente en GlobalProductSyncService
         tenantName: tenantName,
@@ -107,6 +120,21 @@ export class ProductsService {
 
         // Datos del warehouse si aplica
         fpWarehouse: fpWarehouseData,
+
+        // Datos del office si aplica
+        office:
+          product.office &&
+          product.office.officeId &&
+          product.office.officeCountryCode &&
+          product.office.officeName
+            ? {
+                officeId: product.office.officeId as any,
+                officeCountryCode: product.office.officeCountryCode,
+                officeName: product.office.officeName,
+                assignedAt: product.office.assignedAt,
+                isDefault: product.office.isDefault,
+              }
+            : undefined,
 
         sourceUpdatedAt: (product as any).updatedAt || new Date(),
       });
@@ -292,9 +320,31 @@ export class ProductsService {
     userId: string,
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
+
+    // � [DEBUG] Log completo del DTO recibido del frontend
+    console.log(
+      '📦 [CREATE] DTO recibido del frontend:',
+      JSON.stringify(createProductDto, null, 2),
+    );
+
+    // �🚫 Validación: Los usuarios normales no pueden crear productos iniciales en FP warehouse
+    // (Los movimientos/updates a FP warehouse sí están permitidos)
+    if (createProductDto.location === 'FP warehouse') {
+      throw new BadRequestException(
+        'FP warehouse location is not allowed for initial product creation. Please use "Our office" instead.',
+      );
+    }
+
     const ProductModel =
       await this.tenantModelRegistry.getProductModel(tenantName);
     const normalizedProduct = this.normalizeProductData(createProductDto);
+
+    // 🔍 [DEBUG] Log después de normalización
+    console.log(
+      '🔄 [CREATE] Producto normalizado:',
+      JSON.stringify(normalizedProduct, null, 2),
+    );
+
     const {
       assignedEmail,
       serialNumber,
@@ -303,6 +353,15 @@ export class ProductsService {
       officeId,
       ...rest
     } = normalizedProduct;
+
+    // 🔍 [DEBUG] Log de campos extraídos
+    console.log('📋 [CREATE] Campos extraídos:', {
+      assignedEmail,
+      serialNumber,
+      productCondition,
+      officeId,
+      location: rest.location,
+    });
 
     const recoverableConfig =
       await this.getRecoverableConfigForTenant(tenantName);
@@ -332,11 +391,19 @@ export class ProductsService {
 
     // Construir objeto office si officeId está presente y location es "Our office"
     let officeData = {};
+    console.log('🏢 [CREATE] Office assignment check:', {
+      location,
+      officeId,
+      hasOfficeId: !!officeId,
+    });
+
     if (officeId && location === 'Our office') {
+      console.log('🏢 [CREATE] Building office object for officeId:', officeId);
       officeData = await this.assignmentsService.buildOfficeObject(
         officeId as string,
         tenantName,
       );
+      console.log('🏢 [CREATE] Office data built:', officeData);
     }
 
     const createData = {
@@ -408,6 +475,20 @@ export class ProductsService {
     userId: string,
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
+
+    // � [DEBUG] Log inicial del bulk create
+
+    // �🚫 Validación: Los usuarios normales no pueden crear productos iniciales en FP warehouse
+    // (Los movimientos/updates a FP warehouse sí están permitidos)
+    const fpWarehouseProducts = createProductDtos.filter(
+      (dto) => dto.location === 'FP warehouse',
+    );
+    if (fpWarehouseProducts.length > 0) {
+      throw new BadRequestException(
+        'FP warehouse location is not allowed for initial product creation. Please use "Our office" instead.',
+      );
+    }
+
     const connection = await this.tenantModelRegistry.getConnection(tenantName);
     const ProductModel = connection.model(Product.name, ProductSchema);
     const session = await connection.startSession();
@@ -541,10 +622,6 @@ export class ProductsService {
               memberEmail: member.email,
               memberName: this.getFullName(member),
             });
-
-            this.logger.log(
-              `🔄 [bulkCreate] Saved to map - Product ${productIdStr} (original: ${productDocument._id?.toString()}) -> Member ${member.email}`,
-            );
           } else {
             const createdProduct = await ProductModel.create([product], {
               session,
@@ -564,15 +641,6 @@ export class ProductsService {
       await session.commitTransaction();
 
       // 🔄 SYNC: Sincronizar productos creados en bulk a colección global
-      this.logger.log(
-        `🔄 [bulkCreate] Syncing ${createdProducts.length} products to global collection...`,
-      );
-      this.logger.log(
-        `🔄 [bulkCreate] productMemberMap size: ${productMemberMap.size}`,
-      );
-      this.logger.log(
-        `🔄 [bulkCreate] productMemberMap keys: ${Array.from(productMemberMap.keys()).join(', ')}`,
-      );
 
       for (const product of createdProducts) {
         try {
