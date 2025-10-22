@@ -622,23 +622,11 @@ export class ProductsService {
               memberEmail: member.email,
               memberName: this.getFullName(member),
             });
-
-            console.log(
-              `🔄 [BULK CREATE] Producto ${product.name} asignado a member ${member.email} y guardado en map`,
-            );
           } else {
-            console.log(
-              `❌ [BULK CREATE] Member NO encontrado para email: ${product.assignedEmail}`,
-            );
-
             const createdProduct = await ProductModel.create([product], {
               session,
             });
             createdProducts.push(...createdProduct);
-
-            console.log(
-              `📦 [BULK CREATE] Producto ${product.name} creado sin asignación`,
-            );
           }
         },
       );
@@ -653,21 +641,6 @@ export class ProductsService {
       await session.commitTransaction();
 
       // 🔄 SYNC: Sincronizar productos creados en bulk a colección global
-      console.log(
-        `🔄 [BULK CREATE] Iniciando sincronización de ${createdProducts.length} productos a colección global`,
-      );
-      console.log(
-        `🔄 [BULK CREATE] productMemberMap size: ${productMemberMap.size}`,
-      );
-      console.log(
-        `🔄 [BULK CREATE] productWarehouseMap size: ${productWarehouseMap.size}`,
-      );
-
-      if (productMemberMap.size > 0) {
-        console.log(
-          `🔄 [BULK CREATE] productMemberMap keys: ${Array.from(productMemberMap.keys()).join(', ')}`,
-        );
-      }
 
       for (const product of createdProducts) {
         try {
@@ -686,19 +659,6 @@ export class ProductsService {
           const warehouseInfo = productId
             ? productWarehouseMap.get(productId)
             : undefined;
-
-          console.log(
-            `🔄 [BULK CREATE] Sincronizando producto: ${product.name}`,
-            {
-              productId,
-              sourceCollection,
-              location: product.location,
-              hasMemberInfo: !!memberInfo,
-              hasWarehouseInfo: !!warehouseInfo,
-              hasOffice: !!(product as any).office,
-              assignedEmail: product.assignedEmail,
-            },
-          );
 
           // Sincronizar con memberData y/o fpWarehouseData según corresponda
           if (memberInfo && warehouseInfo) {
