@@ -432,9 +432,10 @@ export class OfficesService {
       id,
       tenantName,
     );
+
     if (hasOnTheWayShipments) {
       throw new BadRequestException(
-        'No se puede editar la oficina porque tiene envíos "On The Way". Espere a que los envíos se completen.',
+        'No se puede editar la oficina porque tiene envíos en tránsito. Espere a que los envíos se completen antes de realizar cambios.',
       );
     }
 

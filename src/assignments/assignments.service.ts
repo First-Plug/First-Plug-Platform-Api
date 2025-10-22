@@ -2357,11 +2357,13 @@ export class AssignmentsService {
       }
     }
 
-    // Si no es "Our office" o ya tiene office, mantener el actual
-    if (currentOffice) {
+    // 🔥 FIX: Si location NO es "Our office", NO mantener el objeto office
+    // Solo mantener office si location es "Our office"
+    if (location === 'Our office' && currentOffice) {
       return { office: currentOffice };
     }
 
+    // Para cualquier otra location (Employee, FP warehouse), no incluir office
     return {};
   }
 
