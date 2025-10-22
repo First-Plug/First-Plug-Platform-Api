@@ -783,8 +783,9 @@ export class ProductsService {
           activeShipment,
         } = product;
 
-        // Calcular countryCode según la ubicación del producto
+        // Calcular countryCode y officeName según la ubicación del producto
         let countryCode: string | null = null;
+        let officeName: string | null = null;
 
         if (location === 'Employee') {
           // Para productos asignados a empleados, usar el country del member
@@ -795,9 +796,10 @@ export class ProductsService {
           const fpWarehouse = (product as any).fpWarehouse;
           countryCode = fpWarehouse?.warehouseCountryCode || null;
         } else if (location === 'Our office') {
-          // Para productos en oficina, usar officeCountryCode
+          // Para productos en oficina, usar officeCountryCode y officeName
           const office = (product as any).office;
           countryCode = office?.officeCountryCode || null;
+          officeName = office?.officeName || null;
         }
 
         // Debug: verificar si el producto tiene office cuando location es "Our office"
@@ -889,6 +891,8 @@ export class ProductsService {
           shipmentStatus,
           // Solo el countryCode según la ubicación
           countryCode,
+          // Solo el officeName cuando location es "Our office"
+          officeName,
         };
       }),
     );
