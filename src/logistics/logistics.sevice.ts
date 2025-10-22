@@ -301,6 +301,7 @@ export class LogisticsService {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string;
     },
     userId: string,
     ourOfficeEmail: string,
@@ -469,6 +470,7 @@ export class LogisticsService {
         location: updateDto.location,
         assignedEmail: updateDto.assignedEmail,
         assignedMember: updateDto.assignedMember,
+        officeId: updateDto.officeId,
       },
       userId,
       ourOfficeEmail,

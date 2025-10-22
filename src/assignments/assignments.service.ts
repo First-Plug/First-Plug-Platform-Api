@@ -1858,25 +1858,8 @@ export class AssignmentsService {
           // 💾 GUARDAR EL PRODUCTO: Necesario para persistir los campos del warehouse
           await updatedProduct.save({ session });
 
-          // 🔄 SYNC: Forzar sincronización con campos de warehouse a colección global
-          if (tenantName) {
-            try {
-              // Remover la marca de sincronización para forzar la actualización
-              delete (updatedProduct as any)._alreadySyncedToGlobal;
-
-              await this.syncProductToGlobal(
-                updatedProduct,
-                tenantName,
-                'products',
-                undefined,
-              );
-            } catch (error) {
-              this.logger.error(
-                `❌ [handleProductFromMemberCollection] Error syncing product with warehouse fields to global collection:`,
-                error,
-              );
-            }
-          }
+          // 🔄 SYNC: Sincronización de warehouse se hace al final después del shipment
+          // (Comentado para evitar sincronización duplicada - se hace en sync final)
 
           this.logger.log(
             `🏭 [handleProductFromMemberCollection] Warehouse fields applied, saved and synced: ${JSON.stringify(warehouseFields.fpWarehouse)}`,
@@ -1900,25 +1883,8 @@ export class AssignmentsService {
           // 💾 GUARDAR EL PRODUCTO: Necesario para persistir los campos de la oficina
           await updatedProduct.save({ session });
 
-          // 🔄 SYNC: Forzar sincronización con campos de office a colección global
-          if (tenantName) {
-            try {
-              // Remover la marca de sincronización para forzar la actualización
-              delete (updatedProduct as any)._alreadySyncedToGlobal;
-
-              await this.syncProductToGlobal(
-                updatedProduct,
-                tenantName,
-                'products',
-                undefined,
-              );
-            } catch (error) {
-              this.logger.error(
-                `❌ [handleProductFromMemberCollection] Error syncing product with office fields to global collection:`,
-                error,
-              );
-            }
-          }
+          // 🔄 SYNC: Sincronización de office se hace al final después del shipment
+          // (Comentado para evitar sincronización duplicada - se hace en sync final)
 
           this.logger.log(
             `🏢 [handleProductFromMemberCollection] Office fields applied, saved and synced: ${JSON.stringify(officeData.office)}`,
@@ -1947,6 +1913,7 @@ export class AssignmentsService {
               location: updateDto.location,
               assignedEmail: updateDto.assignedEmail,
               assignedMember: updateDto.assignedMember,
+              officeId: updateDto.officeId,
             },
             userId,
             ourOfficeEmail,
@@ -1958,6 +1925,34 @@ export class AssignmentsService {
         throw new Error(
           '❌ updatedProduct.status está undefined después del shipment logic',
         );
+      }
+
+      // 🔄 SYNC FINAL: Sincronizar producto con status actualizado después del shipment
+      if (
+        tenantName &&
+        (updateDto.location === 'FP warehouse' ||
+          updateDto.location === 'Our office')
+      ) {
+        try {
+          // Remover la marca de sincronización para forzar la actualización final
+          delete (updatedProduct as any)._alreadySyncedToGlobal;
+
+          await this.syncProductToGlobal(
+            updatedProduct,
+            tenantName,
+            'products',
+            undefined,
+          );
+
+          this.logger.log(
+            `🔄 [handleProductFromMemberCollection] Final sync completed with updated status: ${updatedProduct.status}`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `❌ [handleProductFromMemberCollection] Error in final sync after shipment:`,
+            error,
+          );
+        }
       }
 
       if (!userId)
