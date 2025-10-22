@@ -34,6 +34,16 @@ export class ProductsController {
 
   @Post()
   create(@Body() createProductDto: CreateProductDto, @Request() req: any) {
+    // 🔍 [DEBUG] Log del endpoint - Request completo
+    console.log(
+      '🌐 [CONTROLLER] POST /products - Body recibido:',
+      JSON.stringify(createProductDto, null, 2),
+    );
+    console.log(
+      '🌐 [CONTROLLER] POST /products - officeId específico:',
+      createProductDto.officeId,
+    );
+
     const tenantName = req.user.tenantName;
     const { userId } = req;
     return this.productsService.create(createProductDto, tenantName, userId);
