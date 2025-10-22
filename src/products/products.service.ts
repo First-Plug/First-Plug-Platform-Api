@@ -598,21 +598,13 @@ export class ProductsService {
       >();
 
       const assignProductPromises = productsWithAssignedEmail.map(
-        async (product, index) => {
-          console.log(
-            `👤 [BULK CREATE] Procesando asignación ${index + 1}: ${product.name} -> ${product.assignedEmail}`,
-          );
-
+        async (product) => {
           const member = await this.simpleFindByEmail(
             product.assignedEmail!,
             tenantName,
           );
 
           if (member) {
-            console.log(
-              `✅ [BULK CREATE] Member encontrado: ${member.email} (${this.getFullName(member)})`,
-            );
-
             const productDocument = new ProductModel(
               product,
             ) as ProductDocument;
