@@ -1,8 +1,7 @@
 import { z } from 'zod';
-import validator from 'validator';
 
-// Regex para validar números de teléfono internacionales
-const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+// Regex para validar números de teléfono internacionales (permisivo)
+const phoneRegex = /^\+?[0-9\s]*$/;
 
 // Schema para validar códigos de país (ISO 3166-1 alpha-2 + códigos especiales)
 const countryCodeSchema = z

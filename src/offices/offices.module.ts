@@ -9,6 +9,7 @@ import { TenantsMiddleware } from '../common/middlewares/tenants.middleware';
 import { tenantModels } from '../infra/db/tenant-models-provider';
 import { HistoryModule } from '../history/history.module';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
+import { ProductsModule } from '../products/products.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { EventsGateway } from 'src/infra/event-bus/events.gateway';
     TenantDbModule,
     TenantsModule,
     forwardRef(() => HistoryModule),
+    forwardRef(() => ProductsModule),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'default-secret',
       signOptions: { expiresIn: '48h' },
