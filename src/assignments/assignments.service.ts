@@ -912,12 +912,26 @@ export class AssignmentsService {
       );
     }
 
+    // 🔄 Calcular lastAssigned correctamente usando el helper
+    const calculatedLastAssigned =
+      await this.calculateLastAssignedWithOfficeInfo(
+        product,
+        'Employee', // newLocation
+        tenantName,
+        updateProductDto.actionType as
+          | 'assign'
+          | 'reassign'
+          | 'return'
+          | 'relocate'
+          | 'offboarding',
+      );
+
     await this.moveToMemberCollection(
       session,
       product,
       newMember,
       updateProductDto,
-      product.assignedEmail || '',
+      calculatedLastAssigned || '',
       tenantName,
       providedConnection, // ✅ FIX: Pasar la conexión proporcionada
     );
@@ -1024,6 +1038,101 @@ export class AssignmentsService {
         member.products.splice(productIndex, 1);
         await member.save({ session });
       }
+    }
+  }
+
+  /**
+   * Transfiere un producto directamente de un member a otro member
+   * (sin pasar por la colección products)
+   */
+  public async transferProductBetweenMembers(
+    session: any,
+    product: ProductDocument,
+    currentMember: MemberDocument,
+    newMember: MemberDocument,
+    updateProductDto: UpdateProductDto,
+    lastAssigned: string,
+    tenantName: string,
+  ): Promise<void> {
+    // 1. Remover producto del member actual
+    const productIndex = currentMember.products.findIndex(
+      (prod) => prod._id!.toString() === product._id!.toString(),
+    );
+
+    if (productIndex === -1) {
+      throw new Error('Product not found in current member');
+    }
+
+    currentMember.products.splice(productIndex, 1);
+
+    // 2. Crear datos actualizados del producto
+    const updateData = {
+      _id: product._id,
+      name: updateProductDto.name || product.name,
+      category: product.category,
+      attributes: updateProductDto.attributes || product.attributes,
+      status: updateProductDto.status ?? product.status,
+      price:
+        updateProductDto.price?.amount != null &&
+        updateProductDto.price?.currencyCode
+          ? {
+              amount: updateProductDto.price.amount,
+              currencyCode: updateProductDto.price.currencyCode,
+            }
+          : product.price?.amount != null && product.price.currencyCode
+            ? {
+                amount: product.price.amount,
+                currencyCode: product.price.currencyCode,
+              }
+            : undefined,
+      recoverable:
+        updateProductDto.recoverable !== undefined
+          ? updateProductDto.recoverable
+          : product.recoverable,
+      serialNumber: updateProductDto.serialNumber || product.serialNumber,
+      assignedEmail: updateProductDto.assignedEmail,
+      assignedMember: updateProductDto.assignedMember,
+      acquisitionDate:
+        updateProductDto.acquisitionDate || product.acquisitionDate,
+      location: updateProductDto.location || product.location,
+      additionalInfo: updateProductDto.additionalInfo || product.additionalInfo,
+      productCondition:
+        updateProductDto.productCondition !== undefined
+          ? updateProductDto.productCondition
+          : product.productCondition,
+      fp_shipment: updateProductDto.fp_shipment ?? product.fp_shipment,
+      activeShipment: updateProductDto.fp_shipment ?? product.fp_shipment,
+      isDeleted: product.isDeleted,
+      lastAssigned: lastAssigned, // ✅ Usar el lastAssigned calculado correctamente
+      // Agregar objeto office si está presente o si location es "Our office"
+      ...(await this.handleOfficeAssignment(
+        updateProductDto.officeId as string,
+        updateProductDto.location,
+        product.office,
+        tenantName,
+      )),
+    };
+
+    // 3. Agregar producto al nuevo member
+    newMember.products.push(updateData);
+
+    // 4. Actualizar activeShipment si es necesario
+    if (updateProductDto.fp_shipment) {
+      newMember.activeShipment = true;
+    }
+
+    // 5. Guardar ambos members
+    await currentMember.save({ session });
+    await newMember.save({ session });
+
+    // 6. Sincronizar a global collection
+    if (tenantName) {
+      await this.syncProductToGlobal(updateData, tenantName, 'members', {
+        memberId: newMember._id as any,
+        memberEmail: newMember.email,
+        memberName: `${newMember.firstName} ${newMember.lastName}`,
+        assignedAt: new Date(),
+      });
     }
   }
 

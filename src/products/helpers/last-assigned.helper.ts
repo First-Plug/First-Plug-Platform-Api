@@ -51,6 +51,20 @@ export class LastAssignedHelper {
       actionType,
     });
 
+    // CASO ESPECIAL: Reasignación entre members (Employee → Employee)
+    if (
+      currentLocation === 'Employee' &&
+      newLocation === 'Employee' &&
+      actionType === 'reassign'
+    ) {
+      // En reasignaciones member-to-member, preservar email del member anterior
+      const lastAssigned = currentAssignedEmail || currentLastAssigned;
+      this.logger.log(
+        `🔄 Member-to-member reassignment: preserving ${lastAssigned}`,
+      );
+      return lastAssigned;
+    }
+
     // Si no hay cambio de ubicación, mantener lastAssigned actual
     if (currentLocation === newLocation) {
       return currentLastAssigned;

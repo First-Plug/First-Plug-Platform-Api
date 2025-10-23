@@ -14,6 +14,7 @@ import { EventTypes } from 'src/infra/event-bus/types';
 import { TenantModelRegistry } from '../infra/db/tenant-model-registry';
 import { HistoryService } from '../history/history.service';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
+import { GlobalProductSyncService } from '../products/services/global-product-sync.service';
 
 @Injectable()
 export class OfficesService {
@@ -24,6 +25,7 @@ export class OfficesService {
     private eventEmitter: EventEmitter2,
     private tenantModelRegistry: TenantModelRegistry,
     @Optional() private historyService?: HistoryService,
+    @Optional() private globalProductSyncService?: GlobalProductSyncService,
   ) {}
 
   /**
@@ -545,6 +547,27 @@ export class OfficesService {
       office: updated,
     });
 
+    // 🔄 PROPAGACIÓN: Si cambió el name, propagar a productos
+    if (updateOfficeDto.name && updateOfficeDto.name !== office.name) {
+      try {
+        console.log(
+          `🔄 [UPDATE_OFFICE] Propagando cambio de nombre de oficina`,
+        );
+        await this.propagateOfficeNameChange(
+          id.toString(),
+          updateOfficeDto.name,
+          tenantName,
+        );
+      } catch (error) {
+        console.error(
+          `❌ [UPDATE_OFFICE] Error en propagación de nombre:`,
+          error,
+        );
+        // No fallar el update de oficina por error en propagación
+        // El update de oficina ya se completó exitosamente
+      }
+    }
+
     return updated;
   }
 
@@ -949,5 +972,201 @@ export class OfficesService {
       updateData,
       userId,
     );
+  }
+
+  /**
+   * Propaga el cambio de nombre de oficina a todos los productos que la referencian
+   * @param officeId ID de la oficina
+   * @param newOfficeName Nuevo nombre de la oficina
+   * @param tenantName Nombre del tenant
+   */
+  private async propagateOfficeNameChange(
+    officeId: string,
+    newOfficeName: string,
+    tenantName: string,
+  ): Promise<void> {
+    console.log(`🔄 [OFFICE_NAME_PROPAGATION] Iniciando propagación:`, {
+      officeId,
+      newOfficeName,
+      tenantName,
+    });
+
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
+    const MemberModel =
+      await this.tenantModelRegistry.getMemberModel(tenantName);
+    const connection = ProductModel.db;
+
+    const session = await connection.startSession();
+    session.startTransaction();
+
+    try {
+      // 1. Actualizar productos en collection products
+      await ProductModel.updateMany(
+        { 'office.officeId': officeId },
+        { $set: { 'office.officeName': newOfficeName } },
+        { session },
+      );
+
+      // 2. Actualizar productos en collection members
+      await MemberModel.updateMany(
+        { 'products.office.officeId': officeId },
+        { $set: { 'products.$[elem].office.officeName': newOfficeName } },
+        {
+          arrayFilters: [{ 'elem.office.officeId': officeId }],
+          session,
+        },
+      );
+
+      await session.commitTransaction();
+
+      // 3. Sincronizar productos afectados a global collection (fuera de la transacción)
+      await this.syncAffectedProductsToGlobal(officeId, tenantName);
+    } catch (error) {
+      await session.abortTransaction();
+
+      throw error;
+    } finally {
+      session.endSession();
+    }
+  }
+
+  /**
+   * Sincroniza productos afectados por el cambio de nombre a la global collection
+   * @param officeId ID de la oficina
+   * @param tenantName Nombre del tenant
+   */
+  private async syncAffectedProductsToGlobal(
+    officeId: string,
+    tenantName: string,
+  ): Promise<void> {
+    if (!this.globalProductSyncService) {
+      return;
+    }
+
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
+    const MemberModel =
+      await this.tenantModelRegistry.getMemberModel(tenantName);
+
+    try {
+      // 1. Sincronizar productos de products collection
+      const affectedProducts = await ProductModel.find({
+        'office.officeId': officeId,
+      });
+
+      for (const product of affectedProducts) {
+        try {
+          await this.globalProductSyncService.syncProduct({
+            tenantId: tenantName,
+            tenantName: tenantName,
+            originalProductId: product._id as any,
+            sourceCollection: 'products',
+            name: product.name || '',
+            category: product.category,
+            status: product.status,
+            location: product.location || 'Our office',
+            attributes:
+              product.attributes?.map((attr: any) => ({
+                key: attr.key,
+                value: String(attr.value),
+              })) || [],
+            serialNumber: product.serialNumber || undefined,
+            assignedEmail: product.assignedEmail,
+            assignedMember: product.assignedMember,
+            lastAssigned: product.lastAssigned,
+            acquisitionDate: product.acquisitionDate,
+            price: product.price,
+            additionalInfo: product.additionalInfo,
+            productCondition: product.productCondition,
+            recoverable: product.recoverable,
+            fp_shipment: product.fp_shipment,
+            activeShipment: product.activeShipment,
+            office: product.office
+              ? {
+                  officeId: product.office.officeId as any,
+                  officeCountryCode: product.office.officeCountryCode || '',
+                  officeName: product.office.officeName || '',
+                  assignedAt: product.office.assignedAt,
+                  isDefault: product.office.isDefault,
+                }
+              : undefined,
+            sourceUpdatedAt: (product as any).updatedAt || new Date(),
+          });
+        } catch (error) {
+          console.error(
+            `❌ [OFFICE_NAME_PROPAGATION] Error syncing product ${product._id}:`,
+            error,
+          );
+        }
+      }
+
+      // 2. Sincronizar productos de members collection
+      const membersWithAffectedProducts = await MemberModel.find({
+        'products.office.officeId': officeId,
+      });
+
+      for (const member of membersWithAffectedProducts) {
+        for (const product of member.products || []) {
+          if (product.office?.officeId?.toString() === officeId) {
+            try {
+              await this.globalProductSyncService.syncProduct({
+                tenantId: tenantName,
+                tenantName: tenantName,
+                originalProductId: product._id as any,
+                sourceCollection: 'members',
+                name: product.name || '',
+                category: product.category,
+                status: product.status,
+                location: 'Employee',
+                attributes:
+                  product.attributes?.map((attr: any) => ({
+                    key: attr.key,
+                    value: String(attr.value),
+                  })) || [],
+                serialNumber: product.serialNumber || undefined,
+                assignedEmail: member.email,
+                assignedMember: `${member.firstName} ${member.lastName}`,
+                lastAssigned: product.lastAssigned,
+                acquisitionDate: product.acquisitionDate,
+                price: product.price,
+                additionalInfo: product.additionalInfo,
+                productCondition: product.productCondition,
+                recoverable: product.recoverable,
+                fp_shipment: product.fp_shipment,
+                activeShipment: product.activeShipment,
+                office: product.office
+                  ? {
+                      officeId: product.office.officeId as any,
+                      officeCountryCode: product.office.officeCountryCode || '',
+                      officeName: product.office.officeName || '',
+                      assignedAt: product.office.assignedAt,
+                      isDefault: product.office.isDefault,
+                    }
+                  : undefined,
+                memberData: {
+                  memberId: member._id as any,
+                  memberEmail: member.email,
+                  memberName: `${member.firstName} ${member.lastName}`,
+                  assignedAt: (product as any).assignedAt || new Date(),
+                },
+                sourceUpdatedAt: (product as any).updatedAt || new Date(),
+              });
+            } catch (error) {
+              console.error(
+                `❌ [OFFICE_NAME_PROPAGATION] Error syncing member product ${product._id}:`,
+                error,
+              );
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error(
+        `❌ [OFFICE_NAME_PROPAGATION] Error en sincronización global:`,
+        error,
+      );
+      // No fallar la operación principal por error en sincronización
+    }
   }
 }
