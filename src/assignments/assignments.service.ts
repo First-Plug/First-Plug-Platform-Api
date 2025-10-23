@@ -1209,6 +1209,8 @@ export class AssignmentsService {
         product.office,
         tenantName,
       )),
+      // 🧹 CLEANUP: Limpiar objetos warehouse/office cuando se mueve a Employee
+      ...this.handleLocationObjectCleanup(updateProductDto.location, product),
     };
 
     newMember.products.push(updateData);
@@ -1320,6 +1322,8 @@ export class AssignmentsService {
         product.office,
         tenantName as string,
       )),
+      // 🧹 CLEANUP: Limpiar objetos warehouse/office según movimiento de ubicación
+      ...this.handleLocationObjectCleanup(updateProductDto.location, product),
     };
     const productModel = connection.model(Product.name, ProductSchema);
 
@@ -2001,6 +2005,19 @@ export class AssignmentsService {
         }
       }
 
+      // 🧹 CLEANUP: Limpiar objetos warehouse/office según movimiento de ubicación
+      const cleanupFields = this.handleLocationObjectCleanup(
+        updateDto.location,
+        product,
+      );
+      if (Object.keys(cleanupFields).length > 0) {
+        Object.assign(updatedProduct, cleanupFields);
+        await updatedProduct.save({ session });
+        this.logger.log(
+          `🧹 [handleProductFromProductsCollection] Cleanup applied: ${JSON.stringify(cleanupFields)}`,
+        );
+      }
+
       let shipment: ShipmentDocument | null = null;
 
       if (updateDto.fp_shipment && updatedProduct) {
@@ -2506,5 +2523,62 @@ export class AssignmentsService {
       newLocation,
       actionType,
     );
+  }
+
+  /**
+   * Maneja la limpieza de objetos warehouse y office según la nueva ubicación
+   * Cuando un producto se mueve entre warehouse↔office, debe limpiar el objeto anterior
+   */
+  private handleLocationObjectCleanup(
+    newLocation: string | undefined,
+    currentProduct: any,
+  ): { fpWarehouse?: undefined; office?: undefined } {
+    const cleanupFields: { fpWarehouse?: undefined; office?: undefined } = {};
+
+    // Si se mueve DESDE warehouse A office → limpiar fpWarehouse
+    if (
+      currentProduct.fpWarehouse &&
+      currentProduct.location === 'FP warehouse' &&
+      newLocation === 'Our office'
+    ) {
+      cleanupFields.fpWarehouse = undefined;
+      this.logger.log(
+        `🧹 [handleLocationObjectCleanup] Limpiando fpWarehouse: producto se mueve de warehouse a office`,
+      );
+    }
+
+    // Si se mueve DESDE office A warehouse → limpiar office
+    if (
+      currentProduct.office &&
+      currentProduct.location === 'Our office' &&
+      newLocation === 'FP warehouse'
+    ) {
+      cleanupFields.office = undefined;
+      this.logger.log(
+        `🧹 [handleLocationObjectCleanup] Limpiando office: producto se mueve de office a warehouse`,
+      );
+    }
+
+    // Si se mueve DESDE warehouse/office A employee → limpiar ambos
+    if (
+      newLocation === 'Employee' &&
+      (currentProduct.location === 'FP warehouse' ||
+        currentProduct.location === 'Our office')
+    ) {
+      if (currentProduct.fpWarehouse) {
+        cleanupFields.fpWarehouse = undefined;
+        this.logger.log(
+          `🧹 [handleLocationObjectCleanup] Limpiando fpWarehouse: producto se mueve a employee`,
+        );
+      }
+      if (currentProduct.office) {
+        cleanupFields.office = undefined;
+        this.logger.log(
+          `🧹 [handleLocationObjectCleanup] Limpiando office: producto se mueve a employee`,
+        );
+      }
+    }
+
+    return cleanupFields;
   }
 }
