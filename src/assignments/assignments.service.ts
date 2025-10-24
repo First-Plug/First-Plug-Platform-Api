@@ -841,7 +841,7 @@ export class AssignmentsService {
       await this.productsService.findById(productId, tenantName);
     let currentMember: MemberDocument | null = null;
     let isUnknownEmail = false;
-    console.log('🔍 Buscando producto en products:', productId);
+
     if (!product) {
       console.log(
         '🪵 ID recibido en Logistics antes de getProductByMembers desde getProductForReassign:',
@@ -2034,6 +2034,7 @@ export class AssignmentsService {
                 oldProductData.assignedEmail || product.assignedEmail,
               assignedMember:
                 oldProductData.assignedMember || product.assignedMember,
+              officeId: product.office?.officeId?.toString(), // ✅ FIX: Incluir officeId del producto actual
             },
             {
               location: updateDto.location,
