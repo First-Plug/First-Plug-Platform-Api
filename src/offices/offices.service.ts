@@ -15,6 +15,7 @@ import { TenantModelRegistry } from '../infra/db/tenant-model-registry';
 import { HistoryService } from '../history/history.service';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 import { GlobalProductSyncService } from '../products/services/global-product-sync.service';
+import { ACTIVE_SHIPMENT_STATUSES } from '../shipments/interface/shipment.interface';
 
 @Injectable()
 export class OfficesService {
@@ -271,8 +272,19 @@ export class OfficesService {
       (key) => oldAddress[key] !== newAddress[key],
     );
 
-    if (hasAddressChanges) {
-      console.log('📍 Dirección de oficina actualizada, emitiendo evento');
+    // Detectar cambios en el nombre de la oficina
+    const hasNameChange = currentOffice.name !== updatedOffice.name;
+
+    if (hasAddressChanges || hasNameChange) {
+      if (hasAddressChanges) {
+        console.log('📍 Dirección de oficina actualizada, emitiendo evento');
+      }
+      if (hasNameChange) {
+        console.log(
+          `📝 Nombre de oficina actualizado: "${currentOffice.name}" → "${updatedOffice.name}", emitiendo evento`,
+        );
+      }
+
       this.eventEmitter.emit(
         EventTypes.OFFICE_ADDRESS_UPDATED,
         new OfficeAddressUpdatedEvent(
@@ -525,8 +537,19 @@ export class OfficesService {
       (key) => oldAddress[key] !== newAddress[key],
     );
 
-    if (hasAddressChanges) {
-      console.log('📍 Dirección de oficina actualizada, emitiendo evento');
+    // Detectar cambios en el nombre de la oficina
+    const hasNameChange = office.name !== updated.name;
+
+    if (hasAddressChanges || hasNameChange) {
+      if (hasAddressChanges) {
+        console.log('📍 Dirección de oficina actualizada, emitiendo evento');
+      }
+      if (hasNameChange) {
+        console.log(
+          `📝 Nombre de oficina actualizado: "${office.name}" → "${updated.name}", emitiendo evento`,
+        );
+      }
+
       this.eventEmitter.emit(
         EventTypes.OFFICE_ADDRESS_UPDATED,
         new OfficeAddressUpdatedEvent(
@@ -664,13 +687,15 @@ export class OfficesService {
       const ShipmentModel =
         await this.tenantModelRegistry.getShipmentModel(tenantName);
 
-      const activeStatuses = ['In Preparation', 'On The Way'];
+      const activeStatuses = ACTIVE_SHIPMENT_STATUSES;
 
-      const shipmentCount = await ShipmentModel.countDocuments({
+      const query = {
         $or: [{ originOfficeId: officeId }, { destinationOfficeId: officeId }],
         shipment_status: { $in: activeStatuses },
         isDeleted: { $ne: true },
-      });
+      };
+
+      const shipmentCount = await ShipmentModel.countDocuments(query);
 
       return shipmentCount > 0;
     } catch (error) {
@@ -714,16 +739,19 @@ export class OfficesService {
       const OfficeModel =
         await this.tenantModelRegistry.getOfficeModel(tenantName);
 
-      const hasOnTheWay = await this.hasOnTheWayShipments(officeId, tenantName);
+      const hasActiveShipments = await this.hasActiveShipments(
+        officeId,
+        tenantName,
+      );
 
       await OfficeModel.findByIdAndUpdate(
         officeId,
-        { $set: { activeShipments: hasOnTheWay } },
+        { $set: { activeShipments: hasActiveShipments } },
         { new: true },
       );
 
       console.log(
-        `🏢 [updateActiveShipmentsFlag] Office ${officeId} activeShipments flag updated to: ${hasOnTheWay}`,
+        `🏢 [updateActiveShipmentsFlag] Office ${officeId} activeShipments flag updated to: ${hasActiveShipments}`,
       );
     } catch (error) {
       console.error('Error updating activeShipments flag:', error);

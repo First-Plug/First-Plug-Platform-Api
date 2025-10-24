@@ -180,12 +180,6 @@ export class LogisticsService {
       'personalEmail',
     ];
 
-    console.log('🔍 [PERSONAL DATA CHECK] Comparing member data:', {
-      memberEmail: after.email,
-      beforeActiveShipment: before.activeShipment,
-      afterActiveShipment: after.activeShipment,
-    });
-
     let hasChanges = false;
     const changes: Array<{ field: string; before: any; after: any }> = [];
 
@@ -213,12 +207,6 @@ export class LogisticsService {
       }
     }
 
-    if (hasChanges) {
-      console.log('✅ [PERSONAL DATA CHECK] Changes detected:', changes);
-    } else {
-      console.log('❌ [PERSONAL DATA CHECK] No changes detected');
-    }
-
     return hasChanges;
   }
 
@@ -230,11 +218,6 @@ export class LogisticsService {
     initialMember: MemberDocument,
     updatedMember: MemberDocument,
   ): boolean {
-    console.log('🔍 [SHOULD EMIT CHECK] Checking if should emit event:', {
-      memberEmail: updatedMember.email,
-      activeShipment: updatedMember.activeShipment,
-    });
-
     const modified = this.hasPersonalDataChanged(initialMember, updatedMember);
 
     if (!modified) {
@@ -296,6 +279,7 @@ export class LogisticsService {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string; // ✅ FIX: Agregar officeId al tipo
     },
     newData: {
       location?: string;
@@ -465,6 +449,7 @@ export class LogisticsService {
         location: product.location,
         assignedEmail: product.assignedEmail,
         assignedMember: product.assignedMember,
+        officeId: product.office?.officeId?.toString(), // ✅ FIX: Incluir officeId del producto actual
       },
       {
         location: updateDto.location,
@@ -887,7 +872,7 @@ export class LogisticsService {
       ];
       const result = requiredFields.every((field) => !!details[field]);
       if (!result) {
-        console.log('🛑 Origin (Our office) está incompleto:', {
+        console.log('❌ Oficina incompleta para "Our office":', {
           missing: requiredFields.filter((f) => !details[f]),
           details,
         });
@@ -906,7 +891,7 @@ export class LogisticsService {
     ];
     const result = requiredFields.every((field) => !!details[field]);
     if (!result) {
-      console.log('🛑 Destination (Employee) está incompleto:', {
+      console.log('❌ Destination (Employee) está incompleto:', {
         missing: requiredFields.filter((f) => !details[f]),
         details,
       });
@@ -927,7 +912,6 @@ export class LogisticsService {
 
     for (const rawId of productIds) {
       const productId = rawId.toString();
-      console.log('📦 Processing product (cancel):', productId);
 
       const product = await ProductModel.findById(productId);
       let assignedEmail: string | undefined;
@@ -1061,11 +1045,6 @@ export class LogisticsService {
 
           assignedEmail = embeddedProduct.assignedEmail;
 
-          console.log(`✅ Product updated from Member collection:`, {
-            id: productId,
-            status,
-          });
-
           // 🌐 SINCRONIZAR A GLOBAL COLLECTION
           try {
             await this.globalProductSyncService.syncProduct({
@@ -1129,7 +1108,6 @@ export class LogisticsService {
             );
           }
         } else {
-          console.log('❌ Product not found in any collection');
           continue;
         }
       }
@@ -1303,12 +1281,10 @@ export class LogisticsService {
       });
 
       if (activeShipmentsForMember === 0) {
-        console.log(`✅ Setting activeShipment: false for member ${fullName}`);
-        const result = await MemberModel.updateOne(
+        await MemberModel.updateOne(
           { email: memberEmail },
           { activeShipment: false },
         );
-        console.log('🧾 Member update result:', result);
       }
     }
   }
@@ -1542,18 +1518,6 @@ export class LogisticsService {
       isDeleted: { $ne: true },
     });
 
-    // console.log(`🔍 Active shipments found for ${normalizedEmail}:`, {
-    //   count: activeShipments.length,
-    //   shipments: activeShipments.map((s) => ({
-    //     id: s._id,
-    //     status: s.shipment_status,
-    //     origin: s.origin,
-    //     destination: s.destination,
-    //     originEmail: s.originDetails?.assignedEmail,
-    //     destinationEmail: s.destinationDetails?.assignedEmail,
-    //   })),
-    // });
-
     const memberStillInvolved = activeShipments.length > 0;
 
     if (!memberStillInvolved) {
@@ -1616,18 +1580,43 @@ export class LogisticsService {
           ];
         }
 
-        console.log('🔍 Buscando shipments para actualizar oficina:', {
-          tenantName,
-          officeId,
-          query: JSON.stringify(query, null, 2),
-        });
-
         const shipments = await ShipmentModel.find(query).session(session);
+
+        // También buscar shipments que tengan el officeId pero no usen "Our office" como nombre
+        if (shipments.length === 0 && officeId) {
+          const shipmentsWithOfficeId = await ShipmentModel.find({
+            $or: [
+              { originOfficeId: new Types.ObjectId(officeId) },
+              { destinationOfficeId: new Types.ObjectId(officeId) },
+            ],
+            shipment_status: {
+              $in: ['In Preparation', 'On Hold - Missing Data'],
+            },
+            isDeleted: { $ne: true },
+          }).session(session);
+
+          // Agregar estos shipments a la lista para procesar
+          shipments.push(...shipmentsWithOfficeId);
+        }
 
         for (const shipment of shipments) {
           let updated = false;
 
           const originalShipmentData = { ...shipment.toObject() };
+
+          // Corregir nombre de oficina si es necesario
+          if (shipment.originOfficeId && shipment.origin !== 'Our office') {
+            shipment.origin = 'Our office';
+            updated = true;
+          }
+
+          if (
+            shipment.destinationOfficeId &&
+            shipment.destination !== 'Our office'
+          ) {
+            shipment.destination = 'Our office';
+            updated = true;
+          }
 
           if (shipment.origin === 'Our office') {
             const desirableDate = shipment.originDetails?.desirableDate || '';
@@ -1640,6 +1629,13 @@ export class LogisticsService {
               zipCode: newAddress.zipCode || '',
               apartment: newAddress.apartment || '',
               phone: newAddress.phone || '',
+              email:
+                newAddress.ourOfficeEmail ||
+                shipment.originDetails?.email ||
+                '',
+              personalEmail: shipment.originDetails?.personalEmail || '',
+              assignedEmail: shipment.originDetails?.assignedEmail || '',
+              dni: shipment.originDetails?.dni || '',
               desirableDate: desirableDate,
             };
 
@@ -1659,6 +1655,13 @@ export class LogisticsService {
               zipCode: newAddress.zipCode || '',
               apartment: newAddress.apartment || '',
               phone: newAddress.phone || '',
+              email:
+                newAddress.ourOfficeEmail ||
+                shipment.destinationDetails?.email ||
+                '',
+              personalEmail: shipment.destinationDetails?.personalEmail || '',
+              assignedEmail: shipment.destinationDetails?.assignedEmail || '',
+              dni: shipment.destinationDetails?.dni || '',
               desirableDate: desirableDate,
             };
 
@@ -2247,7 +2250,6 @@ export class LogisticsService {
         if (product.status === 'In Transit - Missing Data') {
           product.status = 'In Transit';
           await product.save({ session });
-          console.log(`✅ Producto actualizado a In Transit`);
 
           // 🌐 SINCRONIZAR A GLOBAL COLLECTION
           if (tenantName) {
@@ -2625,7 +2627,6 @@ export class LogisticsService {
         await this.slackService.sendMessage(slackMessage);
       }
 
-      console.log('📋 Final shipment status:', newStatus);
       return newStatus;
     } catch (error) {
       console.error(
@@ -2689,7 +2690,6 @@ export class LogisticsService {
       }
     }
 
-    console.log('🔍 [SLACK_DEBUG] No relevant field changes detected');
     return false;
   }
 
@@ -2811,7 +2811,6 @@ export class LogisticsService {
     }
 
     if (!productData) {
-      console.log(`❌ Product data not found for ${productId}`);
       return;
     }
 
@@ -2855,10 +2854,7 @@ export class LogisticsService {
 
       if (snapshotIndex !== undefined && snapshotIndex >= 0) {
         const existingSnapshot = shipment.snapshots[snapshotIndex];
-        console.log('📋 Comparing old vs new snapshot:', {
-          old: existingSnapshot,
-          new: updatedSnapshot,
-        });
+
         const hasChanges = this.shipmentsService.hasSnapshotChanged(
           existingSnapshot,
           updatedSnapshot,

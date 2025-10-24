@@ -214,7 +214,7 @@ export class ShipmentsService {
       }
 
       return {
-        name: office.name || 'Our office',
+        name: 'Our office', // ✅ FIX: Siempre usar "Our office" como nombre genérico
         code: 'OO',
         details: {
           address: office.address || '',
@@ -391,11 +391,13 @@ export class ShipmentsService {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string;
     },
     newData?: {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string;
     },
     providedProduct?: ProductDocument,
     providedConnection?: Connection,
@@ -422,6 +424,8 @@ export class ShipmentsService {
       destination,
       orderOrigin,
       orderDestination,
+      originLocation,
+      destinationLocation,
       originDetails,
       destinationDetails,
       destinationComplete,
@@ -495,6 +499,40 @@ export class ShipmentsService {
       nextNumber,
     );
 
+    // 🏢 Determinar officeIds para el shipment
+    let shipmentOriginOfficeId: mongoose.Types.ObjectId | undefined;
+    let shipmentDestinationOfficeId: mongoose.Types.ObjectId | undefined;
+
+    // Si origin es "Our office", obtener el officeId
+    if (originLocation === 'Our office') {
+      if (oldData?.officeId) {
+        shipmentOriginOfficeId = new mongoose.Types.ObjectId(oldData.officeId);
+      } else {
+        // Fallback a oficina default
+        const defaultOffice =
+          await this.officesService.getDefaultOffice(tenantName);
+        if (defaultOffice) {
+          shipmentOriginOfficeId = defaultOffice._id;
+        }
+      }
+    }
+
+    // Si destination es "Our office", obtener el officeId
+    if (destinationLocation === 'Our office') {
+      if (newData?.officeId) {
+        shipmentDestinationOfficeId = new mongoose.Types.ObjectId(
+          newData.officeId,
+        );
+      } else {
+        // Fallback a oficina default
+        const defaultOffice =
+          await this.officesService.getDefaultOffice(tenantName);
+        if (defaultOffice) {
+          shipmentDestinationOfficeId = defaultOffice._id;
+        }
+      }
+    }
+
     // ✅ FIX: Usar session en create para evitar conflictos de MongoClient
     const newShipmentArray = await ShipmentModel.create(
       [
@@ -508,6 +546,12 @@ export class ShipmentsService {
           originDetails,
           destination,
           destinationDetails,
+          ...(shipmentOriginOfficeId && {
+            originOfficeId: shipmentOriginOfficeId,
+          }),
+          ...(shipmentDestinationOfficeId && {
+            destinationOfficeId: shipmentDestinationOfficeId,
+          }),
           products: [productObjectId],
           type: 'shipments',
           order_date: new Date(),
@@ -579,16 +623,16 @@ export class ShipmentsService {
     }
 
     // 🏢 UPDATE: Coordinar actualización de flags de oficinas
-    const originOfficeId = newShipment.originOfficeId
+    const coordinatorOriginOfficeId = newShipment.originOfficeId
       ? new mongoose.Types.ObjectId(newShipment.originOfficeId.toString())
       : null;
-    const destinationOfficeId = newShipment.destinationOfficeId
+    const coordinatorDestinationOfficeId = newShipment.destinationOfficeId
       ? new mongoose.Types.ObjectId(newShipment.destinationOfficeId.toString())
       : null;
 
     await this.shipmentOfficeCoordinator.handleShipmentCreated(
-      originOfficeId,
-      destinationOfficeId,
+      coordinatorOriginOfficeId,
+      coordinatorDestinationOfficeId,
       newShipment.shipment_status,
       tenantName,
     );
@@ -658,7 +702,6 @@ export class ShipmentsService {
 
     if (consolidable) {
       const productIds = shipment.products.map((p) => p.toString());
-      console.log('🔍 Productos en el shipment a consolidar:', productIds);
 
       await this.logisticsService.addProductsAndSnapshotsToShipment(
         consolidable,

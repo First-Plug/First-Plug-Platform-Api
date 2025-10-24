@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { OfficesService } from '../../offices/offices.service';
+import { ACTIVE_SHIPMENT_STATUSES } from '../interface/shipment.interface';
 
 /**
  * Servicio Transversal para coordinar actualizaciones entre Shipments y Offices
- * 
+ *
  * Responsabilidades:
  * - Actualizar flags de oficinas cuando cambian estados de shipments
  * - Mantener consistencia entre shipments "On The Way" y flags activeShipments
@@ -26,10 +27,10 @@ export class ShipmentOfficeCoordinatorService {
     newStatus: string,
     tenantName: string,
   ): Promise<void> {
-    const statusesOfInterest = ['On The Way'];
+    const statusesOfInterest = ACTIVE_SHIPMENT_STATUSES;
     const shouldUpdate =
-      statusesOfInterest.includes(oldStatus) ||
-      statusesOfInterest.includes(newStatus);
+      statusesOfInterest.includes(oldStatus as any) ||
+      statusesOfInterest.includes(newStatus as any);
 
     if (!shouldUpdate) {
       this.logger.log(
@@ -65,7 +66,9 @@ export class ShipmentOfficeCoordinatorService {
     status: string,
     tenantName: string,
   ): Promise<void> {
-    if (status === 'On The Way') {
+    const activeStatuses = ACTIVE_SHIPMENT_STATUSES;
+
+    if (activeStatuses.includes(status as any)) {
       try {
         await this.officesService.updateActiveShipmentsFlagsForShipment(
           originOfficeId,
