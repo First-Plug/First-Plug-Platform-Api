@@ -306,7 +306,7 @@ export class LogisticsService {
       providedConnection ||
       (await this.connectionService.getTenantConnection(tenantName));
 
-    const { shipment, isConsolidated, oldSnapshot } =
+    const { shipment, isConsolidated, oldSnapshot, officeIds } =
       await this.shipmentsService.findOrCreateShipment(
         product._id!.toString(),
         actionType,
@@ -333,6 +333,27 @@ export class LogisticsService {
     if (session.inTransaction()) {
       await session.commitTransaction();
       session.startTransaction();
+    }
+
+    // 🏢 UPDATE: Coordinar actualización de flags de oficinas DESPUÉS del commit
+    if (
+      officeIds &&
+      (officeIds.originOfficeId || officeIds.destinationOfficeId)
+    ) {
+      try {
+        await this.shipmentsService.shipmentOfficeCoordinator.handleShipmentCreated(
+          officeIds.originOfficeId || null,
+          officeIds.destinationOfficeId || null,
+          shipment.shipment_status,
+          tenantName,
+        );
+      } catch (error) {
+        console.error(
+          '❌ Error updating office flags after shipment creation:',
+          error,
+        );
+        // No fallar el proceso principal por este error
+      }
     }
 
     const newStatus =
@@ -809,11 +830,13 @@ export class LogisticsService {
     let originComplete = this.areShipmentDetailsComplete(
       shipment.originDetails,
       shipment.origin,
+      shipment.originOfficeId?.toString(),
     );
 
     let destinationComplete = this.areShipmentDetailsComplete(
       shipment.destinationDetails,
       shipment.destination,
+      shipment.destinationOfficeId?.toString(),
     );
 
     // Si hay officeIds específicos y tenantName, validar que las oficinas existan y estén completas
@@ -856,12 +879,14 @@ export class LogisticsService {
   public areShipmentDetailsComplete(
     details?: Record<string, string>,
     locationName?: string,
+    officeId?: string,
   ): boolean {
     if (!details) return false;
 
     if (locationName === 'FP warehouse') return true;
 
-    if (locationName === 'Our office') {
+    // ✅ FIX: Si tiene officeId O es "Our office", validar como oficina
+    if (locationName === 'Our office' || officeId) {
       const requiredFields = [
         'address',
         'city',
@@ -872,7 +897,7 @@ export class LogisticsService {
       ];
       const result = requiredFields.every((field) => !!details[field]);
       if (!result) {
-        console.log('❌ Oficina incompleta para "Our office":', {
+        console.log(`❌ Oficina incompleta para "${locationName}":`, {
           missing: requiredFields.filter((f) => !details[f]),
           details,
         });
@@ -880,6 +905,7 @@ export class LogisticsService {
       return result;
     }
 
+    // Validación para empleados (Employee)
     const requiredFields = [
       'address',
       'city',
@@ -2442,10 +2468,12 @@ export class LogisticsService {
       const originCode = this.shipmentsService.getLocationCode(
         shipment.origin,
         shipment.originDetails,
+        shipment.originOfficeId?.toString(),
       );
       const destinationCode = this.shipmentsService.getLocationCode(
         shipment.destination,
         shipment.destinationDetails,
+        shipment.destinationOfficeId?.toString(),
       );
       const originalShipment = { ...shipment.toObject() };
       const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
@@ -2465,10 +2493,12 @@ export class LogisticsService {
       const originComplete = this.areShipmentDetailsComplete(
         shipment.originDetails,
         shipment.origin,
+        shipment.originOfficeId?.toString(),
       );
       const destinationComplete = this.areShipmentDetailsComplete(
         shipment.destinationDetails,
         shipment.destination,
+        shipment.destinationOfficeId?.toString(),
       );
       const wasInPreparation = shipment.shipment_status === 'In Preparation';
       const isNowComplete = originComplete && destinationComplete;

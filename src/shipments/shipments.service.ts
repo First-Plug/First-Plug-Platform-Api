@@ -45,7 +45,7 @@ export class ShipmentsService {
     private readonly officesService: OfficesService,
     private readonly usersService: UsersService,
     private readonly eventsGateway: EventsGateway,
-    private readonly shipmentOfficeCoordinator: ShipmentOfficeCoordinatorService,
+    public readonly shipmentOfficeCoordinator: ShipmentOfficeCoordinatorService,
   ) {}
 
   /**
@@ -158,9 +158,13 @@ export class ShipmentsService {
   public getLocationCode(
     locationName: string,
     locationDetails?: Record<string, any>,
+    officeId?: string,
   ): string {
     if (locationName === 'FP warehouse') return 'FP';
     if (locationName === 'Our office') return 'OO';
+
+    // ✅ FIX: Si tiene officeId, es una oficina específica, usar código "OO"
+    if (officeId) return 'OO';
 
     return locationDetails?.country
       ? this.getCountryCode(locationDetails.country)
@@ -300,6 +304,8 @@ export class ShipmentsService {
     orderOrigin: string,
     orderDestination: string,
     orderNumber: number,
+    originOfficeId?: string,
+    destinationOfficeId?: string,
   ): string {
     if (!orderOrigin || !orderDestination || orderNumber === undefined) {
       throw new Error('❌ Parámetros inválidos para generar el Order ID');
@@ -308,11 +314,15 @@ export class ShipmentsService {
     const originCode =
       orderOrigin.length === 2
         ? orderOrigin
-        : this.getLocationCode(orderOrigin);
+        : this.getLocationCode(orderOrigin, undefined, originOfficeId);
     const destinationCode =
       orderDestination.length === 2
         ? orderDestination
-        : this.getLocationCode(orderDestination);
+        : this.getLocationCode(
+            orderDestination,
+            undefined,
+            destinationOfficeId,
+          );
 
     const orderNumberFormatted = orderNumber.toString().padStart(4, '0');
     return `${originCode}${destinationCode}${orderNumberFormatted}`;
@@ -405,6 +415,10 @@ export class ShipmentsService {
     shipment: ShipmentDocument;
     isConsolidated: boolean;
     oldSnapshot?: Partial<ShipmentDocument>;
+    officeIds?: {
+      originOfficeId?: mongoose.Types.ObjectId;
+      destinationOfficeId?: mongoose.Types.ObjectId;
+    };
   }> {
     if (!userId) {
       throw new Error('❌ User ID is required');
@@ -497,6 +511,8 @@ export class ShipmentsService {
       orderOrigin,
       orderDestination,
       nextNumber,
+      oldData?.officeId,
+      newData?.officeId,
     );
 
     // 🏢 Determinar officeIds para el shipment
@@ -622,22 +638,21 @@ export class ShipmentsService {
       );
     }
 
-    // 🏢 UPDATE: Coordinar actualización de flags de oficinas
-    const coordinatorOriginOfficeId = newShipment.originOfficeId
-      ? new mongoose.Types.ObjectId(newShipment.originOfficeId.toString())
-      : null;
-    const coordinatorDestinationOfficeId = newShipment.destinationOfficeId
-      ? new mongoose.Types.ObjectId(newShipment.destinationOfficeId.toString())
-      : null;
-
-    await this.shipmentOfficeCoordinator.handleShipmentCreated(
-      coordinatorOriginOfficeId,
-      coordinatorDestinationOfficeId,
-      newShipment.shipment_status,
-      tenantName,
-    );
-
-    return { shipment: newShipment, isConsolidated: false };
+    return {
+      shipment: newShipment,
+      isConsolidated: false,
+      // Devolver los IDs de oficinas para actualizar flags después del commit
+      officeIds: {
+        originOfficeId: newShipment.originOfficeId
+          ? new mongoose.Types.ObjectId(newShipment.originOfficeId.toString())
+          : undefined,
+        destinationOfficeId: newShipment.destinationOfficeId
+          ? new mongoose.Types.ObjectId(
+              newShipment.destinationOfficeId.toString(),
+            )
+          : undefined,
+      },
+    };
   }
 
   async findConsolidateAndUpdateShipment(
