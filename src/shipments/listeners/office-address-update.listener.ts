@@ -38,6 +38,7 @@ export class OfficeAddressUpdatedListener {
         userId,
         ourOfficeEmail,
         event.officeId,
+        event.officeName,
       );
     } catch (error) {
       this.logger.error('Error handling office address update:', error);

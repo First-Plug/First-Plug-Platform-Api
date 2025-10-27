@@ -1549,6 +1549,7 @@ export class LogisticsService {
     userId: string,
     ourOfficeEmail: string,
     officeId?: string,
+    newOfficeName?: string,
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection = await this.tenantModels.getConnection(tenantName);
@@ -1557,68 +1558,55 @@ export class LogisticsService {
 
     try {
       await session.withTransaction(async () => {
-        // Construir query para filtrar por oficina específica si se proporciona officeId
+        // Buscar shipments por officeId (ya no buscamos por nombre "Our office")
         const query: any = {
-          $or: [{ origin: 'Our office' }, { destination: 'Our office' }],
           shipment_status: {
             $in: ['In Preparation', 'On Hold - Missing Data'],
           },
           isDeleted: { $ne: true },
         };
 
-        // Si se proporciona officeId, filtrar solo shipments de esa oficina específica
         if (officeId) {
+          // Si se proporciona officeId, buscar shipments de esa oficina específica
           query.$or = [
-            {
-              origin: 'Our office',
-              originOfficeId: new Types.ObjectId(officeId),
-            },
-            {
-              destination: 'Our office',
-              destinationOfficeId: new Types.ObjectId(officeId),
-            },
+            { originOfficeId: new Types.ObjectId(officeId) },
+            { destinationOfficeId: new Types.ObjectId(officeId) },
+          ];
+        } else {
+          // Si no se proporciona officeId, buscar todos los shipments con oficinas
+          query.$or = [
+            { originOfficeId: { $exists: true } },
+            { destinationOfficeId: { $exists: true } },
           ];
         }
 
         const shipments = await ShipmentModel.find(query).session(session);
-
-        // También buscar shipments que tengan el officeId pero no usen "Our office" como nombre
-        if (shipments.length === 0 && officeId) {
-          const shipmentsWithOfficeId = await ShipmentModel.find({
-            $or: [
-              { originOfficeId: new Types.ObjectId(officeId) },
-              { destinationOfficeId: new Types.ObjectId(officeId) },
-            ],
-            shipment_status: {
-              $in: ['In Preparation', 'On Hold - Missing Data'],
-            },
-            isDeleted: { $ne: true },
-          }).session(session);
-
-          // Agregar estos shipments a la lista para procesar
-          shipments.push(...shipmentsWithOfficeId);
-        }
 
         for (const shipment of shipments) {
           let updated = false;
 
           const originalShipmentData = { ...shipment.toObject() };
 
-          // Corregir nombre de oficina si es necesario
-          if (shipment.originOfficeId && shipment.origin !== 'Our office') {
-            shipment.origin = 'Our office';
-            updated = true;
+          // Actualizar nombre de oficina si se proporciona
+          if (newOfficeName && officeId) {
+            if (
+              shipment.originOfficeId &&
+              shipment.originOfficeId.toString() === officeId
+            ) {
+              shipment.origin = newOfficeName;
+              updated = true;
+            }
+            if (
+              shipment.destinationOfficeId &&
+              shipment.destinationOfficeId.toString() === officeId
+            ) {
+              shipment.destination = newOfficeName;
+              updated = true;
+            }
           }
 
-          if (
-            shipment.destinationOfficeId &&
-            shipment.destination !== 'Our office'
-          ) {
-            shipment.destination = 'Our office';
-            updated = true;
-          }
-
-          if (shipment.origin === 'Our office') {
+          // Actualizar detalles de origen si es una oficina
+          if (shipment.originOfficeId) {
             const desirableDate = shipment.originDetails?.desirableDate || '';
 
             const updatedOriginDetails = {
@@ -1643,7 +1631,8 @@ export class LogisticsService {
             updated = true;
           }
 
-          if (shipment.destination === 'Our office') {
+          // Actualizar detalles de destino si es una oficina
+          if (shipment.destinationOfficeId) {
             const desirableDate =
               shipment.destinationDetails?.desirableDate || '';
 
