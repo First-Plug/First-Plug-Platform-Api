@@ -133,7 +133,9 @@ async function runSimpleMigration() {
             serialNumber: product.serialNumber || null,
             assignedEmail: member.email,
             assignedMember: `${member.firstName} ${member.lastName}`,
-            lastAssigned: product.lastAssigned || member.email,
+            ...(product.lastAssigned !== undefined && {
+              lastAssigned: product.lastAssigned,
+            }),
             acquisitionDate: product.acquisitionDate,
             price: product.price,
             additionalInfo: product.additionalInfo,

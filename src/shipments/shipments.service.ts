@@ -214,7 +214,7 @@ export class ShipmentsService {
       }
 
       return {
-        name: 'Our office', // ✅ FIX: Siempre usar "Our office" como nombre genérico
+        name: office.name, // ✅ FIX: Usar el nombre específico de la oficina
         code: 'OO',
         details: {
           address: office.address || '',
