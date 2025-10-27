@@ -543,13 +543,18 @@ export class ProductsService {
         normalizedProducts.map(async (product) => {
           const { serialNumber, officeId, ...rest } = product;
 
-          // Construir objeto office si officeId está presente y location es "Our office"
+          // ✅ FIX: Usar handleOfficeAssignment para manejar oficina default cuando no hay officeId
           let officeData = {};
-          if (officeId && product.location === 'Our office') {
-            officeData = await this.assignmentsService.buildOfficeObject(
-              officeId as string,
-              tenantName,
-            );
+          if (product.location === 'Our office') {
+            // Si no hay officeId pero location es "Our office", usar oficina default
+            const officeAssignment =
+              await this.assignmentsService.handleOfficeAssignment(
+                officeId as string,
+                product.location,
+                undefined, // currentOffice
+                tenantName,
+              );
+            officeData = officeAssignment;
           }
 
           const baseProduct =

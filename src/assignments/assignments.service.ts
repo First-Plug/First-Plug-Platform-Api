@@ -2444,7 +2444,7 @@ export class AssignmentsService {
   /**
    * Maneja la asignación de oficina: usa officeId proporcionado o oficina default
    */
-  private async handleOfficeAssignment(
+  public async handleOfficeAssignment(
     officeId: string | undefined,
     location: string | undefined,
     currentOffice: any,
