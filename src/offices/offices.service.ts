@@ -653,7 +653,8 @@ export class OfficesService {
   }
 
   /**
-   * Verificar si una oficina tiene productos asignados
+   * Verificar si una oficina tiene productos asignados que sean recoverable: true
+   * Solo productos recoverable: true impiden el borrado de la oficina
    */
   async hasAssignedProducts(
     officeId: Types.ObjectId,
@@ -667,6 +668,7 @@ export class OfficesService {
         $or: [{ officeId: officeId }, { 'office.officeId': officeId }],
         location: 'Our office',
         isDeleted: { $ne: true },
+        recoverable: true, // ✅ Solo productos recoverable: true impiden el borrado
       });
 
       return productCount > 0;
