@@ -485,7 +485,18 @@ export class ProductsService {
     );
     if (fpWarehouseProducts.length > 0) {
       throw new BadRequestException(
-        'FP warehouse location is not allowed for initial product creation. Please use "Our office" instead.',
+        'FP warehouse location is not allowed for initial product creation via CSV. Please use "Employee" instead.',
+      );
+    }
+
+    // 🚫 TEMPORAL: Bloquear "Our office" en CSV hasta próximo release
+    // Evita problemas con usuarios que tengan template anterior
+    const ourOfficeProducts = createProductDtos.filter(
+      (dto) => dto.location === 'Our office',
+    );
+    if (ourOfficeProducts.length > 0) {
+      throw new BadRequestException(
+        'Our office location is temporarily disabled for CSV uploads. Please use "Employee" instead and assign to offices manually.',
       );
     }
 

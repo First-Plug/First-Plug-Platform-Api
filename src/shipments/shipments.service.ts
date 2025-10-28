@@ -211,8 +211,8 @@ export class ShipmentsService {
         // Fallback a oficina default para compatibilidad
         office = await this.officesService.getDefaultOffice(tenantId);
         if (!office) {
-          throw new NotFoundException(
-            `Default office not found for tenant ${tenantId}`,
+          throw new BadRequestException(
+            `No default office found for tenant ${tenantId}. Please create an office first or specify an officeId.`,
           );
         }
       }
@@ -529,6 +529,10 @@ export class ShipmentsService {
           await this.officesService.getDefaultOffice(tenantName);
         if (defaultOffice) {
           shipmentOriginOfficeId = defaultOffice._id;
+        } else {
+          throw new BadRequestException(
+            `No default office found for tenant ${tenantName}. Cannot create shipment from "Our office" without specifying an officeId.`,
+          );
         }
       }
     }
@@ -545,6 +549,10 @@ export class ShipmentsService {
           await this.officesService.getDefaultOffice(tenantName);
         if (defaultOffice) {
           shipmentDestinationOfficeId = defaultOffice._id;
+        } else {
+          throw new BadRequestException(
+            `No default office found for tenant ${tenantName}. Cannot create shipment to "Our office" without specifying an officeId.`,
+          );
         }
       }
     }
@@ -716,7 +724,7 @@ export class ShipmentsService {
     });
 
     if (consolidable) {
-      const productIds = shipment.products.map((p) => p.toString());
+      shipment.products.map((p) => p.toString());
 
       await this.logisticsService.addProductsAndSnapshotsToShipment(
         consolidable,
