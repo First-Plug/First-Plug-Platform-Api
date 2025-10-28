@@ -62,8 +62,9 @@ export class TenantModelRegistry {
       await this.connectionService.getTenantConnection(tenantName);
     const model = connection.model(Office.name, OfficeSchema);
 
-    // Inicializar oficina "Main Office" si es la primera vez que se accede a este tenant
-    await this.ensureMainOfficeExists(tenantName, model);
+    // 🚫 TEMPORAL: Deshabilitado - No crear oficina "Main Office" automáticamente
+    // Obligar al usuario a crear oficinas manualmente
+    // await this.ensureMainOfficeExists(tenantName, model);
 
     return model;
   }

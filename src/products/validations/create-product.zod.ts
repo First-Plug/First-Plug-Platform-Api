@@ -424,20 +424,36 @@ export const ProductSchemaZod = z
     },
   );
 
-export const ProductSchemaZodArray = z.array(ProductSchemaZod).refine(
-  (products) => {
-    // Validar que ningún producto tenga location "FP warehouse" en creación inicial
-    const fpWarehouseProducts = products.filter(
-      (product) => product.location === 'FP warehouse',
-    );
-    return fpWarehouseProducts.length === 0;
-  },
-  {
-    message:
-      'FP warehouse location is not allowed for initial product creation via CSV. Please use "Our office" instead.',
-    path: ['location'],
-  },
-);
+export const ProductSchemaZodArray = z
+  .array(ProductSchemaZod)
+  .refine(
+    (products) => {
+      // Validar que ningún producto tenga location "FP warehouse" en creación inicial
+      const fpWarehouseProducts = products.filter(
+        (product) => product.location === 'FP warehouse',
+      );
+      return fpWarehouseProducts.length === 0;
+    },
+    {
+      message:
+        'FP warehouse location is not allowed for initial product creation via CSV. Please use "Employee" instead.',
+      path: ['location'],
+    },
+  )
+  .refine(
+    (products) => {
+      // TEMPORAL: Validar que ningún producto tenga location "Our office" en CSV
+      const ourOfficeProducts = products.filter(
+        (product) => product.location === 'Our office',
+      );
+      return ourOfficeProducts.length === 0;
+    },
+    {
+      message:
+        'Our office location is temporarily disabled for CSV uploads. Please use "Employee" instead and assign to offices manually.',
+      path: ['location'],
+    },
+  );
 
 /**
  * Schema separado para updates de productos

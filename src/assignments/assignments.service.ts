@@ -2475,12 +2475,14 @@ export class AssignmentsService {
             ...officeData,
           };
         } else {
-          console.warn(
-            `⚠️ No se encontró oficina default para tenant ${tenantName}`,
+          // 🚫 No hay oficina default - lanzar error claro
+          throw new BadRequestException(
+            'No default office found for this tenant. Please create an office first before assigning products to "Our office".',
           );
         }
       } catch (error) {
         console.error('Error obteniendo oficina default:', error);
+        throw error; // Re-lanzar el error para que no se ignore
       }
     }
 
