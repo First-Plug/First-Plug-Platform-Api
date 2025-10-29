@@ -804,13 +804,20 @@ export class OfficesService {
       );
     }
 
-    // Verificar si tiene productos asignados
-    const hasProducts = await this.hasAssignedProducts(id, tenantName);
-    if (hasProducts) {
+    // Verificar si tiene productos recoverable asignados
+    const hasRecoverableProducts = await this.hasAssignedProducts(
+      id,
+      tenantName,
+    );
+    if (hasRecoverableProducts) {
       throw new BadRequestException(
-        'No se puede eliminar la oficina porque tiene productos asignados.',
+        'No se puede eliminar la oficina porque tiene productos recuperables asignados. Por favor, reasigne estos productos primero.',
       );
     }
+
+    // 🗑️ SOFT DELETE: Aplicar soft delete automáticamente a productos non-recoverable
+    // Delegamos esta responsabilidad al servicio transversal correspondiente
+    await this.softDeleteNonRecoverableProducts(id, tenantName, userId);
 
     // Verificar si tiene shipments activos
     const hasShipments = await this.hasActiveShipments(id, tenantName);
@@ -1197,6 +1204,96 @@ export class OfficesService {
         error,
       );
       // No fallar la operación principal por error en sincronización
+    }
+  }
+
+  /**
+   * Aplicar soft delete automáticamente a productos non-recoverable de una oficina
+   * Esto se ejecuta antes de borrar la oficina para evitar productos "huérfanos"
+   * NOTA: Solo marca los productos como eliminados, sin lógica compleja de negocio
+   */
+  private async softDeleteNonRecoverableProducts(
+    officeId: Types.ObjectId,
+    tenantName: string,
+    userId: string,
+  ): Promise<void> {
+    try {
+      const ProductModel =
+        await this.tenantModelRegistry.getProductModel(tenantName);
+
+      // Buscar productos non-recoverable en esta oficina
+      const nonRecoverableProducts = await ProductModel.find({
+        $or: [{ officeId: officeId }, { 'office.officeId': officeId }],
+        location: 'Our office',
+        isDeleted: { $ne: true },
+        recoverable: false, // Solo productos non-recoverable
+      });
+
+      if (nonRecoverableProducts.length === 0) {
+        return;
+      }
+
+      // 🗑️ SOFT DELETE DIRECTO: Actualizar cada producto individualmente para preservar serialNumber
+      let modifiedCount = 0;
+
+      for (const product of nonRecoverableProducts) {
+        try {
+          await ProductModel.findByIdAndUpdate(product._id, {
+            $set: {
+              status: 'Deprecated',
+              isDeleted: true,
+              deletedAt: new Date(),
+              // ✅ CORRECTO: Guardar el valor real del serialNumber
+              lastSerialNumber: product.serialNumber || undefined,
+            },
+            $unset: {
+              // Limpiar serialNumber para evitar conflictos futuros
+              serialNumber: 1,
+            },
+          });
+          modifiedCount++;
+        } catch (productError) {
+          console.error(
+            `❌ [softDeleteNonRecoverableProducts] Error deleting product ${product._id}:`,
+            productError,
+          );
+          // Continuar con los demás productos aunque uno falle
+        }
+      }
+
+      const updateResult = { modifiedCount };
+
+      // 📝 HISTORY: Registrar la acción si el servicio está disponible
+      if (this.historyService && updateResult.modifiedCount > 0) {
+        try {
+          await this.historyService.create({
+            actionType: 'delete',
+            itemType: 'assets',
+            userId,
+            changes: {
+              oldData: null,
+              newData: {
+                deletedCount: updateResult.modifiedCount,
+                reason: `Office ${officeId} deletion - non-recoverable products`,
+                officeId: officeId.toString(),
+              },
+              context: 'single-product',
+            },
+          });
+        } catch (historyError) {
+          console.error(
+            `⚠️ [softDeleteNonRecoverableProducts] Error creating history:`,
+            historyError,
+          );
+          // No fallar la operación principal por error en history
+        }
+      }
+    } catch (error) {
+      console.error(
+        `❌ [softDeleteNonRecoverableProducts] Error processing office ${officeId}:`,
+        error,
+      );
+      // No lanzar error para no bloquear el borrado de la oficina
     }
   }
 }
