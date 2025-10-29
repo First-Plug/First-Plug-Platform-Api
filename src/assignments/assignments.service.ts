@@ -318,11 +318,11 @@ export class AssignmentsService {
           product.fpWarehouse &&
           product.fpWarehouse.warehouseId &&
           product.fpWarehouse.warehouseCountryCode &&
-          product.fpWarehouse.warehouseName
+          product.fpWarehouse.warehouseName !== undefined // ✅ FIX: Permitir warehouseName vacío
             ? {
                 warehouseId: product.fpWarehouse.warehouseId as any,
                 warehouseCountryCode: product.fpWarehouse.warehouseCountryCode,
-                warehouseName: product.fpWarehouse.warehouseName,
+                warehouseName: product.fpWarehouse.warehouseName || '', // ✅ FIX: Fallback a string vacío
                 assignedAt: product.fpWarehouse.assignedAt,
                 status:
                   product.fpWarehouse.status === 'IN_TRANSIT'
@@ -1498,6 +1498,180 @@ export class AssignmentsService {
     return member.products[index];
   }
 
+  /**
+   * Método simple para cambios de ubicación dentro de la colección products
+   * Maneja: FP warehouse ↔ Our office (sin movimiento entre colecciones)
+   */
+  async handleProductLocationChangeWithinProducts(
+    product: ProductDocument,
+    updateDto: UpdateProductDto,
+    tenantName: string,
+    userId: string,
+    ourOfficeEmail: string,
+    session: ClientSession,
+    connection: Connection,
+  ): Promise<{
+    shipment?: ShipmentDocument;
+    updatedProduct?: ProductDocument;
+  }> {
+    this.logger.log(
+      `🔄 [handleProductLocationChangeWithinProducts] Moving product ${product._id} from ${product.location} to ${updateDto.location}`,
+    );
+
+    const productCopy = { ...product.toObject() };
+    const isRecoverable = this.productsService.getEffectiveRecoverableValue(
+      updateDto,
+      product.recoverable ?? false,
+    );
+
+    // 📜 HISTORY: Registrar cambios en el historial
+    await this.recordAssetHistoryIfNeeded(
+      updateDto.actionType as HistoryActionType,
+      productCopy,
+      {
+        ...updateDto,
+        recoverable: isRecoverable,
+      },
+      userId,
+    );
+
+    // 📊 STATUS LOGIC: Determinar el status basado en la ubicación y condición
+    const statusLogic = await this.productsService.determineProductStatus(
+      {
+        location: updateDto.location || product.location,
+        assignedEmail: updateDto.assignedEmail || product.assignedEmail,
+        productCondition:
+          updateDto.productCondition || product.productCondition,
+      },
+      tenantName,
+    );
+
+    // Preparar campos actualizados básicos
+    const updatedFields = this.productsService.getUpdatedFields(product, {
+      ...updateDto,
+      recoverable: isRecoverable,
+    });
+    updatedFields.status = statusLogic;
+
+    // 📍 LAST ASSIGNED: Calcular lastAssigned basado en la nueva ubicación
+    const calculatedLastAssigned =
+      await this.calculateLastAssignedWithOfficeInfo(
+        product,
+        updateDto.location!, // newLocation
+        tenantName,
+        updateDto.actionType as
+          | 'assign'
+          | 'reassign'
+          | 'return'
+          | 'relocate'
+          | 'offboarding',
+      );
+
+    if (calculatedLastAssigned) {
+      updatedFields.lastAssigned = calculatedLastAssigned;
+      this.logger.log(
+        `📍 [handleProductLocationChangeWithinProducts] Updated lastAssigned: ${calculatedLastAssigned}`,
+      );
+    }
+
+    // 🏢 OFFICE ASSIGNMENT: Si se mueve a "Our office", agregar objeto office
+    if (updateDto.location === 'Our office' && updateDto.officeId) {
+      const officeData = await this.buildOfficeObject(
+        updateDto.officeId as string,
+        tenantName,
+      );
+      if (officeData.office) {
+        Object.assign(updatedFields, { office: officeData.office });
+        this.logger.log(
+          `🏢 [handleProductLocationChangeWithinProducts] Office data prepared: ${JSON.stringify(officeData.office)}`,
+        );
+      }
+    }
+
+    // 🏭 WAREHOUSE ASSIGNMENT: Si se mueve a "FP warehouse", agregar objeto warehouse
+    if (updateDto.location === 'FP warehouse') {
+      const userInfo = userId
+        ? await this.getUserInfoFromUserId(userId)
+        : undefined;
+      const userName =
+        userInfo?.userEmail || (userId ? `User ${userId}` : 'Unknown User');
+
+      const warehouseFields = await this.assignWarehouseIfNeeded(
+        updateDto,
+        product,
+        tenantName,
+        product.lastAssigned || product.assignedEmail,
+        userName,
+        updateDto.actionType === 'return' ? 'return' : 'reassign',
+      );
+
+      if (warehouseFields.fpWarehouse) {
+        Object.assign(updatedFields, {
+          fpWarehouse: warehouseFields.fpWarehouse,
+        });
+        this.logger.log(
+          `🏭 [handleProductLocationChangeWithinProducts] Warehouse data prepared: ${JSON.stringify(warehouseFields.fpWarehouse)}`,
+        );
+      }
+    }
+
+    // 🧹 CLEANUP: Preparar operaciones de limpieza usando $unset
+    const cleanupFields = this.getLocationCleanupForUnset(
+      updateDto.location,
+      product,
+    );
+
+    // 💾 ACTUALIZAR PRODUCTO: Usar $set y $unset para limpiar campos correctamente
+    const ProductModel = connection.model(Product.name, ProductSchema);
+    const updateOperations: any = { $set: updatedFields };
+
+    if (Object.keys(cleanupFields).length > 0) {
+      updateOperations.$unset = cleanupFields;
+      this.logger.log(
+        `🧹 [handleProductLocationChangeWithinProducts] Cleanup fields to unset: ${JSON.stringify(cleanupFields)}`,
+      );
+    }
+
+    const updatedProduct = await ProductModel.findOneAndUpdate(
+      { _id: product._id },
+      updateOperations,
+      { session, runValidators: true, new: true },
+    );
+
+    if (!updatedProduct) {
+      throw new NotFoundException(
+        `Product with id "${product._id}" not found after update`,
+      );
+    }
+
+    // 🔄 SYNC FINAL: Sincronizar producto actualizado a colección global
+    try {
+      await this.syncProductToGlobal(
+        updatedProduct,
+        tenantName,
+        'products',
+        undefined,
+      );
+
+      this.logger.log(
+        `🔄 [handleProductLocationChangeWithinProducts] Product ${updatedProduct._id} synced to global collection`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `❌ [handleProductLocationChangeWithinProducts] Error syncing to global:`,
+        error,
+      );
+    }
+
+    this.logger.log(
+      `✅ [handleProductLocationChangeWithinProducts] Successfully moved product ${product._id} from ${product.location} to ${updateDto.location}`,
+    );
+
+    return {
+      updatedProduct: updatedProduct,
+    };
+  }
+
   async handleProductFromProductsCollection(
     product: ProductDocument,
     updateDto: UpdateProductDto,
@@ -1514,6 +1688,40 @@ export class AssignmentsService {
       throw new BadRequestException(
         'This product is currently part of an active shipment and cannot be modified.',
       );
+    }
+
+    // 🔄 LOCATION CHANGE: Si cambia la ubicación, determinar el flujo correcto
+    if (updateDto.location && updateDto.location !== product.location) {
+      // Si se mueve a Employee, usar el método de member collection
+      if (updateDto.location === 'Employee') {
+        return await this.handleProductFromMemberCollection(
+          product._id!,
+          updateDto,
+          tenantName,
+          userId,
+          ourOfficeEmail,
+          session,
+          connection,
+        );
+      }
+
+      // Si se mueve entre FP warehouse ↔ Our office (misma colección)
+      if (
+        (product.location === 'FP warehouse' &&
+          updateDto.location === 'Our office') ||
+        (product.location === 'Our office' &&
+          updateDto.location === 'FP warehouse')
+      ) {
+        return await this.handleProductLocationChangeWithinProducts(
+          product,
+          updateDto,
+          tenantName,
+          userId,
+          ourOfficeEmail,
+          session,
+          connection,
+        );
+      }
     }
 
     const productCopy = { ...product.toObject() };
@@ -1681,16 +1889,81 @@ export class AssignmentsService {
     });
     updatedFields.status = updateDto.status ?? product.status;
 
-    // Actualizar producto
-    await this.productsService.updateOne(
-      tenantName,
+    // Actualizar producto usando la conexión proporcionada y obtener el producto actualizado
+    const ProductModel = connection.model(Product.name, ProductSchema);
+    const updatedProduct = await ProductModel.findOneAndUpdate(
       { _id: product._id },
       { $set: updatedFields },
       { session, runValidators: true, new: true, omitUndefined: true },
     );
 
+    if (!updatedProduct) {
+      throw new NotFoundException(
+        `Product with id "${product._id}" not found after update`,
+      );
+    }
+
+    // 🏢 OFFICE ASSIGNMENT: Si location es "Our office", asignar office
+    if (updateDto.location === 'Our office' && updateDto.officeId) {
+      const officeData = await this.buildOfficeObject(
+        updateDto.officeId as string,
+        tenantName,
+      );
+
+      // Aplicar los campos de office al producto actualizado
+      if (officeData.office) {
+        Object.assign(updatedProduct, {
+          office: officeData.office,
+        });
+
+        // 💾 GUARDAR EL PRODUCTO: Necesario para persistir los campos de la oficina
+        await updatedProduct.save({ session });
+
+        this.logger.log(
+          `🏢 [handleProductFromProductsCollection] Office fields applied: ${JSON.stringify(officeData.office)}`,
+        );
+      }
+    }
+
+    // 🧹 CLEANUP: Limpiar objetos warehouse/office según movimiento de ubicación
+    const cleanupFields = this.handleLocationObjectCleanup(
+      updateDto.location,
+      product, // Usar el producto original para comparar la ubicación anterior
+    );
+    if (Object.keys(cleanupFields).length > 0) {
+      Object.assign(updatedProduct, cleanupFields);
+      await updatedProduct.save({ session });
+      this.logger.log(
+        `🧹 [handleProductFromProductsCollection] Cleanup applied: ${JSON.stringify(cleanupFields)}`,
+      );
+    }
+
+    // 🔄 SYNC FINAL: Sincronizar producto actualizado a colección global
+    if (tenantName) {
+      try {
+        // Remover la marca de sincronización para forzar la actualización final
+        delete (updatedProduct as any)._alreadySyncedToGlobal;
+
+        await this.syncProductToGlobal(
+          updatedProduct,
+          tenantName,
+          'products',
+          undefined,
+        );
+
+        this.logger.log(
+          `🔄 [handleProductFromProductsCollection] Final sync completed for product ${updatedProduct._id}`,
+        );
+      } catch (error) {
+        this.logger.error(
+          `❌ [handleProductFromProductsCollection] Error in final sync:`,
+          error,
+        );
+      }
+    }
+
     return {
-      updatedProduct: product,
+      updatedProduct: updatedProduct,
     };
   }
 
@@ -2529,8 +2802,66 @@ export class AssignmentsService {
   }
 
   /**
+   * Método específico para obtener campos de limpieza para usar con $unset
+   * Retorna campos para usar con $unset en MongoDB
+   */
+  private getLocationCleanupForUnset(
+    newLocation: string | undefined,
+    currentProduct: any,
+  ): { fpWarehouse?: 1; office?: 1 } {
+    const cleanupFields: { fpWarehouse?: 1; office?: 1 } = {};
+
+    // Si se mueve DESDE warehouse A office → limpiar fpWarehouse
+    if (
+      currentProduct.fpWarehouse &&
+      currentProduct.location === 'FP warehouse' &&
+      newLocation === 'Our office'
+    ) {
+      cleanupFields.fpWarehouse = 1;
+      this.logger.log(
+        `🧹 [getLocationCleanupForUnset] Limpiando fpWarehouse: producto se mueve de warehouse a office`,
+      );
+    }
+
+    // Si se mueve DESDE office A warehouse → limpiar office
+    if (
+      currentProduct.office &&
+      currentProduct.location === 'Our office' &&
+      newLocation === 'FP warehouse'
+    ) {
+      cleanupFields.office = 1;
+      this.logger.log(
+        `🧹 [getLocationCleanupForUnset] Limpiando office: producto se mueve de office a warehouse`,
+      );
+    }
+
+    // Si se mueve DESDE warehouse/office A employee → limpiar ambos
+    if (
+      newLocation === 'Employee' &&
+      (currentProduct.location === 'FP warehouse' ||
+        currentProduct.location === 'Our office')
+    ) {
+      if (currentProduct.fpWarehouse) {
+        cleanupFields.fpWarehouse = 1;
+        this.logger.log(
+          `🧹 [getLocationCleanupForUnset] Limpiando fpWarehouse: producto se mueve a employee`,
+        );
+      }
+      if (currentProduct.office) {
+        cleanupFields.office = 1;
+        this.logger.log(
+          `🧹 [getLocationCleanupForUnset] Limpiando office: producto se mueve a employee`,
+        );
+      }
+    }
+
+    return cleanupFields;
+  }
+
+  /**
    * Maneja la limpieza de objetos warehouse y office según la nueva ubicación
    * Cuando un producto se mueve entre warehouse↔office, debe limpiar el objeto anterior
+   * Retorna campos con undefined para compatibilidad con código existente
    */
   private handleLocationObjectCleanup(
     newLocation: string | undefined,
