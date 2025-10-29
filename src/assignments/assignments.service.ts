@@ -708,6 +708,7 @@ export class AssignmentsService {
     session?: ClientSession,
   ) {
     const castedId = ensureObjectId(id);
+
     const MemberModel = connection.model(Member.name, MemberSchema);
 
     const member = await MemberModel.findOne({
@@ -1652,10 +1653,6 @@ export class AssignmentsService {
         'products',
         undefined,
       );
-
-      this.logger.log(
-        `🔄 [handleProductLocationChangeWithinProducts] Product ${updatedProduct._id} synced to global collection`,
-      );
     } catch (error) {
       this.logger.error(
         `❌ [handleProductLocationChangeWithinProducts] Error syncing to global:`,
@@ -1684,28 +1681,17 @@ export class AssignmentsService {
     shipment?: ShipmentDocument;
     updatedProduct?: ProductDocument;
   }> {
+    this.logger.log(
+      `🔄 [handleProductFromProductsCollection] Starting - Product: ${product._id}, Current location: ${product.location}, Target location: ${updateDto.location}`,
+    );
     if (product.activeShipment) {
       throw new BadRequestException(
         'This product is currently part of an active shipment and cannot be modified.',
       );
     }
 
-    // 🔄 LOCATION CHANGE: Si cambia la ubicación, determinar el flujo correcto
+    // 🔄 LOCATION CHANGE: Si se mueve entre FP warehouse ↔ Our office (misma colección)
     if (updateDto.location && updateDto.location !== product.location) {
-      // Si se mueve a Employee, usar el método de member collection
-      if (updateDto.location === 'Employee') {
-        return await this.handleProductFromMemberCollection(
-          product._id!,
-          updateDto,
-          tenantName,
-          userId,
-          ourOfficeEmail,
-          session,
-          connection,
-        );
-      }
-
-      // Si se mueve entre FP warehouse ↔ Our office (misma colección)
       if (
         (product.location === 'FP warehouse' &&
           updateDto.location === 'Our office') ||
@@ -2002,6 +1988,9 @@ export class AssignmentsService {
     shipment?: ShipmentDocument;
     updatedProduct?: ProductDocument;
   }> {
+    this.logger.log(
+      `🔄 [handleProductFromMemberCollection] Starting - Product ID: ${id}, Target location: ${updateProductDto.location}`,
+    );
     const memberProduct = await this.getProductByMembers(
       id,
       connection,

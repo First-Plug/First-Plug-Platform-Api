@@ -162,10 +162,6 @@ export class ProductsController {
     const tenantName = req.user.tenantName;
     const { userId } = req;
     const ourOfficeEmail = req.user.email;
-    console.log(
-      `PATCH - Product ID: ${id} | Tenant: ${tenantName} | User: ${userId}`,
-    );
-    console.log('📦 updateProductDto recibido:', updateProductDto);
 
     return this.productsService.update(
       id,
