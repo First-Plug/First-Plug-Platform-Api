@@ -17,6 +17,7 @@ import { CreateProductForTenantDto } from './dto/create-product-for-tenant.dto';
 import { BulkCreateProductsForTenantDto } from './dto/bulk-create-products-for-tenant.dto';
 import { WarehousesService } from '../warehouses/warehouses.service';
 import { GlobalProductSyncService } from '../products/services/global-product-sync.service';
+import mongoose from 'mongoose';
 
 @Injectable()
 export class SuperAdminService {
@@ -332,6 +333,31 @@ export class SuperAdminService {
       await shipment.save();
 
       console.log(`📊 Status actualizado: ${oldStatus} → ${newStatus}`);
+
+      // 🏢 UPDATE: Coordinar actualización de flags de oficinas si el estado cambió
+      const originOfficeId = shipment.originOfficeId
+        ? new mongoose.Types.ObjectId(shipment.originOfficeId.toString())
+        : null;
+      const destinationOfficeId = shipment.destinationOfficeId
+        ? new mongoose.Types.ObjectId(shipment.destinationOfficeId.toString())
+        : null;
+
+      if (originOfficeId || destinationOfficeId) {
+        try {
+          await this.shipmentsService.shipmentOfficeCoordinator.handleShipmentStatusChange(
+            originOfficeId,
+            destinationOfficeId,
+            oldStatus,
+            newStatus,
+            tenantName,
+          );
+          console.log(
+            `🏢 Office flags updated for status change: ${oldStatus} → ${newStatus}`,
+          );
+        } catch (error) {
+          console.error('❌ Error updating office flags:', error);
+        }
+      }
 
       // ✅ Si el status cambió a "Received" o "Cancelled", actualizar productos y members
       if (newStatus === 'Received' || newStatus === 'Cancelled') {
