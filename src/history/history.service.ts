@@ -94,6 +94,11 @@ export class HistoryService {
         if (tenant) {
           recordObj.userId = tenant.email;
         }
+
+        // 🌍 TRANSFORM: Reemplazar "FP warehouse" con country code del warehouse
+        recordObj.changes = await this.transformWarehouseLocations(
+          recordObj.changes,
+        );
         if (
           (recordObj.itemType === 'members' &&
             ['update', 'create', 'delete', 'bulk-create'].includes(
@@ -154,6 +159,66 @@ export class HistoryService {
       totalCount,
       totalPages: Math.ceil(totalCount / size),
     };
+  }
+
+  /**
+   * 🌍 Helper para transformar "FP warehouse" locations a country codes
+   */
+  private async transformWarehouseLocations(changes: any): Promise<any> {
+    if (!changes) return changes;
+
+    const transformedChanges = { ...changes };
+
+    // Transformar oldData si existe
+    if (changes.oldData) {
+      transformedChanges.oldData = await this.transformLocationInData(
+        changes.oldData,
+      );
+    }
+
+    // Transformar newData si existe
+    if (changes.newData) {
+      transformedChanges.newData = await this.transformLocationInData(
+        changes.newData,
+      );
+    }
+
+    return transformedChanges;
+  }
+
+  /**
+   * 🌍 Helper para transformar location en un objeto de datos
+   */
+  private async transformLocationInData(data: any): Promise<any> {
+    if (!data) return data;
+
+    // Si es un array, transformar cada elemento
+    if (Array.isArray(data)) {
+      return Promise.all(
+        data.map((item) => this.transformLocationInData(item)),
+      );
+    }
+
+    // Si es un objeto, verificar si tiene location === "FP warehouse"
+    if (typeof data === 'object' && data.location === 'FP warehouse') {
+      const transformedData = { ...data };
+
+      // Si tiene fpWarehouse.warehouseCountryCode, agregarlo como campo separado
+      if (data.fpWarehouse?.warehouseCountryCode) {
+        // ✅ AGREGAR campo warehouseCountryCode, NO reemplazar location
+        transformedData.warehouseCountryCode =
+          data.fpWarehouse.warehouseCountryCode;
+      }
+      // Si no tiene fpWarehouse pero tiene _id, buscar el producto actual
+      else if (data._id) {
+        // TODO: Implementar búsqueda del producto si es necesario
+        // Por ahora, mantener "FP warehouse" sin country code
+      }
+
+      return transformedData;
+    }
+
+    return data;
   }
 
   async getTenantsByUserIds(userIds: string[]) {

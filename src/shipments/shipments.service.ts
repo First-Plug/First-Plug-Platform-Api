@@ -993,7 +993,68 @@ export class ShipmentsService {
       await this.tenantConnectionService.getTenantConnection(tenantName);
     const ShipmentModel = this.getShipmentModel(connection);
 
-    return ShipmentModel.find({ isDeleted: false }).sort({ createdAt: -1 });
+    const shipments = await ShipmentModel.find({ isDeleted: false }).sort({
+      createdAt: -1,
+    });
+
+    // 🌍 TRANSFORM: Reemplazar "FP warehouse" con country code del warehouse
+    const transformedShipments = await Promise.all(
+      shipments.map(async (shipment) => {
+        const shipmentObj = shipment.toObject();
+
+        // Agregar warehouseCountryCode cuando location === "FP warehouse"
+        if (shipmentObj.snapshots && Array.isArray(shipmentObj.snapshots)) {
+          for (let i = 0; i < shipmentObj.snapshots.length; i++) {
+            const snapshot = shipmentObj.snapshots[i];
+            if (snapshot.location === 'FP warehouse') {
+              // Usar el products array para obtener el country code
+              const productId = shipmentObj.products?.[i]?.toString();
+              if (productId) {
+                const countryCode = await this.getWarehouseCountryCode(
+                  productId,
+                  tenantName,
+                  connection,
+                );
+                if (countryCode) {
+                  // ✅ AGREGAR campo warehouseCountryCode, NO reemplazar location
+                  (snapshot as any).warehouseCountryCode = countryCode;
+                }
+              }
+            }
+          }
+        }
+
+        return shipmentObj;
+      }),
+    );
+
+    return transformedShipments;
+  }
+
+  /**
+   * 🌍 Helper para obtener el country code del warehouse de un producto
+   */
+  private async getWarehouseCountryCode(
+    productId: string,
+    tenantName: string,
+    connection: Connection,
+  ): Promise<string | null> {
+    try {
+      const ProductModel = connection.model('Product');
+      const product = await ProductModel.findById(productId);
+
+      if (product?.fpWarehouse?.warehouseCountryCode) {
+        return product.fpWarehouse.warehouseCountryCode;
+      }
+
+      return null;
+    } catch (error) {
+      console.error(
+        `Error getting warehouse country code for product ${productId}:`,
+        error,
+      );
+      return null;
+    }
   }
 
   async getShipmentById(id: Types.ObjectId, tenantName: string) {
