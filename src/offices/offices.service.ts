@@ -1262,57 +1262,20 @@ export class OfficesService {
             `🗑️ [softDeleteNonRecoverableProducts] Soft deleted product ${product._id} (${product.serialNumber})`,
           );
 
-          // 🌐 SYNC: Sincronizar el soft delete a la colección global
+          // 🌐 SYNC: Marcar producto como eliminado en la colección global
           if (updatedProduct && this.globalProductSyncService) {
             try {
-              await this.globalProductSyncService.syncProduct({
-                tenantId: tenantName, // Se resolverá internamente
+              await this.globalProductSyncService.markProductAsDeleted(
                 tenantName,
-                originalProductId: updatedProduct._id as any,
-                sourceCollection: 'products',
-                name: updatedProduct.name || '',
-                category: updatedProduct.category || '',
-                status: updatedProduct.status,
-                location: updatedProduct.location || '',
-                attributes: updatedProduct.attributes?.map((attr) => ({
-                  key: attr.key,
-                  value: String(attr.value || ''),
-                })),
-                serialNumber: updatedProduct.serialNumber || undefined,
-                lastSerialNumber: updatedProduct.lastSerialNumber,
-                assignedEmail: updatedProduct.assignedEmail,
-                assignedMember: updatedProduct.assignedMember,
-                lastAssigned: updatedProduct.lastAssigned,
-                acquisitionDate: updatedProduct.acquisitionDate
-                  ? typeof updatedProduct.acquisitionDate === 'string'
-                    ? updatedProduct.acquisitionDate
-                    : (updatedProduct.acquisitionDate as any)?.toISOString?.()
-                  : undefined,
-                price: updatedProduct.price,
-                additionalInfo: updatedProduct.additionalInfo,
-                productCondition: updatedProduct.productCondition,
-                recoverable: updatedProduct.recoverable,
-                fp_shipment: updatedProduct.fp_shipment,
-                activeShipment: updatedProduct.activeShipment,
-                isDeleted: updatedProduct.isDeleted,
-                office: updatedProduct.office
-                  ? {
-                      officeId: updatedProduct.office.officeId as any,
-                      officeCountryCode:
-                        updatedProduct.office.officeCountryCode || '',
-                      officeName: updatedProduct.office.officeName || '',
-                      assignedAt: updatedProduct.office.assignedAt,
-                      isDefault: updatedProduct.office.isDefault,
-                    }
-                  : undefined,
-                sourceUpdatedAt: (updatedProduct as any).updatedAt,
-              });
+                updatedProduct._id as any,
+                updatedProduct.lastSerialNumber,
+              );
               console.log(
-                `🌐 [softDeleteNonRecoverableProducts] Product ${product._id} synced to global collection`,
+                `🌐 [softDeleteNonRecoverableProducts] Product ${product._id} marked as deleted in global collection`,
               );
             } catch (syncError) {
               console.error(
-                `⚠️ [softDeleteNonRecoverableProducts] Error syncing product ${product._id} to global:`,
+                `⚠️ [softDeleteNonRecoverableProducts] Error marking product ${product._id} as deleted in global:`,
                 syncError,
               );
               // No fallar la operación principal por error de sync

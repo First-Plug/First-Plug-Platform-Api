@@ -464,6 +464,27 @@ export class SuperAdminService {
         );
       }
 
+      // 🏢 Send additional WebSocket notification for offices when status changes to "On The Way"
+      if (newStatus === 'On The Way') {
+        try {
+          this.eventsGateway.notifyTenant(tenantName, 'offices', {
+            shipmentId,
+            oldStatus,
+            newStatus,
+            shipment,
+            action: 'shipment-on-the-way',
+          });
+          console.log(
+            `🏢 Office WebSocket notification sent for shipment ${shipmentId} changing to "On The Way"`,
+          );
+        } catch (error) {
+          console.error(
+            `❌ Error sending office websocket notification for shipment ${shipmentId}:`,
+            error,
+          );
+        }
+      }
+
       return {
         message: `Shipment status actualizado: ${oldStatus} → ${newStatus}`,
         shipment,
