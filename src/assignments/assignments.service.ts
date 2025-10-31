@@ -87,7 +87,6 @@ export class AssignmentsService {
     try {
       const user = await this.usersService.findById(userId);
       if (!user) {
-        console.log('⚠️ Usuario no encontrado para Slack:', { userId });
         return undefined;
       }
 
@@ -186,15 +185,23 @@ export class AssignmentsService {
       // 1. Determinar país de origen
       let originCountry: string | null = null;
 
-      // Si se proporciona memberEmail directamente (más confiable), usar ese
-      if (memberEmail) {
+      // 🏢 PRIORIDAD 1: Si el producto viene de "Our office", usar el país de la oficina PRIMERO
+      if (
+        product.location === 'Our office' &&
+        product.office?.officeCountryCode
+      ) {
+        originCountry = product.office.officeCountryCode;
+      }
+
+      // PRIORIDAD 2: Si se proporciona memberEmail directamente (más confiable), usar ese
+      if (!originCountry && memberEmail) {
         originCountry = await this.getMemberOriginCountry(
           memberEmail,
           tenantName,
         );
       }
 
-      // Si no se proporcionó memberEmail, intentar con lastAssigned
+      // PRIORIDAD 3: Si no se proporcionó memberEmail, intentar con lastAssigned
       if (!originCountry && product.lastAssigned) {
         originCountry = await this.getMemberOriginCountry(
           product.lastAssigned,
@@ -202,7 +209,7 @@ export class AssignmentsService {
         );
       }
 
-      // Si no tiene lastAssigned pero tiene assignedEmail actual, usar ese
+      // PRIORIDAD 4: Si no tiene lastAssigned pero tiene assignedEmail actual, usar ese
       if (!originCountry && product.assignedEmail) {
         originCountry = await this.getMemberOriginCountry(
           product.assignedEmail,
@@ -471,8 +478,6 @@ export class AssignmentsService {
 
     if (!products.length) return [];
 
-    console.log(`🧪 Found ${products.length} products to assign...`);
-
     const reassignedProducts: ProductDocument[] = [];
 
     for (const product of products) {
@@ -672,9 +677,6 @@ export class AssignmentsService {
 
       const productsFromMembers = members.flatMap((member) => {
         if (!member.products || !Array.isArray(member.products)) {
-          console.log(
-            `Member ${member.email} has no products or products is not an array`,
-          );
           return [];
         }
 
@@ -844,12 +846,6 @@ export class AssignmentsService {
     let isUnknownEmail = false;
 
     if (!product) {
-      console.log(
-        '🪵 ID recibido en Logistics antes de getProductByMembers desde getProductForReassign:',
-        productId,
-        typeof productId,
-        productId instanceof Types.ObjectId,
-      );
       const memberProduct = await this.getProductByMembers(
         productId,
         connection,
@@ -1367,8 +1363,6 @@ export class AssignmentsService {
     member?: MemberDocument,
     tenantName?: string,
   ) {
-    console.log('🧪 updateProductAttributes');
-    console.log('🧪 updateProductDto:', updateProductDto);
     if (!tenantName) {
       throw new Error('tenantName is required to find and delete a product');
     }
@@ -1401,9 +1395,6 @@ export class AssignmentsService {
         await member.save({ session });
       }
     }
-    console.log(
-      '🧾 Fin de updateProductAttributes — no se registró history acá',
-    );
   }
 
   async validateProductAvailability(productId: string, tenantName: string) {
@@ -1597,11 +1588,18 @@ export class AssignmentsService {
       const userName =
         userInfo?.userEmail || (userId ? `User ${userId}` : 'Unknown User');
 
+      // 🏢 IMPORTANTE: Si el producto viene de "Our office", NO pasar memberEmail
+      // para que use el país de la oficina en lugar del lastAssigned
+      const memberEmailForWarehouse =
+        product.location === 'Our office'
+          ? undefined
+          : product.lastAssigned || product.assignedEmail;
+
       const warehouseFields = await this.assignWarehouseIfNeeded(
         updateDto,
         product,
         tenantName,
-        product.lastAssigned || product.assignedEmail,
+        memberEmailForWarehouse,
         userName,
         updateDto.actionType === 'return' ? 'return' : 'reassign',
       );
@@ -1660,12 +1658,46 @@ export class AssignmentsService {
       );
     }
 
+    // 🚢 SHIPMENT CREATION: Si fp_shipment es true, crear shipment
+    let shipment: ShipmentDocument | null = null;
+
+    if (updateDto.fp_shipment) {
+      if (!('price' in updateDto) || updateDto.price == null) {
+        const price = product.price;
+        if (
+          price?.amount !== undefined &&
+          price?.currencyCode &&
+          CURRENCY_CODES.includes(price.currencyCode as CurrencyCode)
+        ) {
+          updateDto.price = {
+            amount: price.amount,
+            currencyCode: price.currencyCode as CurrencyCode,
+          };
+        }
+      }
+
+      shipment = await this.logisticsService.tryCreateShipmentIfNeeded(
+        product, // ✅ Usar el producto ORIGINAL para determinar origen correcto
+        updateDto,
+        tenantName,
+        session,
+        userId,
+        ourOfficeEmail,
+        connection,
+      );
+    } else {
+      console.log(
+        `🚢 [handleProductLocationChangeWithinProducts] fp_shipment is false, skipping shipment creation`,
+      );
+    }
+
     this.logger.log(
       `✅ [handleProductLocationChangeWithinProducts] Successfully moved product ${product._id} from ${product.location} to ${updateDto.location}`,
     );
 
     return {
       updatedProduct: updatedProduct,
+      shipment: shipment || undefined,
     };
   }
 
@@ -1811,6 +1843,10 @@ export class AssignmentsService {
           userId,
           ourOfficeEmail,
           connection, // ✅ FIX: Pasar la conexión
+        );
+      } else {
+        console.log(
+          `🚢 [handleProductFromProductsCollection] fp_shipment is false, skipping shipment creation`,
         );
       }
 
@@ -1959,7 +1995,6 @@ export class AssignmentsService {
     newData: any,
     userId: string,
   ) {
-    console.log('📜 recordAssetHistoryIfNeeded → userId:', userId);
     if (!userId) {
       throw new Error('❌ userId is missing in recordAssetHistoryIfNeeded');
     }
@@ -2176,8 +2211,6 @@ export class AssignmentsService {
       ['Our office', 'FP warehouse'].includes(updateDto.location || '');
 
     if (isReturnOrReassignToGeneral) {
-      console.log('🔁 Caso: Return o Reassign a', updateDto.location);
-
       if (!userId)
         throw new Error(
           '❌ userId is undefined antes de mllamar a handleProductUnassignment',

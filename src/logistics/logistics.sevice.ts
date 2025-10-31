@@ -85,7 +85,6 @@ export class LogisticsService {
     try {
       const user = await this.usersService.findById(userId);
       if (!user) {
-        console.log('⚠️ Usuario no encontrado para Slack:', { userId });
         return undefined;
       }
 
@@ -366,21 +365,90 @@ export class LogisticsService {
 
     await product.save({ session });
 
-    // 🏭 ASIGNAR WAREHOUSE si el destino es FP warehouse
-    if (newData?.location === 'FP warehouse') {
-      console.log(
-        `🏭 [maybeCreateShipmentAndUpdateStatus] Product moving to FP warehouse, assigning warehouse directly`,
+    // 🌐 SINCRONIZAR A GLOBAL COLLECTION después de actualizar status y activeShipment
+    try {
+      // ✅ OBTENER PRODUCTO ACTUALIZADO desde la base de datos
+      const ProductModel = connection.model(Product.name, ProductSchema);
+      const updatedProduct = await ProductModel.findById(product._id).session(
+        session,
       );
 
+      if (!updatedProduct) {
+        return shipment;
+      }
+
+      await this.globalProductSyncService.syncProduct({
+        tenantId: tenantName,
+        tenantName: tenantName,
+        originalProductId: updatedProduct._id as any,
+        sourceCollection: 'products',
+        name: updatedProduct.name || '',
+        category: updatedProduct.category || '',
+        status: updatedProduct.status, // ✅ Nuevo status "In Transit"
+        location: updatedProduct.location || '',
+        attributes: (updatedProduct.attributes || []).map((attr) => ({
+          key: attr.key || '',
+          value: String(attr.value || ''),
+        })),
+        serialNumber: updatedProduct.serialNumber || undefined,
+        assignedEmail: updatedProduct.assignedEmail,
+        assignedMember: updatedProduct.assignedMember,
+        lastAssigned: updatedProduct.lastAssigned,
+        acquisitionDate: updatedProduct.acquisitionDate,
+        price: updatedProduct.price,
+        additionalInfo: updatedProduct.additionalInfo,
+        productCondition: updatedProduct.productCondition,
+        recoverable: updatedProduct.recoverable,
+        fp_shipment: updatedProduct.fp_shipment, // ✅ true
+        activeShipment: updatedProduct.activeShipment, // ✅ true
+        isDeleted: updatedProduct.isDeleted,
+        fpWarehouse:
+          updatedProduct.fpWarehouse &&
+          updatedProduct.fpWarehouse.warehouseId &&
+          updatedProduct.fpWarehouse.warehouseCountryCode &&
+          updatedProduct.fpWarehouse.warehouseName
+            ? {
+                warehouseId: updatedProduct.fpWarehouse.warehouseId as any,
+                warehouseCountryCode:
+                  updatedProduct.fpWarehouse.warehouseCountryCode,
+                warehouseName: updatedProduct.fpWarehouse.warehouseName,
+                assignedAt: updatedProduct.fpWarehouse.assignedAt,
+                status:
+                  updatedProduct.fpWarehouse.status === 'IN_TRANSIT'
+                    ? 'IN_TRANSIT_IN'
+                    : (updatedProduct.fpWarehouse.status as any),
+              }
+            : undefined,
+        office:
+          updatedProduct.office &&
+          updatedProduct.office.officeId &&
+          updatedProduct.office.officeCountryCode &&
+          updatedProduct.office.officeName
+            ? {
+                officeId: updatedProduct.office.officeId as any,
+                officeCountryCode: updatedProduct.office.officeCountryCode,
+                officeName: updatedProduct.office.officeName,
+                assignedAt: updatedProduct.office.assignedAt,
+                isDefault: updatedProduct.office.isDefault,
+              }
+            : undefined,
+        sourceUpdatedAt: new Date(),
+      });
+    } catch (error) {
+      console.error(
+        `❌ [maybeCreateShipmentAndUpdateStatus] Global sync failed for product ${product._id}:`,
+        error,
+      );
+      // No fallar el proceso principal por este error
+    }
+
+    // 🏭 ASIGNAR WAREHOUSE si el destino es FP warehouse
+    if (newData?.location === 'FP warehouse') {
       try {
         // Importar AssignmentsService sería dependencia circular, así que usamos ProductsService
         // pero necesitamos una forma de asignar warehouse sin validación de activeShipment
-
         // Por ahora, solo loggeamos que se necesita warehouse assignment
         // La sincronización global se hará sin fpWarehouse por ahora
-        console.log(
-          `⚠️ [maybeCreateShipmentAndUpdateStatus] Warehouse assignment needed for product ${product._id} but skipped to avoid circular dependency`,
-        );
       } catch (error) {
         console.error(
           `❌ [maybeCreateShipmentAndUpdateStatus] Error in warehouse assignment:`,
@@ -391,13 +459,6 @@ export class LogisticsService {
 
     await this.shipmentsService.createSnapshots(shipment, connection, {
       providedProducts: [product],
-    });
-
-    console.log('[HISTORY DEBUG]', {
-      actionType: isConsolidated ? 'consolidate' : 'create',
-      userId,
-      oldSnapshot,
-      newData: shipment,
     });
 
     await this.historyService.create({
@@ -460,7 +521,7 @@ export class LogisticsService {
     ourOfficeEmail: string,
     providedConnection?: Connection,
   ): Promise<ShipmentDocument | null> {
-    return await this.maybeCreateShipmentAndUpdateStatus(
+    const result = await this.maybeCreateShipmentAndUpdateStatus(
       product,
       updateDto,
       tenantName,
@@ -482,6 +543,8 @@ export class LogisticsService {
       ourOfficeEmail,
       providedConnection,
     );
+
+    return result;
   }
 
   async getMemberLocationInfo(
@@ -847,10 +910,6 @@ export class LogisticsService {
           tenantName,
         );
         if (!office) {
-          console.log('❌ Oficina de origen no encontrada:', {
-            tenantName,
-            officeId: shipment.originOfficeId,
-          });
           originComplete = false;
         }
       }
@@ -864,10 +923,6 @@ export class LogisticsService {
           tenantName,
         );
         if (!office) {
-          console.log('❌ Oficina de destino no encontrada:', {
-            tenantName,
-            officeId: shipment.destinationOfficeId,
-          });
           destinationComplete = false;
         }
       }
@@ -1027,9 +1082,6 @@ export class LogisticsService {
                 }
               : undefined,
           });
-          console.log(
-            `🌐 [cancelAllProductsInShipment] Global sync completed for product ${productId} - fpWarehouse preserved: ${!!existingGlobalProduct?.fpWarehouse}`,
-          );
         } catch (error) {
           console.error(
             `❌ [cancelAllProductsInShipment] Global sync failed for product ${productId}:`,
@@ -1124,9 +1176,6 @@ export class LogisticsService {
                   }
                 : undefined,
             });
-            console.log(
-              `🌐 [cancelAllProductsInShipment] Global sync completed for member product ${productId}`,
-            );
           } catch (error) {
             console.error(
               `❌ [cancelAllProductsInShipment] Global sync failed for member product ${productId}:`,
@@ -1156,13 +1205,6 @@ export class LogisticsService {
     session?: ClientSession | null,
     providedConnection?: Connection,
   ) {
-    console.log('📍 Marking active shipment targets:', {
-      origin,
-      destination,
-      originEmail,
-      destinationEmail,
-    });
-
     const connection =
       providedConnection || (await this.tenantModels.getConnection(tenantName));
     const ProductModel =
@@ -1205,10 +1247,6 @@ export class LogisticsService {
         !['Our office', 'FP warehouse'].includes(destination) &&
         destinationEmail
       ) {
-        console.log(
-          '📥 Marking destination member as active:',
-          destinationEmail,
-        );
         await MemberModel.updateOne(
           { email: destinationEmail },
           { $set: { activeShipment: true } },
@@ -1258,9 +1296,6 @@ export class LogisticsService {
       });
 
       if (updatedProduct) {
-        console.log(
-          `✅ Product ${productId} - activeShipment set to false in Products collection`,
-        );
       } else {
         const updateRes = await MemberModel.updateOne(
           { 'products._id': new Types.ObjectId(productId) },

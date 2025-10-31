@@ -1196,6 +1196,15 @@ export class ProductsService {
     userId: string,
     ourOfficeEmail: string,
   ) {
+    console.log(`🔁 [reassignProduct] DEBUG - Product ID: ${id}`);
+    console.log(`🔁 [reassignProduct] DEBUG - updateProductDto:`, {
+      location: updateProductDto.location,
+      assignedEmail: updateProductDto.assignedEmail,
+      fp_shipment: updateProductDto.fp_shipment,
+      actionType: updateProductDto.actionType,
+      officeId: updateProductDto.officeId,
+    });
+
     if (updateProductDto.assignedEmail === 'none') {
       updateProductDto.assignedEmail = '';
     }
@@ -1505,6 +1514,15 @@ export class ProductsService {
     session?: ClientSession,
     connection?: Connection,
   ) {
+    console.log(`🔄 [update] DEBUG - Product ID: ${id}`);
+    console.log(`🔄 [update] DEBUG - updateProductDto:`, {
+      location: updateProductDto.location,
+      assignedEmail: updateProductDto.assignedEmail,
+      fp_shipment: updateProductDto.fp_shipment,
+      actionType: updateProductDto.actionType,
+      officeId: updateProductDto.officeId,
+    });
+
     await new Promise((resolve) => process.nextTick(resolve));
 
     const internalConnection =
