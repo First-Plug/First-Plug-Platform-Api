@@ -48,15 +48,53 @@ export class ProductsController {
     try {
       const tenantName = req.user.tenantName;
       const { userId } = req;
+
       const products = await this.productsService.bulkCreate(
         createProductDto,
         tenantName,
         userId,
+        { isCSVUpload: false },
       );
 
       res.status(HttpStatus.CREATED).json(products);
     } catch (error) {
-      console.error('Error en bulkcreate:', error);
+      console.error('Error en bulkcreate UI:', error);
+
+      // Si es un error de validación (BadRequestException o ZodError), devolver 400
+      if (error instanceof BadRequestException || error.name === 'ZodError') {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          message: 'Error de validación en los datos',
+          error: error.message,
+        });
+      } else {
+        res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+          message: 'Error al crear productos',
+          error: error.message,
+        });
+      }
+    }
+  }
+
+  @Post('/bulkcreate-csv')
+  async bulkcreateCSV(
+    @Body() createProductDto: CreateProductArrayDto,
+    @Res() res: Response,
+    @Request() req: any,
+  ) {
+    try {
+      const tenantName = req.user.tenantName;
+      const { userId } = req;
+
+      const products = await this.productsService.bulkCreate(
+        createProductDto,
+        tenantName,
+        userId,
+        { isCSVUpload: true }, // ❌ CSV Upload - bloquea "Our office"
+      );
+
+      res.status(HttpStatus.CREATED).json(products);
+    } catch (error) {
+      console.error('Error en bulkcreate CSV:', error);
 
       // Si es un error de validación (BadRequestException o ZodError), devolver 400
       if (error instanceof BadRequestException || error.name === 'ZodError') {
