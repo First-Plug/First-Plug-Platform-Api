@@ -473,7 +473,9 @@ export class ProductsService {
     createProductDtos: CreateProductDto[],
     tenantName: string,
     userId: string,
+    options?: { isCSVUpload?: boolean },
   ) {
+    console.log(`🚀 [bulkCreate] Service called with options:`, options);
     await new Promise((resolve) => process.nextTick(resolve));
 
     // � [DEBUG] Log inicial del bulk create
@@ -489,14 +491,29 @@ export class ProductsService {
       );
     }
 
-    // 🚫 TEMPORAL: Bloquear "Our office" en CSV hasta próximo release
+    // 🚫 TEMPORAL: Bloquear "Our office" SOLO en CSV hasta próximo release
     // Evita problemas con usuarios que tengan template anterior
-    const ourOfficeProducts = createProductDtos.filter(
-      (dto) => dto.location === 'Our office',
+    // ✅ PERMITIR "Our office" desde UI Form (por defecto)
+    // ❌ BLOQUEAR "Our office" solo cuando source=csv
+    const isCSVUpload = options?.isCSVUpload === true;
+
+    console.log(
+      `📦 [bulkCreate] isCSVUpload: ${isCSVUpload}, options:`,
+      options,
     );
-    if (ourOfficeProducts.length > 0) {
-      throw new BadRequestException(
-        'Our office location is temporarily disabled for CSV uploads. Please use "Employee" instead and assign to offices manually.',
+
+    if (isCSVUpload) {
+      const ourOfficeProducts = createProductDtos.filter(
+        (dto) => dto.location === 'Our office',
+      );
+      if (ourOfficeProducts.length > 0) {
+        throw new BadRequestException(
+          'Our office location is temporarily disabled for CSV uploads. Please use "Employee" instead and assign to offices manually.',
+        );
+      }
+    } else {
+      console.log(
+        `✅ [bulkCreate] UI Form detected - "Our office" location allowed`,
       );
     }
 
