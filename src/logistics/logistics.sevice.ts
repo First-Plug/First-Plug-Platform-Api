@@ -290,6 +290,17 @@ export class LogisticsService {
     ourOfficeEmail: string,
     providedConnection?: Connection,
   ): Promise<ShipmentDocument | null> {
+    console.log(
+      `🚢 [maybeCreateShipmentAndUpdateStatus] DEBUG - fp_shipment: ${updateDto.fp_shipment}, product.fp_shipment: ${product.fp_shipment}, actionType: ${actionType}`,
+    );
+    console.log(
+      `🚢 [maybeCreateShipmentAndUpdateStatus] DEBUG - oldData:`,
+      oldData,
+    );
+    console.log(
+      `🚢 [maybeCreateShipmentAndUpdateStatus] DEBUG - newData:`,
+      newData,
+    );
     if (!updateDto.fp_shipment || !actionType) return null;
 
     const desirableDateOrigin =

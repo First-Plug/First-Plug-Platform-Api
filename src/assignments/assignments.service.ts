@@ -1723,12 +1723,22 @@ export class AssignmentsService {
     }
 
     // 🔄 LOCATION CHANGE: Si se mueve entre FP warehouse ↔ Our office (misma colección)
-    if (updateDto.location && updateDto.location !== product.location) {
+    // 🏢 OFFICE CHANGE: O si cambia de oficina dentro de "Our office"
+    const hasLocationChange =
+      updateDto.location && updateDto.location !== product.location;
+    const hasOfficeChange =
+      updateDto.location === 'Our office' &&
+      product.location === 'Our office' &&
+      updateDto.officeId &&
+      updateDto.officeId !== product.office?.officeId?.toString();
+
+    if (hasLocationChange || hasOfficeChange) {
       if (
         (product.location === 'FP warehouse' &&
           updateDto.location === 'Our office') ||
         (product.location === 'Our office' &&
-          updateDto.location === 'FP warehouse')
+          updateDto.location === 'FP warehouse') ||
+        hasOfficeChange // 🏢 Cambio de oficina dentro de "Our office"
       ) {
         return await this.handleProductLocationChangeWithinProducts(
           product,
@@ -2456,6 +2466,7 @@ export class AssignmentsService {
       newMember?: { email: string; fullName: string };
       desirableDate: string | { origin?: string; destination?: string };
       fp_shipment?: boolean;
+      officeId?: string; // 🏢 Nuevo campo para oficina específica
     }>,
     userId: string,
     tenantName: string,
@@ -2486,8 +2497,13 @@ export class AssignmentsService {
           location = 'Employee';
         } else {
           actionType = 'return';
-          location =
-            item.relocation === 'My office' ? 'Our office' : 'FP warehouse';
+          // 🏢 Si se proporciona officeId, siempre usar 'Our office'
+          if (item.officeId) {
+            location = 'Our office';
+          } else {
+            location =
+              item.relocation === 'My office' ? 'Our office' : 'FP warehouse';
+          }
         }
 
         const status = await this.productsService.determineProductStatus(
@@ -2519,6 +2535,11 @@ export class AssignmentsService {
         if (item.relocation === 'New employee' && item.newMember) {
           updateDto.assignedEmail = item.newMember.email;
           updateDto.assignedMember = item.newMember.fullName;
+        }
+
+        // 🏢 Si se proporciona officeId, agregarlo al updateDto para crear el objeto office
+        if (item.officeId) {
+          updateDto.officeId = item.officeId;
         }
 
         console.log('🧪 En offboardMember → userId:', userId);
