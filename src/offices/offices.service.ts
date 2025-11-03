@@ -331,6 +331,60 @@ export class OfficesService {
   }
 
   /**
+   * Gestión automática de oficina por defecto
+   * - Si es la primera oficina creada, la marca como default
+   * - Si se borra la oficina default y hay otras, asigna una nueva default aleatoriamente
+   * - Solo considera oficinas con isDeleted=false
+   */
+  private async ensureDefaultOffice(
+    tenantName: string,
+    excludeOfficeId?: Types.ObjectId,
+  ): Promise<void> {
+    const OfficeModel =
+      await this.tenantModelRegistry.getOfficeModel(tenantName);
+
+    // Buscar oficina default actual (excluyendo la que se está procesando si aplica)
+    const query: any = { isDeleted: false, isDefault: true };
+    if (excludeOfficeId) {
+      query._id = { $ne: excludeOfficeId };
+    }
+
+    const currentDefault = await OfficeModel.findOne(query);
+
+    // Si ya hay una oficina default válida, no hacer nada
+    if (currentDefault) {
+      return;
+    }
+
+    // Buscar todas las oficinas disponibles (excluyendo la que se está procesando si aplica)
+    const availableQuery: any = { isDeleted: false };
+    if (excludeOfficeId) {
+      availableQuery._id = { $ne: excludeOfficeId };
+    }
+
+    const availableOffices = await OfficeModel.find(availableQuery);
+
+    // Si no hay oficinas disponibles, no hacer nada
+    if (availableOffices.length === 0) {
+      console.log('📋 No hay oficinas disponibles para marcar como default');
+      return;
+    }
+
+    // Seleccionar la primera oficina disponible como nueva default
+    const newDefaultOffice = availableOffices[0];
+
+    await OfficeModel.findByIdAndUpdate(newDefaultOffice._id, {
+      $set: { isDefault: true },
+    });
+
+    console.log('✅ Nueva oficina default asignada automáticamente:', {
+      tenantName,
+      officeId: newDefaultOffice._id,
+      name: newDefaultOffice.name,
+    });
+  }
+
+  /**
    * Crear nueva oficina para un tenant específico
    */
   async createOffice(
@@ -360,7 +414,14 @@ export class OfficesService {
       );
     }
 
-    // Si se marca como default, desmarcar las demás
+    // Verificar si es la primera oficina (no hay ninguna oficina no eliminada)
+    const existingOfficesCount = await OfficeModel.countDocuments({
+      isDeleted: false,
+    });
+
+    const isFirstOffice = existingOfficesCount === 0;
+
+    // Si se marca como default explícitamente, desmarcar las demás
     if (createOfficeDto.isDefault) {
       await OfficeModel.updateMany(
         { isDeleted: false },
@@ -372,6 +433,8 @@ export class OfficesService {
       ...createOfficeDto,
       tenantId,
       isDeleted: false,
+      // Si es la primera oficina y no se especificó isDefault, marcarla como default automáticamente
+      isDefault: createOfficeDto.isDefault || isFirstOffice,
     };
 
     const office = await OfficeModel.create(officeData);
@@ -381,6 +444,7 @@ export class OfficesService {
       officeId: office._id,
       name: office.name,
       isDefault: office.isDefault,
+      isFirstOffice,
     });
 
     // Crear registro de history
@@ -785,7 +849,7 @@ export class OfficesService {
   }
 
   /**
-   * Soft delete de oficina (no se puede eliminar la default)
+   * Soft delete de oficina con gestión automática de oficina default
    */
   async softDeleteOffice(
     id: Types.ObjectId,
@@ -797,12 +861,6 @@ export class OfficesService {
 
     const office = await OfficeModel.findOne({ _id: id, isDeleted: false });
     if (!office) throw new NotFoundException('Office not found');
-
-    if (office.isDefault) {
-      throw new BadRequestException(
-        'Cannot delete default office. Please set another office as default first.',
-      );
-    }
 
     // Verificar si tiene productos recoverable asignados
     const hasRecoverableProducts = await this.hasAssignedProducts(
@@ -827,6 +885,8 @@ export class OfficesService {
       );
     }
 
+    const wasDefault = office.isDefault;
+
     const updated = await OfficeModel.findByIdAndUpdate(
       id,
       {
@@ -847,7 +907,16 @@ export class OfficesService {
       tenantName,
       officeId: updated._id,
       name: updated.name,
+      wasDefault,
     });
+
+    // Si la oficina eliminada era la default, asignar automáticamente una nueva default
+    if (wasDefault) {
+      console.log(
+        '🔄 La oficina eliminada era default, buscando nueva oficina default...',
+      );
+      await this.ensureDefaultOffice(tenantName, id);
+    }
 
     // Crear registro de history
     if (this.historyService) {
