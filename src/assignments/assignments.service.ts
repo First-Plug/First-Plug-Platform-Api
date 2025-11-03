@@ -1723,12 +1723,22 @@ export class AssignmentsService {
     }
 
     // 🔄 LOCATION CHANGE: Si se mueve entre FP warehouse ↔ Our office (misma colección)
-    if (updateDto.location && updateDto.location !== product.location) {
+    // 🏢 OFFICE CHANGE: O si cambia de oficina dentro de "Our office"
+    const hasLocationChange =
+      updateDto.location && updateDto.location !== product.location;
+    const hasOfficeChange =
+      updateDto.location === 'Our office' &&
+      product.location === 'Our office' &&
+      updateDto.officeId &&
+      updateDto.officeId !== product.office?.officeId?.toString();
+
+    if (hasLocationChange || hasOfficeChange) {
       if (
         (product.location === 'FP warehouse' &&
           updateDto.location === 'Our office') ||
         (product.location === 'Our office' &&
-          updateDto.location === 'FP warehouse')
+          updateDto.location === 'FP warehouse') ||
+        hasOfficeChange // 🏢 Cambio de oficina dentro de "Our office"
       ) {
         return await this.handleProductLocationChangeWithinProducts(
           product,
