@@ -65,6 +65,21 @@ export class LastAssignedHelper {
       return lastAssigned;
     }
 
+    // CASO ESPECIAL: Movimiento entre oficinas (Our office → Our office)
+    // Aunque la location sea la misma, SÍ debe actualizar lastAssigned
+    if (
+      currentLocation === 'Our office' &&
+      newLocation === 'Our office' &&
+      (actionType === 'reassign' || actionType === 'relocate')
+    ) {
+      // Forzar actualización de lastAssigned para movimientos entre oficinas
+      const officeInfo = this.formatOfficeLastAssigned(currentOffice);
+      this.logger.log(
+        `🏢 Office-to-office movement: updating lastAssigned to ${officeInfo}`,
+      );
+      return officeInfo || currentLastAssigned;
+    }
+
     // Si no hay cambio de ubicación, mantener lastAssigned actual
     if (currentLocation === newLocation) {
       return currentLastAssigned;
