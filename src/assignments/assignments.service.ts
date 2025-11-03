@@ -2456,6 +2456,7 @@ export class AssignmentsService {
       newMember?: { email: string; fullName: string };
       desirableDate: string | { origin?: string; destination?: string };
       fp_shipment?: boolean;
+      officeId?: string; // 🏢 Nuevo campo para oficina específica
     }>,
     userId: string,
     tenantName: string,
@@ -2486,8 +2487,13 @@ export class AssignmentsService {
           location = 'Employee';
         } else {
           actionType = 'return';
-          location =
-            item.relocation === 'My office' ? 'Our office' : 'FP warehouse';
+          // 🏢 Si se proporciona officeId, siempre usar 'Our office'
+          if (item.officeId) {
+            location = 'Our office';
+          } else {
+            location =
+              item.relocation === 'My office' ? 'Our office' : 'FP warehouse';
+          }
         }
 
         const status = await this.productsService.determineProductStatus(
@@ -2519,6 +2525,11 @@ export class AssignmentsService {
         if (item.relocation === 'New employee' && item.newMember) {
           updateDto.assignedEmail = item.newMember.email;
           updateDto.assignedMember = item.newMember.fullName;
+        }
+
+        // 🏢 Si se proporciona officeId, agregarlo al updateDto para crear el objeto office
+        if (item.officeId) {
+          updateDto.officeId = item.officeId;
         }
 
         console.log('🧪 En offboardMember → userId:', userId);
