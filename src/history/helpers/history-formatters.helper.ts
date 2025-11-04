@@ -84,6 +84,98 @@ export class OfficeHistoryFormatter {
  */
 export class AssetHistoryFormatter {
   /**
+   * 🔍 Comparar dos productos y extraer solo los campos que cambiaron
+   */
+  static getChangedFields(oldProduct: any, newProduct: any) {
+    const changes: { oldData: any; newData: any } = {
+      oldData: {},
+      newData: {},
+    };
+
+    // 📋 Campos básicos a comparar
+    const basicFields = [
+      'name',
+      'category',
+      'serialNumber',
+      'location',
+      'assignedEmail',
+      'assignedMember',
+      'lastAssigned',
+      'status',
+      'productCondition',
+      'recoverable',
+      'additionalInfo',
+      'acquisitionDate',
+    ];
+
+    // 🔍 Comparar campos básicos
+    for (const field of basicFields) {
+      const oldValue = oldProduct[field];
+      const newValue = newProduct[field];
+
+      if (oldValue !== newValue) {
+        changes.oldData[field] = oldValue;
+        changes.newData[field] = newValue;
+      }
+    }
+
+    // 🏷️ Comparar attributes array (más complejo)
+    const oldAttrs = this.attributesToObject(oldProduct.attributes || []);
+    const newAttrs = this.attributesToObject(newProduct.attributes || []);
+
+    const allAttrKeys = new Set([
+      ...Object.keys(oldAttrs),
+      ...Object.keys(newAttrs),
+    ]);
+
+    for (const key of allAttrKeys) {
+      const oldValue = oldAttrs[key];
+      const newValue = newAttrs[key];
+
+      if (oldValue !== newValue) {
+        if (!changes.oldData.attributes) changes.oldData.attributes = {};
+        if (!changes.newData.attributes) changes.newData.attributes = {};
+
+        changes.oldData.attributes[key] = oldValue || null;
+        changes.newData.attributes[key] = newValue || null;
+      }
+    }
+
+    // 📍 Comparar location details si cambió la ubicación
+    if (changes.oldData.location || changes.newData.location) {
+      const oldLocationDetails = this.formatLocationDetails(
+        oldProduct.location || '',
+        oldProduct,
+        oldProduct.assignedMember,
+      );
+      const newLocationDetails = this.formatLocationDetails(
+        newProduct.location || '',
+        newProduct,
+        newProduct.assignedMember,
+      );
+
+      changes.oldData.locationDetails = oldLocationDetails;
+      changes.newData.locationDetails = newLocationDetails;
+    }
+
+    return changes;
+  }
+
+  /**
+   * 🏷️ Convertir array de attributes a objeto para fácil comparación
+   */
+  static attributesToObject(attributes: any[]): Record<string, string> {
+    const obj: Record<string, string> = {};
+
+    for (const attr of attributes) {
+      if (attr && attr.key && attr.value !== undefined) {
+        obj[attr.key] = attr.value;
+      }
+    }
+
+    return obj;
+  }
+  /**
    * Formatear location details para assets
    */
   static formatLocationDetails(
@@ -127,25 +219,41 @@ export class AssetHistoryFormatter {
     assignedMember?: string,
     additionalFields?: Record<string, any>,
   ) {
+    // 🎯 CAPTURAR TODOS LOS CAMPOS del producto (no solo los predefinidos)
+    const productObj = product.toObject ? product.toObject() : product;
+
+    // 📋 Crear copia completa excluyendo campos internos de MongoDB
+    const data: any = { ...productObj };
+
+    // 🗑️ Eliminar campos internos de MongoDB que no necesitamos en history
+    delete data._id;
+    delete data.__v;
+    delete data.createdAt;
+    delete data.updatedAt;
+    delete data.isDeleted;
+    delete data.deletedAt;
+
+    // 📍 Agregar location details mejorados
     const locationDetails = this.formatLocationDetails(
       product.location || '',
       product,
       assignedMember,
     );
 
-    return {
-      serialNumber: product.serialNumber,
-      name: product.name,
-      category: product.category,
-      location: product.location,
-      locationDetails,
-      assignedEmail: product.assignedEmail || '',
-      assignedMember: assignedMember || product.assignedMember || '',
-      lastAssigned: product.lastAssigned || '',
-      status: product.status,
-      productCondition: product.productCondition,
-      ...additionalFields,
-    };
+    // ✅ Asegurar campos básicos y agregar location details
+    data.serialNumber = data.serialNumber || data.lastSerialNumber || null;
+    data.name = data.name || '';
+    data.assignedEmail = data.assignedEmail || '';
+    data.assignedMember = assignedMember || data.assignedMember || '';
+    data.lastAssigned = data.lastAssigned || '';
+    data.locationDetails = locationDetails;
+
+    // 🔧 Agregar campos adicionales si se proporcionan
+    if (additionalFields) {
+      Object.assign(data, additionalFields);
+    }
+
+    return data;
   }
 }
 
