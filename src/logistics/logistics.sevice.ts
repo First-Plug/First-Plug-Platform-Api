@@ -279,12 +279,14 @@ export class LogisticsService {
       assignedEmail?: string;
       assignedMember?: string;
       officeId?: string; // ✅ FIX: Agregar officeId al tipo
+      warehouseCountryCode?: string; // 🏭 Agregar warehouseCountryCode para FP warehouse
     },
     newData: {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
       officeId?: string;
+      warehouseCountryCode?: string; // 🏭 Agregar warehouseCountryCode para FP warehouse
     },
     userId: string,
     ourOfficeEmail: string,
@@ -532,6 +534,12 @@ export class LogisticsService {
     ourOfficeEmail: string,
     providedConnection?: Connection,
   ): Promise<ShipmentDocument | null> {
+    // 🏭 Calcular warehouseCountryCode para destino antes de crear el objeto
+    const destinationWarehouseCountryCode =
+      updateDto.location === 'FP warehouse'
+        ? await this.getWarehouseCountryCodeForDestination(product, tenantName)
+        : undefined;
+
     const result = await this.maybeCreateShipmentAndUpdateStatus(
       product,
       updateDto,
@@ -543,12 +551,14 @@ export class LogisticsService {
         assignedEmail: product.assignedEmail,
         assignedMember: product.assignedMember,
         officeId: product.office?.officeId?.toString(), // ✅ FIX: Incluir officeId del producto actual
+        warehouseCountryCode: product.fpWarehouse?.warehouseCountryCode, // 🏭 Incluir warehouseCountryCode del producto actual
       },
       {
         location: updateDto.location,
         assignedEmail: updateDto.assignedEmail,
         assignedMember: updateDto.assignedMember,
         officeId: updateDto.officeId,
+        warehouseCountryCode: destinationWarehouseCountryCode, // 🏭 Usar el valor calculado
       },
       userId,
       ourOfficeEmail,
@@ -714,12 +724,14 @@ export class LogisticsService {
       assignedEmail?: string;
       assignedMember?: string;
       officeId?: string;
+      warehouseCountryCode?: string; // 🏭 Agregar warehouseCountryCode para FP warehouse
     },
     newData?: {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
       officeId?: string;
+      warehouseCountryCode?: string; // 🏭 Agregar warehouseCountryCode para FP warehouse
     },
     providedProduct?: ProductDocument,
     providedConnection?: Connection,
@@ -779,6 +791,7 @@ export class LogisticsService {
             oldData?.assignedMember || '',
             originDate,
             oldData?.officeId,
+            oldData?.warehouseCountryCode, // 🏭 Pasar warehouseCountryCode para origen
           )
           .then((res) => res.details);
 
@@ -790,6 +803,7 @@ export class LogisticsService {
         newData?.assignedMember || '',
         destinationDate,
         newData?.officeId,
+        newData?.warehouseCountryCode, // 🏭 Pasar warehouseCountryCode para destino
       )
       .then((res) => res.details);
 
@@ -2998,5 +3012,52 @@ export class LogisticsService {
     }
 
     throw lastError;
+  }
+
+  /**
+   * 🏭 Obtiene el warehouseCountryCode para destino FP warehouse
+   * Según las reglas: cuando FP warehouse es destino, toma el countryCode del origen
+   */
+  public async getWarehouseCountryCodeForDestination(
+    product: ProductDocument,
+    tenantName: string,
+  ): Promise<string | undefined> {
+    // Si el producto actual está en una oficina, usar el countryCode de la oficina
+    if (
+      product.location === 'Our office' &&
+      product.office?.officeCountryCode
+    ) {
+      return product.office.officeCountryCode;
+    }
+
+    // Si el producto actual está en FP warehouse, usar su countryCode
+    if (
+      product.location === 'FP warehouse' &&
+      product.fpWarehouse?.warehouseCountryCode
+    ) {
+      return product.fpWarehouse.warehouseCountryCode;
+    }
+
+    // Si el producto está con un member, obtener el país del member
+    if (product.location === 'Employee' && product.assignedEmail) {
+      try {
+        const MemberModel = await this.tenantModels.getMemberModel(tenantName);
+        const member = await MemberModel.findOne({
+          email: product.assignedEmail.trim().toLowerCase(),
+        });
+
+        if (member?.country) {
+          // Normalizar el país a código de país
+          return this.getCountryCode(member.country);
+        }
+      } catch (error) {
+        console.error(
+          `Error getting member country for ${product.assignedEmail}:`,
+          error,
+        );
+      }
+    }
+
+    return undefined;
   }
 }
