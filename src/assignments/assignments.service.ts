@@ -30,6 +30,7 @@ import { TenantsService } from 'src/tenants/tenants.service';
 import { TenantUserAdapterService } from 'src/common/services/tenant-user-adapter.service';
 import { HistoryActionType } from 'src/history/validations/create-history.zod';
 import { UsersService } from 'src/users/users.service';
+import { recordEnhancedAssetHistory } from 'src/products/helpers/history.helper';
 import { ShipmentDocument } from 'src/shipments/schema/shipment.schema';
 import { BulkReassignDto } from 'src/assignments/dto/bulk-reassign.dto';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
@@ -1510,22 +1511,12 @@ export class AssignmentsService {
       `🔄 [handleProductLocationChangeWithinProducts] Moving product ${product._id} from ${product.location} to ${updateDto.location}`,
     );
 
-    const productCopy = { ...product.toObject() };
     const isRecoverable = this.productsService.getEffectiveRecoverableValue(
       updateDto,
       product.recoverable ?? false,
     );
 
-    // 📜 HISTORY: Registrar cambios en el historial
-    await this.recordAssetHistoryIfNeeded(
-      updateDto.actionType as HistoryActionType,
-      productCopy,
-      {
-        ...updateDto,
-        recoverable: isRecoverable,
-      },
-      userId,
-    );
+    // 📜 HISTORY: Se registrará después de obtener el producto actualizado
 
     // 📊 STATUS LOGIC: Determinar el status basado en la ubicación y condición
     const statusLogic = await this.productsService.determineProductStatus(
@@ -1643,6 +1634,14 @@ export class AssignmentsService {
       );
     }
 
+    // 📜 HISTORY: Registrar cambios con formato mejorado
+    await this.recordEnhancedAssetHistoryIfNeeded(
+      updateDto.actionType as HistoryActionType,
+      product, // producto original
+      updatedProduct, // producto actualizado
+      userId,
+    );
+
     // 🔄 SYNC FINAL: Sincronizar producto actualizado a colección global
     try {
       await this.syncProductToGlobal(
@@ -1752,7 +1751,6 @@ export class AssignmentsService {
       }
     }
 
-    const productCopy = { ...product.toObject() };
     const isRecoverable = this.productsService.getEffectiveRecoverableValue(
       updateDto,
       product.recoverable ?? false,
@@ -1798,7 +1796,7 @@ export class AssignmentsService {
 
       await this.recordAssetHistoryIfNeeded(
         updateDto.actionType,
-        productCopy,
+        product.toObject(), // usar producto original
         updated,
         userId,
       );
@@ -1886,7 +1884,7 @@ export class AssignmentsService {
 
       await this.recordAssetHistoryIfNeeded(
         updateDto.actionType,
-        productCopy,
+        product.toObject(), // usar producto original
         {
           ...product.toObject(),
           assignedEmail: newMember.email,
@@ -2021,6 +2019,32 @@ export class AssignmentsService {
     });
   }
 
+  /**
+   * 📦 Registrar history de assets con formato mejorado (NUEVO MÉTODO)
+   * Incluye detalles específicos de location según tus lineamientos
+   */
+  private async recordEnhancedAssetHistoryIfNeeded(
+    actionType: HistoryActionType | undefined,
+    oldProduct: ProductDocument | null,
+    newProduct: ProductDocument | null,
+    userId: string,
+  ) {
+    if (!userId) {
+      throw new Error(
+        '❌ userId is missing in recordEnhancedAssetHistoryIfNeeded',
+      );
+    }
+    if (!actionType) return;
+
+    await recordEnhancedAssetHistory(
+      this.historyService,
+      actionType,
+      userId,
+      oldProduct,
+      newProduct,
+    );
+  }
+
   async handleProductFromMemberCollection(
     id: ObjectId,
     updateProductDto: UpdateProductDto,
@@ -2063,7 +2087,6 @@ export class AssignmentsService {
 
     const { product, member } = memberProduct;
 
-    const productCopy = { ...memberProduct.product };
     const isRecoverable = this.productsService.getEffectiveRecoverableValue(
       updateProductDto,
       memberProduct.product.recoverable ?? false,
@@ -2098,7 +2121,7 @@ export class AssignmentsService {
       ourOfficeEmail,
       session,
       isRecoverable,
-      productCopy,
+      { ...memberProduct.product }, // pasar copia del producto original
       connection,
     );
   }

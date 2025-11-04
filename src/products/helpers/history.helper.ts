@@ -1,5 +1,7 @@
 import { CreateHistoryDto } from 'src/history/dto/create-history.dto';
 import { HistoryService } from 'src/history/history.service';
+import { AssetHistoryFormatter } from 'src/history/helpers/history-formatters.helper';
+import { ProductDocument } from '../schemas/product.schema';
 
 type HistoryActionType =
   | 'create'
@@ -20,6 +22,10 @@ type HistoryContext = 'single-product' | 'shipment-merge';
 
 type HistoryData = Record<string, any> | Record<string, any>[] | null;
 
+/**
+ * 📦 Registrar history de assets con formato mejorado
+ * NUEVO: Incluye detalles de location (office name/country, warehouse country, etc.)
+ */
 export async function recordAssetHistory(
   historyService: HistoryService,
   actionType: HistoryActionType,
@@ -28,6 +34,43 @@ export async function recordAssetHistory(
   newData: HistoryData,
   context?: HistoryContext,
 ) {
+  const payload: CreateHistoryDto = {
+    actionType,
+    itemType: 'assets',
+    userId,
+    changes: {
+      oldData,
+      newData,
+      ...(context ? { context } : {}),
+    },
+  };
+
+  await historyService.create(payload);
+}
+
+/**
+ * 📦 Registrar history de assets con formato mejorado (NUEVA FUNCIÓN)
+ * Incluye detalles específicos de location según tus lineamientos
+ */
+export async function recordEnhancedAssetHistory(
+  historyService: HistoryService,
+  actionType: HistoryActionType,
+  userId: string,
+  oldProduct: ProductDocument | null,
+  newProduct: ProductDocument | null,
+  context?: HistoryContext,
+) {
+  let oldData: any = null;
+  let newData: any = null;
+
+  if (oldProduct) {
+    oldData = AssetHistoryFormatter.formatAssetData(oldProduct);
+  }
+
+  if (newProduct) {
+    newData = AssetHistoryFormatter.formatAssetData(newProduct);
+  }
+
   const payload: CreateHistoryDto = {
     actionType,
     itemType: 'assets',
