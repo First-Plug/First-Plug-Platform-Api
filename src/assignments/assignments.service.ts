@@ -2326,6 +2326,15 @@ export class AssignmentsService {
       let shipment: ShipmentDocument | null = null;
 
       if (updateDto.fp_shipment && updatedProduct) {
+        // 🏭 Calcular warehouseCountryCode para destino antes de crear el shipment
+        const destinationWarehouseCountryCode =
+          updateDto.location === 'FP warehouse'
+            ? await this.logisticsService.getWarehouseCountryCodeForDestination(
+                product,
+                tenantName,
+              )
+            : undefined;
+
         shipment =
           await this.logisticsService.maybeCreateShipmentAndUpdateStatus(
             updatedProduct,
@@ -2340,12 +2349,14 @@ export class AssignmentsService {
               assignedMember:
                 oldProductData.assignedMember || product.assignedMember,
               officeId: product.office?.officeId?.toString(), // ✅ FIX: Incluir officeId del producto actual
+              warehouseCountryCode: product.fpWarehouse?.warehouseCountryCode, // 🏭 Incluir warehouseCountryCode del producto actual
             },
             {
               location: updateDto.location,
               assignedEmail: updateDto.assignedEmail,
               assignedMember: updateDto.assignedMember,
               officeId: updateDto.officeId,
+              warehouseCountryCode: destinationWarehouseCountryCode, // 🏭 Usar el valor calculado
             },
             userId,
             ourOfficeEmail,

@@ -178,6 +178,7 @@ export class ShipmentsService {
     assignedMember?: string,
     desirableDate?: string,
     officeId?: string,
+    warehouseCountryCode?: string,
   ): Promise<{
     name: string;
     code: string;
@@ -189,6 +190,7 @@ export class ShipmentsService {
         code: 'FP',
         details: {
           desirableDate: desirableDate || '',
+          country: warehouseCountryCode || '', // 🏭 Incluir countryCode del warehouse
         },
       };
     }
@@ -402,12 +404,14 @@ export class ShipmentsService {
       assignedEmail?: string;
       assignedMember?: string;
       officeId?: string;
+      warehouseCountryCode?: string; // 🏭 Agregar warehouseCountryCode para FP warehouse
     },
     newData?: {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
       officeId?: string;
+      warehouseCountryCode?: string; // 🏭 Agregar warehouseCountryCode para FP warehouse
     },
     providedProduct?: ProductDocument,
     providedConnection?: Connection,
