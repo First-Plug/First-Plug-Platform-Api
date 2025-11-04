@@ -63,12 +63,36 @@ export async function recordEnhancedAssetHistory(
   let oldData: any = null;
   let newData: any = null;
 
-  if (oldProduct) {
-    oldData = AssetHistoryFormatter.formatAssetData(oldProduct);
+  // 🎯 Para CREATE: Solo newData (formato completo)
+  if (actionType === 'create') {
+    if (newProduct) {
+      newData = AssetHistoryFormatter.formatAssetData(newProduct);
+    }
   }
+  // 🔍 Para UPDATE: Solo campos que cambiaron
+  else if (actionType === 'update' && oldProduct && newProduct) {
+    const changes = AssetHistoryFormatter.getChangedFields(
+      oldProduct.toObject ? oldProduct.toObject() : oldProduct,
+      newProduct.toObject ? newProduct.toObject() : newProduct,
+    );
 
-  if (newProduct) {
-    newData = AssetHistoryFormatter.formatAssetData(newProduct);
+    oldData = changes.oldData;
+    newData = changes.newData;
+  }
+  // 🗑️ Para DELETE: Solo oldData (formato completo)
+  else if (actionType === 'delete') {
+    if (oldProduct) {
+      oldData = AssetHistoryFormatter.formatAssetData(oldProduct);
+    }
+  }
+  // 🔄 Para otros casos (relocate, assign, etc.): Formato completo
+  else {
+    if (oldProduct) {
+      oldData = AssetHistoryFormatter.formatAssetData(oldProduct);
+    }
+    if (newProduct) {
+      newData = AssetHistoryFormatter.formatAssetData(newProduct);
+    }
   }
 
   const payload: CreateHistoryDto = {
