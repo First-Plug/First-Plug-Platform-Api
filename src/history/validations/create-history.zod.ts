@@ -46,13 +46,7 @@ export const CreateHistorySchema = z.object({
         z.null(),
       ]),
       context: z
-        .enum([
-          'single-product',
-          'shipment-merge',
-          'setup-default-office',
-          'office-address-update',
-          'member-address-update',
-        ])
+        .enum(['single-product', 'shipment-merge', 'member-address-update'])
         .optional(),
     })
     .refine(

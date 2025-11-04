@@ -38,7 +38,10 @@ import { AssignmentsService } from 'src/assignments/assignments.service';
 import { EventTypes } from 'src/infra/event-bus/types';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { LogisticsService } from 'src/logistics/logistics.sevice';
-import { normalizeSerialForHistory } from './helpers/history.helper';
+import {
+  normalizeSerialForHistory,
+  recordEnhancedAssetHistory,
+} from './helpers/history.helper';
 import { GlobalProductSyncService } from './services/global-product-sync.service';
 
 export interface ProductModel
@@ -456,15 +459,14 @@ export class ProductsService {
     // 🔄 SYNC: Sincronizar producto creado a colección global
     await this.syncProductToGlobal(newProduct, tenantName, 'products');
 
-    await this.historyService.create({
-      actionType: 'create',
-      itemType: 'assets',
-      userId: userId,
-      changes: {
-        oldData: null,
-        newData: newProduct,
-      },
-    });
+    // 📜 HISTORY: Registrar creación con formato mejorado
+    await recordEnhancedAssetHistory(
+      this.historyService,
+      'create',
+      userId,
+      null, // oldProduct
+      newProduct, // newProduct
+    );
 
     return newProduct;
   }
@@ -1329,7 +1331,6 @@ export class ProductsService {
     try {
       const { member, product, location } =
         await this.findProductAndLocationById(id, tenantName);
-      const productCopy = JSON.parse(JSON.stringify(product));
       const isInActiveShipment = product.fp_shipment === true;
 
       if (isInActiveShipment) {
@@ -1463,15 +1464,15 @@ export class ProductsService {
 
       if (!userId)
         throw new Error('❌ userId is undefined antes de crear history');
-      await this.historyService.create({
-        actionType: 'update',
-        itemType: 'assets',
-        userId: userId,
-        changes: {
-          oldData: productCopy,
-          newData: productUpdated,
-        },
-      });
+
+      // 📜 HISTORY: Registrar actualización con formato mejorado
+      await recordEnhancedAssetHistory(
+        this.historyService,
+        'update',
+        userId,
+        product as ProductDocument, // producto original
+        productUpdated as ProductDocument, // producto actualizado
+      );
 
       if (isInActiveShipment && product?._id) {
         const shipmentSummary =

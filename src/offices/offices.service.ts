@@ -15,6 +15,7 @@ import { TenantModelRegistry } from '../infra/db/tenant-model-registry';
 import { HistoryService } from '../history/history.service';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 import { GlobalProductSyncService } from '../products/services/global-product-sync.service';
+import { recordOfficeHistory } from './helpers/office-history.helper';
 import { ACTIVE_SHIPMENT_STATUSES } from '../shipments/interface/shipment.interface';
 
 @Injectable()
@@ -85,18 +86,15 @@ export class OfficesService {
       ourOfficeEmail: office.email,
     };
 
-    // Crear registro de history para la creación de la oficina
+    // 📝 HISTORY: Crear registro mejorado para la creación de la oficina
     if (this.historyService) {
-      await this.historyService.create({
-        actionType: 'create',
-        itemType: 'offices',
+      await recordOfficeHistory(
+        this.historyService,
+        'create',
         userId,
-        changes: {
-          oldData: null,
-          newData: office.toObject(),
-          context: 'setup-default-office',
-        },
-      });
+        null,
+        office,
+      );
     }
 
     this.eventEmitter.emit(
@@ -235,19 +233,16 @@ export class OfficesService {
       throw new NotFoundException('Error actualizando oficina');
     }
 
-    // Crear registro de history para la actualización de la oficina
+    // 📝 HISTORY: Crear registro mejorado para la actualización de la oficina
     if (this.historyService) {
       try {
-        await this.historyService.create({
-          actionType: 'update',
-          itemType: 'offices',
+        await recordOfficeHistory(
+          this.historyService,
+          'update',
           userId,
-          changes: {
-            oldData: currentOffice.toObject(),
-            newData: updatedOffice.toObject(),
-            context: 'office-address-update',
-          },
-        });
+          currentOffice,
+          updatedOffice,
+        );
       } catch (error) {
         console.error('❌ Error creando history de oficina:', error);
       }
@@ -447,18 +442,15 @@ export class OfficesService {
       isFirstOffice,
     });
 
-    // Crear registro de history
+    // 📝 HISTORY: Crear registro mejorado de history
     if (this.historyService) {
-      await this.historyService.create({
-        actionType: 'create',
-        itemType: 'offices',
+      await recordOfficeHistory(
+        this.historyService,
+        'create',
         userId,
-        changes: {
-          oldData: null,
-          newData: office.toObject(),
-          context: 'setup-default-office',
-        },
-      });
+        null,
+        office,
+      );
     }
 
     return office;
@@ -568,19 +560,16 @@ export class OfficesService {
       throw new NotFoundException('Office not found');
     }
 
-    // Crear registro de history
+    // 📝 HISTORY: Crear registro mejorado de history
     if (this.historyService) {
       try {
-        await this.historyService.create({
-          actionType: 'update',
-          itemType: 'offices',
+        await recordOfficeHistory(
+          this.historyService,
+          'update',
           userId,
-          changes: {
-            oldData: office.toObject(),
-            newData: updated.toObject(),
-            context: 'office-address-update',
-          },
-        });
+          office,
+          updated,
+        );
       } catch (error) {
         console.error('❌ Error creando history de oficina:', error);
       }
@@ -695,19 +684,16 @@ export class OfficesService {
       name: updated.name,
     });
 
-    // Crear registro de history
+    // 📝 HISTORY: Crear registro mejorado de history
     if (this.historyService) {
       try {
-        await this.historyService.create({
-          actionType: 'update',
-          itemType: 'offices',
+        await recordOfficeHistory(
+          this.historyService,
+          'update',
           userId,
-          changes: {
-            oldData: office.toObject(),
-            newData: updated.toObject(),
-            context: 'office-address-update',
-          },
-        });
+          office,
+          updated,
+        );
       } catch (error) {
         console.error('❌ Error creando history de oficina:', error);
       }
@@ -873,8 +859,25 @@ export class OfficesService {
       );
     }
 
-    // 🗑️ SOFT DELETE: Aplicar soft delete automáticamente a productos non-recoverable
-    // Delegamos esta responsabilidad al servicio transversal correspondiente
+    // 🗑️ SOFT DELETE: Obtener lista de productos no recuperables ANTES de eliminarlos
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
+    const nonRecoverableProducts = await ProductModel.find({
+      $or: [{ officeId: id }, { 'office.officeId': id }],
+      location: 'Our office',
+      isDeleted: { $ne: true },
+      recoverable: false, // Solo productos non-recoverable
+    });
+
+    // Formatear productos para history
+    const nonRecoverableProductsForHistory = nonRecoverableProducts.map(
+      (product) => ({
+        serialNumber: product.serialNumber || product.lastSerialNumber || 'N/A',
+        name: product.name || 'Unknown Product',
+      }),
+    );
+
+    // Aplicar soft delete automáticamente a productos non-recoverable
     await this.softDeleteNonRecoverableProducts(id, tenantName, userId);
 
     // Verificar si tiene shipments activos
@@ -918,19 +921,19 @@ export class OfficesService {
       await this.ensureDefaultOffice(tenantName, id);
     }
 
-    // Crear registro de history
+    // 📝 HISTORY: Crear registro mejorado de history (DELETE con productos no recuperables)
     if (this.historyService) {
       try {
-        await this.historyService.create({
-          actionType: 'update',
-          itemType: 'offices',
+        await recordOfficeHistory(
+          this.historyService,
+          'delete',
           userId,
-          changes: {
-            oldData: office.toObject(),
-            newData: updated.toObject(),
-            context: 'office-address-update',
-          },
-        });
+          office,
+          null,
+          nonRecoverableProductsForHistory.length > 0
+            ? nonRecoverableProductsForHistory
+            : undefined,
+        );
       } catch (error) {
         console.error('❌ Error creando history de oficina:', error);
       }
