@@ -42,7 +42,7 @@ import { ShipmentOfficeCoordinatorService } from '../shipments/services/shipment
 import { Status } from 'src/products/interfaces/product.interface';
 import { AddressData } from 'src/infra/event-bus/tenant-address-update.event';
 import { MembersService } from 'src/members/members.service';
-import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
+import { recordEnhancedShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 import { GlobalProductSyncService } from 'src/products/services/global-product-sync.service';
 
@@ -474,17 +474,21 @@ export class LogisticsService {
       providedProducts: [product],
     });
 
-    await this.historyService.create({
-      actionType: isConsolidated ? 'consolidate' : 'create',
-      itemType: 'shipments',
-      userId,
+    // 📍 Extraer datos de ubicación para history mejorado
+    const locationData = await this.extractLocationDataForHistory(
+      shipment,
+      tenantName,
+    );
 
-      changes: {
-        oldData: isConsolidated ? oldSnapshot ?? null : null,
-        newData: shipment,
-        context: isConsolidated ? 'single-product' : undefined,
-      },
-    });
+    await recordEnhancedShipmentHistory(
+      this.historyService,
+      isConsolidated ? 'consolidate' : 'create',
+      userId,
+      isConsolidated ? (oldSnapshot as ShipmentDocument) : null,
+      shipment,
+      isConsolidated ? 'single-product' : undefined,
+      locationData,
+    );
 
     // TODO: Status New Shipment
     if (shipment.shipment_status === 'In Preparation' && !isConsolidated) {
@@ -1994,12 +1998,20 @@ export class LogisticsService {
     const shipment = await this.shipmentsService.cancel(shipmentId, tenantName);
 
     if (userId) {
-      await recordShipmentHistory(
+      // 📍 Extraer datos de ubicación para history mejorado
+      const locationData = await this.extractLocationDataForHistory(
+        originalShipmentData,
+        tenantName,
+      );
+
+      await recordEnhancedShipmentHistory(
         this.historyService,
         'cancel',
         userId,
-        originalShipmentData,
-        shipment.toObject(),
+        originalShipmentData as ShipmentDocument,
+        shipment,
+        undefined,
+        locationData,
       );
     } else {
       console.warn(
@@ -2636,20 +2648,28 @@ export class LogisticsService {
           { session },
         );
 
-        await this.historyService.create({
-          actionType: 'update',
-          itemType: 'shipments',
+        // 📍 Extraer datos de ubicación para history mejorado
+        const locationData = await this.extractLocationDataForHistory(
+          originalShipment,
+          tenantName,
+        );
+
+        const updatedShipmentData = {
+          ...originalShipment,
+          shipment_status: newStatus,
+          order_id: newOrderId,
+          snapshots: shipment.snapshots,
+        };
+
+        await recordEnhancedShipmentHistory(
+          this.historyService,
+          'update',
           userId,
-          changes: {
-            oldData: originalShipment,
-            newData: {
-              ...originalShipment,
-              shipment_status: newStatus,
-              order_id: newOrderId,
-              snapshots: shipment.snapshots,
-            },
-          },
-        });
+          originalShipment as ShipmentDocument,
+          updatedShipmentData as ShipmentDocument,
+          undefined,
+          locationData,
+        );
 
         // 🏢 UPDATE: Coordinar actualización de flags de oficinas si el estado cambió
         const originOfficeId = shipment.originOfficeId
@@ -2972,6 +2992,111 @@ export class LogisticsService {
         }
       }
     }
+  }
+
+  /**
+   * 📍 Extraer datos de ubicación para history de shipments
+   */
+  private async extractLocationDataForHistory(
+    shipment: any,
+    tenantName: string,
+  ): Promise<{
+    origin?: {
+      officeName?: string;
+      officeCountry?: string;
+      warehouseCountry?: string;
+      warehouseName?: string;
+      memberName?: string;
+      memberCountry?: string;
+    };
+    destination?: {
+      officeName?: string;
+      officeCountry?: string;
+      warehouseCountry?: string;
+      warehouseName?: string;
+      memberName?: string;
+      memberCountry?: string;
+    };
+  }> {
+    const locationData: any = {};
+
+    // 🏢 ORIGIN - Our office
+    if (shipment.origin === 'Our office' && shipment.originOfficeId) {
+      try {
+        const office = await this.officesService.findByIdAndTenant(
+          shipment.originOfficeId,
+          tenantName,
+        );
+        if (office) {
+          locationData.origin = {
+            officeName: office.name,
+            officeCountry: office.country,
+          };
+        }
+      } catch (error) {
+        console.error('❌ Error getting origin office data:', error);
+      }
+    }
+    // 🏭 ORIGIN - FP warehouse
+    else if (
+      shipment.origin === 'FP warehouse' &&
+      shipment.originDetails?.country
+    ) {
+      locationData.origin = {
+        warehouseCountry: shipment.originDetails.country,
+        warehouseName: shipment.originDetails.name || '',
+      };
+    }
+    // 👤 ORIGIN - Employee
+    else if (
+      shipment.origin === 'Employee' &&
+      shipment.originDetails?.country
+    ) {
+      locationData.origin = {
+        memberName: shipment.originDetails.name || '',
+        memberCountry: shipment.originDetails.country,
+      };
+    }
+
+    // 🏢 DESTINATION - Our office
+    if (shipment.destination === 'Our office' && shipment.destinationOfficeId) {
+      try {
+        const office = await this.officesService.findByIdAndTenant(
+          shipment.destinationOfficeId,
+          tenantName,
+        );
+        if (office) {
+          locationData.destination = {
+            officeName: office.name,
+            officeCountry: office.country,
+          };
+        }
+      } catch (error) {
+        console.error('❌ Error getting destination office data:', error);
+      }
+    }
+    // 🏭 DESTINATION - FP warehouse
+    else if (
+      shipment.destination === 'FP warehouse' &&
+      shipment.destinationDetails?.country
+    ) {
+      locationData.destination = {
+        warehouseCountry: shipment.destinationDetails.country,
+        warehouseName: shipment.destinationDetails.name || '',
+      };
+    }
+    // 👤 DESTINATION - Employee
+    else if (
+      shipment.destination === 'Employee' &&
+      shipment.destinationDetails?.country
+    ) {
+      locationData.destination = {
+        memberName: shipment.destinationDetails.name || '',
+        memberCountry: shipment.destinationDetails.country,
+      };
+    }
+
+    return locationData;
   }
 
   /**

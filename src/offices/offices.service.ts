@@ -896,6 +896,7 @@ export class OfficesService {
         $set: {
           isDeleted: true,
           isActive: false,
+          isDefault: false, // 🧹 Prolijidad: ninguna oficina borrada debe quedar con isDefault: true
           deletedAt: new Date(),
         },
       },
