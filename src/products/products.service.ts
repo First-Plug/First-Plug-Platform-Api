@@ -1331,6 +1331,14 @@ export class ProductsService {
     try {
       const { member, product, location } =
         await this.findProductAndLocationById(id, tenantName);
+
+      // 📸 HISTORY: Capturar estado original ANTES de cualquier modificación
+      const originalProduct = JSON.parse(
+        JSON.stringify(
+          (product as any).toObject ? (product as any).toObject() : product,
+        ),
+      );
+
       const isInActiveShipment = product.fp_shipment === true;
 
       if (isInActiveShipment) {
@@ -1470,8 +1478,8 @@ export class ProductsService {
         this.historyService,
         'update',
         userId,
-        product as ProductDocument, // producto original
-        productUpdated as ProductDocument, // producto actualizado
+        originalProduct as ProductDocument, // ✅ producto original (antes de modificaciones)
+        productUpdated as ProductDocument, // ✅ producto actualizado
       );
 
       if (isInActiveShipment && product?._id) {

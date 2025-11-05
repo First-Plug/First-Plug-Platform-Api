@@ -92,6 +92,9 @@ export class AssetHistoryFormatter {
       newData: {},
     };
 
+    // 🎯 Campos obligatorios que SIEMPRE se incluyen en UPDATE (aunque no cambien)
+    const mandatoryFields = ['category', 'name', 'serialNumber'];
+
     // 📋 Campos básicos a comparar
     const basicFields = [
       'name',
@@ -106,14 +109,24 @@ export class AssetHistoryFormatter {
       'recoverable',
       'additionalInfo',
       'acquisitionDate',
+      'price', // 💰 Agregar price para capturar cambios de precio
     ];
 
-    // 🔍 Comparar campos básicos
+    // 🎯 Incluir campos obligatorios SIEMPRE
+    for (const field of mandatoryFields) {
+      changes.oldData[field] = oldProduct[field];
+      changes.newData[field] = newProduct[field];
+    }
+
+    // 🔍 Comparar campos básicos (solo agregar si cambiaron Y no están ya incluidos)
     for (const field of basicFields) {
       const oldValue = oldProduct[field];
       const newValue = newProduct[field];
 
-      if (oldValue !== newValue) {
+      // 🔍 Comparación mejorada para objetos (como price)
+      const hasChanged = this.hasFieldChanged(oldValue, newValue);
+
+      if (hasChanged && !mandatoryFields.includes(field)) {
         changes.oldData[field] = oldValue;
         changes.newData[field] = newValue;
       }
@@ -123,16 +136,29 @@ export class AssetHistoryFormatter {
     const oldAttrs = this.attributesToObject(oldProduct.attributes || []);
     const newAttrs = this.attributesToObject(newProduct.attributes || []);
 
+    // 🎯 Attributes obligatorios que SIEMPRE se incluyen en UPDATE
+    const mandatoryAttributes = ['brand', 'model'];
+
+    // 🎯 Incluir attributes obligatorios SIEMPRE
+    for (const key of mandatoryAttributes) {
+      if (!changes.oldData.attributes) changes.oldData.attributes = {};
+      if (!changes.newData.attributes) changes.newData.attributes = {};
+
+      changes.oldData.attributes[key] = oldAttrs[key] || null;
+      changes.newData.attributes[key] = newAttrs[key] || null;
+    }
+
     const allAttrKeys = new Set([
       ...Object.keys(oldAttrs),
       ...Object.keys(newAttrs),
     ]);
 
+    // 🔍 Comparar otros attributes (solo agregar si cambiaron Y no están ya incluidos)
     for (const key of allAttrKeys) {
       const oldValue = oldAttrs[key];
       const newValue = newAttrs[key];
 
-      if (oldValue !== newValue) {
+      if (oldValue !== newValue && !mandatoryAttributes.includes(key)) {
         if (!changes.oldData.attributes) changes.oldData.attributes = {};
         if (!changes.newData.attributes) changes.newData.attributes = {};
 
@@ -174,6 +200,29 @@ export class AssetHistoryFormatter {
     }
 
     return obj;
+  }
+
+  /**
+   * 🔍 Comparar si un campo cambió (maneja objetos y primitivos)
+   */
+  static hasFieldChanged(oldValue: any, newValue: any): boolean {
+    // 🔍 Si ambos son null/undefined, no cambió
+    if (oldValue == null && newValue == null) {
+      return false;
+    }
+
+    // 🔍 Si uno es null y el otro no, cambió
+    if (oldValue == null || newValue == null) {
+      return true;
+    }
+
+    // 🔍 Para objetos (como price), comparar JSON
+    if (typeof oldValue === 'object' && typeof newValue === 'object') {
+      return JSON.stringify(oldValue) !== JSON.stringify(newValue);
+    }
+
+    // 🔍 Para primitivos, comparación directa
+    return oldValue !== newValue;
   }
   /**
    * Formatear location details para assets
