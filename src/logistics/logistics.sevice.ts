@@ -1695,8 +1695,12 @@ export class LogisticsService {
             }
           }
 
-          // Actualizar detalles de origen si es una oficina
-          if (shipment.originOfficeId) {
+          // Actualizar detalles de origen SOLO si es la oficina que se modificó
+          if (
+            shipment.originOfficeId &&
+            officeId &&
+            shipment.originOfficeId.toString() === officeId
+          ) {
             const desirableDate = shipment.originDetails?.desirableDate || '';
 
             const updatedOriginDetails = {
@@ -1721,8 +1725,12 @@ export class LogisticsService {
             updated = true;
           }
 
-          // Actualizar detalles de destino si es una oficina
-          if (shipment.destinationOfficeId) {
+          // Actualizar detalles de destino SOLO si es la oficina que se modificó
+          if (
+            shipment.destinationOfficeId &&
+            officeId &&
+            shipment.destinationOfficeId.toString() === officeId
+          ) {
             const desirableDate =
               shipment.destinationDetails?.desirableDate || '';
 
