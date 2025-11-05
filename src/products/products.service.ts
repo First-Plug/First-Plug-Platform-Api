@@ -955,27 +955,21 @@ export class ProductsService {
             const computerModel = product.filteredAttributes.find(
               (attr) => attr.key === 'model',
             )?.value;
-            const computerProcessor = product.filteredAttributes.find(
-              (attr) => attr.key === 'processor',
-            )?.value;
-            const computerRam = product.filteredAttributes.find(
-              (attr) => attr.key === 'ram',
-            )?.value;
-            const computerStorage = product.filteredAttributes.find(
-              (attr) => attr.key === 'storage',
+            const computerColor = product.filteredAttributes.find(
+              (attr) => attr.key === 'color',
             )?.value;
             const computerScreen = product.filteredAttributes.find(
               (attr) => attr.key === 'screen',
             )?.value;
 
+            // 🎯 FIX: Solo agrupar por características VISUALES (brand, model, color, screen)
+            // NO incluir processor, ram, storage que son specs internas
             key = JSON.stringify({
               category: product.category,
               brand: computerBrand,
               model: computerModel,
               name: computerModel === 'Other' ? product.name : undefined,
-              processor: computerProcessor,
-              ram: computerRam,
-              storage: computerStorage,
+              color: computerColor,
               screen: computerScreen,
             });
             break;
