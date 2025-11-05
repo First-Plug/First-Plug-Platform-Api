@@ -167,21 +167,25 @@ export class AssetHistoryFormatter {
       }
     }
 
-    // 📍 Comparar location details si cambió la ubicación
-    if (changes.oldData.location || changes.newData.location) {
-      const oldLocationDetails = this.formatLocationDetails(
+    // 🏳️ Agregar country code si es Employee (SIMPLIFICADO)
+    if (changes.oldData.location === 'Employee') {
+      const oldCountry = this.extractMemberCountryCode(
         oldProduct.location || '',
-        oldProduct,
-        oldProduct.assignedMember,
+        this.extractMemberCountry(oldProduct),
       );
-      const newLocationDetails = this.formatLocationDetails(
-        newProduct.location || '',
-        newProduct,
-        newProduct.assignedMember,
-      );
+      if (oldCountry) {
+        changes.oldData.country = oldCountry;
+      }
+    }
 
-      changes.oldData.locationDetails = oldLocationDetails;
-      changes.newData.locationDetails = newLocationDetails;
+    if (changes.newData.location === 'Employee') {
+      const newCountry = this.extractMemberCountryCode(
+        newProduct.location || '',
+        this.extractMemberCountry(newProduct),
+      );
+      if (newCountry) {
+        changes.newData.country = newCountry;
+      }
     }
 
     return changes;
@@ -224,40 +228,39 @@ export class AssetHistoryFormatter {
     // 🔍 Para primitivos, comparación directa
     return oldValue !== newValue;
   }
+
   /**
-   * Formatear location details para assets
+   * 🏳️ Extraer country code del member desde el producto
+   * NOTA: Este método es limitado porque no tiene acceso a la base de datos
+   * Para casos complejos, se debe pasar el memberCountry desde el servicio
    */
-  static formatLocationDetails(
-    location: string,
-    product?: ProductDocument,
-    assignedMember?: string,
-  ) {
-    const details: any = {};
-
-    switch (location) {
-      case 'Our office':
-        if (product?.office) {
-          details.name = product.office.officeName;
-          details.country = product.office.officeCountryCode;
-        }
-        break;
-
-      case 'FP warehouse':
-        if (product?.fpWarehouse) {
-          details.country = product.fpWarehouse.warehouseCountryCode;
-          details.name = product.fpWarehouse.warehouseName;
-        }
-        break;
-
-      case 'Employee':
-        if (assignedMember) {
-          details.memberName = assignedMember;
-          // TODO: Agregar país del member si es necesario
-        }
-        break;
+  static extractMemberCountry(product: any): string | undefined {
+    // 🎯 Caso 1: Producto tiene memberData (GlobalProduct o producto sincronizado)
+    if (product.memberData?.memberCountry) {
+      return product.memberData.memberCountry;
     }
 
-    return details;
+    // 🎯 Caso 2: Producto embebido en member (tiene acceso directo al country del member)
+    if (product._parent && product._parent.country) {
+      return product._parent.country;
+    }
+
+    // ⚠️ Caso 3: Producto standalone - no podemos obtener el country sin consulta DB
+    // En este caso, el servicio debe pasar el memberCountry explícitamente
+    return undefined;
+  }
+  /**
+   * 🏳️ Extraer solo el country code para location Employee
+   * SIMPLIFICADO: Solo devuelve el country, no un objeto completo
+   */
+  static extractMemberCountryCode(
+    location: string,
+    memberCountry?: string,
+  ): string | undefined {
+    if (location === 'Employee' && memberCountry) {
+      return memberCountry;
+    }
+    return undefined;
   }
 
   /**
@@ -267,6 +270,7 @@ export class AssetHistoryFormatter {
     product: ProductDocument,
     assignedMember?: string,
     additionalFields?: Record<string, any>,
+    memberCountry?: string,
   ) {
     // 🎯 CAPTURAR TODOS LOS CAMPOS del producto (no solo los predefinidos)
     const productObj = product.toObject ? product.toObject() : product;
@@ -282,20 +286,23 @@ export class AssetHistoryFormatter {
     delete data.isDeleted;
     delete data.deletedAt;
 
-    // 📍 Agregar location details mejorados
-    const locationDetails = this.formatLocationDetails(
-      product.location || '',
-      product,
-      assignedMember,
-    );
-
-    // ✅ Asegurar campos básicos y agregar location details
+    // ✅ Asegurar campos básicos
     data.serialNumber = data.serialNumber || data.lastSerialNumber || null;
     data.name = data.name || '';
     data.assignedEmail = data.assignedEmail || '';
     data.assignedMember = assignedMember || data.assignedMember || '';
     data.lastAssigned = data.lastAssigned || '';
-    data.locationDetails = locationDetails;
+
+    // 🏳️ Agregar country code solo si es Employee (SIMPLIFICADO)
+    if (product.location === 'Employee') {
+      const countryCode = this.extractMemberCountryCode(
+        product.location,
+        memberCountry || this.extractMemberCountry(product),
+      );
+      if (countryCode) {
+        data.country = countryCode;
+      }
+    }
 
     // 🔧 Agregar campos adicionales si se proporcionan
     if (additionalFields) {

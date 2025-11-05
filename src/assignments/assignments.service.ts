@@ -1640,6 +1640,7 @@ export class AssignmentsService {
       product, // producto original
       updatedProduct, // producto actualizado
       userId,
+      undefined, // no member country for generic updates
     );
 
     // 🔄 SYNC FINAL: Sincronizar producto actualizado a colección global
@@ -1882,16 +1883,29 @@ export class AssignmentsService {
         connection, // ✅ FIX: Pasar la conexión
       );
 
-      await this.recordAssetHistoryIfNeeded(
-        updateDto.actionType,
-        product.toObject(), // usar producto original
-        {
-          ...product.toObject(),
-          assignedEmail: newMember.email,
-          assignedMember: `${newMember.firstName} ${newMember.lastName}`,
-          status: updateDto.status,
-        },
+      // � Obtener el producto actualizado desde la colección de members
+      await this.membersService.findByEmailNotThrowError(newMember.email);
+
+      // � Construir newData manualmente con los datos correctos
+      const newProductData = {
+        ...product.toObject(),
+        location: 'Employee',
+        assignedEmail: newMember.email,
+        assignedMember: `${newMember.firstName} ${newMember.lastName}`,
+        status: updateDto.status,
+        lastAssigned: calculatedLastAssigned || '',
+        // 🧹 Limpiar objetos de otras locations
+        fpWarehouse: undefined,
+        office: undefined,
+      };
+
+      // �📜 HISTORY: Usar método mejorado con country del member
+      await this.recordEnhancedAssetHistoryIfNeeded(
+        updateDto.actionType as HistoryActionType,
+        product, // producto original
+        newProductData as ProductDocument, // ✅ Producto construido manualmente
         userId,
+        newMember.country, // 🏳️ Country code del member para mostrar bandera
       );
 
       return {
@@ -2028,6 +2042,8 @@ export class AssignmentsService {
     oldProduct: ProductDocument | null,
     newProduct: ProductDocument | null,
     userId: string,
+    newMemberCountry?: string, // 🏳️ Country code del member destino
+    oldMemberCountry?: string, // 🏳️ Country code del member origen
   ) {
     if (!userId) {
       throw new Error(
@@ -2036,12 +2052,16 @@ export class AssignmentsService {
     }
     if (!actionType) return;
 
+    // 🔄 Para member-to-member, necesitamos pasar ambos countries
     await recordEnhancedAssetHistory(
       this.historyService,
       actionType,
       userId,
       oldProduct,
       newProduct,
+      undefined, // context
+      newMemberCountry, // 🏳️ Country code del member destino
+      oldMemberCountry, // 🏳️ Country code del member origen
     );
   }
 
@@ -2112,6 +2132,18 @@ export class AssignmentsService {
       await this.productsService.setNonShipmentStatus(updateProductDto);
     }
 
+    // 🔄 Construir oldProductData correctamente con datos completos
+    const productData = (memberProduct.product as any).toObject
+      ? (memberProduct.product as any).toObject()
+      : memberProduct.product;
+
+    const oldProductData = {
+      ...productData, // ✅ Usar el producto completo desde memberProduct
+      assignedEmail: member.email,
+      assignedMember: `${member.firstName} ${member.lastName}`,
+      location: 'Employee',
+    };
+
     return await this.handleMemberProductAssignmentChanges(
       product as ProductDocument,
       member,
@@ -2121,7 +2153,7 @@ export class AssignmentsService {
       ourOfficeEmail,
       session,
       isRecoverable,
-      { ...memberProduct.product }, // pasar copia del producto original
+      oldProductData, // ✅ Datos completos del producto original
       connection,
     );
   }
@@ -2222,16 +2254,27 @@ export class AssignmentsService {
         connection, // ✅ FIX: Pasar la conexión
       );
 
-      await this.recordAssetHistoryIfNeeded(
-        updateDto.actionType,
-        oldProductData,
-        {
-          ...product,
-          assignedEmail: newMember.email,
-          assignedMember: `${newMember.firstName} ${newMember.lastName}`,
-          status: updateDto.status,
-        },
+      // � Construir newData manualmente con los datos correctos (igual que el otro método)
+      const newProductData = {
+        ...product.toObject(),
+        location: 'Employee',
+        assignedEmail: newMember.email,
+        assignedMember: `${newMember.firstName} ${newMember.lastName}`,
+        status: updateDto.status,
+        lastAssigned: calculatedLastAssigned || '',
+        // 🧹 Limpiar objetos de otras locations
+        fpWarehouse: undefined,
+        office: undefined,
+      };
+
+      // 📜 HISTORY: Usar método mejorado con country del member original y nuevo
+      await this.recordEnhancedAssetHistoryIfNeeded(
+        updateDto.actionType as HistoryActionType,
+        oldProductData as ProductDocument,
+        newProductData as ProductDocument, // ✅ Producto construido manualmente
         userId,
+        newMember.country, // 🏳️ Country code del member destino
+        member.country, // 🏳️ Country code del member origen
       );
 
       return { shipment: shipment ?? undefined, updatedProduct: product };
@@ -2423,15 +2466,18 @@ export class AssignmentsService {
 
       if (!userId)
         throw new Error('❌ userId is undefined antes de crear history');
-      await this.recordAssetHistoryIfNeeded(
-        updateDto.actionType,
-        oldProductData,
+
+      // 📜 HISTORY: Usar método mejorado con country del member original
+      await this.recordEnhancedAssetHistoryIfNeeded(
+        updateDto.actionType as HistoryActionType,
+        product as ProductDocument, // ✅ Producto original desde member collection
         {
           ...updatedProduct,
           status: updateDto.status,
           location: updateDto.location,
-        },
+        } as ProductDocument,
         userId,
+        member.country, // 🏳️ Country code del member original para mostrar bandera
       );
 
       return {

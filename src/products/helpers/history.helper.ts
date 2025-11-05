@@ -59,6 +59,8 @@ export async function recordEnhancedAssetHistory(
   oldProduct: ProductDocument | null,
   newProduct: ProductDocument | null,
   context?: HistoryContext,
+  newMemberCountry?: string, // 🏳️ Country code del member destino
+  oldMemberCountry?: string, // 🏳️ Country code del member origen
 ) {
   let oldData: any = null;
   let newData: any = null;
@@ -66,7 +68,12 @@ export async function recordEnhancedAssetHistory(
   // 🎯 Para CREATE: Solo newData (formato completo)
   if (actionType === 'create') {
     if (newProduct) {
-      newData = AssetHistoryFormatter.formatAssetData(newProduct);
+      newData = AssetHistoryFormatter.formatAssetData(
+        newProduct,
+        newProduct.assignedMember,
+        undefined,
+        newMemberCountry,
+      );
     }
   }
   // 🔍 Para UPDATE: Solo campos que cambiaron
@@ -82,16 +89,31 @@ export async function recordEnhancedAssetHistory(
   // 🗑️ Para DELETE: Solo oldData (formato completo)
   else if (actionType === 'delete') {
     if (oldProduct) {
-      oldData = AssetHistoryFormatter.formatAssetData(oldProduct);
+      oldData = AssetHistoryFormatter.formatAssetData(
+        oldProduct,
+        oldProduct.assignedMember,
+        undefined,
+        oldMemberCountry,
+      );
     }
   }
   // 🔄 Para otros casos (relocate, assign, etc.): Formato completo
   else {
     if (oldProduct) {
-      oldData = AssetHistoryFormatter.formatAssetData(oldProduct);
+      oldData = AssetHistoryFormatter.formatAssetData(
+        oldProduct,
+        oldProduct.assignedMember,
+        undefined,
+        oldMemberCountry,
+      );
     }
     if (newProduct) {
-      newData = AssetHistoryFormatter.formatAssetData(newProduct);
+      newData = AssetHistoryFormatter.formatAssetData(
+        newProduct,
+        newProduct.assignedMember,
+        undefined,
+        newMemberCountry,
+      );
     }
   }
 
