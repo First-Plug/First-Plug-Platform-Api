@@ -955,8 +955,14 @@ export class ProductsService {
             const computerModel = product.filteredAttributes.find(
               (attr) => attr.key === 'model',
             )?.value;
-            const computerColor = product.filteredAttributes.find(
-              (attr) => attr.key === 'color',
+            const computerProcessor = product.filteredAttributes.find(
+              (attr) => attr.key === 'processor',
+            )?.value;
+            const computerRam = product.filteredAttributes.find(
+              (attr) => attr.key === 'ram',
+            )?.value;
+            const computerStorage = product.filteredAttributes.find(
+              (attr) => attr.key === 'storage',
             )?.value;
             const computerScreen = product.filteredAttributes.find(
               (attr) => attr.key === 'screen',
@@ -969,7 +975,9 @@ export class ProductsService {
               brand: computerBrand,
               model: computerModel,
               name: computerModel === 'Other' ? product.name : undefined,
-              color: computerColor,
+              processor: computerProcessor,
+              ram: computerRam,
+              storage: computerStorage,
               screen: computerScreen,
             });
             break;
