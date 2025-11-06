@@ -17,6 +17,7 @@ import { CreateProductForTenantDto } from './dto/create-product-for-tenant.dto';
 import { BulkCreateProductsForTenantDto } from './dto/bulk-create-products-for-tenant.dto';
 import { WarehousesService } from '../warehouses/warehouses.service';
 import { GlobalProductSyncService } from '../products/services/global-product-sync.service';
+import { CATEGORY_KEYS } from '../products/interfaces/product.interface';
 import mongoose from 'mongoose';
 
 @Injectable()
@@ -1212,6 +1213,30 @@ export class SuperAdminService {
   }
 
   /**
+   * 🎯 Normalizar attributes para que tengan TODOS los campos de la categoría
+   * Esto evita el problema de desagrupamiento cuando se actualizan productos
+   */
+  private normalizeAttributesForCategory(
+    attributes: Array<{ key: string; value: string }>,
+    category: string,
+  ): Array<{ key: string; value: string }> {
+    const categoryKeys = CATEGORY_KEYS[category] || [];
+    const existingKeys = new Set(attributes.map((attr) => attr.key));
+
+    // Crear array con todos los attributes de la categoría
+    const normalizedAttributes = [...attributes];
+
+    // Agregar attributes faltantes con valor vacío
+    for (const key of categoryKeys) {
+      if (!existingKeys.has(key)) {
+        normalizedAttributes.push({ key, value: '' });
+      }
+    }
+
+    return normalizedAttributes;
+  }
+
+  /**
    * Crear producto para un tenant específico desde SuperAdmin
    * El producto se asigna automáticamente a FP warehouse del país seleccionado
    */
@@ -1264,11 +1289,17 @@ export class SuperAdminService {
         );
       }
 
-      // 5. Crear el producto en la colección del tenant
+      // 5. Normalizar attributes para incluir TODOS los campos de la categoría
+      const normalizedAttributes = this.normalizeAttributesForCategory(
+        productData.attributes,
+        productData.category,
+      );
+
+      // 6. Crear el producto en la colección del tenant
       const newProduct = new ProductModel({
         name: productData.name,
         category: productData.category,
-        attributes: productData.attributes,
+        attributes: normalizedAttributes, // ✅ Usar attributes normalizados
         serialNumber: productData.serialNumber?.trim() || undefined,
         productCondition: productData.productCondition,
         recoverable: productData.recoverable ?? true,
@@ -1499,11 +1530,17 @@ export class SuperAdminService {
             warehouseCache.set(warehouseCountryCode, warehouseInfo);
           }
 
-          // 6.2. Crear el producto
+          // 6.2. Normalizar attributes para incluir TODOS los campos de la categoría
+          const normalizedAttributes = this.normalizeAttributesForCategory(
+            commonProductData.attributes,
+            commonProductData.category,
+          );
+
+          // 6.3. Crear el producto
           const newProduct = new ProductModel({
             name: commonProductData.name,
             category: commonProductData.category,
-            attributes: commonProductData.attributes,
+            attributes: normalizedAttributes, // ✅ Usar attributes normalizados
             serialNumber: serialNumber?.trim() || undefined,
             productCondition: commonProductData.productCondition,
             recoverable: commonProductData.recoverable ?? true,
