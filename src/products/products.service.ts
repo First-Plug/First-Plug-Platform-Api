@@ -1367,6 +1367,9 @@ export class ProductsService {
           ? updateProductDto.recoverable
           : product.recoverable;
 
+      // 🎯 FIX: Capturar serialNumber original ANTES de cualquier modificación
+      const originalSerialNumber = product.serialNumber;
+
       if (updateProductDto.price === null) {
         await ProductModel.updateOne(
           { _id: product._id },
@@ -1380,12 +1383,17 @@ export class ProductsService {
         );
       }
 
-      if (updateProductDto.serialNumber === '' && location === 'products') {
-        await ProductModel.updateOne(
-          { _id: product._id },
-          { $unset: { serialNumber: '' } },
-        );
-        product.serialNumber = undefined;
+      // 🎯 FIX: Manejar serialNumber vacío para AMBAS ubicaciones
+      if (updateProductDto.serialNumber === '') {
+        if (location === 'products') {
+          await ProductModel.updateOne(
+            { _id: product._id },
+            { $unset: { serialNumber: '' } },
+          );
+          product.serialNumber = undefined;
+        }
+        // Para location === 'members', limpiar el campo para que no se incluya en updatedFields
+        updateProductDto.serialNumber = undefined;
       }
 
       if (
@@ -1410,7 +1418,8 @@ export class ProductsService {
       if (updateProductDto.price === null) {
         delete updatedFields.price;
       }
-      if (updateProductDto.serialNumber === null && location === 'products') {
+      // 🎯 FIX: Manejar serialNumber null para AMBAS ubicaciones
+      if (updateProductDto.serialNumber === null) {
         delete updatedFields.serialNumber;
       }
 
@@ -1464,11 +1473,24 @@ export class ProductsService {
           };
         }
 
-        await this.syncProductToGlobal(
+        // 🎯 FIX: Indicar si se debe eliminar serialNumber de global
+        // Detectar si el producto TENÍA serialNumber pero ahora no lo tiene
+        const hadSerialNumber =
+          originalSerialNumber !== undefined &&
+          originalSerialNumber !== null &&
+          originalSerialNumber !== '';
+        const hasSerialNumber =
+          productUpdated.serialNumber !== undefined &&
+          productUpdated.serialNumber !== null &&
+          productUpdated.serialNumber !== '';
+        const shouldRemoveSerialNumber = hadSerialNumber && !hasSerialNumber;
+
+        await this.assignmentsService.syncProductToGlobal(
           productUpdated,
           tenantName,
           sourceCollection,
           memberData,
+          shouldRemoveSerialNumber, // 🎯 Nuevo parámetro
         );
       }
 
