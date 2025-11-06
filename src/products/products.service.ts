@@ -968,6 +968,8 @@ export class ProductsService {
               (attr) => attr.key === 'screen',
             )?.value;
 
+            // 🎯 FIX: Solo agrupar por características VISUALES (brand, model, color, screen)
+            // NO incluir processor, ram, storage que son specs internas
             key = JSON.stringify({
               category: product.category,
               brand: computerBrand,
