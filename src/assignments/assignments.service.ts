@@ -1479,6 +1479,7 @@ export class AssignmentsService {
     member: MemberDocument,
     productId: ObjectId,
     updatedFields: Partial<ProductDocument>,
+    tenantName?: string, // 🎯 Agregar tenantName para sincronización
   ): Promise<ProductDocument | Product> {
     const index = member.products.findIndex(
       (p) => p._id!.toString() === productId.toString(),
@@ -1487,10 +1488,11 @@ export class AssignmentsService {
       throw new NotFoundException('Product not found in member');
     }
 
-    // 🎯 FIX: Manejar campos undefined eliminándolos explícitamente
+    // 🎯 FIX: Manejar campos undefined/null eliminándolos explícitamente
     Object.keys(updatedFields).forEach((key) => {
       const value = updatedFields[key as keyof Partial<ProductDocument>];
-      if (value === undefined) {
+
+      if (value === undefined || (key === 'serialNumber' && value === null)) {
         // Eliminar la key del producto embebido
         delete (member.products[index] as any)[key];
       } else {
@@ -1499,7 +1501,54 @@ export class AssignmentsService {
       }
     });
 
-    await member.save();
+    // 🎯 FIX: Si se eliminó serialNumber, usar $unset en MongoDB
+    const fieldsToUnset: any = {};
+    Object.keys(updatedFields).forEach((key) => {
+      const value = updatedFields[key as keyof Partial<ProductDocument>];
+      if (value === undefined || (key === 'serialNumber' && value === null)) {
+        fieldsToUnset[`products.${index}.${key}`] = '';
+      }
+    });
+
+    if (Object.keys(fieldsToUnset).length > 0) {
+      await this.memberModel.updateOne(
+        { _id: member._id },
+        { $unset: fieldsToUnset },
+      );
+
+      // 🎯 FIX: Recargar el member después del $unset
+      const reloadedMember = await this.memberModel.findById(member._id);
+      if (reloadedMember) {
+        member.products = reloadedMember.products;
+      }
+    } else {
+      await member.save();
+    }
+
+    // 🎯 FIX: Sincronizar a global DESPUÉS del $unset
+    if (tenantName) {
+      // Recargar el member para obtener el producto actualizado
+      const updatedMember = await this.memberModel.findById(member._id);
+      if (updatedMember) {
+        const updatedProduct = updatedMember.products.find(
+          (p) => p._id!.toString() === productId.toString(),
+        );
+
+        if (updatedProduct) {
+          await this.syncProductToGlobal(
+            updatedProduct,
+            tenantName,
+            'members',
+            {
+              memberId: member._id as any,
+              memberEmail: member.email,
+              memberName: `${member.firstName} ${member.lastName}`,
+              assignedAt: new Date(),
+            },
+          );
+        }
+      }
+    }
 
     return member.products[index];
   }
@@ -2500,10 +2549,15 @@ export class AssignmentsService {
     }
 
     // 🧩 Caso: Actualización sin cambio de dueño
-    const updated = await this.updateEmbeddedProduct(member, product._id!, {
-      ...updateDto,
-      recoverable: isRecoverable,
-    } as Partial<ProductDocument>);
+    const updated = await this.updateEmbeddedProduct(
+      member,
+      product._id!,
+      {
+        ...updateDto,
+        recoverable: isRecoverable,
+      } as Partial<ProductDocument>,
+      tenantName,
+    ); // 🎯 Pasar tenantName
 
     await this.recordAssetHistoryIfNeeded(
       updateDto.actionType,
