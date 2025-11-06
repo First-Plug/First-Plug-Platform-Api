@@ -1391,9 +1391,12 @@ export class ProductsService {
             { $unset: { serialNumber: '' } },
           );
           product.serialNumber = undefined;
+          // Para products, limpiar el campo para que no se incluya en updatedFields
+          updateProductDto.serialNumber = undefined;
+        } else if (location === 'members') {
+          // Para members, mantener como null para que llegue a updateEmbeddedProduct
+          updateProductDto.serialNumber = null;
         }
-        // Para location === 'members', limpiar el campo para que no se incluya en updatedFields
-        updateProductDto.serialNumber = undefined;
       }
 
       if (
@@ -1418,8 +1421,8 @@ export class ProductsService {
       if (updateProductDto.price === null) {
         delete updatedFields.price;
       }
-      // 🎯 FIX: Manejar serialNumber null para AMBAS ubicaciones
-      if (updateProductDto.serialNumber === null) {
+      // 🎯 FIX: Manejar serialNumber null solo para products (members lo necesita en updatedFields)
+      if (updateProductDto.serialNumber === null && location === 'products') {
         delete updatedFields.serialNumber;
       }
 
@@ -1455,6 +1458,7 @@ export class ProductsService {
           member,
           product._id,
           updatedFields,
+          tenantName, // 🎯 Pasar tenantName para sincronización
         );
       }
 
