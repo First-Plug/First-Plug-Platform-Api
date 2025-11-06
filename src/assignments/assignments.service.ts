@@ -282,6 +282,7 @@ export class AssignmentsService {
       memberName: string;
       assignedAt?: Date;
     },
+    shouldRemoveSerialNumber?: boolean, // 🎯 Nuevo parámetro
   ): Promise<void> {
     try {
       // 🔒 VERIFICAR SI YA FUE SINCRONIZADO: Evitar duplicados
@@ -307,7 +308,8 @@ export class AssignmentsService {
             value: String(attr.value),
           })) || [],
 
-        serialNumber: product.serialNumber || undefined,
+        // 🎯 FIX: Manejar serialNumber según si se debe eliminar o no
+        serialNumber: shouldRemoveSerialNumber ? null : product.serialNumber,
         assignedEmail: product.assignedEmail,
         assignedMember: product.assignedMember,
         lastAssigned: product.lastAssigned,
@@ -1485,7 +1487,18 @@ export class AssignmentsService {
       throw new NotFoundException('Product not found in member');
     }
 
-    Object.assign(member.products[index], updatedFields);
+    // 🎯 FIX: Manejar campos undefined eliminándolos explícitamente
+    Object.keys(updatedFields).forEach((key) => {
+      const value = updatedFields[key as keyof Partial<ProductDocument>];
+      if (value === undefined) {
+        // Eliminar la key del producto embebido
+        delete (member.products[index] as any)[key];
+      } else {
+        // Asignar el valor normalmente
+        (member.products[index] as any)[key] = value;
+      }
+    });
+
     await member.save();
 
     return member.products[index];

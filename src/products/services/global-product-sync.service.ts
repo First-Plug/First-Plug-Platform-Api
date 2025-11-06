@@ -155,7 +155,7 @@ export class GlobalProductSyncService {
         officeValue = existingProduct.office as any;
       }
 
-      const updateData = {
+      const updateData: any = {
         tenantId: resolvedTenantId,
         tenantName: params.tenantName,
         originalProductId: params.originalProductId,
@@ -167,7 +167,6 @@ export class GlobalProductSyncService {
         status: params.status,
         location: params.location,
         attributes: params.attributes || [],
-        serialNumber: params.serialNumber,
         lastSerialNumber: params.lastSerialNumber,
         assignedEmail: params.assignedEmail,
         assignedMember: params.assignedMember,
@@ -202,9 +201,25 @@ export class GlobalProductSyncService {
         originalProductId: params.originalProductId,
       };
 
+      // 🎯 FIX: Preparar operaciones de actualización
+      const updateOperations: any = { $set: updateData };
+
+      // 🎯 FIX: Manejar serialNumber
+      if (params.serialNumber === null) {
+        // null significa "eliminar serialNumber existente"
+        updateOperations.$unset = { serialNumber: '' };
+      } else if (
+        params.serialNumber !== undefined &&
+        params.serialNumber !== ''
+      ) {
+        // Valor válido, incluir en $set
+        updateData.serialNumber = params.serialNumber;
+      }
+      // Si es undefined o '', no hacer nada (mantener valor existente)
+
       const upsertResult = await this.globalProductModel.updateOne(
         upsertQuery,
-        { $set: updateData },
+        updateOperations,
         { upsert: true },
       );
 
