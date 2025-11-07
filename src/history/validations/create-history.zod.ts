@@ -1,19 +1,8 @@
 import { z } from 'zod';
+import { HistoryActionType } from '../types/history.types';
 
-export type HistoryActionType =
-  | 'create'
-  | 'update'
-  | 'delete'
-  | 'bulk-delete'
-  | 'bulk-create'
-  | 'offboarding'
-  | 'return'
-  | 'relocate'
-  | 'assign'
-  | 'reassign'
-  | 'unassign'
-  | 'cancel'
-  | 'consolidate';
+// Re-export for backward compatibility
+export { HistoryActionType };
 
 export const CreateHistorySchema = z.object({
   actionType: z.enum([
@@ -46,7 +35,14 @@ export const CreateHistorySchema = z.object({
         z.null(),
       ]),
       context: z
-        .enum(['single-product', 'shipment-merge', 'member-address-update'])
+        .enum([
+          'single-product',
+          'shipment-merge',
+          'member-address-update',
+          // 🔄 Legacy contexts from production (for backward compatibility)
+          'setup-default-office',
+          'office-address-update',
+        ])
         .optional(),
     })
     .refine(

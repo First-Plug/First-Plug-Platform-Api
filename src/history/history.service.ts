@@ -6,6 +6,9 @@ import { Team } from 'src/teams/schemas/team.schema';
 import { UsersService } from 'src/users/users.service';
 import { TenantsService } from 'src/tenants/tenants.service';
 import { isValidObjectId } from 'mongoose';
+import { LegacyRecordDetector } from './helpers/legacy-detector.helper';
+import { AssetHistoryCompatibility } from './helpers/asset-compatibility.helper';
+import { SafeTeamPopulation } from './helpers/safe-team-population.helper';
 
 @Injectable()
 export class HistoryService {
@@ -51,7 +54,16 @@ export class HistoryService {
         if (tenant) {
           recordObj.userId = tenant.email;
         }
-        return recordObj;
+
+        // 🔧 COMPATIBILITY: Normalizar assets legacy para frontend
+        const finalRecord =
+          recordObj.itemType === 'assets'
+            ? AssetHistoryCompatibility.normalizeAssetRecordForFrontend(
+                recordObj,
+              )
+            : recordObj;
+
+        return finalRecord;
       }),
     );
   }
@@ -96,61 +108,27 @@ export class HistoryService {
         }
 
         // 🌍 TRANSFORM: Reemplazar "FP warehouse" con country code del warehouse
-        recordObj.changes = await this.transformWarehouseLocations(
-          recordObj.changes,
-        );
-        if (
-          (recordObj.itemType === 'members' &&
-            ['update', 'create', 'delete', 'bulk-create'].includes(
-              recordObj.actionType,
-            )) ||
-          (recordObj.itemType === 'teams' &&
-            ['reassign', 'assign', 'unassign'].includes(recordObj.actionType))
-        ) {
-          if (
-            recordObj.itemType === 'members' &&
-            recordObj.actionType === 'bulk-create'
-          ) {
-            if (Array.isArray(recordObj.changes?.newData)) {
-              for (const member of recordObj.changes.newData) {
-                if (member.team && typeof member.team === 'string') {
-                  const newTeam = await this.teamRepository
-                    .findById(member.team)
-                    .exec();
-                  if (newTeam) {
-                    member.team = newTeam;
-                  }
-                }
-              }
-            }
-          } else {
-            if (
-              recordObj.changes?.oldData?.team &&
-              typeof recordObj.changes.oldData.team === 'string'
-            ) {
-              const oldTeam = await this.teamRepository
-                .findById(recordObj.changes.oldData.team)
-                .exec();
-              if (oldTeam) {
-                recordObj.changes.oldData.team = oldTeam;
-              }
-            }
-
-            if (
-              recordObj.changes?.newData?.team &&
-              typeof recordObj.changes.newData.team === 'string'
-            ) {
-              const newTeam = await this.teamRepository
-                .findById(recordObj.changes.newData.team)
-                .exec();
-              if (newTeam) {
-                recordObj.changes.newData.team = newTeam;
-              }
-            }
-          }
+        // Solo aplicar transformaciones a registros nuevos, no a legacy
+        if (!LegacyRecordDetector.isLegacyRecord(recordObj)) {
+          recordObj.changes = await this.transformWarehouseLocations(
+            recordObj.changes,
+          );
         }
+        // 👥 POPULATE: Poblar teams de forma segura usando helper
+        await SafeTeamPopulation.populateTeamsInHistoryRecord(
+          this.teamRepository,
+          recordObj,
+        );
 
-        return recordObj;
+        // 🔧 COMPATIBILITY: Normalizar assets legacy para frontend
+        const finalRecord =
+          recordObj.itemType === 'assets'
+            ? AssetHistoryCompatibility.normalizeAssetRecordForFrontend(
+                recordObj,
+              )
+            : recordObj;
+
+        return finalRecord;
       }),
     );
 
@@ -163,6 +141,7 @@ export class HistoryService {
 
   /**
    * 🌍 Helper para transformar "FP warehouse" locations a country codes
+   * ⚠️  SOLO se aplica a registros nuevos, no a legacy (para mantener compatibilidad)
    */
   private async transformWarehouseLocations(changes: any): Promise<any> {
     if (!changes) return changes;
