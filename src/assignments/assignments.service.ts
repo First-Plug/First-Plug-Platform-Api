@@ -1248,6 +1248,7 @@ export class AssignmentsService {
     updateProductDto: UpdateProductDto,
     connection: Connection,
     tenantName?: string,
+    userId?: string,
   ) {
     const productIndex = member.products.findIndex(
       (prod) => prod._id!.toString() === product._id!.toString(),
@@ -1353,6 +1354,25 @@ export class AssignmentsService {
       this.logger.warn(
         `⚠️ [moveToProductsCollection] Sync skipped - tenantName: ${tenantName}, createdProducts.length: ${createdProducts.length}`,
       );
+    }
+
+    // 📜 HISTORY: Crear registro con información completa
+    if (updateProductDto.actionType && createdProducts.length > 0) {
+      try {
+        await this.recordEnhancedAssetHistoryIfNeeded(
+          updateProductDto.actionType as HistoryActionType,
+          product, // producto original del member
+          createdProducts[0], // producto creado con office/warehouse info
+          userId || '', // userId pasado como parámetro
+          undefined, // newMemberCountry (no aplica)
+          member.country, // oldMemberCountry (country del member origen)
+        );
+      } catch (error) {
+        this.logger.error(
+          '❌ Error creating history in moveToProductsCollection:',
+          error,
+        );
+      }
     }
 
     return createdProducts;
@@ -1696,14 +1716,14 @@ export class AssignmentsService {
       );
     }
 
-    // 📜 HISTORY: Registrar cambios con formato mejorado
-    await this.recordEnhancedAssetHistoryIfNeeded(
-      updateDto.actionType as HistoryActionType,
-      product, // producto original
-      updatedProduct, // producto actualizado
-      userId,
-      undefined, // no member country for generic updates
-    );
+    // 📜 HISTORY: Se crea en moveToProductsCollection con información completa
+    // await this.recordEnhancedAssetHistoryIfNeeded(
+    //   updateDto.actionType as HistoryActionType,
+    //   product, // producto original
+    //   updatedProduct, // producto actualizado
+    //   userId,
+    //   undefined, // no member country for generic updates
+    // );
 
     // 🔄 SYNC FINAL: Sincronizar producto actualizado a colección global
     try {
@@ -1961,14 +1981,14 @@ export class AssignmentsService {
         office: undefined,
       };
 
-      // �📜 HISTORY: Usar método mejorado con country del member
-      await this.recordEnhancedAssetHistoryIfNeeded(
-        updateDto.actionType as HistoryActionType,
-        product, // producto original
-        newProductData as ProductDocument, // ✅ Producto construido manualmente
-        userId,
-        newMember.country, // 🏳️ Country code del member para mostrar bandera
-      );
+      // 📜 HISTORY: Se crea en moveToProductsCollection con información completa
+      // await this.recordEnhancedAssetHistoryIfNeeded(
+      //   updateDto.actionType as HistoryActionType,
+      //   product, // producto original
+      //   newProductData as ProductDocument, // ✅ Producto construido manualmente
+      //   userId,
+      //   newMember.country, // 🏳️ Country code del member para mostrar bandera
+      // );
 
       return {
         shipment: shipment ?? undefined,
@@ -2329,15 +2349,15 @@ export class AssignmentsService {
         office: undefined,
       };
 
-      // 📜 HISTORY: Usar método mejorado con country del member original y nuevo
-      await this.recordEnhancedAssetHistoryIfNeeded(
-        updateDto.actionType as HistoryActionType,
-        oldProductData as ProductDocument,
-        newProductData as ProductDocument, // ✅ Producto construido manualmente
-        userId,
-        newMember.country, // 🏳️ Country code del member destino
-        member.country, // 🏳️ Country code del member origen
-      );
+      // 📜 HISTORY: Se crea en moveToProductsCollection con información completa
+      // await this.recordEnhancedAssetHistoryIfNeeded(
+      //   updateDto.actionType as HistoryActionType,
+      //   oldProductData as ProductDocument,
+      //   newProductData as ProductDocument, // ✅ Producto construido manualmente
+      //   userId,
+      //   newMember.country, // 🏳️ Country code del member destino
+      //   member.country, // 🏳️ Country code del member origen
+      // );
 
       return { shipment: shipment ?? undefined, updatedProduct: product };
     }
@@ -2373,6 +2393,7 @@ export class AssignmentsService {
         connection,
         member,
         tenantName, // ✅ FIX: Pasar tenantName para sincronización
+        userId, // ✅ FIX: Pasar userId para history
       );
       const updatedProduct = unassigned?.[0];
       if (!updatedProduct) throw new Error('Failed to unassign product');
@@ -2529,18 +2550,18 @@ export class AssignmentsService {
       if (!userId)
         throw new Error('❌ userId is undefined antes de crear history');
 
-      // 📜 HISTORY: Usar método mejorado con country del member original
-      await this.recordEnhancedAssetHistoryIfNeeded(
-        updateDto.actionType as HistoryActionType,
-        product as ProductDocument, // ✅ Producto original desde member collection
-        {
-          ...updatedProduct,
-          status: updateDto.status,
-          location: updateDto.location,
-        } as ProductDocument,
-        userId,
-        member.country, // 🏳️ Country code del member original para mostrar bandera
-      );
+      // 📜 HISTORY: Se crea en moveToProductsCollection con información completa
+      // await this.recordEnhancedAssetHistoryIfNeeded(
+      //   updateDto.actionType as HistoryActionType,
+      //   product as ProductDocument, // ✅ Producto original desde member collection
+      //   {
+      //     ...updatedProduct,
+      //     status: updateDto.status,
+      //     location: updateDto.location,
+      //   } as ProductDocument,
+      //   userId,
+      //   member.country, // 🏳️ Country code del member original para mostrar bandera
+      // );
 
       return {
         shipment: shipment ?? undefined,
@@ -2579,6 +2600,7 @@ export class AssignmentsService {
     connection: Connection,
     currentMember?: MemberDocument,
     tenantName?: string,
+    userId?: string,
   ) {
     if (currentMember) {
       console.log('🔁 Llamando a moveToProductsCollection...');
@@ -2589,6 +2611,7 @@ export class AssignmentsService {
         updateProductDto,
         connection,
         tenantName,
+        userId,
       );
       return created;
     } else {
