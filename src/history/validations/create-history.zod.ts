@@ -44,7 +44,7 @@ export const CreateHistorySchema = z.object({
           'office-address-update',
         ])
         .optional(),
-      // ✅ Permitir nonRecoverableProducts para delete de oficinas
+      // ✅ Permitir nonRecoverableProducts para delete de oficinas (legacy - nivel changes)
       nonRecoverableProducts: z
         .array(
           z.object({

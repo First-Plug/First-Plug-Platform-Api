@@ -50,6 +50,11 @@ export async function recordOfficeHistory(
       break;
   }
 
+  // 🎯 Si hay productos no recuperables, agregarlos dentro de oldData
+  if (nonRecoverableProducts && nonRecoverableProducts.length > 0 && oldData) {
+    oldData.nonRecoverableProducts = nonRecoverableProducts;
+  }
+
   const payload: CreateHistoryDto = {
     actionType,
     itemType: 'offices',
@@ -57,11 +62,6 @@ export async function recordOfficeHistory(
     changes: {
       oldData,
       newData,
-      // 🎯 nonRecoverableProducts va en el nivel de changes, no dentro de oldData
-      ...(nonRecoverableProducts &&
-        nonRecoverableProducts.length > 0 && {
-          nonRecoverableProducts,
-        }),
     },
   };
 
