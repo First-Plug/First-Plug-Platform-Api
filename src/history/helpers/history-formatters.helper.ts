@@ -63,18 +63,11 @@ export class OfficeHistoryFormatter {
   /**
    * Formatear datos de oficina para history - DELETE
    */
-  static formatForDelete(
-    office: Office,
-    nonRecoverableProducts?: Array<{ serialNumber: string; name: string }>,
-  ) {
+  static formatForDelete(office: Office) {
     return {
       name: office.name,
       country: office.country,
       isDefault: office.isDefault,
-      ...(nonRecoverableProducts &&
-        nonRecoverableProducts.length > 0 && {
-          nonRecoverableProducts,
-        }),
     };
   }
 }
@@ -139,13 +132,14 @@ export class AssetHistoryFormatter {
     // 🎯 Attributes obligatorios que SIEMPRE se incluyen en UPDATE
     const mandatoryAttributes = ['brand', 'model'];
 
-    // 🎯 Incluir attributes obligatorios SIEMPRE
-    for (const key of mandatoryAttributes) {
-      if (!changes.oldData.attributes) changes.oldData.attributes = {};
-      if (!changes.newData.attributes) changes.newData.attributes = {};
+    // 🎯 SIEMPRE inicializar attributes como array (OBLIGATORIO para frontend)
+    changes.oldData.attributes = [];
+    changes.newData.attributes = [];
 
-      changes.oldData.attributes[key] = oldAttrs[key] || null;
-      changes.newData.attributes[key] = newAttrs[key] || null;
+    // 🎯 Incluir attributes obligatorios SIEMPRE (como array)
+    for (const key of mandatoryAttributes) {
+      changes.oldData.attributes.push({ key, value: oldAttrs[key] || null });
+      changes.newData.attributes.push({ key, value: newAttrs[key] || null });
     }
 
     const allAttrKeys = new Set([
@@ -159,11 +153,21 @@ export class AssetHistoryFormatter {
       const newValue = newAttrs[key];
 
       if (oldValue !== newValue && !mandatoryAttributes.includes(key)) {
-        if (!changes.oldData.attributes) changes.oldData.attributes = {};
-        if (!changes.newData.attributes) changes.newData.attributes = {};
+        // Agregar a oldData.attributes como array
+        const oldAttr = changes.oldData.attributes.find(
+          (attr: any) => attr.key === key,
+        );
+        if (!oldAttr) {
+          changes.oldData.attributes.push({ key, value: oldValue || null });
+        }
 
-        changes.oldData.attributes[key] = oldValue || null;
-        changes.newData.attributes[key] = newValue || null;
+        // Agregar a newData.attributes como array
+        const newAttr = changes.newData.attributes.find(
+          (attr: any) => attr.key === key,
+        );
+        if (!newAttr) {
+          changes.newData.attributes.push({ key, value: newValue || null });
+        }
       }
     }
 
@@ -186,6 +190,14 @@ export class AssetHistoryFormatter {
       if (newCountry) {
         changes.newData.country = newCountry;
       }
+    }
+
+    // 🔒 GARANTIZAR que attributes siempre sea array (nunca undefined/null)
+    if (!Array.isArray(changes.oldData.attributes)) {
+      changes.oldData.attributes = [];
+    }
+    if (!Array.isArray(changes.newData.attributes)) {
+      changes.newData.attributes = [];
     }
 
     return changes;
@@ -307,6 +319,11 @@ export class AssetHistoryFormatter {
     // 🔧 Agregar campos adicionales si se proporcionan
     if (additionalFields) {
       Object.assign(data, additionalFields);
+    }
+
+    // 🔒 GARANTIZAR que attributes siempre sea array (nunca undefined/null)
+    if (!Array.isArray(data.attributes)) {
+      data.attributes = [];
     }
 
     return data;

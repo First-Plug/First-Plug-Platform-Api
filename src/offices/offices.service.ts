@@ -871,14 +871,27 @@ export class OfficesService {
 
     // Formatear productos para history
     const nonRecoverableProductsForHistory = nonRecoverableProducts.map(
-      (product) => ({
-        serialNumber: product.serialNumber || product.lastSerialNumber || 'N/A',
-        name: product.name || '',
-      }),
+      (product) => {
+        // Extraer brand y model de attributes
+        const brandAttr = product.attributes?.find(
+          (attr) => attr.key === 'brand',
+        );
+        const modelAttr = product.attributes?.find(
+          (attr) => attr.key === 'model',
+        );
+
+        return {
+          serialNumber:
+            product.serialNumber || product.lastSerialNumber || 'N/A',
+          name: product.name || '',
+          brand: String(brandAttr?.value || ''),
+          model: String(modelAttr?.value || ''),
+        };
+      },
     );
 
     // Aplicar soft delete automáticamente a productos non-recoverable
-    await this.softDeleteNonRecoverableProducts(id, tenantName, userId);
+    await this.softDeleteNonRecoverableProducts(id, tenantName);
 
     // Verificar si tiene shipments activos
     const hasShipments = await this.hasActiveShipments(id, tenantName);
@@ -1288,7 +1301,6 @@ export class OfficesService {
   private async softDeleteNonRecoverableProducts(
     officeId: Types.ObjectId,
     tenantName: string,
-    userId: string,
   ): Promise<void> {
     try {
       const ProductModel =
@@ -1307,8 +1319,6 @@ export class OfficesService {
       }
 
       // 🗑️ SOFT DELETE DIRECTO: Actualizar cada producto individualmente para preservar serialNumber
-      let modifiedCount = 0;
-
       for (const product of nonRecoverableProducts) {
         try {
           const updatedProduct = await ProductModel.findByIdAndUpdate(
@@ -1328,8 +1338,6 @@ export class OfficesService {
             },
             { new: true },
           );
-
-          modifiedCount++;
 
           console.log(
             `🗑️ [softDeleteNonRecoverableProducts] Soft deleted product ${product._id} (${product.serialNumber})`,
@@ -1363,33 +1371,8 @@ export class OfficesService {
         }
       }
 
-      const updateResult = { modifiedCount };
-
-      // 📝 HISTORY: Registrar la acción si el servicio está disponible
-      if (this.historyService && updateResult.modifiedCount > 0) {
-        try {
-          await this.historyService.create({
-            actionType: 'delete',
-            itemType: 'assets',
-            userId,
-            changes: {
-              oldData: null,
-              newData: {
-                deletedCount: updateResult.modifiedCount,
-                reason: `Office ${officeId} deletion - non-recoverable products`,
-                officeId: officeId.toString(),
-              },
-              context: 'single-product',
-            },
-          });
-        } catch (historyError) {
-          console.error(
-            `⚠️ [softDeleteNonRecoverableProducts] Error creating history:`,
-            historyError,
-          );
-          // No fallar la operación principal por error en history
-        }
-      }
+      // 📝 HISTORY: NO crear registros individuales de assets
+      // Los productos no recuperables ya aparecen en el registro de delete de la oficina
     } catch (error) {
       console.error(
         `❌ [softDeleteNonRecoverableProducts] Error processing office ${officeId}:`,

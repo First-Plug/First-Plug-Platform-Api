@@ -15,7 +15,12 @@ export async function recordOfficeHistory(
   userId: string,
   oldOffice: Office | null,
   newOffice: Office | null,
-  nonRecoverableProducts?: Array<{ serialNumber: string; name: string }>,
+  nonRecoverableProducts?: Array<{
+    serialNumber: string;
+    name: string;
+    brand: string;
+    model: string;
+  }>,
 ) {
   let oldData: any = null;
   let newData: any = null;
@@ -40,10 +45,7 @@ export async function recordOfficeHistory(
 
     case 'delete':
       if (oldOffice) {
-        oldData = OfficeHistoryFormatter.formatForDelete(
-          oldOffice,
-          nonRecoverableProducts,
-        );
+        oldData = OfficeHistoryFormatter.formatForDelete(oldOffice);
       }
       break;
   }
@@ -55,6 +57,11 @@ export async function recordOfficeHistory(
     changes: {
       oldData,
       newData,
+      // 🎯 nonRecoverableProducts va en el nivel de changes, no dentro de oldData
+      ...(nonRecoverableProducts &&
+        nonRecoverableProducts.length > 0 && {
+          nonRecoverableProducts,
+        }),
     },
   };
 
