@@ -873,7 +873,7 @@ export class OfficesService {
     const nonRecoverableProductsForHistory = nonRecoverableProducts.map(
       (product) => ({
         serialNumber: product.serialNumber || product.lastSerialNumber || 'N/A',
-        name: product.name || 'Unknown Product',
+        name: product.name || '',
       }),
     );
 
