@@ -305,7 +305,7 @@ export class AssetHistoryFormatter {
     data.assignedMember = assignedMember || data.assignedMember || '';
     data.lastAssigned = data.lastAssigned || '';
 
-    // 🏳️ Agregar country code solo si es Employee (SIMPLIFICADO)
+    // 🏳️ Agregar country code según la location
     if (product.location === 'Employee') {
       const countryCode = this.extractMemberCountryCode(
         product.location,
@@ -314,6 +314,16 @@ export class AssetHistoryFormatter {
       if (countryCode) {
         data.country = countryCode;
       }
+    } else if (
+      product.location === 'Our office' &&
+      product.office?.officeCountryCode
+    ) {
+      data.country = product.office.officeCountryCode;
+    } else if (
+      product.location === 'FP warehouse' &&
+      product.fpWarehouse?.warehouseCountryCode
+    ) {
+      data.country = product.fpWarehouse.warehouseCountryCode;
     }
 
     // 🔧 Agregar campos adicionales si se proporcionan
