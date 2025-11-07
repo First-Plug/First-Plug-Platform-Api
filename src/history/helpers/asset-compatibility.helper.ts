@@ -73,6 +73,7 @@ export class AssetHistoryCompatibility {
       'acquisitionDate',
       'additionalInfo',
       'lastAssigned',
+      'country', // 🏳️ Country code para mostrar banderas
     ];
 
     // Incluir campos esenciales
