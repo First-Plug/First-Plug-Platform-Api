@@ -167,31 +167,4 @@ export class AssetHistoryCompatibility {
       LegacyRecordDetector.isLegacyRecord(record)
     );
   }
-
-  /**
-   * 🎯 Obtener resumen de normalización para debugging
-   */
-  static getNormalizationSummary(record: any): string {
-    if (!record || record.itemType !== 'assets') {
-      return 'NOT_ASSET';
-    }
-
-    if (!LegacyRecordDetector.isLegacyRecord(record)) {
-      return 'ALREADY_NEW_FORMAT';
-    }
-
-    const changes: string[] = [];
-
-    if (record.changes?.oldData) {
-      const oldKeys = Object.keys(record.changes.oldData).length;
-      changes.push(`oldData:${oldKeys}fields`);
-    }
-
-    if (record.changes?.newData) {
-      const newKeys = Object.keys(record.changes.newData).length;
-      changes.push(`newData:${newKeys}fields`);
-    }
-
-    return `NORMALIZED_LEGACY (${changes.join(', ')})`;
-  }
 }

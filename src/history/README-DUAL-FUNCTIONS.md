@@ -7,6 +7,7 @@ Este documento explica cómo usar las funciones duales de history que mantienen 
 ### **Assets History**
 
 #### **Función Original** (`recordAssetHistory`)
+
 ```typescript
 import { recordAssetHistory } from 'src/products/helpers/history.helper';
 
@@ -14,19 +15,21 @@ await recordAssetHistory(
   historyService,
   'create',
   userId,
-  oldData,      // Datos pre-formateados
-  newData,      // Datos pre-formateados
-  'single-product'
+  oldData, // Datos pre-formateados
+  newData, // Datos pre-formateados
+  'single-product',
 );
 ```
 
 **Cuándo usar:**
+
 - ✅ Migraciones de datos legacy
 - ✅ Compatibilidad hacia atrás
 - ✅ Cuando ya tienes datos formateados
 - ✅ Sistemas que no requieren location details
 
 #### **Función Enhanced** (`recordEnhancedAssetHistory`)
+
 ```typescript
 import { recordEnhancedAssetHistory } from 'src/products/helpers/history.helper';
 
@@ -34,21 +37,23 @@ await recordEnhancedAssetHistory(
   historyService,
   'relocate',
   userId,
-  oldProduct,           // ProductDocument
-  newProduct,           // ProductDocument
+  oldProduct, // ProductDocument
+  newProduct, // ProductDocument
   'single-product',
-  'AR',                 // newMemberCountry
-  'US'                  // oldMemberCountry
+  'AR', // newMemberCountry
+  'US', // oldMemberCountry
 );
 ```
 
 **Cuándo usar:**
+
 - ✅ Nuevos desarrollos
 - ✅ Funcionalidades multi-office/warehouse
 - ✅ Cuando necesitas location details
 - ✅ Tracking de country codes
 
 #### **Helper Automático** (`AssetHistoryHelper.auto`)
+
 ```typescript
 import { AssetHistoryHelper } from 'src/products/helpers/history.helper';
 
@@ -61,14 +66,15 @@ await AssetHistoryHelper.auto(
   'single-product',
   {
     preferEnhanced: true,
-    memberCountry: 'AR'
-  }
+    memberCountry: 'AR',
+  },
 );
 ```
 
 ### **Shipments History**
 
 #### **Función Original** (`recordShipmentHistory`)
+
 ```typescript
 import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
 
@@ -78,11 +84,12 @@ await recordShipmentHistory(
   userId,
   oldShipment,
   newShipment,
-  'shipment-merge'
+  'shipment-merge',
 );
 ```
 
 #### **Función Enhanced** (`recordEnhancedShipmentHistory`)
+
 ```typescript
 import { recordEnhancedShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
 
@@ -96,17 +103,18 @@ await recordEnhancedShipmentHistory(
   {
     origin: {
       officeName: 'Buenos Aires Office',
-      officeCountry: 'AR'
+      officeCountry: 'AR',
     },
     destination: {
       memberName: 'John Doe',
-      memberCountry: 'US'
-    }
-  }
+      memberCountry: 'US',
+    },
+  },
 );
 ```
 
 #### **Helper Automático** (`ShipmentHistoryHelper.auto`)
+
 ```typescript
 import { ShipmentHistoryHelper } from 'src/shipments/helpers/recordShipmentHistory';
 
@@ -121,15 +129,16 @@ await ShipmentHistoryHelper.auto(
     preferEnhanced: true,
     locationData: {
       origin: { officeName: 'Main Office', officeCountry: 'AR' },
-      destination: { memberName: 'John Doe', memberCountry: 'US' }
-    }
-  }
+      destination: { memberName: 'John Doe', memberCountry: 'US' },
+    },
+  },
 );
 ```
 
 ## 🎯 Recomendaciones de Uso
 
 ### **Para Nuevos Desarrollos**
+
 ```typescript
 // ✅ RECOMENDADO: Usar Enhanced functions
 await recordEnhancedAssetHistory(/* ... */);
@@ -141,6 +150,7 @@ await ShipmentHistoryHelper.auto(/* ... */, { preferEnhanced: true });
 ```
 
 ### **Para Compatibilidad Legacy**
+
 ```typescript
 // ✅ RECOMENDADO: Usar funciones originales
 await recordAssetHistory(/* ... */);
@@ -151,6 +161,7 @@ await AssetHistoryHelper.auto(/* ... */); // Sin preferEnhanced
 ```
 
 ### **Para Migración Gradual**
+
 ```typescript
 // ✅ Empezar con helper automático
 const useEnhanced = shouldUseEnhancedFeatures(); // Tu lógica de decisión
@@ -164,24 +175,27 @@ await AssetHistoryHelper.auto(
   context,
   {
     preferEnhanced: useEnhanced,
-    memberCountry: useEnhanced ? getMemberCountry() : undefined
-  }
+    memberCountry: useEnhanced ? getMemberCountry() : undefined,
+  },
 );
 ```
 
 ## ⚠️ Consideraciones Importantes
 
 ### **Compatibilidad**
+
 - Las funciones originales **SIEMPRE** funcionarán con registros legacy
 - Las funciones Enhanced generan registros que se normalizan automáticamente
 - El `HistoryService` detecta automáticamente registros legacy vs nuevos
 
 ### **Performance**
+
 - Funciones originales: Más rápidas (menos procesamiento)
 - Funciones Enhanced: Más lentas (más formateo y validaciones)
 - Helpers automáticos: Performance variable según la decisión
 
 ### **Datos Requeridos**
+
 - **Original**: Requiere datos pre-formateados (`oldData`, `newData`)
 - **Enhanced**: Requiere `ProductDocument` o `ShipmentDocument` completos
 - **Auto**: Se adapta a lo que tengas disponible
@@ -189,29 +203,44 @@ await AssetHistoryHelper.auto(
 ## 🔧 Troubleshooting
 
 ### **Error: "Cannot format undefined product"**
+
 ```typescript
 // ❌ PROBLEMA
-await recordEnhancedAssetHistory(historyService, 'create', userId, null, undefined);
+await recordEnhancedAssetHistory(
+  historyService,
+  'create',
+  userId,
+  null,
+  undefined,
+);
 
 // ✅ SOLUCIÓN
 if (newProduct) {
-  await recordEnhancedAssetHistory(historyService, 'create', userId, null, newProduct);
+  await recordEnhancedAssetHistory(
+    historyService,
+    'create',
+    userId,
+    null,
+    newProduct,
+  );
 }
 ```
 
 ### **Error: "Invalid ObjectId for team population"**
+
 ```typescript
 // ✅ SOLUCIÓN: El HistoryService ya maneja esto automáticamente
-// Los errores se logean como warnings, no rompen la funcionalidad
+// Los errores se manejan silenciosamente, no rompen la funcionalidad
 ```
 
 ### **Registros legacy no se muestran correctamente**
+
 ```typescript
 // ✅ SOLUCIÓN: Verificar que AssetHistoryCompatibility esté funcionando
 import { AssetHistoryCompatibility } from 'src/history/helpers/asset-compatibility.helper';
 
 const needsNormalization = AssetHistoryCompatibility.needsNormalization(record);
-console.log('Needs normalization:', needsNormalization);
+// Verificar si el registro necesita normalización
 ```
 
 ## 📊 Migración Recomendada

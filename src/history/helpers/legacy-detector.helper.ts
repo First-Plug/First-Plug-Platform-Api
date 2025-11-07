@@ -195,22 +195,4 @@ export class LegacyRecordDetector {
   private static hasWarehouseCountryCode(record: any): boolean {
     return !this.lacksWarehouseCountryCode(record);
   }
-
-  /**
-   * 🎯 Función de utilidad para logging/debugging
-   */
-  static getDetectionSummary(record: any): string {
-    const criteria = this.analyzeLegacyCriteria(record);
-    const isLegacy = this.isLegacyRecord(record);
-
-    const reasons: string[] = [];
-    if (criteria.hasLegacyContext) reasons.push('legacy-context');
-    if (criteria.createdBefore) reasons.push('created-before-migration');
-    if (criteria.hasUnformattedAssetData) reasons.push('unformatted-assets');
-    if (criteria.lacksWarehouseCountryCode)
-      reasons.push('no-warehouse-country-code');
-    if (criteria.hasSimpleOfficeDelete) reasons.push('simple-office-delete');
-
-    return `${isLegacy ? 'LEGACY' : 'NEW'} (${reasons.join(', ') || 'no-legacy-indicators'})`;
-  }
 }
