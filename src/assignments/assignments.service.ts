@@ -936,6 +936,7 @@ export class AssignmentsService {
       tenantName,
       providedConnection, // ✅ FIX: Pasar la conexión proporcionada
       userId, // ✅ FIX: Pasar userId para history
+      undefined, // oldMemberCountry (no aplica - producto viene de products collection)
     );
 
     return newMember;
@@ -1147,6 +1148,7 @@ export class AssignmentsService {
     tenantName?: string,
     providedConnection?: Connection,
     userId?: string,
+    oldMemberCountry?: string,
   ) {
     if (!tenantName) {
       throw new Error('tenantName is required to find and delete a product');
@@ -1245,22 +1247,13 @@ export class AssignmentsService {
     // 📜 HISTORY: Crear registro con información completa DESPUÉS de mover a member
     if (updateProductDto.actionType && userId) {
       try {
-        console.log('📜 [moveToMemberCollection] Creating history:', {
-          actionType: updateProductDto.actionType,
-          userId: userId,
-          productId: product._id,
-          oldLocation: product.location,
-          newLocation: updateProductDto.location,
-          newMemberCountry: newMember.country,
-        });
-
         await this.recordEnhancedAssetHistoryIfNeeded(
           updateProductDto.actionType as HistoryActionType,
-          product, // ✅ Producto original de products collection
-          updateData as any, // ✅ Producto final en member collection
+          product,
+          updateData as any,
           userId,
-          newMember.country, // newMemberCountry (country del member destino)
-          undefined, // oldMemberCountry (no aplica para products collection)
+          newMember.country,
+          oldMemberCountry,
         );
 
         console.log('✅ [moveToMemberCollection] History created successfully');
@@ -2003,6 +1996,7 @@ export class AssignmentsService {
         tenantName,
         connection, // ✅ FIX: Pasar la conexión
         userId, // ✅ FIX: Pasar userId para history
+        undefined, // oldMemberCountry (no aplica - producto viene de products collection)
       );
 
       // � Obtener el producto actualizado desde la colección de members
@@ -2398,6 +2392,7 @@ export class AssignmentsService {
         tenantName,
         connection, // ✅ FIX: Pasar la conexión
         userId, // ✅ FIX: Pasar userId para history
+        member.country, // ✅ FIX: Pasar country del member origen para history
       );
 
       // 📜 HISTORY: Se crea en moveToProductsCollection con información completa
