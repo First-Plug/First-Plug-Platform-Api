@@ -292,17 +292,6 @@ export class LogisticsService {
     ourOfficeEmail: string,
     providedConnection?: Connection,
   ): Promise<ShipmentDocument | null> {
-    console.log(
-      `🚢 [maybeCreateShipmentAndUpdateStatus] DEBUG - fp_shipment: ${updateDto.fp_shipment}, product.fp_shipment: ${product.fp_shipment}, actionType: ${actionType}`,
-    );
-    console.log(
-      `🚢 [maybeCreateShipmentAndUpdateStatus] DEBUG - oldData:`,
-      oldData,
-    );
-    console.log(
-      `🚢 [maybeCreateShipmentAndUpdateStatus] DEBUG - newData:`,
-      newData,
-    );
     if (!updateDto.fp_shipment || !actionType) return null;
 
     const desirableDateOrigin =
@@ -387,66 +376,71 @@ export class LogisticsService {
       );
 
       if (!updatedProduct) {
-        return shipment;
+        // ✅ Producto no encontrado en products collection (probablemente está en members.products)
+        // Continuar con la creación del history
       }
 
-      await this.globalProductSyncService.syncProduct({
-        tenantId: tenantName,
-        tenantName: tenantName,
-        originalProductId: updatedProduct._id as any,
-        sourceCollection: 'products',
-        name: updatedProduct.name || '',
-        category: updatedProduct.category || '',
-        status: updatedProduct.status, // ✅ Nuevo status "In Transit"
-        location: updatedProduct.location || '',
-        attributes: (updatedProduct.attributes || []).map((attr) => ({
-          key: attr.key || '',
-          value: String(attr.value || ''),
-        })),
-        serialNumber: updatedProduct.serialNumber || undefined,
-        assignedEmail: updatedProduct.assignedEmail,
-        assignedMember: updatedProduct.assignedMember,
-        lastAssigned: updatedProduct.lastAssigned,
-        acquisitionDate: updatedProduct.acquisitionDate,
-        price: updatedProduct.price,
-        additionalInfo: updatedProduct.additionalInfo,
-        productCondition: updatedProduct.productCondition,
-        recoverable: updatedProduct.recoverable,
-        fp_shipment: updatedProduct.fp_shipment, // ✅ true
-        activeShipment: updatedProduct.activeShipment, // ✅ true
-        isDeleted: updatedProduct.isDeleted,
-        fpWarehouse:
-          updatedProduct.fpWarehouse &&
-          updatedProduct.fpWarehouse.warehouseId &&
-          updatedProduct.fpWarehouse.warehouseCountryCode &&
-          updatedProduct.fpWarehouse.warehouseName
-            ? {
-                warehouseId: updatedProduct.fpWarehouse.warehouseId as any,
-                warehouseCountryCode:
-                  updatedProduct.fpWarehouse.warehouseCountryCode,
-                warehouseName: updatedProduct.fpWarehouse.warehouseName,
-                assignedAt: updatedProduct.fpWarehouse.assignedAt,
-                status:
-                  updatedProduct.fpWarehouse.status === 'IN_TRANSIT'
-                    ? 'IN_TRANSIT_IN'
-                    : (updatedProduct.fpWarehouse.status as any),
-              }
-            : undefined,
-        office:
-          updatedProduct.office &&
-          updatedProduct.office.officeId &&
-          updatedProduct.office.officeCountryCode &&
-          updatedProduct.office.officeName
-            ? {
-                officeId: updatedProduct.office.officeId as any,
-                officeCountryCode: updatedProduct.office.officeCountryCode,
-                officeName: updatedProduct.office.officeName,
-                assignedAt: updatedProduct.office.assignedAt,
-                isDefault: updatedProduct.office.isDefault,
-              }
-            : undefined,
-        sourceUpdatedAt: new Date(),
-      });
+      if (updatedProduct) {
+        await this.globalProductSyncService.syncProduct({
+          tenantId: tenantName,
+          tenantName: tenantName,
+          originalProductId: updatedProduct._id as any,
+          sourceCollection: 'products',
+          name: updatedProduct.name || '',
+          category: updatedProduct.category || '',
+          status: updatedProduct.status, // ✅ Nuevo status "In Transit"
+          location: updatedProduct.location || '',
+          attributes: (updatedProduct.attributes || []).map((attr) => ({
+            key: attr.key || '',
+            value: String(attr.value || ''),
+          })),
+          serialNumber: updatedProduct.serialNumber || undefined,
+          assignedEmail: updatedProduct.assignedEmail,
+          assignedMember: updatedProduct.assignedMember,
+          lastAssigned: updatedProduct.lastAssigned,
+          acquisitionDate: updatedProduct.acquisitionDate,
+          price: updatedProduct.price,
+          additionalInfo: updatedProduct.additionalInfo,
+          productCondition: updatedProduct.productCondition,
+          recoverable: updatedProduct.recoverable,
+          fp_shipment: updatedProduct.fp_shipment, // ✅ true
+          activeShipment: updatedProduct.activeShipment, // ✅ true
+          isDeleted: updatedProduct.isDeleted,
+          fpWarehouse:
+            updatedProduct.fpWarehouse &&
+            updatedProduct.fpWarehouse.warehouseId &&
+            updatedProduct.fpWarehouse.warehouseCountryCode &&
+            updatedProduct.fpWarehouse.warehouseName
+              ? {
+                  warehouseId: updatedProduct.fpWarehouse.warehouseId as any,
+                  warehouseCountryCode:
+                    updatedProduct.fpWarehouse.warehouseCountryCode,
+                  warehouseName: updatedProduct.fpWarehouse.warehouseName,
+                  assignedAt: updatedProduct.fpWarehouse.assignedAt,
+                  status:
+                    updatedProduct.fpWarehouse.status === 'IN_TRANSIT'
+                      ? 'IN_TRANSIT_IN'
+                      : (updatedProduct.fpWarehouse.status as any),
+                }
+              : undefined,
+          office:
+            updatedProduct.office &&
+            updatedProduct.office.officeId &&
+            updatedProduct.office.officeCountryCode &&
+            updatedProduct.office.officeName
+              ? {
+                  officeId: updatedProduct.office.officeId as any,
+                  officeCountryCode: updatedProduct.office.officeCountryCode,
+                  officeName: updatedProduct.office.officeName,
+                  assignedAt: updatedProduct.office.assignedAt,
+                  isDefault: updatedProduct.office.isDefault,
+                }
+              : undefined,
+          sourceUpdatedAt: new Date(),
+        });
+      } else {
+        // Skipping global sync because updatedProduct is null
+      }
     } catch (error) {
       console.error(
         `❌ [maybeCreateShipmentAndUpdateStatus] Global sync failed for product ${product._id}:`,
@@ -480,15 +474,22 @@ export class LogisticsService {
       tenantName,
     );
 
-    await recordEnhancedShipmentHistory(
-      this.historyService,
-      isConsolidated ? 'consolidate' : 'create',
-      userId,
-      isConsolidated ? (oldSnapshot as ShipmentDocument) : null,
-      shipment,
-      isConsolidated ? 'single-product' : undefined,
-      locationData,
-    );
+    try {
+      await recordEnhancedShipmentHistory(
+        this.historyService,
+        isConsolidated ? 'consolidate' : 'create',
+        userId,
+        isConsolidated ? (oldSnapshot as ShipmentDocument) : null,
+        shipment,
+        isConsolidated ? 'single-product' : undefined,
+        locationData,
+      );
+    } catch (error) {
+      console.error(
+        '❌ [maybeCreateShipmentAndUpdateStatus] Error creating shipment history:',
+        error,
+      );
+    }
 
     // TODO: Status New Shipment
     if (shipment.shipment_status === 'In Preparation' && !isConsolidated) {

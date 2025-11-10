@@ -1696,11 +1696,20 @@ export class ProductsService {
         );
       }
 
-      return {
+      const response = {
         message: `Product with id "${id}" updated successfully`,
         shipment: result.shipment ?? null,
         updatedProduct: result.updatedProduct ?? null,
       };
+
+      console.log('✅ [ProductsService.update] Returning response:', {
+        hasShipment: !!response.shipment,
+        hasUpdatedProduct: !!response.updatedProduct,
+        productId: response.updatedProduct?._id,
+        shipmentId: response.shipment?._id,
+      });
+
+      return response;
     } catch (error) {
       if (startedTransaction) {
         await internalSession.abortTransaction();
