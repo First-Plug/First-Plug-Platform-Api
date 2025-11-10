@@ -1250,6 +1250,7 @@ export class AssignmentsService {
     tenantName?: string,
     userId?: string,
   ) {
+    console.log(userId, 'userId');
     const productIndex = member.products.findIndex(
       (prod) => prod._id!.toString() === product._id!.toString(),
     );
@@ -1356,24 +1357,10 @@ export class AssignmentsService {
       );
     }
 
-    // 📜 HISTORY: Crear registro con información completa
-    if (updateProductDto.actionType && createdProducts.length > 0) {
-      try {
-        await this.recordEnhancedAssetHistoryIfNeeded(
-          updateProductDto.actionType as HistoryActionType,
-          product, // producto original del member
-          createdProducts[0], // producto creado con office/warehouse info
-          userId || '', // userId pasado como parámetro
-          undefined, // newMemberCountry (no aplica)
-          member.country, // oldMemberCountry (country del member origen)
-        );
-      } catch (error) {
-        this.logger.error(
-          '❌ Error creating history in moveToProductsCollection:',
-          error,
-        );
-      }
-    }
+    // 📜 HISTORY: NO crear aquí - se creará en handleProductFromMemberCollection después de asignar warehouse
+    console.log(
+      '📜 [moveToProductsCollection] History creation deferred to handleProductFromMemberCollection',
+    );
 
     return createdProducts;
   }
@@ -1777,6 +1764,25 @@ export class AssignmentsService {
       `✅ [handleProductLocationChangeWithinProducts] Successfully moved product ${product._id} from ${product.location} to ${updateDto.location}`,
     );
 
+    // 📜 HISTORY: Crear registro con información completa
+    if (updateDto.actionType && updatedProduct) {
+      try {
+        await this.recordEnhancedAssetHistoryIfNeeded(
+          updateDto.actionType as HistoryActionType,
+          product, // producto original (con office/warehouse anterior)
+          updatedProduct, // producto actualizado (con office/warehouse nuevo)
+          userId,
+          undefined, // newMemberCountry (no aplica para office/warehouse)
+          undefined, // oldMemberCountry (no aplica para office/warehouse)
+        );
+      } catch (error) {
+        this.logger.error(
+          '❌ Error creating history in handleProductLocationChangeWithinProducts:',
+          error,
+        );
+      }
+    }
+
     return {
       updatedProduct: updatedProduct,
       shipment: shipment || undefined,
@@ -1967,19 +1973,6 @@ export class AssignmentsService {
 
       // � Obtener el producto actualizado desde la colección de members
       await this.membersService.findByEmailNotThrowError(newMember.email);
-
-      // � Construir newData manualmente con los datos correctos
-      const newProductData = {
-        ...product.toObject(),
-        location: 'Employee',
-        assignedEmail: newMember.email,
-        assignedMember: `${newMember.firstName} ${newMember.lastName}`,
-        status: updateDto.status,
-        lastAssigned: calculatedLastAssigned || '',
-        // 🧹 Limpiar objetos de otras locations
-        fpWarehouse: undefined,
-        office: undefined,
-      };
 
       // 📜 HISTORY: Se crea en moveToProductsCollection con información completa
       // await this.recordEnhancedAssetHistoryIfNeeded(
@@ -2336,19 +2329,6 @@ export class AssignmentsService {
         connection, // ✅ FIX: Pasar la conexión
       );
 
-      // � Construir newData manualmente con los datos correctos (igual que el otro método)
-      const newProductData = {
-        ...product.toObject(),
-        location: 'Employee',
-        assignedEmail: newMember.email,
-        assignedMember: `${newMember.firstName} ${newMember.lastName}`,
-        status: updateDto.status,
-        lastAssigned: calculatedLastAssigned || '',
-        // 🧹 Limpiar objetos de otras locations
-        fpWarehouse: undefined,
-        office: undefined,
-      };
-
       // 📜 HISTORY: Se crea en moveToProductsCollection con información completa
       // await this.recordEnhancedAssetHistoryIfNeeded(
       //   updateDto.actionType as HistoryActionType,
@@ -2550,18 +2530,40 @@ export class AssignmentsService {
       if (!userId)
         throw new Error('❌ userId is undefined antes de crear history');
 
-      // 📜 HISTORY: Se crea en moveToProductsCollection con información completa
-      // await this.recordEnhancedAssetHistoryIfNeeded(
-      //   updateDto.actionType as HistoryActionType,
-      //   product as ProductDocument, // ✅ Producto original desde member collection
-      //   {
-      //     ...updatedProduct,
-      //     status: updateDto.status,
-      //     location: updateDto.location,
-      //   } as ProductDocument,
-      //   userId,
-      //   member.country, // 🏳️ Country code del member original para mostrar bandera
-      // );
+      // 📜 HISTORY: Crear registro con información completa DESPUÉS de asignar warehouse/office
+      try {
+        console.log(
+          '📜 [handleProductFromMemberCollection] Creating history:',
+          {
+            actionType: updateDto.actionType,
+            userId: userId,
+            productId: product._id,
+            oldLocation: product.location,
+            newLocation: updateDto.location,
+            memberCountry: member.country,
+            hasWarehouse: !!updatedProduct.fpWarehouse,
+            hasOffice: !!updatedProduct.office,
+          },
+        );
+
+        await this.recordEnhancedAssetHistoryIfNeeded(
+          updateDto.actionType as HistoryActionType,
+          product as ProductDocument, // ✅ Producto original desde member collection
+          updatedProduct, // ✅ Producto final con warehouse/office asignado
+          userId,
+          undefined, // newMemberCountry (no aplica)
+          member.country, // 🏳️ Country code del member original para mostrar bandera
+        );
+
+        console.log(
+          '✅ [handleProductFromMemberCollection] History created successfully',
+        );
+      } catch (error) {
+        this.logger.error(
+          '❌ Error creating history in handleProductFromMemberCollection:',
+          error,
+        );
+      }
 
       return {
         shipment: shipment ?? undefined,

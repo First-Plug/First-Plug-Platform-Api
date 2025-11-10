@@ -391,36 +391,43 @@ export class ShipmentHistoryFormatter {
 
   /**
    * Formatear datos completos de shipment para history
+   * ✅ MANTENER estructura original para compatibilidad con frontend
    */
   static formatShipmentData(
     shipment: ShipmentDocument,
     originLocationData?: any,
     destinationLocationData?: any,
   ) {
-    const originDetails = this.formatShipmentLocationDetails(
-      shipment.origin,
-      shipment.originDetails,
-      originLocationData,
-    );
+    // 🎯 CAPTURAR TODOS LOS CAMPOS del shipment (estructura completa)
+    const shipmentObj = shipment.toObject ? shipment.toObject() : shipment;
 
-    const destinationDetails = this.formatShipmentLocationDetails(
-      shipment.destination,
-      shipment.destinationDetails,
-      destinationLocationData,
-    );
+    // 📋 Crear copia completa excluyendo campos internos de MongoDB
+    const data: any = { ...shipmentObj };
 
-    return {
-      orderId: shipment.order_id,
-      origin: shipment.origin,
-      originDetails,
-      destination: shipment.destination,
-      destinationDetails,
-      shipmentStatus: shipment.shipment_status,
-      quantityProducts: shipment.quantity_products,
-      products:
-        shipment.products?.map((p) => ({
-          productId: p.toString(), // Los products en shipment son ObjectIds
-        })) || [],
-    };
+    // 🗑️ Eliminar campos internos de MongoDB que no necesitamos en history
+    delete data.__v;
+    delete data.isDeleted;
+    delete data.deletedAt;
+
+    // 🌍 Mejorar originDetails y destinationDetails si se proporcionan datos adicionales
+    if (originLocationData) {
+      const enhancedOriginDetails = this.formatShipmentLocationDetails(
+        shipment.origin,
+        shipment.originDetails,
+        originLocationData,
+      );
+      data.originDetails = enhancedOriginDetails;
+    }
+
+    if (destinationLocationData) {
+      const enhancedDestinationDetails = this.formatShipmentLocationDetails(
+        shipment.destination,
+        shipment.destinationDetails,
+        destinationLocationData,
+      );
+      data.destinationDetails = enhancedDestinationDetails;
+    }
+
+    return data;
   }
 }

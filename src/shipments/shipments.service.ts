@@ -992,47 +992,83 @@ export class ShipmentsService {
   }
 
   async getShipments(tenantName: string) {
-    await new Promise((resolve) => process.nextTick(resolve));
-    const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const ShipmentModel = this.getShipmentModel(connection);
+    try {
+      await new Promise((resolve) => process.nextTick(resolve));
+      const connection =
+        await this.tenantConnectionService.getTenantConnection(tenantName);
+      const ShipmentModel = this.getShipmentModel(connection);
 
-    const shipments = await ShipmentModel.find({ isDeleted: false }).sort({
-      createdAt: -1,
-    });
+      const shipments = await ShipmentModel.find({ isDeleted: false }).sort({
+        createdAt: -1,
+      });
 
-    // 🌍 TRANSFORM: Reemplazar "FP warehouse" con country code del warehouse
-    const transformedShipments = await Promise.all(
-      shipments.map(async (shipment) => {
-        const shipmentObj = shipment.toObject();
+      console.log(
+        `📦 Found ${shipments.length} shipments for tenant ${tenantName}`,
+      );
 
-        // Agregar warehouseCountryCode cuando location === "FP warehouse"
-        if (shipmentObj.snapshots && Array.isArray(shipmentObj.snapshots)) {
-          for (let i = 0; i < shipmentObj.snapshots.length; i++) {
-            const snapshot = shipmentObj.snapshots[i];
-            if (snapshot.location === 'FP warehouse') {
-              // Usar el products array para obtener el country code
-              const productId = shipmentObj.products?.[i]?.toString();
-              if (productId) {
-                const countryCode = await this.getWarehouseCountryCode(
-                  productId,
-                  tenantName,
-                  connection,
-                );
-                if (countryCode) {
-                  // ✅ AGREGAR campo warehouseCountryCode, NO reemplazar location
-                  (snapshot as any).warehouseCountryCode = countryCode;
+      // 🌍 TRANSFORM: Reemplazar "FP warehouse" con country code del warehouse
+      const transformedShipments = await Promise.all(
+        shipments.map(async (shipment) => {
+          try {
+            const shipmentObj = shipment.toObject();
+
+            // ✅ Asegurar que snapshots siempre sea un array
+            if (
+              !shipmentObj.snapshots ||
+              !Array.isArray(shipmentObj.snapshots)
+            ) {
+              shipmentObj.snapshots = [];
+            }
+
+            // ✅ Validar que snapshots existe y es array
+            if (shipmentObj.snapshots && Array.isArray(shipmentObj.snapshots)) {
+              for (let i = 0; i < shipmentObj.snapshots.length; i++) {
+                const snapshot = shipmentObj.snapshots[i];
+                if (snapshot && snapshot.location === 'FP warehouse') {
+                  // ✅ Validar que products existe y tiene el índice
+                  const productId = shipmentObj.products?.[i]?.toString();
+                  if (productId) {
+                    try {
+                      const countryCode = await this.getWarehouseCountryCode(
+                        productId,
+                        tenantName,
+                        connection,
+                      );
+                      if (countryCode) {
+                        // ✅ AGREGAR campo warehouseCountryCode, NO reemplazar location
+                        (snapshot as any).warehouseCountryCode = countryCode;
+                      }
+                    } catch (error) {
+                      console.error(
+                        `Error getting warehouse country code for product ${productId}:`,
+                        error,
+                      );
+                      // Continuar sin el country code
+                    }
+                  }
                 }
               }
             }
+
+            return shipmentObj;
+          } catch (error) {
+            console.error('Error transforming shipment:', error);
+            // Devolver el shipment original sin transformaciones
+            return shipment.toObject();
           }
-        }
+        }),
+      );
 
-        return shipmentObj;
-      }),
-    );
-
-    return transformedShipments;
+      // ✅ Asegurar que siempre devolvemos un array válido
+      const result = Array.isArray(transformedShipments)
+        ? transformedShipments
+        : [];
+      console.log(`✅ Returning ${result.length} transformed shipments`);
+      return result;
+    } catch (error) {
+      console.error('❌ Error in getShipments:', error);
+      return []; // Devolver array vacío en caso de error
+    }
   }
 
   /**
