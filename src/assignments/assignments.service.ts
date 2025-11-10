@@ -1777,6 +1777,25 @@ export class AssignmentsService {
       `✅ [handleProductLocationChangeWithinProducts] Successfully moved product ${product._id} from ${product.location} to ${updateDto.location}`,
     );
 
+    // 📜 HISTORY: Crear registro con información completa
+    if (updateDto.actionType && updatedProduct) {
+      try {
+        await this.recordEnhancedAssetHistoryIfNeeded(
+          updateDto.actionType as HistoryActionType,
+          product, // producto original (con office/warehouse anterior)
+          updatedProduct, // producto actualizado (con office/warehouse nuevo)
+          userId,
+          undefined, // newMemberCountry (no aplica para office/warehouse)
+          undefined, // oldMemberCountry (no aplica para office/warehouse)
+        );
+      } catch (error) {
+        this.logger.error(
+          '❌ Error creating history in handleProductLocationChangeWithinProducts:',
+          error,
+        );
+      }
+    }
+
     return {
       updatedProduct: updatedProduct,
       shipment: shipment || undefined,
@@ -1967,19 +1986,6 @@ export class AssignmentsService {
 
       // � Obtener el producto actualizado desde la colección de members
       await this.membersService.findByEmailNotThrowError(newMember.email);
-
-      // � Construir newData manualmente con los datos correctos
-      const newProductData = {
-        ...product.toObject(),
-        location: 'Employee',
-        assignedEmail: newMember.email,
-        assignedMember: `${newMember.firstName} ${newMember.lastName}`,
-        status: updateDto.status,
-        lastAssigned: calculatedLastAssigned || '',
-        // 🧹 Limpiar objetos de otras locations
-        fpWarehouse: undefined,
-        office: undefined,
-      };
 
       // 📜 HISTORY: Se crea en moveToProductsCollection con información completa
       // await this.recordEnhancedAssetHistoryIfNeeded(
@@ -2335,19 +2341,6 @@ export class AssignmentsService {
         tenantName,
         connection, // ✅ FIX: Pasar la conexión
       );
-
-      // � Construir newData manualmente con los datos correctos (igual que el otro método)
-      const newProductData = {
-        ...product.toObject(),
-        location: 'Employee',
-        assignedEmail: newMember.email,
-        assignedMember: `${newMember.firstName} ${newMember.lastName}`,
-        status: updateDto.status,
-        lastAssigned: calculatedLastAssigned || '',
-        // 🧹 Limpiar objetos de otras locations
-        fpWarehouse: undefined,
-        office: undefined,
-      };
 
       // 📜 HISTORY: Se crea en moveToProductsCollection con información completa
       // await this.recordEnhancedAssetHistoryIfNeeded(
