@@ -38,10 +38,7 @@ import { AssignmentsService } from 'src/assignments/assignments.service';
 import { EventTypes } from 'src/infra/event-bus/types';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { LogisticsService } from 'src/logistics/logistics.sevice';
-import {
-  normalizeSerialForHistory,
-  recordEnhancedAssetHistory,
-} from './helpers/history.helper';
+import { recordEnhancedAssetHistory } from './helpers/history.helper';
 import { GlobalProductSyncService } from './services/global-product-sync.service';
 
 export interface ProductModel
@@ -434,15 +431,18 @@ export class ProductsService {
       if (member) {
         assignedMember = this.getFullName(member);
 
-        await this.historyService.create({
-          actionType: 'create',
-          itemType: 'assets',
-          userId: userId,
-          changes: {
-            oldData: null,
-            newData: member.products.at(-1) as Product,
-          },
-        });
+        // 📜 HISTORY: Crear registro con formato completo incluyendo country
+        const createdProduct = member.products.at(-1) as ProductDocument;
+        await recordEnhancedAssetHistory(
+          this.historyService,
+          'create',
+          userId,
+          null, // oldProduct
+          createdProduct, // newProduct
+          undefined, // context
+          member.country, // newMemberCountry
+          undefined, // oldMemberCountry
+        );
 
         return member.products.at(-1);
       }
@@ -745,14 +745,46 @@ export class ProductsService {
         }
       }
 
-      // Registrar el historial
+      // 📜 HISTORY: Registrar el historial con formato completo incluyendo country
+      // Crear un mapa de email -> country para evitar múltiples consultas
+      const memberCountryMap = new Map<string, string>();
+      for (const [, memberInfo] of productMemberMap.entries()) {
+        if (memberInfo.memberEmail) {
+          const member = await this.simpleFindByEmail(
+            memberInfo.memberEmail,
+            tenantName,
+          );
+          if (member?.country) {
+            memberCountryMap.set(memberInfo.memberEmail, member.country);
+          }
+        }
+      }
+
+      const { AssetHistoryFormatter } = await import(
+        '../history/helpers/history-formatters.helper'
+      );
+
+      const formattedProducts = createdProducts.map((product) => {
+        // Obtener country del member si está asignado
+        const memberCountry = product.assignedEmail
+          ? memberCountryMap.get(product.assignedEmail)
+          : undefined;
+
+        return AssetHistoryFormatter.formatAssetData(
+          product,
+          product.assignedMember,
+          undefined, // context
+          memberCountry, // country del member
+        );
+      });
+
       await this.historyService.create({
         actionType: 'bulk-create',
         itemType: 'assets',
         userId: userId,
         changes: {
           oldData: null,
-          newData: createdProducts,
+          newData: formattedProducts,
         },
       });
 
@@ -1951,15 +1983,38 @@ export class ProductsService {
           }
         }
 
-        await this.historyService.create({
-          actionType: 'delete',
-          itemType: 'assets',
+        // 📜 HISTORY: Crear registro con formato completo incluyendo country
+        let memberCountry: string | undefined;
+
+        // Si el producto estaba asignado a un member, obtener su country
+        if (changes.oldData?.assignedEmail) {
+          try {
+            const member = await this.simpleFindByEmail(
+              changes.oldData.assignedEmail,
+              tenantName,
+            );
+            memberCountry = member?.country;
+          } catch (error) {
+            console.warn(
+              'Could not find member for country in delete history:',
+              error,
+            );
+          }
+        }
+
+        // Para productos en FP warehouse o Our office, el country ya está en fpWarehouse.warehouseCountryCode o office.officeCountryCode
+        // El AssetHistoryFormatter.formatAssetData() se encargará de extraerlo automáticamente
+
+        await recordEnhancedAssetHistory(
+          this.historyService,
+          'delete',
           userId,
-          changes: {
-            oldData: normalizeSerialForHistory(changes.oldData),
-            newData: null,
-          },
-        });
+          changes.oldData as ProductDocument, // oldProduct
+          null, // newProduct
+          undefined, // context
+          undefined, // newMemberCountry
+          memberCountry, // oldMemberCountry
+        );
 
         await session.commitTransaction();
 
