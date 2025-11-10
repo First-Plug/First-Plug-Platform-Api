@@ -305,7 +305,7 @@ export class AssetHistoryFormatter {
     data.assignedMember = assignedMember || data.assignedMember || '';
     data.lastAssigned = data.lastAssigned || '';
 
-    // 🏳️ Agregar country code según la location
+    // 🏳️ Agregar country code y location details según la location
     if (product.location === 'Employee') {
       const countryCode = this.extractMemberCountryCode(
         product.location,
@@ -319,6 +319,18 @@ export class AssetHistoryFormatter {
       product.office?.officeCountryCode
     ) {
       data.country = product.office.officeCountryCode;
+      // ✅ AGREGAR: Incluir nombre de la oficina
+      console.log('🏢 [DEBUG] Office data:', {
+        hasOffice: !!product.office,
+        officeName: product.office?.officeName,
+        officeCountryCode: product.office?.officeCountryCode,
+      });
+      if (product.office.officeName) {
+        data.officeName = product.office.officeName;
+        console.log('✅ [DEBUG] Added officeName:', data.officeName);
+      } else {
+        console.log('❌ [DEBUG] No officeName found');
+      }
     } else if (
       product.location === 'FP warehouse' &&
       product.fpWarehouse?.warehouseCountryCode
