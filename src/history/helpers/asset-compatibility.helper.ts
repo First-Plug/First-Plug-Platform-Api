@@ -74,6 +74,7 @@ export class AssetHistoryCompatibility {
       'additionalInfo',
       'lastAssigned',
       'country', // 🏳️ Country code para mostrar banderas
+      'officeName', // 🏢 Nombre de la oficina para "Our office"
     ];
 
     // Incluir campos esenciales
