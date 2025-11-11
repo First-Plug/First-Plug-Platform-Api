@@ -1,30 +1,45 @@
 import { MongoClient, ObjectId } from 'mongodb';
 import { countryCodes } from '../../shipments/helpers/countryCodes';
+import { config } from 'dotenv';
 
 /**
  * Script directo para inicializar warehouses sin NestJS
  * Conecta directamente a MongoDB
  */
 
-// URI de conexión para testing
-const MONGO_URI =
-  'mongodb+srv://santiago:2025devs%2B@firstplug-dev.qxiv5.mongodb.net/firstPlug';
+// Cargar variables de entorno
+config();
 
 async function initializeWarehousesDirectly() {
   console.log('🚀 Starting direct warehouses initialization...');
+
+  // Obtener URI de conexión desde variables de entorno
+  const mongoUri = process.env.DB_CONNECTION_STRING || process.env.MONGO_URI;
+  if (!mongoUri) {
+    throw new Error(
+      '❌ No se encontró DB_CONNECTION_STRING o MONGO_URI en las variables de entorno',
+    );
+  }
+
   console.log(
-    `🔗 Connecting to: ${MONGO_URI.replace(/\/\/.*:.*@/, '//***:***@')}`,
+    `🔗 Connecting to: ${mongoUri.replace(/\/\/.*:.*@/, '//***:***@')}`,
   );
 
-  const client = new MongoClient(MONGO_URI);
+  const client = new MongoClient(mongoUri);
 
   try {
     // Conectar a MongoDB
     await client.connect();
     console.log('✅ Connected to MongoDB');
 
-    // Obtener la base de datos firstPlug
-    const db = client.db('firstPlug');
+    // Determinar qué base de datos usar basado en la URI
+    let dbName = 'main'; // Por defecto para producción
+    if (mongoUri.includes('firstplug-dev')) {
+      dbName = 'firstPlug'; // Para desarrollo
+    }
+
+    console.log(`📂 Using database: ${dbName}`);
+    const db = client.db(dbName);
     const warehousesCollection = db.collection('warehouses');
 
     // Obtener todos los países

@@ -56,7 +56,10 @@
     "validate:multi-office": "ts-node -r tsconfig-paths/register src/scripts/validation/multi-office-validation.ts",
     "migrate:multi-office:complete": "ts-node -r tsconfig-paths/register src/scripts/migration/run-multi-office-migration.ts",
     "migrate:multi-office:enhanced": "ts-node -r tsconfig-paths/register src/scripts/migration/multi-office-enhanced-migration.ts",
-    "migrate:single-tenant": "ts-node -r tsconfig-paths/register src/scripts/migration/single-tenant-office-migration-simple.ts"
+    "migrate:single-tenant": "ts-node -r tsconfig-paths/register src/scripts/migration/single-tenant-office-migration-simple.ts",
+    "fix:office-country-codes": "ts-node -r tsconfig-paths/register scripts/fix-office-country-codes.ts",
+    "fix:member-country-codes": "ts-node -r tsconfig-paths/register scripts/fix-member-country-codes.ts",
+    "fix:shipment-country-codes": "ts-node -r tsconfig-paths/register scripts/fix-shipment-country-codes.ts"
   },
   "dependencies": {
     "@anatine/zod-nestjs": "^2.0.8",
