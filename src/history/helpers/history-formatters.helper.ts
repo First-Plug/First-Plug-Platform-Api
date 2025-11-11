@@ -63,18 +63,11 @@ export class OfficeHistoryFormatter {
   /**
    * Formatear datos de oficina para history - DELETE
    */
-  static formatForDelete(
-    office: Office,
-    nonRecoverableProducts?: Array<{ serialNumber: string; name: string }>,
-  ) {
+  static formatForDelete(office: Office) {
     return {
       name: office.name,
       country: office.country,
       isDefault: office.isDefault,
-      ...(nonRecoverableProducts &&
-        nonRecoverableProducts.length > 0 && {
-          nonRecoverableProducts,
-        }),
     };
   }
 }
@@ -139,13 +132,14 @@ export class AssetHistoryFormatter {
     // 🎯 Attributes obligatorios que SIEMPRE se incluyen en UPDATE
     const mandatoryAttributes = ['brand', 'model'];
 
-    // 🎯 Incluir attributes obligatorios SIEMPRE
-    for (const key of mandatoryAttributes) {
-      if (!changes.oldData.attributes) changes.oldData.attributes = {};
-      if (!changes.newData.attributes) changes.newData.attributes = {};
+    // 🎯 SIEMPRE inicializar attributes como array (OBLIGATORIO para frontend)
+    changes.oldData.attributes = [];
+    changes.newData.attributes = [];
 
-      changes.oldData.attributes[key] = oldAttrs[key] || null;
-      changes.newData.attributes[key] = newAttrs[key] || null;
+    // 🎯 Incluir attributes obligatorios SIEMPRE (como array)
+    for (const key of mandatoryAttributes) {
+      changes.oldData.attributes.push({ key, value: oldAttrs[key] || null });
+      changes.newData.attributes.push({ key, value: newAttrs[key] || null });
     }
 
     const allAttrKeys = new Set([
@@ -159,11 +153,21 @@ export class AssetHistoryFormatter {
       const newValue = newAttrs[key];
 
       if (oldValue !== newValue && !mandatoryAttributes.includes(key)) {
-        if (!changes.oldData.attributes) changes.oldData.attributes = {};
-        if (!changes.newData.attributes) changes.newData.attributes = {};
+        // Agregar a oldData.attributes como array
+        const oldAttr = changes.oldData.attributes.find(
+          (attr: any) => attr.key === key,
+        );
+        if (!oldAttr) {
+          changes.oldData.attributes.push({ key, value: oldValue || null });
+        }
 
-        changes.oldData.attributes[key] = oldValue || null;
-        changes.newData.attributes[key] = newValue || null;
+        // Agregar a newData.attributes como array
+        const newAttr = changes.newData.attributes.find(
+          (attr: any) => attr.key === key,
+        );
+        if (!newAttr) {
+          changes.newData.attributes.push({ key, value: newValue || null });
+        }
       }
     }
 
@@ -186,6 +190,14 @@ export class AssetHistoryFormatter {
       if (newCountry) {
         changes.newData.country = newCountry;
       }
+    }
+
+    // 🔒 GARANTIZAR que attributes siempre sea array (nunca undefined/null)
+    if (!Array.isArray(changes.oldData.attributes)) {
+      changes.oldData.attributes = [];
+    }
+    if (!Array.isArray(changes.newData.attributes)) {
+      changes.newData.attributes = [];
     }
 
     return changes;
@@ -293,7 +305,7 @@ export class AssetHistoryFormatter {
     data.assignedMember = assignedMember || data.assignedMember || '';
     data.lastAssigned = data.lastAssigned || '';
 
-    // 🏳️ Agregar country code solo si es Employee (SIMPLIFICADO)
+    // 🏳️ Agregar country code y location details según la location
     if (product.location === 'Employee') {
       const countryCode = this.extractMemberCountryCode(
         product.location,
@@ -302,11 +314,30 @@ export class AssetHistoryFormatter {
       if (countryCode) {
         data.country = countryCode;
       }
+    } else if (
+      product.location === 'Our office' &&
+      product.office?.officeCountryCode
+    ) {
+      data.country = product.office.officeCountryCode;
+      // ✅ AGREGAR: Incluir nombre de la oficina
+      if (product.office.officeName) {
+        data.officeName = product.office.officeName;
+      }
+    } else if (
+      product.location === 'FP warehouse' &&
+      product.fpWarehouse?.warehouseCountryCode
+    ) {
+      data.country = product.fpWarehouse.warehouseCountryCode;
     }
 
     // 🔧 Agregar campos adicionales si se proporcionan
     if (additionalFields) {
       Object.assign(data, additionalFields);
+    }
+
+    // 🔒 GARANTIZAR que attributes siempre sea array (nunca undefined/null)
+    if (!Array.isArray(data.attributes)) {
+      data.attributes = [];
     }
 
     return data;
@@ -364,36 +395,43 @@ export class ShipmentHistoryFormatter {
 
   /**
    * Formatear datos completos de shipment para history
+   * ✅ MANTENER estructura original para compatibilidad con frontend
    */
   static formatShipmentData(
     shipment: ShipmentDocument,
     originLocationData?: any,
     destinationLocationData?: any,
   ) {
-    const originDetails = this.formatShipmentLocationDetails(
-      shipment.origin,
-      shipment.originDetails,
-      originLocationData,
-    );
+    // 🎯 CAPTURAR TODOS LOS CAMPOS del shipment (estructura completa)
+    const shipmentObj = shipment.toObject ? shipment.toObject() : shipment;
 
-    const destinationDetails = this.formatShipmentLocationDetails(
-      shipment.destination,
-      shipment.destinationDetails,
-      destinationLocationData,
-    );
+    // 📋 Crear copia completa excluyendo campos internos de MongoDB
+    const data: any = { ...shipmentObj };
 
-    return {
-      orderId: shipment.order_id,
-      origin: shipment.origin,
-      originDetails,
-      destination: shipment.destination,
-      destinationDetails,
-      shipmentStatus: shipment.shipment_status,
-      quantityProducts: shipment.quantity_products,
-      products:
-        shipment.products?.map((p) => ({
-          productId: p.toString(), // Los products en shipment son ObjectIds
-        })) || [],
-    };
+    // 🗑️ Eliminar campos internos de MongoDB que no necesitamos en history
+    delete data.__v;
+    delete data.isDeleted;
+    delete data.deletedAt;
+
+    // 🌍 Mejorar originDetails y destinationDetails si se proporcionan datos adicionales
+    if (originLocationData) {
+      const enhancedOriginDetails = this.formatShipmentLocationDetails(
+        shipment.origin,
+        shipment.originDetails,
+        originLocationData,
+      );
+      data.originDetails = enhancedOriginDetails;
+    }
+
+    if (destinationLocationData) {
+      const enhancedDestinationDetails = this.formatShipmentLocationDetails(
+        shipment.destination,
+        shipment.destinationDetails,
+        destinationLocationData,
+      );
+      data.destinationDetails = enhancedDestinationDetails;
+    }
+
+    return data;
   }
 }

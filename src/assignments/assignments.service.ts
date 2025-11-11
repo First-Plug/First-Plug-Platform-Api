@@ -901,6 +901,7 @@ export class AssignmentsService {
     updateProductDto: UpdateProductDto,
     tenantName: string,
     providedConnection?: Connection,
+    userId?: string,
   ) {
     const newMember = await this.membersService.findByEmailNotThrowError(
       updateProductDto.assignedEmail!,
@@ -934,6 +935,8 @@ export class AssignmentsService {
       calculatedLastAssigned || '',
       tenantName,
       providedConnection, // ✅ FIX: Pasar la conexión proporcionada
+      userId, // ✅ FIX: Pasar userId para history
+      undefined, // oldMemberCountry (no aplica - producto viene de products collection)
     );
 
     return newMember;
@@ -1144,6 +1147,8 @@ export class AssignmentsService {
     lastAssigned: string,
     tenantName?: string,
     providedConnection?: Connection,
+    userId?: string,
+    oldMemberCountry?: string,
   ) {
     if (!tenantName) {
       throw new Error('tenantName is required to find and delete a product');
@@ -1238,6 +1243,27 @@ export class AssignmentsService {
         },
       );
     }
+
+    // 📜 HISTORY: Crear registro con información completa DESPUÉS de mover a member
+    if (updateProductDto.actionType && userId) {
+      try {
+        await this.recordEnhancedAssetHistoryIfNeeded(
+          updateProductDto.actionType as HistoryActionType,
+          product,
+          updateData as any,
+          userId,
+          newMember.country,
+          oldMemberCountry,
+        );
+
+        console.log('✅ [moveToMemberCollection] History created successfully');
+      } catch (error) {
+        this.logger.error(
+          '❌ Error creating history in moveToMemberCollection:',
+          error,
+        );
+      }
+    }
   }
 
   // Metodo para mover un producto de un miembro a la colección de productos
@@ -1248,7 +1274,9 @@ export class AssignmentsService {
     updateProductDto: UpdateProductDto,
     connection: Connection,
     tenantName?: string,
+    userId?: string,
   ) {
+    console.log(userId, 'userId');
     const productIndex = member.products.findIndex(
       (prod) => prod._id!.toString() === product._id!.toString(),
     );
@@ -1354,6 +1382,11 @@ export class AssignmentsService {
         `⚠️ [moveToProductsCollection] Sync skipped - tenantName: ${tenantName}, createdProducts.length: ${createdProducts.length}`,
       );
     }
+
+    // 📜 HISTORY: NO crear aquí - se creará en handleProductFromMemberCollection después de asignar warehouse
+    console.log(
+      '📜 [moveToProductsCollection] History creation deferred to handleProductFromMemberCollection',
+    );
 
     return createdProducts;
   }
@@ -1696,14 +1729,14 @@ export class AssignmentsService {
       );
     }
 
-    // 📜 HISTORY: Registrar cambios con formato mejorado
-    await this.recordEnhancedAssetHistoryIfNeeded(
-      updateDto.actionType as HistoryActionType,
-      product, // producto original
-      updatedProduct, // producto actualizado
-      userId,
-      undefined, // no member country for generic updates
-    );
+    // 📜 HISTORY: Se crea en moveToProductsCollection con información completa
+    // await this.recordEnhancedAssetHistoryIfNeeded(
+    //   updateDto.actionType as HistoryActionType,
+    //   product, // producto original
+    //   updatedProduct, // producto actualizado
+    //   userId,
+    //   undefined, // no member country for generic updates
+    // );
 
     // 🔄 SYNC FINAL: Sincronizar producto actualizado a colección global
     try {
@@ -1756,6 +1789,25 @@ export class AssignmentsService {
     this.logger.log(
       `✅ [handleProductLocationChangeWithinProducts] Successfully moved product ${product._id} from ${product.location} to ${updateDto.location}`,
     );
+
+    // 📜 HISTORY: Crear registro con información completa
+    if (updateDto.actionType && updatedProduct) {
+      try {
+        await this.recordEnhancedAssetHistoryIfNeeded(
+          updateDto.actionType as HistoryActionType,
+          product, // producto original (con office/warehouse anterior)
+          updatedProduct, // producto actualizado (con office/warehouse nuevo)
+          userId,
+          undefined, // newMemberCountry (no aplica para office/warehouse)
+          undefined, // oldMemberCountry (no aplica para office/warehouse)
+        );
+      } catch (error) {
+        this.logger.error(
+          '❌ Error creating history in handleProductLocationChangeWithinProducts:',
+          error,
+        );
+      }
+    }
 
     return {
       updatedProduct: updatedProduct,
@@ -1943,32 +1995,21 @@ export class AssignmentsService {
         calculatedLastAssigned || '',
         tenantName,
         connection, // ✅ FIX: Pasar la conexión
+        userId, // ✅ FIX: Pasar userId para history
+        undefined, // oldMemberCountry (no aplica - producto viene de products collection)
       );
 
       // � Obtener el producto actualizado desde la colección de members
       await this.membersService.findByEmailNotThrowError(newMember.email);
 
-      // � Construir newData manualmente con los datos correctos
-      const newProductData = {
-        ...product.toObject(),
-        location: 'Employee',
-        assignedEmail: newMember.email,
-        assignedMember: `${newMember.firstName} ${newMember.lastName}`,
-        status: updateDto.status,
-        lastAssigned: calculatedLastAssigned || '',
-        // 🧹 Limpiar objetos de otras locations
-        fpWarehouse: undefined,
-        office: undefined,
-      };
-
-      // �📜 HISTORY: Usar método mejorado con country del member
-      await this.recordEnhancedAssetHistoryIfNeeded(
-        updateDto.actionType as HistoryActionType,
-        product, // producto original
-        newProductData as ProductDocument, // ✅ Producto construido manualmente
-        userId,
-        newMember.country, // 🏳️ Country code del member para mostrar bandera
-      );
+      // 📜 HISTORY: Se crea en moveToProductsCollection con información completa
+      // await this.recordEnhancedAssetHistoryIfNeeded(
+      //   updateDto.actionType as HistoryActionType,
+      //   product, // producto original
+      //   newProductData as ProductDocument, // ✅ Producto construido manualmente
+      //   userId,
+      //   newMember.country, // 🏳️ Country code del member para mostrar bandera
+      // );
 
       return {
         shipment: shipment ?? undefined,
@@ -2063,6 +2104,42 @@ export class AssignmentsService {
       } catch (error) {
         this.logger.error(
           `❌ [handleProductFromProductsCollection] Error in final sync:`,
+          error,
+        );
+      }
+    }
+
+    // 📜 HISTORY: Crear registro con información completa DESPUÉS de asignar warehouse/office
+    if (updateDto.actionType) {
+      try {
+        console.log(
+          '📜 [handleProductFromProductsCollection] Creating history:',
+          {
+            actionType: updateDto.actionType,
+            userId: userId,
+            productId: product._id,
+            oldLocation: product.location,
+            newLocation: updateDto.location,
+            hasWarehouse: !!updatedProduct.fpWarehouse,
+            hasOffice: !!updatedProduct.office,
+          },
+        );
+
+        await this.recordEnhancedAssetHistoryIfNeeded(
+          updateDto.actionType as HistoryActionType,
+          product, // ✅ Producto original
+          updatedProduct, // ✅ Producto final con warehouse/office asignado
+          userId,
+          undefined, // newMemberCountry (no aplica)
+          undefined, // oldMemberCountry (no aplica para products collection)
+        );
+
+        console.log(
+          '✅ [handleProductFromProductsCollection] History created successfully',
+        );
+      } catch (error) {
+        this.logger.error(
+          '❌ Error creating history in handleProductFromProductsCollection:',
           error,
         );
       }
@@ -2314,30 +2391,19 @@ export class AssignmentsService {
         calculatedLastAssigned || '',
         tenantName,
         connection, // ✅ FIX: Pasar la conexión
+        userId, // ✅ FIX: Pasar userId para history
+        member.country, // ✅ FIX: Pasar country del member origen para history
       );
 
-      // � Construir newData manualmente con los datos correctos (igual que el otro método)
-      const newProductData = {
-        ...product.toObject(),
-        location: 'Employee',
-        assignedEmail: newMember.email,
-        assignedMember: `${newMember.firstName} ${newMember.lastName}`,
-        status: updateDto.status,
-        lastAssigned: calculatedLastAssigned || '',
-        // 🧹 Limpiar objetos de otras locations
-        fpWarehouse: undefined,
-        office: undefined,
-      };
-
-      // 📜 HISTORY: Usar método mejorado con country del member original y nuevo
-      await this.recordEnhancedAssetHistoryIfNeeded(
-        updateDto.actionType as HistoryActionType,
-        oldProductData as ProductDocument,
-        newProductData as ProductDocument, // ✅ Producto construido manualmente
-        userId,
-        newMember.country, // 🏳️ Country code del member destino
-        member.country, // 🏳️ Country code del member origen
-      );
+      // 📜 HISTORY: Se crea en moveToProductsCollection con información completa
+      // await this.recordEnhancedAssetHistoryIfNeeded(
+      //   updateDto.actionType as HistoryActionType,
+      //   oldProductData as ProductDocument,
+      //   newProductData as ProductDocument, // ✅ Producto construido manualmente
+      //   userId,
+      //   newMember.country, // 🏳️ Country code del member destino
+      //   member.country, // 🏳️ Country code del member origen
+      // );
 
       return { shipment: shipment ?? undefined, updatedProduct: product };
     }
@@ -2373,6 +2439,7 @@ export class AssignmentsService {
         connection,
         member,
         tenantName, // ✅ FIX: Pasar tenantName para sincronización
+        userId, // ✅ FIX: Pasar userId para history
       );
       const updatedProduct = unassigned?.[0];
       if (!updatedProduct) throw new Error('Failed to unassign product');
@@ -2529,18 +2596,40 @@ export class AssignmentsService {
       if (!userId)
         throw new Error('❌ userId is undefined antes de crear history');
 
-      // 📜 HISTORY: Usar método mejorado con country del member original
-      await this.recordEnhancedAssetHistoryIfNeeded(
-        updateDto.actionType as HistoryActionType,
-        product as ProductDocument, // ✅ Producto original desde member collection
-        {
-          ...updatedProduct,
-          status: updateDto.status,
-          location: updateDto.location,
-        } as ProductDocument,
-        userId,
-        member.country, // 🏳️ Country code del member original para mostrar bandera
-      );
+      // 📜 HISTORY: Crear registro con información completa DESPUÉS de asignar warehouse/office
+      try {
+        console.log(
+          '📜 [handleProductFromMemberCollection] Creating history:',
+          {
+            actionType: updateDto.actionType,
+            userId: userId,
+            productId: product._id,
+            oldLocation: product.location,
+            newLocation: updateDto.location,
+            memberCountry: member.country,
+            hasWarehouse: !!updatedProduct.fpWarehouse,
+            hasOffice: !!updatedProduct.office,
+          },
+        );
+
+        await this.recordEnhancedAssetHistoryIfNeeded(
+          updateDto.actionType as HistoryActionType,
+          product as ProductDocument, // ✅ Producto original desde member collection
+          updatedProduct, // ✅ Producto final con warehouse/office asignado
+          userId,
+          undefined, // newMemberCountry (no aplica)
+          member.country, // 🏳️ Country code del member original para mostrar bandera
+        );
+
+        console.log(
+          '✅ [handleProductFromMemberCollection] History created successfully',
+        );
+      } catch (error) {
+        this.logger.error(
+          '❌ Error creating history in handleProductFromMemberCollection:',
+          error,
+        );
+      }
 
       return {
         shipment: shipment ?? undefined,
@@ -2579,6 +2668,7 @@ export class AssignmentsService {
     connection: Connection,
     currentMember?: MemberDocument,
     tenantName?: string,
+    userId?: string,
   ) {
     if (currentMember) {
       console.log('🔁 Llamando a moveToProductsCollection...');
@@ -2589,6 +2679,7 @@ export class AssignmentsService {
         updateProductDto,
         connection,
         tenantName,
+        userId,
       );
       return created;
     } else {
@@ -2699,12 +2790,50 @@ export class AssignmentsService {
         );
 
         updatedProducts.push(result.updatedProduct);
-        historyNewData.push({
+        // 🏳️ Preparar datos para newData con country y officeName si aplica
+        const newDataEntry: any = {
           productId: product._id,
           newLocation: updateDto.location,
           assignedEmail: updateDto.assignedEmail,
           assignedMember: updateDto.assignedMember,
-        });
+        };
+
+        // Agregar country según la nueva location
+        if (updateDto.location === 'Our office') {
+          // Para Our office, obtener country y officeName del resultado
+          if (result.updatedProduct?.office) {
+            newDataEntry.country =
+              result.updatedProduct.office.officeCountryCode;
+            newDataEntry.officeName = result.updatedProduct.office.officeName;
+          }
+        } else if (updateDto.location === 'FP warehouse') {
+          // Para FP warehouse, obtener country del resultado
+          if (result.updatedProduct?.fpWarehouse) {
+            newDataEntry.country =
+              result.updatedProduct.fpWarehouse.warehouseCountryCode;
+          }
+        } else if (
+          updateDto.location === 'Employee' &&
+          updateDto.assignedEmail
+        ) {
+          // Para Employee, obtener country del member destino
+          try {
+            const destinationMember = await this.membersService.findByEmail(
+              updateDto.assignedEmail,
+              session,
+            );
+            if (destinationMember?.country) {
+              newDataEntry.country = destinationMember.country;
+            }
+          } catch (error) {
+            console.warn(
+              'Could not find destination member for country in offboarding:',
+              error,
+            );
+          }
+        }
+
+        historyNewData.push(newDataEntry);
       }
 
       await this.membersService.softDeleteMember(memberId, tenantName, true);
@@ -2722,6 +2851,7 @@ export class AssignmentsService {
             products: initialMember.products.map((p) => ({
               ...p,
               lastAssigned: assignedEmail,
+              country: member.country, // 🏳️ Agregar country del member en oldData
             })),
           },
           newData: {

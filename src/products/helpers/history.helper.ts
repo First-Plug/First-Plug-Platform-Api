@@ -2,25 +2,11 @@ import { CreateHistoryDto } from 'src/history/dto/create-history.dto';
 import { HistoryService } from 'src/history/history.service';
 import { AssetHistoryFormatter } from 'src/history/helpers/history-formatters.helper';
 import { ProductDocument } from '../schemas/product.schema';
-
-type HistoryActionType =
-  | 'create'
-  | 'update'
-  | 'delete'
-  | 'bulk-delete'
-  | 'bulk-create'
-  | 'offboarding'
-  | 'return'
-  | 'relocate'
-  | 'assign'
-  | 'reassign'
-  | 'unassign'
-  | 'cancel'
-  | 'consolidate';
-
-type HistoryContext = 'single-product' | 'shipment-merge';
-
-type HistoryData = Record<string, any> | Record<string, any>[] | null;
+import {
+  HistoryActionType,
+  HistoryContext,
+  HistoryData,
+} from 'src/history/types/history.types';
 
 /**
  * 📦 Registrar history de assets con formato mejorado
@@ -138,4 +124,66 @@ export const normalizeSerialForHistory = (product: any) => {
     ...plain,
     serialNumber: plain.serialNumber || plain.lastSerialNumber || null,
   };
+};
+
+/**
+ * 🎯 Helper para decidir qué función de history usar
+ * Recomienda usar Enhanced para nuevos desarrollos, Original para compatibilidad
+ */
+export const AssetHistoryHelper = {
+  /**
+   * 📦 Usar función original (compatible con registros legacy)
+   * Recomendado para: migraciones, compatibilidad hacia atrás
+   */
+  useOriginal: recordAssetHistory,
+
+  /**
+   * 🚀 Usar función Enhanced (formato nuevo con más detalles)
+   * Recomendado para: nuevos desarrollos, funcionalidades que requieren location details
+   */
+  useEnhanced: recordEnhancedAssetHistory,
+
+  /**
+   * 🤔 Decidir automáticamente qué función usar basado en contexto
+   */
+  auto: async (
+    historyService: HistoryService,
+    actionType: HistoryActionType,
+    userId: string,
+    oldProduct: ProductDocument | null,
+    newProduct: ProductDocument | null,
+    context?: HistoryContext,
+    options?: {
+      preferEnhanced?: boolean;
+      memberCountry?: string;
+      oldMemberCountry?: string;
+    },
+  ) => {
+    // Si se especifica preferencia por Enhanced y se tienen los datos necesarios
+    if (options?.preferEnhanced && (oldProduct || newProduct)) {
+      return recordEnhancedAssetHistory(
+        historyService,
+        actionType,
+        userId,
+        oldProduct,
+        newProduct,
+        context,
+        options.memberCountry,
+        options.oldMemberCountry,
+      );
+    }
+
+    // Fallback a función original con datos normalizados
+    const oldData = oldProduct ? normalizeSerialForHistory(oldProduct) : null;
+    const newData = newProduct ? normalizeSerialForHistory(newProduct) : null;
+
+    return recordAssetHistory(
+      historyService,
+      actionType,
+      userId,
+      oldData,
+      newData,
+      context,
+    );
+  },
 };
