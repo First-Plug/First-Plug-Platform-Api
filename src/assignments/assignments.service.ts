@@ -2790,12 +2790,50 @@ export class AssignmentsService {
         );
 
         updatedProducts.push(result.updatedProduct);
-        historyNewData.push({
+        // 🏳️ Preparar datos para newData con country y officeName si aplica
+        const newDataEntry: any = {
           productId: product._id,
           newLocation: updateDto.location,
           assignedEmail: updateDto.assignedEmail,
           assignedMember: updateDto.assignedMember,
-        });
+        };
+
+        // Agregar country según la nueva location
+        if (updateDto.location === 'Our office') {
+          // Para Our office, obtener country y officeName del resultado
+          if (result.updatedProduct?.office) {
+            newDataEntry.country =
+              result.updatedProduct.office.officeCountryCode;
+            newDataEntry.officeName = result.updatedProduct.office.officeName;
+          }
+        } else if (updateDto.location === 'FP warehouse') {
+          // Para FP warehouse, obtener country del resultado
+          if (result.updatedProduct?.fpWarehouse) {
+            newDataEntry.country =
+              result.updatedProduct.fpWarehouse.warehouseCountryCode;
+          }
+        } else if (
+          updateDto.location === 'Employee' &&
+          updateDto.assignedEmail
+        ) {
+          // Para Employee, obtener country del member destino
+          try {
+            const destinationMember = await this.membersService.findByEmail(
+              updateDto.assignedEmail,
+              session,
+            );
+            if (destinationMember?.country) {
+              newDataEntry.country = destinationMember.country;
+            }
+          } catch (error) {
+            console.warn(
+              'Could not find destination member for country in offboarding:',
+              error,
+            );
+          }
+        }
+
+        historyNewData.push(newDataEntry);
       }
 
       await this.membersService.softDeleteMember(memberId, tenantName, true);
@@ -2813,6 +2851,7 @@ export class AssignmentsService {
             products: initialMember.products.map((p) => ({
               ...p,
               lastAssigned: assignedEmail,
+              country: member.country, // 🏳️ Agregar country del member en oldData
             })),
           },
           newData: {

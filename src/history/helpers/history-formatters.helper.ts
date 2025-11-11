@@ -320,16 +320,8 @@ export class AssetHistoryFormatter {
     ) {
       data.country = product.office.officeCountryCode;
       // ✅ AGREGAR: Incluir nombre de la oficina
-      console.log('🏢 [DEBUG] Office data:', {
-        hasOffice: !!product.office,
-        officeName: product.office?.officeName,
-        officeCountryCode: product.office?.officeCountryCode,
-      });
       if (product.office.officeName) {
         data.officeName = product.office.officeName;
-        console.log('✅ [DEBUG] Added officeName:', data.officeName);
-      } else {
-        console.log('❌ [DEBUG] No officeName found');
       }
     } else if (
       product.location === 'FP warehouse' &&
