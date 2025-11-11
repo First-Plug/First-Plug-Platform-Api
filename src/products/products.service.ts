@@ -40,6 +40,7 @@ import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { LogisticsService } from 'src/logistics/logistics.sevice';
 import { recordEnhancedAssetHistory } from './helpers/history.helper';
 import { GlobalProductSyncService } from './services/global-product-sync.service';
+import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -159,6 +160,7 @@ export class ProductsService {
     @Inject(forwardRef(() => LogisticsService))
     private readonly logisticsService: LogisticsService,
     private readonly globalProductSyncService: GlobalProductSyncService,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   onModuleInit() {
@@ -1870,8 +1872,11 @@ export class ProductsService {
     while (retries < maxRetries) {
       try {
         session.startTransaction();
-        // Usar el modelo de la misma conexión para evitar conflictos de sesión
-        const ProductModel = connection.model('Product', ProductSchema) as any;
+        // ✅ FIX: Usar la misma conexión para obtener el ProductModel
+        const ProductModel = connection.model(
+          Product.name,
+          ProductSchema,
+        ) as any;
         console.log(
           `🔍 [softDelete] Looking for product ${id} in products collection`,
         );
@@ -1903,7 +1908,7 @@ export class ProductsService {
           product.lastSerialNumber = product.serialNumber || undefined;
           product.serialNumber = undefined;
           product.isDeleted = true;
-          product.deleteAt = new Date();
+          product.deletedAt = new Date(); // ✅ FIX: Establecer fecha de eliminación
 
           await product.save();
 
@@ -1955,6 +1960,7 @@ export class ProductsService {
                   lastSerialNumber: memberProduct.product.serialNumber,
                   lastAssigned: memberProduct.member.email,
                   status: 'Deprecated',
+                  deletedAt: new Date(), // ✅ FIX: Establecer fecha de eliminación
                 },
               ],
               { session },
@@ -2019,6 +2025,25 @@ export class ProductsService {
         await session.commitTransaction();
 
         session.endSession();
+
+        // 🔔 Notificar al cliente mediante websocket sobre la eliminación del producto
+        const tenant = await this.tenantsService.getByTenantName(tenantName);
+        if (tenant && tenant._id) {
+          this.eventsGateway.notifyTenant(
+            tenant.tenantName.toString(),
+            'data-changed',
+            {
+              data: {
+                productId: id.toString(),
+                message: `Product with id ${id} has been soft deleted`,
+                timestamp: new Date().toISOString(),
+              },
+            },
+          );
+          this.logger.log(
+            `🔔 Websocket notification sent for deleted product ${id} to tenant ${tenant._id}`,
+          );
+        }
 
         return { message: `Product with id ${id} has been soft deleted` };
       } catch (error) {

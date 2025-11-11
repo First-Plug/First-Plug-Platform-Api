@@ -19,6 +19,7 @@ import {
 } from './schemas/global-product.schema';
 import { GlobalProductSyncService } from './services/global-product-sync.service';
 import { LastAssignedHelper } from './helpers/last-assigned.helper';
+import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { LastAssignedHelper } from './helpers/last-assigned.helper';
     JwtService,
     GlobalProductSyncService,
     LastAssignedHelper,
+    EventsGateway,
   ],
   exports: [
     ProductsService,
