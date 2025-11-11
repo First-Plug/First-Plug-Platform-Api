@@ -1,9 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { IncomingWebhook } from '@slack/webhook';
+import { countryCodes } from 'src/shipments/helpers/countryCodes';
 
 @Injectable()
 export class SlackService {
   private readonly logger = new Logger(SlackService.name);
+
+  /**
+   * Obtener nombre del país desde código de país
+   */
+  private getCountryNameFromCode(countryCode: string): string {
+    // Crear un mapa inverso: código -> nombre
+    const codeToName = Object.entries(countryCodes).reduce(
+      (acc, [name, code]) => {
+        acc[code] = name;
+        return acc;
+      },
+      {} as Record<string, string>,
+    );
+
+    return codeToName[countryCode] || countryCode;
+  }
 
   async sendMessage(message: any): Promise<void> {
     try {
@@ -143,6 +160,95 @@ export class SlackService {
     } catch (error) {
       console.error('Error sending notification to Slack:', error);
       throw new Error('Failed to send notification to Slack');
+    }
+  }
+
+  /**
+   * Notificar cuando se envían productos a un warehouse default
+   * Indica que se necesita buscar un partner real en esa ubicación
+   */
+  async notifyDefaultWarehouseUsage(
+    userName: string,
+    tenantName: string,
+    countryName: string,
+    countryCode: string,
+    action: 'assign' | 'reassign' | 'return',
+    productCount: number = 1,
+  ): Promise<void> {
+    try {
+      // TODO: Definir canal específico para warehouse notifications
+      const webhookUrl = process.env.SLACK_WEBHOOK_URL_WAREHOUSE_ALERTS;
+
+      if (!webhookUrl) {
+        return;
+      }
+
+      const actionText = {
+        assign: 'asignado',
+        reassign: 'reasignado',
+        return: 'devuelto',
+      }[action];
+
+      const productText = productCount === 1 ? 'producto' : 'productos';
+
+      // Obtener el nombre real del país desde el código
+      const realCountryName = this.getCountryNameFromCode(countryCode);
+
+      const message = {
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*${realCountryName} no tiene un warehouse activo*`,
+            },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `El usuario *${userName}* del tenant *${tenantName}* ha ${actionText} ${productCount} ${productText} al warehouse del país *${realCountryName}* (${countryCode}).`,
+            },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `⚠️ *Es necesario buscar un partner en esta ubicación* para reemplazar el warehouse temporal.`,
+            },
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: `Tenant: *${tenantName}* | País: ${realCountryName} (${countryCode}) | Acción: ${action}`,
+              },
+            ],
+          },
+        ],
+      };
+
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Failed to send Slack message: ${response.statusText} - ${errorText}`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error sending default warehouse notification to Slack:`,
+        error,
+      );
+      // No lanzar error para no fallar la operación principal
     }
   }
 }

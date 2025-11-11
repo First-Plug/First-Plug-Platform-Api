@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
+import { CountryHelper } from '../../common/helpers/country.helper';
 import { softDeletePlugin } from 'soft-delete-plugin-mongoose';
 
 @Schema({ timestamps: true })
@@ -18,7 +19,19 @@ export class Office extends Document {
   @Prop({ type: String, default: '' })
   phone: string;
 
-  @Prop({ type: String, default: '' })
+  @Prop({
+    type: String,
+    default: '',
+    validate: {
+      validator: function (value: string) {
+        // Permitir valores vacíos para compatibilidad durante migración
+        if (!value || value === '') return true;
+        return CountryHelper.isValidCountryCode(value);
+      },
+      message:
+        'Country must be a valid ISO 3166-1 alpha-2 code (e.g., AR, BR, US) or special internal code (OO, FP)',
+    },
+  })
   country: string;
 
   @Prop({ type: String, default: '' })
@@ -44,6 +57,12 @@ export class Office extends Document {
 
   @Prop({ default: false })
   isDeleted: boolean;
+
+  @Prop({ default: null })
+  deletedAt: Date;
+
+  @Prop({ default: false })
+  activeShipments: boolean; // Flag para indicar si tiene shipments "On The Way"
 }
 
 export const OfficeSchema =

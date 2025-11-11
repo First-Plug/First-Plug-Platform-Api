@@ -11,7 +11,7 @@ import { ShipmentDocument, ShipmentSchema } from './schema/shipment.schema';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { TenantsService } from 'src/tenants/tenants.service';
 import { TenantUserAdapterService } from 'src/common/services/tenant-user-adapter.service';
-import { countryCodes } from 'src/shipments/helpers/countryCodes';
+import { CountryHelper } from 'src/common/helpers/country.helper';
 import { ProductDocument } from 'src/products/schemas/product.schema';
 import {
   ShipmentMetadata,
@@ -27,6 +27,7 @@ import { LogisticsService } from 'src/logistics/logistics.sevice';
 import { OfficesService } from '../offices/offices.service';
 import { UsersService } from '../users/users.service';
 import { EventsGateway } from '../infra/event-bus/events.gateway';
+import { ShipmentOfficeCoordinatorService } from './services/shipment-office-coordinator.service';
 
 @Injectable()
 export class ShipmentsService {
@@ -44,6 +45,7 @@ export class ShipmentsService {
     private readonly officesService: OfficesService,
     private readonly usersService: UsersService,
     private readonly eventsGateway: EventsGateway,
+    public readonly shipmentOfficeCoordinator: ShipmentOfficeCoordinatorService,
   ) {}
 
   /**
@@ -138,19 +140,31 @@ export class ShipmentsService {
   }
 
   private getCountryCode(country: string): string {
+    // Usar el helper centralizado para validación y normalización
+    const normalized = CountryHelper.validateAndNormalize(country);
+    if (normalized) {
+      return normalized;
+    }
+
+    // Casos especiales para compatibilidad durante migración
     if (country === 'Our office') {
       return 'OO';
     }
 
-    return countryCodes[country] || 'XX';
+    // Fallback para códigos no válidos
+    return 'XX';
   }
 
   public getLocationCode(
     locationName: string,
     locationDetails?: Record<string, any>,
+    officeId?: string,
   ): string {
     if (locationName === 'FP warehouse') return 'FP';
     if (locationName === 'Our office') return 'OO';
+
+    // ✅ FIX: Si tiene officeId, es una oficina específica, usar código "OO"
+    if (officeId) return 'OO';
 
     return locationDetails?.country
       ? this.getCountryCode(locationDetails.country)
@@ -163,6 +177,8 @@ export class ShipmentsService {
     assignedEmail?: string,
     assignedMember?: string,
     desirableDate?: string,
+    officeId?: string,
+    warehouseCountryCode?: string,
   ): Promise<{
     name: string;
     code: string;
@@ -174,20 +190,37 @@ export class ShipmentsService {
         code: 'FP',
         details: {
           desirableDate: desirableDate || '',
+          country: warehouseCountryCode || '', // 🏭 Incluir countryCode del warehouse
         },
       };
     }
 
     if (location === 'Our office') {
-      // ✅ Obtener datos de la colección offices en lugar del tenant
-      const office = await this.officesService.getDefaultOffice(tenantId);
-      if (!office)
-        throw new NotFoundException(
-          `Default office not found for tenant ${tenantId}`,
+      let office;
+
+      // Si se proporciona officeId específico, usar esa oficina
+      if (officeId) {
+        office = await this.officesService.findByIdAndTenant(
+          new Types.ObjectId(officeId),
+          tenantId,
         );
+        if (!office) {
+          throw new NotFoundException(
+            `Office with id ${officeId} not found for tenant ${tenantId}`,
+          );
+        }
+      } else {
+        // Fallback a oficina default para compatibilidad
+        office = await this.officesService.getDefaultOffice(tenantId);
+        if (!office) {
+          throw new BadRequestException(
+            `No default office found for tenant ${tenantId}. Please create an office first or specify an officeId.`,
+          );
+        }
+      }
 
       return {
-        name: 'Our office',
+        name: office.name, // ✅ FIX: Usar el nombre específico de la oficina
         code: 'OO',
         details: {
           address: office.address || '',
@@ -197,7 +230,7 @@ export class ShipmentsService {
           country: office.country || '',
           zipCode: office.zipCode || '',
           phone: office.phone || '',
-          email: office.email || '', // ✅ Email de la oficina real
+          email: office.email || '',
           desirableDate: desirableDate || '',
         },
       };
@@ -273,6 +306,8 @@ export class ShipmentsService {
     orderOrigin: string,
     orderDestination: string,
     orderNumber: number,
+    originOfficeId?: string,
+    destinationOfficeId?: string,
   ): string {
     if (!orderOrigin || !orderDestination || orderNumber === undefined) {
       throw new Error('❌ Parámetros inválidos para generar el Order ID');
@@ -281,11 +316,15 @@ export class ShipmentsService {
     const originCode =
       orderOrigin.length === 2
         ? orderOrigin
-        : this.getLocationCode(orderOrigin);
+        : this.getLocationCode(orderOrigin, undefined, originOfficeId);
     const destinationCode =
       orderDestination.length === 2
         ? orderDestination
-        : this.getLocationCode(orderDestination);
+        : this.getLocationCode(
+            orderDestination,
+            undefined,
+            destinationOfficeId,
+          );
 
     const orderNumberFormatted = orderNumber.toString().padStart(4, '0');
     return `${originCode}${destinationCode}${orderNumberFormatted}`;
@@ -310,11 +349,13 @@ export class ShipmentsService {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string;
     },
     newData?: {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string;
     },
     desirableOriginDate?: string,
     desirableDestinationDate?: string,
@@ -328,6 +369,7 @@ export class ShipmentsService {
       oldData?.assignedEmail || '',
       oldData?.assignedMember || '',
       desirableOriginDate,
+      oldData?.officeId,
     );
 
     const destinationInfo = await this.getLocationInfo(
@@ -336,6 +378,7 @@ export class ShipmentsService {
       newData?.assignedEmail || '',
       newData?.assignedMember || '',
       desirableDestinationDate,
+      newData?.officeId,
     );
 
     return {
@@ -360,11 +403,15 @@ export class ShipmentsService {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string;
+      warehouseCountryCode?: string; // 🏭 Agregar warehouseCountryCode para FP warehouse
     },
     newData?: {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string;
+      warehouseCountryCode?: string; // 🏭 Agregar warehouseCountryCode para FP warehouse
     },
     providedProduct?: ProductDocument,
     providedConnection?: Connection,
@@ -372,6 +419,10 @@ export class ShipmentsService {
     shipment: ShipmentDocument;
     isConsolidated: boolean;
     oldSnapshot?: Partial<ShipmentDocument>;
+    officeIds?: {
+      originOfficeId?: mongoose.Types.ObjectId;
+      destinationOfficeId?: mongoose.Types.ObjectId;
+    };
   }> {
     if (!userId) {
       throw new Error('❌ User ID is required');
@@ -391,6 +442,8 @@ export class ShipmentsService {
       destination,
       orderOrigin,
       orderDestination,
+      originLocation,
+      destinationLocation,
       originDetails,
       destinationDetails,
       destinationComplete,
@@ -462,7 +515,51 @@ export class ShipmentsService {
       orderOrigin,
       orderDestination,
       nextNumber,
+      oldData?.officeId,
+      newData?.officeId,
     );
+
+    // 🏢 Determinar officeIds para el shipment
+    let shipmentOriginOfficeId: mongoose.Types.ObjectId | undefined;
+    let shipmentDestinationOfficeId: mongoose.Types.ObjectId | undefined;
+
+    // Si origin es "Our office", obtener el officeId
+    if (originLocation === 'Our office') {
+      if (oldData?.officeId) {
+        shipmentOriginOfficeId = new mongoose.Types.ObjectId(oldData.officeId);
+      } else {
+        // Fallback a oficina default
+        const defaultOffice =
+          await this.officesService.getDefaultOffice(tenantName);
+        if (defaultOffice) {
+          shipmentOriginOfficeId = defaultOffice._id;
+        } else {
+          throw new BadRequestException(
+            `No default office found for tenant ${tenantName}. Cannot create shipment from "Our office" without specifying an officeId.`,
+          );
+        }
+      }
+    }
+
+    // Si destination es "Our office", obtener el officeId
+    if (destinationLocation === 'Our office') {
+      if (newData?.officeId) {
+        shipmentDestinationOfficeId = new mongoose.Types.ObjectId(
+          newData.officeId,
+        );
+      } else {
+        // Fallback a oficina default
+        const defaultOffice =
+          await this.officesService.getDefaultOffice(tenantName);
+        if (defaultOffice) {
+          shipmentDestinationOfficeId = defaultOffice._id;
+        } else {
+          throw new BadRequestException(
+            `No default office found for tenant ${tenantName}. Cannot create shipment to "Our office" without specifying an officeId.`,
+          );
+        }
+      }
+    }
 
     // ✅ FIX: Usar session en create para evitar conflictos de MongoClient
     const newShipmentArray = await ShipmentModel.create(
@@ -477,6 +574,12 @@ export class ShipmentsService {
           originDetails,
           destination,
           destinationDetails,
+          ...(shipmentOriginOfficeId && {
+            originOfficeId: shipmentOriginOfficeId,
+          }),
+          ...(shipmentDestinationOfficeId && {
+            destinationOfficeId: shipmentDestinationOfficeId,
+          }),
           products: [productObjectId],
           type: 'shipments',
           order_date: new Date(),
@@ -547,7 +650,21 @@ export class ShipmentsService {
       );
     }
 
-    return { shipment: newShipment, isConsolidated: false };
+    return {
+      shipment: newShipment,
+      isConsolidated: false,
+      // Devolver los IDs de oficinas para actualizar flags después del commit
+      officeIds: {
+        originOfficeId: newShipment.originOfficeId
+          ? new mongoose.Types.ObjectId(newShipment.originOfficeId.toString())
+          : undefined,
+        destinationOfficeId: newShipment.destinationOfficeId
+          ? new mongoose.Types.ObjectId(
+              newShipment.destinationOfficeId.toString(),
+            )
+          : undefined,
+      },
+    };
   }
 
   async findConsolidateAndUpdateShipment(
@@ -611,8 +728,7 @@ export class ShipmentsService {
     });
 
     if (consolidable) {
-      const productIds = shipment.products.map((p) => p.toString());
-      console.log('🔍 Productos en el shipment a consolidar:', productIds);
+      shipment.products.map((p) => p.toString());
 
       await this.logisticsService.addProductsAndSnapshotsToShipment(
         consolidable,
@@ -696,11 +812,28 @@ export class ShipmentsService {
         await this.logisticsService.isShipmentDetailsComplete(shipment);
 
       const oldStatus = shipment.shipment_status;
-      shipment.shipment_status = isReady
-        ? 'In Preparation'
-        : 'On Hold - Missing Data';
+      const newStatus = isReady ? 'In Preparation' : 'On Hold - Missing Data';
+      shipment.shipment_status = newStatus;
 
       await shipment.save();
+
+      // 🏢 UPDATE: Coordinar actualización de flags de oficinas si el estado cambió
+      if (oldStatus !== newStatus) {
+        const originOfficeId = shipment.originOfficeId
+          ? new mongoose.Types.ObjectId(shipment.originOfficeId.toString())
+          : null;
+        const destinationOfficeId = shipment.destinationOfficeId
+          ? new mongoose.Types.ObjectId(shipment.destinationOfficeId.toString())
+          : null;
+
+        await this.shipmentOfficeCoordinator.handleShipmentStatusChange(
+          originOfficeId,
+          destinationOfficeId,
+          oldStatus,
+          newStatus,
+          tenantName,
+        );
+      }
 
       await recordShipmentHistory(
         this.historyService,
@@ -720,6 +853,7 @@ export class ShipmentsService {
             productId.toString(),
             connection,
             session,
+            tenantName,
           );
         }
       }
@@ -840,16 +974,127 @@ export class ShipmentsService {
     shipment.shipment_status = 'Cancelled';
     await shipment.save();
 
+    // 🏢 UPDATE: Coordinar actualización de flags de oficinas después de cancelación
+    const originOfficeId = shipment.originOfficeId
+      ? new mongoose.Types.ObjectId(shipment.originOfficeId.toString())
+      : null;
+    const destinationOfficeId = shipment.destinationOfficeId
+      ? new mongoose.Types.ObjectId(shipment.destinationOfficeId.toString())
+      : null;
+
+    await this.shipmentOfficeCoordinator.handleShipmentCancelled(
+      originOfficeId,
+      destinationOfficeId,
+      tenantName,
+    );
+
     return shipment;
   }
 
   async getShipments(tenantName: string) {
-    await new Promise((resolve) => process.nextTick(resolve));
-    const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const ShipmentModel = this.getShipmentModel(connection);
+    try {
+      await new Promise((resolve) => process.nextTick(resolve));
+      const connection =
+        await this.tenantConnectionService.getTenantConnection(tenantName);
+      const ShipmentModel = this.getShipmentModel(connection);
 
-    return ShipmentModel.find({ isDeleted: false }).sort({ createdAt: -1 });
+      const shipments = await ShipmentModel.find({ isDeleted: false }).sort({
+        createdAt: -1,
+      });
+
+      console.log(
+        `📦 Found ${shipments.length} shipments for tenant ${tenantName}`,
+      );
+
+      // 🌍 TRANSFORM: Reemplazar "FP warehouse" con country code del warehouse
+      const transformedShipments = await Promise.all(
+        shipments.map(async (shipment) => {
+          try {
+            const shipmentObj = shipment.toObject();
+
+            // ✅ Asegurar que snapshots siempre sea un array
+            if (
+              !shipmentObj.snapshots ||
+              !Array.isArray(shipmentObj.snapshots)
+            ) {
+              shipmentObj.snapshots = [];
+            }
+
+            // ✅ Validar que snapshots existe y es array
+            if (shipmentObj.snapshots && Array.isArray(shipmentObj.snapshots)) {
+              for (let i = 0; i < shipmentObj.snapshots.length; i++) {
+                const snapshot = shipmentObj.snapshots[i];
+                if (snapshot && snapshot.location === 'FP warehouse') {
+                  // ✅ Validar que products existe y tiene el índice
+                  const productId = shipmentObj.products?.[i]?.toString();
+                  if (productId) {
+                    try {
+                      const countryCode = await this.getWarehouseCountryCode(
+                        productId,
+                        tenantName,
+                        connection,
+                      );
+                      if (countryCode) {
+                        // ✅ AGREGAR campo warehouseCountryCode, NO reemplazar location
+                        (snapshot as any).warehouseCountryCode = countryCode;
+                      }
+                    } catch (error) {
+                      console.error(
+                        `Error getting warehouse country code for product ${productId}:`,
+                        error,
+                      );
+                      // Continuar sin el country code
+                    }
+                  }
+                }
+              }
+            }
+
+            return shipmentObj;
+          } catch (error) {
+            console.error('Error transforming shipment:', error);
+            // Devolver el shipment original sin transformaciones
+            return shipment.toObject();
+          }
+        }),
+      );
+
+      // ✅ Asegurar que siempre devolvemos un array válido
+      const result = Array.isArray(transformedShipments)
+        ? transformedShipments
+        : [];
+      console.log(`✅ Returning ${result.length} transformed shipments`);
+      return result;
+    } catch (error) {
+      console.error('❌ Error in getShipments:', error);
+      return []; // Devolver array vacío en caso de error
+    }
+  }
+
+  /**
+   * 🌍 Helper para obtener el country code del warehouse de un producto
+   */
+  private async getWarehouseCountryCode(
+    productId: string,
+    tenantName: string,
+    connection: Connection,
+  ): Promise<string | null> {
+    try {
+      const ProductModel = connection.model('Product');
+      const product = await ProductModel.findById(productId);
+
+      if (product?.fpWarehouse?.warehouseCountryCode) {
+        return product.fpWarehouse.warehouseCountryCode;
+      }
+
+      return null;
+    } catch (error) {
+      console.error(
+        `Error getting warehouse country code for product ${productId}:`,
+        error,
+      );
+      return null;
+    }
   }
 
   async getShipmentById(id: Types.ObjectId, tenantName: string) {

@@ -6,7 +6,6 @@ import {
   Patch,
   Post,
   Delete,
-  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -14,7 +13,6 @@ import { Types } from 'mongoose';
 import { OfficesService } from './offices.service';
 import { CreateOfficeDto, UpdateOfficeDto } from './dto';
 import { GetOfficesByTenantsDto } from './dto/get-offices-by-tenants.dto';
-import { NotFoundException } from '@nestjs/common';
 import { JwtGuard } from '../auth/guard/jwt.guard';
 import { SuperAdminGuard } from '../common/guards/super-admin.guard';
 import { Request } from 'express';
@@ -51,8 +49,15 @@ export class OfficesController {
     const user = (request as any).user;
     const tenantName = user.tenantName;
 
-    // 🔧 La oficina se crea automáticamente al crear la base de datos
+    // 🔧 Buscar oficina default - puede no existir si no se ha creado manualmente
     const office = await this.officesService.getDefaultOffice(tenantName);
+
+    if (!office) {
+      return {
+        message: 'No default office found. Please create an office first.',
+        office: null,
+      };
+    }
 
     return office;
   }
@@ -74,42 +79,134 @@ export class OfficesController {
     );
   }
 
+  /**
+   * Crear nueva oficina para el tenant del usuario autenticado
+   */
+  @UseGuards(JwtGuard)
   @Post()
-  async create(@Body() createOfficeDto: CreateOfficeDto) {
-    return this.officesService.create(createOfficeDto);
+  async create(
+    @Body() createOfficeDto: CreateOfficeDto,
+    @Req() request: Request,
+  ) {
+    const user = (request as any).user;
+    const tenantName = user.tenantName;
+    const tenantId = new Types.ObjectId(user.tenantId);
+
+    return this.officesService.createOffice(
+      tenantName,
+      tenantId,
+      createOfficeDto,
+      user._id,
+    );
   }
 
+  /**
+   * Obtener todas las oficinas del tenant del usuario autenticado
+   */
+  @UseGuards(JwtGuard)
   @Get()
-  async findAll(@Query('tenantId') tenantId: string) {
-    if (!tenantId) {
-      throw new NotFoundException('Missing tenantId in query params');
-    }
-    return this.officesService.findAllByTenant(new Types.ObjectId(tenantId));
+  async findAll(@Req() request: Request) {
+    const user = (request as any).user;
+    const tenantName = user.tenantName;
+
+    const offices = await this.officesService.findAllByTenantName(tenantName);
+
+    // Agregar información de estado para cada oficina
+    const officesWithStatus = await Promise.all(
+      offices.map(async (office) => {
+        const hasAssignedProducts =
+          await this.officesService.hasAssignedProducts(office._id, tenantName);
+        const hasActiveShipments = await this.officesService.hasActiveShipments(
+          office._id,
+          tenantName,
+        );
+        const hasOnTheWayShipments =
+          await this.officesService.hasOnTheWayShipments(
+            office._id,
+            tenantName,
+          );
+
+        return {
+          ...office.toObject(),
+          hasAssignedProducts,
+          hasActiveShipments,
+          hasOnTheWayShipments, // Para bloquear edición
+        };
+      }),
+    );
+
+    return officesWithStatus;
   }
 
+  /**
+   * Obtener oficina específica por ID
+   */
+  @UseGuards(JwtGuard)
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    return this.officesService.findById(new Types.ObjectId(id));
+  async findOne(@Param('id') id: string, @Req() request: Request) {
+    const user = (request as any).user;
+    const tenantName = user.tenantName;
+
+    return this.officesService.findByIdAndTenant(
+      new Types.ObjectId(id),
+      tenantName,
+    );
   }
 
+  /**
+   * Actualizar oficina específica
+   */
+  @UseGuards(JwtGuard)
   @Patch(':id')
   async update(
     @Param('id') id: string,
     @Body() updateOfficeDto: UpdateOfficeDto,
-    @Req() req: any,
+    @Req() request: Request,
   ) {
-    const userId = req.user?._id || 'system';
+    const user = (request as any).user;
+    const tenantName = user.tenantName;
+    const userId = user._id;
 
-    return this.officesService.update(
+    return this.officesService.updateOffice(
       new Types.ObjectId(id),
+      tenantName,
       updateOfficeDto,
       userId,
     );
   }
 
+  /**
+   * Marcar oficina como default (y desmarcar las demás)
+   */
+  @UseGuards(JwtGuard)
+  @Patch(':id/toggle-default')
+  async toggleDefault(@Param('id') id: string, @Req() request: Request) {
+    const user = (request as any).user;
+    const tenantName = user.tenantName;
+    const userId = user._id;
+
+    return this.officesService.toggleDefaultOffice(
+      new Types.ObjectId(id),
+      tenantName,
+      userId,
+    );
+  }
+
+  /**
+   * Soft delete de oficina (no se puede eliminar la default)
+   */
+  @UseGuards(JwtGuard)
   @Delete(':id')
-  async remove(@Param('id') id: string) {
-    return this.officesService.softDelete(new Types.ObjectId(id));
+  async remove(@Param('id') id: string, @Req() request: Request) {
+    const user = (request as any).user;
+    const tenantName = user.tenantName;
+    const userId = user._id;
+
+    return this.officesService.softDeleteOffice(
+      new Types.ObjectId(id),
+      tenantName,
+      userId,
+    );
   }
 
   // ==================== SUPERADMIN ENDPOINTS ====================

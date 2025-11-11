@@ -40,7 +40,7 @@ export class SuperAdminAuditInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap((response) => {
         const duration = Date.now() - startTime;
-        
+
         // Log de operación exitosa
         this.logger.log(`✅ [${timestamp}] SuperAdmin Operation Completed`, {
           user: {
@@ -54,15 +54,15 @@ export class SuperAdminAuditInterceptor implements NestInterceptor {
           response: {
             success: true,
             duration: `${duration}ms`,
-            dataCount: Array.isArray(response?.data) ? response.data.length : 
-                      response?.totalCount || 
-                      (response ? 1 : 0),
+            dataCount: Array.isArray(response?.data)
+              ? response.data.length
+              : response?.totalCount || (response ? 1 : 0),
           },
         });
       }),
       catchError((error) => {
         const duration = Date.now() - startTime;
-        
+
         // Log de error
         this.logger.error(`❌ [${timestamp}] SuperAdmin Operation Failed`, {
           user: {

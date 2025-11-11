@@ -7,8 +7,40 @@ import {
   ShipmentStatus,
   ShipmentType,
 } from '../interface/shipment.interface';
+import { CountryHelper } from '../../common/helpers/country.helper';
 
 export type ShipmentDocument = Shipment & Document;
+
+// Schema para detalles de ubicación (origen/destino)
+const LocationDetailsSchema = new MongooseSchema(
+  {
+    address: { type: String, default: '' },
+    city: { type: String, default: '' },
+    state: { type: String, default: '' },
+    country: {
+      type: String,
+      default: '',
+      validate: {
+        validator: function (value: string) {
+          // Permitir valores vacíos para compatibilidad durante migración
+          if (!value || value === '') return true;
+          return CountryHelper.isValidCountryCode(value);
+        },
+        message:
+          'Country must be a valid ISO 3166-1 alpha-2 code (e.g., AR, BR, US) or special internal code (OO, FP)',
+      },
+    },
+    zipCode: { type: String, default: '' },
+    apartment: { type: String, default: '' },
+    phone: { type: String, default: '' },
+    personalEmail: { type: String, default: '' },
+    assignedEmail: { type: String, default: '' },
+    email: { type: String, default: '' },
+    dni: { type: String, default: '' },
+    desirableDate: { type: String, default: '' },
+  },
+  { _id: false },
+);
 
 @Schema({ timestamps: true })
 export class Shipment {
@@ -215,45 +247,33 @@ export class Shipment {
   origin: string;
 
   @Prop({
-    type: {
-      address: String,
-      city: String,
-      state: String,
-      country: String,
-      zipCode: String,
-      apartment: String,
-      phone: String,
-      personalEmail: String,
-      assignedEmail: String,
-      email: String,
-      dni: String,
-      desirableDate: String,
-    },
+    type: LocationDetailsSchema,
     required: false,
   })
   originDetails?: Record<string, string>;
+
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Office',
+    required: false,
+  })
+  originOfficeId?: mongoose.Schema.Types.ObjectId;
 
   @Prop({ type: String, required: true })
   destination: string;
 
   @Prop({
-    type: {
-      address: String,
-      city: String,
-      state: String,
-      country: String,
-      zipCode: String,
-      apartment: String,
-      phone: String,
-      personalEmail: String,
-      assignedEmail: String,
-      email: String,
-      dni: String,
-      desirableDate: String,
-    },
+    type: LocationDetailsSchema,
     required: false,
   })
   destinationDetails?: Record<string, string>;
+
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Office',
+    required: false,
+  })
+  destinationOfficeId?: mongoose.Schema.Types.ObjectId;
 
   @Prop({ type: String, required: true, default: 'shipments' })
   type: string;

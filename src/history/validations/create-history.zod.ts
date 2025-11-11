@@ -1,19 +1,8 @@
 import { z } from 'zod';
+import { HistoryActionType } from '../types/history.types';
 
-export type HistoryActionType =
-  | 'create'
-  | 'update'
-  | 'delete'
-  | 'bulk-delete'
-  | 'bulk-create'
-  | 'offboarding'
-  | 'return'
-  | 'relocate'
-  | 'assign'
-  | 'reassign'
-  | 'unassign'
-  | 'cancel'
-  | 'consolidate';
+// Re-export for backward compatibility
+export { HistoryActionType };
 
 export const CreateHistorySchema = z.object({
   actionType: z.enum([
@@ -49,12 +38,25 @@ export const CreateHistorySchema = z.object({
         .enum([
           'single-product',
           'shipment-merge',
+          'member-address-update',
+          // 🔄 Legacy contexts from production (for backward compatibility)
           'setup-default-office',
           'office-address-update',
-          'member-address-update',
         ])
         .optional(),
+      // ✅ Permitir nonRecoverableProducts para delete de oficinas (legacy - nivel changes)
+      nonRecoverableProducts: z
+        .array(
+          z.object({
+            serialNumber: z.string(),
+            name: z.string(),
+            brand: z.string(),
+            model: z.string(),
+          }),
+        )
+        .optional(),
     })
+    .passthrough() // ✅ Permite campos adicionales no definidos
     .refine(
       (data) =>
         (Array.isArray(data.oldData) && data.oldData.length > 0) ||

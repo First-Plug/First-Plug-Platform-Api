@@ -26,8 +26,6 @@ export class SuperAdminService {
    * Obtiene todos los usuarios del sistema
    */
   async getAllUsers(): Promise<UserDocument[]> {
-    this.logger.log('👑 SuperAdmin: Obteniendo todos los usuarios');
-
     return this.userModel
       .find({ isDeleted: { $ne: true } })
       .sort({ createdAt: -1 })
@@ -38,8 +36,6 @@ export class SuperAdminService {
    * Obtiene usuarios que no tienen tenant asignado
    */
   async getUsersWithoutTenant(): Promise<UserDocument[]> {
-    this.logger.log('👑 SuperAdmin: Obteniendo usuarios sin tenant');
-
     return this.userModel
       .find({
         tenantId: { $exists: false },
@@ -54,8 +50,6 @@ export class SuperAdminService {
    * Obtiene todos los tenants del sistema
    */
   async getAllTenants(): Promise<TenantDocument[]> {
-    this.logger.log('👑 SuperAdmin: Obteniendo todos los tenants');
-
     return this.tenantModel
       .find({ isActive: true })
       .sort({ createdAt: -1 })
@@ -69,10 +63,6 @@ export class SuperAdminService {
     userId: string,
     tenantId: string,
   ): Promise<UserDocument> {
-    this.logger.log(
-      `👑 SuperAdmin: Asignando tenant ${tenantId} a usuario ${userId}`,
-    );
-
     try {
       // Validar formato de IDs
       if (!Types.ObjectId.isValid(userId)) {
@@ -104,9 +94,6 @@ export class SuperAdminService {
 
       // Verificar que el usuario no tiene ya un tenant asignado
       if (user.tenantId) {
-        this.logger.warn(
-          `⚠️ Usuario ${user.email} ya tiene tenant asignado: ${user.tenantId}`,
-        );
         throw new Error(`Usuario ${user.email} ya tiene un tenant asignado`);
       }
 
@@ -124,9 +111,6 @@ export class SuperAdminService {
         throw new Error('Error actualizando usuario');
       }
 
-      this.logger.log(
-        `✅ Usuario ${user.email} asignado exitosamente a tenant ${tenant.tenantName}`,
-      );
       return updatedUser;
     } catch (error) {
       this.logger.error(`❌ Error asignando tenant a usuario:`, error.message);
@@ -141,8 +125,6 @@ export class SuperAdminService {
     tenantId: string,
     updateData: Partial<Tenant>,
   ): Promise<TenantDocument> {
-    this.logger.log(`👑 SuperAdmin: Actualizando tenant ${tenantId}`);
-
     const updatedTenant = await this.tenantModel.findByIdAndUpdate(
       tenantId,
       updateData,
@@ -153,7 +135,6 @@ export class SuperAdminService {
       throw new NotFoundException(`Tenant con ID ${tenantId} no encontrado`);
     }
 
-    this.logger.log(`✅ Tenant ${updatedTenant.tenantName} actualizado`);
     return updatedTenant;
   }
 
@@ -163,19 +144,11 @@ export class SuperAdminService {
   async getTenantDefaultOffice(
     tenantName: string,
   ): Promise<OfficeDocument | null> {
-    this.logger.log(
-      `👑 SuperAdmin: Obteniendo oficina por defecto de ${tenantName}`,
-    );
-
     try {
       const OfficeModel =
         await this.tenantModelRegistry.getOfficeModel(tenantName);
       return OfficeModel.findOne({ isDefault: true });
     } catch (error) {
-      this.logger.error(
-        `Error obteniendo oficina de ${tenantName}:`,
-        error.message,
-      );
       return null;
     }
   }
@@ -188,10 +161,6 @@ export class SuperAdminService {
     officeId: string,
     updateData: Partial<OfficeDocument>,
   ): Promise<OfficeDocument> {
-    this.logger.log(
-      `👑 SuperAdmin: Actualizando oficina ${officeId} de ${tenantName}`,
-    );
-
     const OfficeModel =
       await this.tenantModelRegistry.getOfficeModel(tenantName);
 
@@ -207,7 +176,6 @@ export class SuperAdminService {
       );
     }
 
-    this.logger.log(`✅ Oficina actualizada en tenant ${tenantName}`);
     return updatedOffice;
   }
 
@@ -223,10 +191,6 @@ export class SuperAdminService {
     totalPages: number;
     tenantsProcessed: number;
   }> {
-    this.logger.log(
-      `👑 SuperAdmin: Obteniendo shipments de todos los tenants (página ${page})`,
-    );
-
     const tenants = await this.getAllTenants();
     const allShipments: Array<any> = [];
     let tenantsProcessed = 0;
@@ -278,9 +242,6 @@ export class SuperAdminService {
       tenantsProcessed,
     };
 
-    this.logger.log(
-      `✅ Obtenidos ${result.totalCount} shipments de ${tenantsProcessed} tenants`,
-    );
     return result;
   }
 
@@ -292,10 +253,6 @@ export class SuperAdminService {
     shipmentId: string,
     updateData: any,
   ): Promise<ShipmentDocument> {
-    this.logger.log(
-      `👑 SuperAdmin: Actualizando shipment ${shipmentId} en ${tenantName}`,
-    );
-
     try {
       // Validar parámetros
       if (!tenantName || !shipmentId) {
@@ -344,15 +301,8 @@ export class SuperAdminService {
         throw new Error('Error actualizando shipment');
       }
 
-      this.logger.log(
-        `✅ Shipment ${shipmentId} actualizado exitosamente en tenant ${tenantName}`,
-      );
       return updatedShipment;
     } catch (error) {
-      this.logger.error(
-        `❌ Error actualizando shipment en ${tenantName}:`,
-        error.message,
-      );
       throw error;
     }
   }
@@ -366,8 +316,6 @@ export class SuperAdminService {
     totalTenants: number;
     totalShipments: number;
   }> {
-    this.logger.log('👑 SuperAdmin: Obteniendo estadísticas del sistema');
-
     const [totalUsers, usersWithoutTenant, totalTenants] = await Promise.all([
       this.userModel.countDocuments({ isDeleted: { $ne: true } }),
       this.userModel.countDocuments({

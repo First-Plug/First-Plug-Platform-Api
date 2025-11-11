@@ -13,18 +13,22 @@ export class OfficeAddressUpdatedListener {
   @OnEvent(EventTypes.OFFICE_ADDRESS_UPDATED)
   async handleTenantAddressUpdated(event: OfficeAddressUpdatedEvent) {
     try {
-      this.logger.debug(
-        `Processing address update for tenant: ${event.tenantName}`,
-        {
-          oldAddress: event.oldAddress,
-          newAddress: event.newAddress,
-        },
-      );
-
       if (!event.newAddress || !event.oldAddress) {
         this.logger.error('Missing address data in event');
         return;
       }
+
+      console.log(
+        '📍 [EVENT LISTENER] Received OFFICE_ADDRESS_UPDATED event:',
+        {
+          tenantName: event.tenantName,
+          officeId: event.officeId,
+          officeName: event.officeName,
+          isDefault: event.isDefault,
+          timestamp: new Date().toISOString(),
+        },
+      );
+
       const userId = event.userId;
       const ourOfficeEmail = event.ourOfficeEmail;
       await this.logisticsService.checkAndUpdateShipmentsForOurOffice(
@@ -33,16 +37,11 @@ export class OfficeAddressUpdatedListener {
         event.newAddress,
         userId,
         ourOfficeEmail,
-      );
-
-      this.logger.debug(
-        `Successfully processed address update for tenant: ${event.tenantName}`,
+        event.officeId,
+        event.officeName,
       );
     } catch (error) {
-      this.logger.error(
-        `Failed to process address update for tenant: ${event.tenantName}`,
-        error.stack,
-      );
+      this.logger.error('Error handling office address update:', error);
       throw error;
     }
   }

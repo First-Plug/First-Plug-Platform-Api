@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -47,19 +48,66 @@ export class ProductsController {
     try {
       const tenantName = req.user.tenantName;
       const { userId } = req;
+
       const products = await this.productsService.bulkCreate(
         createProductDto,
         tenantName,
         userId,
+        { isCSVUpload: false },
       );
 
       res.status(HttpStatus.CREATED).json(products);
     } catch (error) {
-      console.error('Error en bulkcreate:', error);
-      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
-        message: 'Error al crear productos',
-        error: error.message,
-      });
+      console.error('Error en bulkcreate UI:', error);
+
+      // Si es un error de validación (BadRequestException o ZodError), devolver 400
+      if (error instanceof BadRequestException || error.name === 'ZodError') {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          message: 'Error de validación en los datos',
+          error: error.message,
+        });
+      } else {
+        res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+          message: 'Error al crear productos',
+          error: error.message,
+        });
+      }
+    }
+  }
+
+  @Post('/bulkcreate-csv')
+  async bulkcreateCSV(
+    @Body() createProductDto: CreateProductArrayDto,
+    @Res() res: Response,
+    @Request() req: any,
+  ) {
+    try {
+      const tenantName = req.user.tenantName;
+      const { userId } = req;
+
+      const products = await this.productsService.bulkCreate(
+        createProductDto,
+        tenantName,
+        userId,
+        { isCSVUpload: true }, // ❌ CSV Upload - bloquea "Our office"
+      );
+
+      res.status(HttpStatus.CREATED).json(products);
+    } catch (error) {
+      console.error('Error en bulkcreate CSV:', error);
+
+      // Si es un error de validación (BadRequestException o ZodError), devolver 400
+      if (error instanceof BadRequestException || error.name === 'ZodError') {
+        res.status(HttpStatus.BAD_REQUEST).json({
+          message: 'Error de validación en los datos del CSV',
+          error: error.message,
+        });
+      } else {
+        res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+          message: 'Error al crear productos',
+          error: error.message,
+        });
+      }
     }
   }
 
@@ -76,7 +124,7 @@ export class ProductsController {
   @Get('/table')
   getProductsTable(@Request() req: any) {
     const tenantName = req.user.tenantName;
-    console.log('get Products caller wth tenantName:', tenantName);
+
     return this.productsService.tableGrouping(tenantName);
   }
 
@@ -122,7 +170,11 @@ export class ProductsController {
     console.log(
       `🔁 Reassign PATCH - Product ID: ${id} | Tenant: ${tenantName} | User: ${userId}`,
     );
-    console.log('📦 updateProductDto recibido:', updateProductDto);
+    console.log(
+      '📦 updateProductDto recibido:',
+      JSON.stringify(updateProductDto, null, 2),
+    );
+    console.log('🏢 ourOfficeEmail:', ourOfficeEmail);
 
     return this.productsService.reassignProduct(
       id,
@@ -152,10 +204,15 @@ export class ProductsController {
     const tenantName = req.user.tenantName;
     const { userId } = req;
     const ourOfficeEmail = req.user.email;
+
     console.log(
-      `PATCH - Product ID: ${id} | Tenant: ${tenantName} | User: ${userId}`,
+      `🔄 Update PATCH - Product ID: ${id} | Tenant: ${tenantName} | User: ${userId}`,
     );
-    console.log('📦 updateProductDto recibido:', updateProductDto);
+    console.log(
+      '📦 updateProductDto recibido (generic update):',
+      JSON.stringify(updateProductDto, null, 2),
+    );
+    console.log('🏢 ourOfficeEmail:', ourOfficeEmail);
 
     return this.productsService.update(
       id,

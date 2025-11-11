@@ -9,6 +9,7 @@ import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { BadRequestException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EventTypes } from 'src/infra/event-bus/types';
+
 import { MemberAddressUpdatedEvent } from 'src/infra/event-bus/member-address-update.event';
 import {
   MemberDocument,
@@ -30,18 +31,20 @@ import { SlackService } from 'src/slack/slack.service';
 import { ShipmentsService } from 'src/shipments/shipments.service';
 import { HistoryService } from 'src/history/history.service';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
-import { countryCodes } from 'src/shipments/helpers/countryCodes';
+import { CountryHelper } from 'src/common/helpers/country.helper';
 import { Product } from 'src/products/schemas/product.schema';
 import { TenantsService } from 'src/tenants/tenants.service';
 import { TenantUserAdapterService } from 'src/common/services/tenant-user-adapter.service';
 import { ProductsService } from 'src/products/products.service';
 import { OfficesService } from '../offices/offices.service';
 import { UsersService } from '../users/users.service';
+import { ShipmentOfficeCoordinatorService } from '../shipments/services/shipment-office-coordinator.service';
 import { Status } from 'src/products/interfaces/product.interface';
 import { AddressData } from 'src/infra/event-bus/tenant-address-update.event';
 import { MembersService } from 'src/members/members.service';
-import { recordShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
+import { recordEnhancedShipmentHistory } from 'src/shipments/helpers/recordShipmentHistory';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
+import { GlobalProductSyncService } from 'src/products/services/global-product-sync.service';
 
 @Injectable()
 export class LogisticsService {
@@ -49,7 +52,7 @@ export class LogisticsService {
 
   constructor(
     private readonly tenantModels: TenantModelRegistry,
-    private eventEmitter: EventEmitter2,
+    private readonly eventEmitter: EventEmitter2,
     private readonly connectionService: TenantConnectionService,
     @Inject(forwardRef(() => ShipmentsService))
     private readonly shipmentsService: ShipmentsService,
@@ -64,6 +67,8 @@ export class LogisticsService {
     private readonly officesService: OfficesService,
     private readonly usersService: UsersService,
     private readonly eventsGateway: EventsGateway,
+    private readonly globalProductSyncService: GlobalProductSyncService,
+    private readonly shipmentOfficeCoordinator: ShipmentOfficeCoordinatorService,
   ) {}
 
   /**
@@ -80,7 +85,6 @@ export class LogisticsService {
     try {
       const user = await this.usersService.findById(userId);
       if (!user) {
-        console.log('⚠️ Usuario no encontrado para Slack:', { userId });
         return undefined;
       }
 
@@ -125,15 +129,6 @@ export class LogisticsService {
     userId: string,
     ourOfficeEmail: string,
   ) {
-    console.log(
-      '🎯 [MEMBER UPDATE] Emitting MEMBER_ADDRESS_UPDATED event (post-commit):',
-      {
-        memberEmail: updatedMember.email,
-        tenantName,
-      },
-    );
-    this.logger.debug('Emitting MEMBER_ADDRESS_UPDATED event');
-
     this.eventEmitter.emit(
       EventTypes.MEMBER_ADDRESS_UPDATED,
       new MemberAddressUpdatedEvent(
@@ -184,12 +179,6 @@ export class LogisticsService {
       'personalEmail',
     ];
 
-    console.log('🔍 [PERSONAL DATA CHECK] Comparing member data:', {
-      memberEmail: after.email,
-      beforeActiveShipment: before.activeShipment,
-      afterActiveShipment: after.activeShipment,
-    });
-
     let hasChanges = false;
     const changes: Array<{ field: string; before: any; after: any }> = [];
 
@@ -208,12 +197,6 @@ export class LogisticsService {
           : afterVal;
 
       if (normalizedBefore !== normalizedAfter) {
-        console.log(
-          `🔄 [PERSONAL DATA CHECK] Campo ${field} ha cambiado: "${normalizedBefore}" -> "${normalizedAfter}"`,
-        );
-        this.logger.debug(
-          `🔄 Campo ${field} ha cambiado: ${normalizedBefore} -> ${normalizedAfter}`,
-        );
         changes.push({
           field,
           before: normalizedBefore,
@@ -221,12 +204,6 @@ export class LogisticsService {
         });
         hasChanges = true;
       }
-    }
-
-    if (hasChanges) {
-      console.log('✅ [PERSONAL DATA CHECK] Changes detected:', changes);
-    } else {
-      console.log('❌ [PERSONAL DATA CHECK] No changes detected');
     }
 
     return hasChanges;
@@ -240,24 +217,16 @@ export class LogisticsService {
     initialMember: MemberDocument,
     updatedMember: MemberDocument,
   ): boolean {
-    console.log('🔍 [SHOULD EMIT CHECK] Checking if should emit event:', {
-      memberEmail: updatedMember.email,
-      activeShipment: updatedMember.activeShipment,
-    });
-
     const modified = this.hasPersonalDataChanged(initialMember, updatedMember);
 
     if (!modified) {
-      console.log('❌ [SHOULD EMIT CHECK] No personal data changed');
       return false;
     }
 
     if (!updatedMember.activeShipment) {
-      console.log('❌ [SHOULD EMIT CHECK] Member has no active shipment');
       return false;
     }
 
-    console.log('✅ [SHOULD EMIT CHECK] Should emit event');
     return true;
   }
 
@@ -309,20 +278,20 @@ export class LogisticsService {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string; // ✅ FIX: Agregar officeId al tipo
+      warehouseCountryCode?: string; // 🏭 Agregar warehouseCountryCode para FP warehouse
     },
     newData: {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string;
+      warehouseCountryCode?: string; // 🏭 Agregar warehouseCountryCode para FP warehouse
     },
     userId: string,
     ourOfficeEmail: string,
     providedConnection?: Connection,
   ): Promise<ShipmentDocument | null> {
-    console.log(
-      'called user id from maybeCreateShipmentAndUpdateStatus',
-      userId,
-    );
     if (!updateDto.fp_shipment || !actionType) return null;
 
     const desirableDateOrigin =
@@ -334,24 +303,11 @@ export class LogisticsService {
         ? updateDto.desirableDate
         : updateDto.desirableDate?.destination || '';
 
-    // ✅ FIX: Usar la conexión proporcionada si existe (misma que creó la session)
-    console.log(
-      '🔧 DEBUG maybeCreateShipmentAndUpdateStatus: Session ID:',
-      session?.id,
-    );
-    console.log(
-      '🔧 DEBUG maybeCreateShipmentAndUpdateStatus: Connection provided:',
-      !!providedConnection,
-    );
     const connection =
       providedConnection ||
       (await this.connectionService.getTenantConnection(tenantName));
-    console.log(
-      '🔧 DEBUG maybeCreateShipmentAndUpdateStatus: Using connection:',
-      connection.name,
-    );
 
-    const { shipment, isConsolidated, oldSnapshot } =
+    const { shipment, isConsolidated, oldSnapshot, officeIds } =
       await this.shipmentsService.findOrCreateShipment(
         product._id!.toString(),
         actionType,
@@ -363,7 +319,7 @@ export class LogisticsService {
         oldData,
         newData,
         product,
-        connection, // ✅ FIX: Pasar la misma conexión que creó la session
+        connection,
       );
 
     if (!shipment || !shipment._id) {
@@ -380,6 +336,27 @@ export class LogisticsService {
       session.startTransaction();
     }
 
+    // 🏢 UPDATE: Coordinar actualización de flags de oficinas DESPUÉS del commit
+    if (
+      officeIds &&
+      (officeIds.originOfficeId || officeIds.destinationOfficeId)
+    ) {
+      try {
+        await this.shipmentsService.shipmentOfficeCoordinator.handleShipmentCreated(
+          officeIds.originOfficeId || null,
+          officeIds.destinationOfficeId || null,
+          shipment.shipment_status,
+          tenantName,
+        );
+      } catch (error) {
+        console.error(
+          '❌ Error updating office flags after shipment creation:',
+          error,
+        );
+        // No fallar el proceso principal por este error
+      }
+    }
+
     const newStatus =
       shipment.shipment_status === 'On Hold - Missing Data'
         ? 'In Transit - Missing Data'
@@ -390,32 +367,132 @@ export class LogisticsService {
 
     await product.save({ session });
 
+    // 🌐 SINCRONIZAR A GLOBAL COLLECTION después de actualizar status y activeShipment
+    try {
+      // ✅ OBTENER PRODUCTO ACTUALIZADO desde la base de datos
+      const ProductModel = connection.model(Product.name, ProductSchema);
+      const updatedProduct = await ProductModel.findById(product._id).session(
+        session,
+      );
+
+      if (!updatedProduct) {
+        // ✅ Producto no encontrado en products collection (probablemente está en members.products)
+        // Continuar con la creación del history
+      }
+
+      if (updatedProduct) {
+        await this.globalProductSyncService.syncProduct({
+          tenantId: tenantName,
+          tenantName: tenantName,
+          originalProductId: updatedProduct._id as any,
+          sourceCollection: 'products',
+          name: updatedProduct.name || '',
+          category: updatedProduct.category || '',
+          status: updatedProduct.status, // ✅ Nuevo status "In Transit"
+          location: updatedProduct.location || '',
+          attributes: (updatedProduct.attributes || []).map((attr) => ({
+            key: attr.key || '',
+            value: String(attr.value || ''),
+          })),
+          serialNumber: updatedProduct.serialNumber || undefined,
+          assignedEmail: updatedProduct.assignedEmail,
+          assignedMember: updatedProduct.assignedMember,
+          lastAssigned: updatedProduct.lastAssigned,
+          acquisitionDate: updatedProduct.acquisitionDate,
+          price: updatedProduct.price,
+          additionalInfo: updatedProduct.additionalInfo,
+          productCondition: updatedProduct.productCondition,
+          recoverable: updatedProduct.recoverable,
+          fp_shipment: updatedProduct.fp_shipment, // ✅ true
+          activeShipment: updatedProduct.activeShipment, // ✅ true
+          isDeleted: updatedProduct.isDeleted,
+          fpWarehouse:
+            updatedProduct.fpWarehouse &&
+            updatedProduct.fpWarehouse.warehouseId &&
+            updatedProduct.fpWarehouse.warehouseCountryCode &&
+            updatedProduct.fpWarehouse.warehouseName
+              ? {
+                  warehouseId: updatedProduct.fpWarehouse.warehouseId as any,
+                  warehouseCountryCode:
+                    updatedProduct.fpWarehouse.warehouseCountryCode,
+                  warehouseName: updatedProduct.fpWarehouse.warehouseName,
+                  assignedAt: updatedProduct.fpWarehouse.assignedAt,
+                  status:
+                    updatedProduct.fpWarehouse.status === 'IN_TRANSIT'
+                      ? 'IN_TRANSIT_IN'
+                      : (updatedProduct.fpWarehouse.status as any),
+                }
+              : undefined,
+          office:
+            updatedProduct.office &&
+            updatedProduct.office.officeId &&
+            updatedProduct.office.officeCountryCode &&
+            updatedProduct.office.officeName
+              ? {
+                  officeId: updatedProduct.office.officeId as any,
+                  officeCountryCode: updatedProduct.office.officeCountryCode,
+                  officeName: updatedProduct.office.officeName,
+                  assignedAt: updatedProduct.office.assignedAt,
+                  isDefault: updatedProduct.office.isDefault,
+                }
+              : undefined,
+          sourceUpdatedAt: new Date(),
+        });
+      } else {
+        // Skipping global sync because updatedProduct is null
+      }
+    } catch (error) {
+      console.error(
+        `❌ [maybeCreateShipmentAndUpdateStatus] Global sync failed for product ${product._id}:`,
+        error,
+      );
+      // No fallar el proceso principal por este error
+    }
+
+    // 🏭 ASIGNAR WAREHOUSE si el destino es FP warehouse
+    if (newData?.location === 'FP warehouse') {
+      try {
+        // Importar AssignmentsService sería dependencia circular, así que usamos ProductsService
+        // pero necesitamos una forma de asignar warehouse sin validación de activeShipment
+        // Por ahora, solo loggeamos que se necesita warehouse assignment
+        // La sincronización global se hará sin fpWarehouse por ahora
+      } catch (error) {
+        console.error(
+          `❌ [maybeCreateShipmentAndUpdateStatus] Error in warehouse assignment:`,
+          error,
+        );
+      }
+    }
+
     await this.shipmentsService.createSnapshots(shipment, connection, {
       providedProducts: [product],
     });
 
-    console.log('[HISTORY DEBUG]', {
-      actionType: isConsolidated ? 'consolidate' : 'create',
-      userId,
-      oldSnapshot,
-      newData: shipment,
-    });
+    // 📍 Extraer datos de ubicación para history mejorado
+    const locationData = await this.extractLocationDataForHistory(
+      shipment,
+      tenantName,
+    );
 
-    await this.historyService.create({
-      actionType: isConsolidated ? 'consolidate' : 'create',
-      itemType: 'shipments',
-      userId,
-
-      changes: {
-        oldData: isConsolidated ? oldSnapshot ?? null : null,
-        newData: shipment,
-        context: isConsolidated ? 'single-product' : undefined,
-      },
-    });
+    try {
+      await recordEnhancedShipmentHistory(
+        this.historyService,
+        isConsolidated ? 'consolidate' : 'create',
+        userId,
+        isConsolidated ? (oldSnapshot as ShipmentDocument) : null,
+        shipment,
+        isConsolidated ? 'single-product' : undefined,
+        locationData,
+      );
+    } catch (error) {
+      console.error(
+        '❌ [maybeCreateShipmentAndUpdateStatus] Error creating shipment history:',
+        error,
+      );
+    }
 
     // TODO: Status New Shipment
     if (shipment.shipment_status === 'In Preparation' && !isConsolidated) {
-      // ✅ Obtener información del usuario desde el JWT
       const userInfo = await this.getUserInfoFromUserId(userId);
 
       const slackMessage = CreateShipmentMessageToSlack({
@@ -431,7 +508,6 @@ export class LogisticsService {
 
     //TODO: Status consolidate
     if (isConsolidated && shipment.shipment_status === 'In Preparation') {
-      // ✅ Obtener información del usuario desde el JWT
       const userInfo = await this.getUserInfoFromUserId(userId);
 
       const slackMessage = CreateShipmentMessageToSlack({
@@ -463,10 +539,13 @@ export class LogisticsService {
     ourOfficeEmail: string,
     providedConnection?: Connection,
   ): Promise<ShipmentDocument | null> {
-    console.log('tryCreateShipmentIfNeeded called with userId:', userId);
-    console.log('🔧 DEBUG: Session ID:', session?.id);
-    console.log('🔧 DEBUG: Connection provided:', !!providedConnection);
-    return await this.maybeCreateShipmentAndUpdateStatus(
+    // 🏭 Calcular warehouseCountryCode para destino antes de crear el objeto
+    const destinationWarehouseCountryCode =
+      updateDto.location === 'FP warehouse'
+        ? await this.getWarehouseCountryCodeForDestination(product, tenantName)
+        : undefined;
+
+    const result = await this.maybeCreateShipmentAndUpdateStatus(
       product,
       updateDto,
       tenantName,
@@ -476,16 +555,22 @@ export class LogisticsService {
         location: product.location,
         assignedEmail: product.assignedEmail,
         assignedMember: product.assignedMember,
+        officeId: product.office?.officeId?.toString(), // ✅ FIX: Incluir officeId del producto actual
+        warehouseCountryCode: product.fpWarehouse?.warehouseCountryCode, // 🏭 Incluir warehouseCountryCode del producto actual
       },
       {
         location: updateDto.location,
         assignedEmail: updateDto.assignedEmail,
         assignedMember: updateDto.assignedMember,
+        officeId: updateDto.officeId,
+        warehouseCountryCode: destinationWarehouseCountryCode, // 🏭 Usar el valor calculado
       },
       userId,
       ourOfficeEmail,
-      providedConnection, // ✅ FIX: Pasar la conexión proporcionada
+      providedConnection,
     );
+
+    return result;
   }
 
   async getMemberLocationInfo(
@@ -530,16 +615,22 @@ export class LogisticsService {
   }
 
   public getCountryCode(country: string): string {
+    const normalized = CountryHelper.validateAndNormalize(country);
+    if (normalized) {
+      return normalized;
+    }
+
     if (country === 'Our office') {
       return 'OO';
     }
 
-    return countryCodes[country] || 'XX';
+    return 'XX';
   }
 
   public async isLocationDataComplete(
     product: Partial<Product>,
     tenantName: string,
+    officeId?: string,
   ): Promise<boolean> {
     if (product.location === 'FP warehouse') {
       return true;
@@ -557,7 +648,6 @@ export class LogisticsService {
         member.city &&
         member.zipCode &&
         member.address &&
-        // member.apartment &&
         member.personalEmail &&
         member.phone &&
         member.dni
@@ -565,32 +655,43 @@ export class LogisticsService {
     }
 
     if (product.location === 'Our office') {
-      // ✅ Obtener datos de la colección offices en lugar del tenant
-      const office = await this.officesService.getDefaultOffice(tenantName);
+      let office: any;
+
+      // Si se proporciona officeId específico, usar esa oficina
+      if (officeId) {
+        office = await this.officesService.findByIdAndTenant(
+          new Types.ObjectId(officeId),
+          tenantName,
+        );
+      } else {
+        // Fallback a oficina default para compatibilidad
+        office = await this.officesService.getDefaultOffice(tenantName);
+      }
 
       if (!office) {
-        console.log('❌ No se encontró oficina default para validación:', {
+        console.log('❌ Oficina no encontrada:', {
           tenantName,
+          officeId,
+          useDefault: !officeId,
         });
         return false;
       }
 
       const isComplete = !!(
-        (
-          office.country &&
-          office.city &&
-          office.state &&
-          office.zipCode &&
-          office.address &&
-          // office.apartment &&
-          office.phone
-        )
-        // office.email - Email es opcional para oficinas
+        office.country &&
+        office.city &&
+        office.state &&
+        office.zipCode &&
+        office.address &&
+        office.phone
       );
 
       if (!isComplete) {
         console.log('❌ Oficina incompleta para "Our office":', {
           tenantName,
+          officeId: office._id,
+          officeName: office.name,
+          isDefault: office.isDefault,
           missing: {
             country: !office.country,
             city: !office.city,
@@ -598,7 +699,6 @@ export class LogisticsService {
             zipCode: !office.zipCode,
             address: !office.address,
             phone: !office.phone,
-            // email: !office.email, // Email es opcional
           },
           office: {
             country: office.country,
@@ -628,11 +728,15 @@ export class LogisticsService {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string;
+      warehouseCountryCode?: string; // 🏭 Agregar warehouseCountryCode para FP warehouse
     },
     newData?: {
       location?: string;
       assignedEmail?: string;
       assignedMember?: string;
+      officeId?: string;
+      warehouseCountryCode?: string; // 🏭 Agregar warehouseCountryCode para FP warehouse
     },
     providedProduct?: ProductDocument,
     providedConnection?: Connection,
@@ -691,6 +795,8 @@ export class LogisticsService {
             oldData?.assignedEmail || '',
             oldData?.assignedMember || '',
             originDate,
+            oldData?.officeId,
+            oldData?.warehouseCountryCode, // 🏭 Pasar warehouseCountryCode para origen
           )
           .then((res) => res.details);
 
@@ -701,12 +807,15 @@ export class LogisticsService {
         newData?.assignedEmail || '',
         newData?.assignedMember || '',
         destinationDate,
+        newData?.officeId,
+        newData?.warehouseCountryCode, // 🏭 Pasar warehouseCountryCode para destino
       )
       .then((res) => res.details);
 
     const destinationComplete = await this.isLocationDataComplete(
       { ...product, location: destinationLocation, assignedEmail },
       tenantName,
+      newData?.officeId,
     );
 
     const originComplete = await this.isLocationDataComplete(
@@ -716,6 +825,7 @@ export class LogisticsService {
         assignedEmail: oldData?.assignedEmail || '',
       },
       tenantName,
+      oldData?.officeId,
     );
 
     return {
@@ -772,7 +882,6 @@ export class LogisticsService {
       const productId = rawId.toString();
       const objectId = new Types.ObjectId(productId);
 
-      // Evitar duplicados en shipment.products
       if (!shipment.products.some((p) => p.equals(objectId))) {
         shipment.products.push(objectId);
       } else {
@@ -794,7 +903,6 @@ export class LogisticsService {
         continue;
       }
 
-      // Agregar snapshot solo si no existe
       if (!existingSnapshotIds.includes(product._id.toString())) {
         const snapshot = this.shipmentsService.buildSnapshot(
           product as ProductDocument & { _id: Types.ObjectId },
@@ -810,16 +918,45 @@ export class LogisticsService {
 
   async isShipmentDetailsComplete(
     shipment: ShipmentDocument,
+    tenantName?: string,
   ): Promise<boolean> {
-    const originComplete = this.areShipmentDetailsComplete(
+    let originComplete = this.areShipmentDetailsComplete(
       shipment.originDetails,
       shipment.origin,
+      shipment.originOfficeId?.toString(),
     );
 
-    const destinationComplete = this.areShipmentDetailsComplete(
+    let destinationComplete = this.areShipmentDetailsComplete(
       shipment.destinationDetails,
       shipment.destination,
+      shipment.destinationOfficeId?.toString(),
     );
+
+    // Si hay officeIds específicos y tenantName, validar que las oficinas existan y estén completas
+    if (tenantName) {
+      if (shipment.origin === 'Our office' && shipment.originOfficeId) {
+        const office = await this.officesService.findByIdAndTenant(
+          new Types.ObjectId(shipment.originOfficeId.toString()),
+          tenantName,
+        );
+        if (!office) {
+          originComplete = false;
+        }
+      }
+
+      if (
+        shipment.destination === 'Our office' &&
+        shipment.destinationOfficeId
+      ) {
+        const office = await this.officesService.findByIdAndTenant(
+          new Types.ObjectId(shipment.destinationOfficeId.toString()),
+          tenantName,
+        );
+        if (!office) {
+          destinationComplete = false;
+        }
+      }
+    }
 
     return originComplete && destinationComplete;
   }
@@ -827,12 +964,14 @@ export class LogisticsService {
   public areShipmentDetailsComplete(
     details?: Record<string, string>,
     locationName?: string,
+    officeId?: string,
   ): boolean {
     if (!details) return false;
 
     if (locationName === 'FP warehouse') return true;
 
-    if (locationName === 'Our office') {
+    // ✅ FIX: Si tiene officeId O es "Our office", validar como oficina
+    if (locationName === 'Our office' || officeId) {
       const requiredFields = [
         'address',
         'city',
@@ -840,11 +979,10 @@ export class LogisticsService {
         'country',
         'zipCode',
         'phone',
-        // 'email', // Email es opcional para oficinas
       ];
       const result = requiredFields.every((field) => !!details[field]);
       if (!result) {
-        console.log('🛑 Origin (Our office) está incompleto:', {
+        console.log(`❌ Oficina incompleta para "${locationName}":`, {
           missing: requiredFields.filter((f) => !details[f]),
           details,
         });
@@ -852,6 +990,7 @@ export class LogisticsService {
       return result;
     }
 
+    // Validación para empleados (Employee)
     const requiredFields = [
       'address',
       'city',
@@ -863,7 +1002,7 @@ export class LogisticsService {
     ];
     const result = requiredFields.every((field) => !!details[field]);
     if (!result) {
-      console.log('🛑 Destination (Employee) está incompleto:', {
+      console.log('❌ Destination (Employee) está incompleto:', {
         missing: requiredFields.filter((f) => !details[f]),
         details,
       });
@@ -884,7 +1023,6 @@ export class LogisticsService {
 
     for (const rawId of productIds) {
       const productId = rawId.toString();
-      console.log('📦 Processing product (cancel):', productId);
 
       const product = await ProductModel.findById(productId);
       let assignedEmail: string | undefined;
@@ -905,10 +1043,81 @@ export class LogisticsService {
         await product.save();
         assignedEmail = product.assignedEmail;
 
-        console.log(`✅ Product updated from Product collection:`, {
-          id: product._id,
-          status,
-        });
+        // 🌐 SINCRONIZAR A GLOBAL COLLECTION - PRESERVANDO DATOS EXISTENTES
+        try {
+          // Obtener datos existentes del producto global para preservar fpWarehouse y memberData
+          const existingGlobalProduct =
+            await this.globalProductSyncService.findGlobalProduct(
+              tenantName,
+              new Types.ObjectId(productId),
+            );
+
+          await this.globalProductSyncService.syncProduct({
+            tenantId: tenantName,
+            tenantName: tenantName,
+            originalProductId: new Types.ObjectId(productId),
+            sourceCollection: 'products',
+            name: product.name || '',
+            category: product.category || '',
+            status: status,
+            location: product.location || '',
+            attributes: (product.attributes || []).map((attr) => ({
+              key: attr.key || '',
+              value: String(attr.value || ''),
+            })),
+            serialNumber: product.serialNumber || undefined,
+            assignedEmail: product.assignedEmail,
+            assignedMember: product.assignedMember,
+            lastAssigned: product.lastAssigned,
+            acquisitionDate: product.acquisitionDate,
+            price: product.price,
+            additionalInfo: product.additionalInfo,
+            productCondition: product.productCondition,
+            recoverable: product.recoverable,
+            fp_shipment: false,
+            activeShipment: false,
+            isDeleted: product.isDeleted,
+            // 🔄 PRESERVAR fpWarehouse existente si el producto está en FP warehouse
+            fpWarehouse:
+              product.location === 'FP warehouse'
+                ? existingGlobalProduct?.fpWarehouse
+                  ? {
+                      warehouseId: existingGlobalProduct.fpWarehouse
+                        .warehouseId as any,
+                      warehouseCountryCode:
+                        existingGlobalProduct.fpWarehouse.warehouseCountryCode,
+                      warehouseName:
+                        existingGlobalProduct.fpWarehouse.warehouseName,
+                      assignedAt: existingGlobalProduct.fpWarehouse.assignedAt,
+                      status: 'STORED' as const, // Producto cancelado en FP warehouse = STORED
+                    }
+                  : product.fpWarehouse && product.fpWarehouse.warehouseId
+                    ? {
+                        warehouseId: product.fpWarehouse.warehouseId as any,
+                        warehouseCountryCode:
+                          product.fpWarehouse.warehouseCountryCode || '',
+                        warehouseName: product.fpWarehouse.warehouseName || '',
+                        assignedAt: product.fpWarehouse.assignedAt,
+                        status: 'STORED' as const,
+                      }
+                    : undefined
+                : undefined,
+            // 🔄 PRESERVAR memberData existente si existe
+            memberData: existingGlobalProduct?.memberData
+              ? {
+                  memberId: existingGlobalProduct.memberData.memberId as any,
+                  memberEmail: existingGlobalProduct.memberData.memberEmail,
+                  memberName: existingGlobalProduct.memberData.memberName,
+                  assignedAt: existingGlobalProduct.memberData.assignedAt,
+                }
+              : undefined,
+          });
+        } catch (error) {
+          console.error(
+            `❌ [cancelAllProductsInShipment] Global sync failed for product ${productId}:`,
+            error,
+          );
+        }
       } else {
         const member = await MemberModel.findOne({
           'products._id': new Types.ObjectId(productId),
@@ -944,12 +1153,66 @@ export class LogisticsService {
 
           assignedEmail = embeddedProduct.assignedEmail;
 
-          console.log(`✅ Product updated from Member collection:`, {
-            id: productId,
-            status,
-          });
+          // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+          try {
+            await this.globalProductSyncService.syncProduct({
+              tenantId: tenantName,
+              tenantName: tenantName,
+              originalProductId: new Types.ObjectId(productId),
+              sourceCollection: 'members',
+              name: embeddedProduct.name || '',
+              category: embeddedProduct.category || '',
+              status: status,
+              location: embeddedProduct.location || '',
+              attributes: (embeddedProduct.attributes || []).map((attr) => ({
+                key: attr.key || '',
+                value: String(attr.value || ''),
+              })),
+              serialNumber: embeddedProduct.serialNumber || undefined,
+              assignedEmail: embeddedProduct.assignedEmail,
+              assignedMember: embeddedProduct.assignedMember,
+              lastAssigned: embeddedProduct.lastAssigned,
+              acquisitionDate: embeddedProduct.acquisitionDate,
+              price: embeddedProduct.price,
+              additionalInfo: embeddedProduct.additionalInfo,
+              productCondition: embeddedProduct.productCondition,
+              recoverable: embeddedProduct.recoverable,
+              fp_shipment: false,
+              activeShipment: false,
+              isDeleted: embeddedProduct.isDeleted,
+              fpWarehouse:
+                embeddedProduct.fpWarehouse &&
+                embeddedProduct.fpWarehouse.warehouseId
+                  ? {
+                      warehouseId: embeddedProduct.fpWarehouse
+                        .warehouseId as any,
+                      warehouseCountryCode:
+                        embeddedProduct.fpWarehouse.warehouseCountryCode || '',
+                      warehouseName:
+                        embeddedProduct.fpWarehouse.warehouseName || '',
+                      assignedAt: embeddedProduct.fpWarehouse.assignedAt,
+                      status:
+                        embeddedProduct.fpWarehouse.status === 'IN_TRANSIT'
+                          ? undefined
+                          : embeddedProduct.fpWarehouse.status,
+                    }
+                  : undefined,
+              memberData: member
+                ? {
+                    memberId: member._id as any,
+                    memberEmail: member.email,
+                    memberName: `${member.firstName} ${member.lastName}`,
+                    assignedAt: new Date(),
+                  }
+                : undefined,
+            });
+          } catch (error) {
+            console.error(
+              `❌ [cancelAllProductsInShipment] Global sync failed for member product ${productId}:`,
+              error,
+            );
+          }
         } else {
-          console.log('❌ Product not found in any collection');
           continue;
         }
       }
@@ -972,14 +1235,6 @@ export class LogisticsService {
     session?: ClientSession | null,
     providedConnection?: Connection,
   ) {
-    console.log('📍 Marking active shipment targets:', {
-      origin,
-      destination,
-      originEmail,
-      destinationEmail,
-    });
-
-    // ✅ FIX: Usar la conexión proporcionada si existe (misma que creó la session)
     const connection =
       providedConnection || (await this.tenantModels.getConnection(tenantName));
     const ProductModel =
@@ -1022,10 +1277,6 @@ export class LogisticsService {
         !['Our office', 'FP warehouse'].includes(destination) &&
         destinationEmail
       ) {
-        console.log(
-          '📥 Marking destination member as active:',
-          destinationEmail,
-        );
         await MemberModel.updateOne(
           { email: destinationEmail },
           { $set: { activeShipment: true } },
@@ -1075,9 +1326,6 @@ export class LogisticsService {
       });
 
       if (updatedProduct) {
-        console.log(
-          `✅ Product ${productId} - activeShipment set to false in Products collection`,
-        );
       } else {
         const updateRes = await MemberModel.updateOne(
           { 'products._id': new Types.ObjectId(productId) },
@@ -1105,7 +1353,6 @@ export class LogisticsService {
       const member = await MemberModel.findOne({ email: memberEmail });
 
       if (!member) {
-        console.log(`❌ No se encontró el member con email ${memberEmail}`);
         return;
       }
 
@@ -1124,17 +1371,11 @@ export class LogisticsService {
         isDeleted: { $ne: true },
       });
 
-      console.log(
-        `🔍 Active shipments for member ${fullName} (${memberEmail}): ${activeShipmentsForMember}`,
-      );
-
       if (activeShipmentsForMember === 0) {
-        console.log(`✅ Setting activeShipment: false for member ${fullName}`);
-        const result = await MemberModel.updateOne(
+        await MemberModel.updateOne(
           { email: memberEmail },
           { activeShipment: false },
         );
-        console.log('🧾 Member update result:', result);
       }
     }
   }
@@ -1165,9 +1406,86 @@ export class LogisticsService {
         origin,
       );
       await product.save();
-      console.log(
-        `✅ Producto actualizado (colección Products): ${product._id}`,
-      );
+
+      // 🌐 SINCRONIZAR A GLOBAL COLLECTION - PRESERVANDO DATOS EXISTENTES
+      try {
+        // Obtener datos existentes del producto global para preservar fpWarehouse y memberData
+        const existingGlobalProduct =
+          await this.globalProductSyncService.findGlobalProduct(
+            tenantName,
+            new Types.ObjectId(productId),
+          );
+
+        await this.globalProductSyncService.syncProduct({
+          tenantId: tenantName,
+          tenantName: tenantName,
+          originalProductId: new Types.ObjectId(productId),
+          sourceCollection: 'products',
+          name: product.name || '',
+          category: product.category || '',
+          status: product.status,
+          location: product.location || '',
+          attributes: (product.attributes || []).map((attr) => ({
+            key: attr.key || '',
+            value: String(attr.value || ''),
+          })),
+          serialNumber: product.serialNumber || undefined,
+          assignedEmail: product.assignedEmail,
+          assignedMember: product.assignedMember,
+          lastAssigned: product.lastAssigned,
+          acquisitionDate: product.acquisitionDate,
+          price: product.price,
+          additionalInfo: product.additionalInfo,
+          productCondition: product.productCondition,
+          recoverable: product.recoverable,
+          fp_shipment: false,
+          activeShipment: false,
+          isDeleted: product.isDeleted,
+          // 🔄 PRESERVAR fpWarehouse existente si el producto está en FP warehouse
+          fpWarehouse:
+            product.location === 'FP warehouse'
+              ? existingGlobalProduct?.fpWarehouse
+                ? {
+                    warehouseId: existingGlobalProduct.fpWarehouse
+                      .warehouseId as any,
+                    warehouseCountryCode:
+                      existingGlobalProduct.fpWarehouse.warehouseCountryCode,
+                    warehouseName:
+                      existingGlobalProduct.fpWarehouse.warehouseName,
+                    assignedAt: existingGlobalProduct.fpWarehouse.assignedAt,
+                    status: 'STORED' as const, // Producto recibido = STORED
+                  }
+                : product.fpWarehouse && product.fpWarehouse.warehouseId
+                  ? {
+                      warehouseId: product.fpWarehouse.warehouseId as any,
+                      warehouseCountryCode:
+                        product.fpWarehouse.warehouseCountryCode || '',
+                      warehouseName: product.fpWarehouse.warehouseName || '',
+                      assignedAt: product.fpWarehouse.assignedAt,
+                      status: 'STORED' as const,
+                    }
+                  : undefined
+              : undefined,
+          // 🔄 PRESERVAR memberData existente si existe
+          memberData: existingGlobalProduct?.memberData
+            ? {
+                memberId: existingGlobalProduct.memberData.memberId as any,
+                memberEmail: existingGlobalProduct.memberData.memberEmail,
+                memberName: existingGlobalProduct.memberData.memberName,
+                assignedAt: existingGlobalProduct.memberData.assignedAt,
+              }
+            : undefined,
+        });
+        console.log(
+          `🌐 [updateProductOnShipmentReceived] Global sync completed for product ${productId} - fpWarehouse preserved: ${!!existingGlobalProduct?.fpWarehouse}`,
+        );
+      } catch (error) {
+        console.error(
+          `❌ [updateProductOnShipmentReceived] Global sync failed for product ${productId}:`,
+          error,
+        );
+      }
+
       return;
     }
 
@@ -1201,7 +1519,65 @@ export class LogisticsService {
           },
         );
 
-        console.log(`✅ Producto actualizado (colección Member): ${productId}`);
+        // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+        try {
+          await this.globalProductSyncService.syncProduct({
+            tenantId: tenantName,
+            tenantName: tenantName,
+            originalProductId: new Types.ObjectId(productId),
+            sourceCollection: 'members',
+            name: embeddedProduct.name || '',
+            category: embeddedProduct.category || '',
+            status: newStatus,
+            location: 'Employee',
+            attributes: (embeddedProduct.attributes || []).map((attr) => ({
+              key: attr.key || '',
+              value: String(attr.value || ''),
+            })),
+            serialNumber: embeddedProduct.serialNumber || undefined,
+            assignedEmail: embeddedProduct.assignedEmail,
+            assignedMember: embeddedProduct.assignedMember,
+            lastAssigned: embeddedProduct.lastAssigned,
+            acquisitionDate: embeddedProduct.acquisitionDate,
+            price: embeddedProduct.price,
+            additionalInfo: embeddedProduct.additionalInfo,
+            productCondition: embeddedProduct.productCondition,
+            recoverable: embeddedProduct.recoverable,
+            fp_shipment: false,
+            activeShipment: false,
+            isDeleted: embeddedProduct.isDeleted,
+            fpWarehouse:
+              embeddedProduct.fpWarehouse &&
+              embeddedProduct.fpWarehouse.warehouseId
+                ? {
+                    warehouseId: embeddedProduct.fpWarehouse.warehouseId as any,
+                    warehouseCountryCode:
+                      embeddedProduct.fpWarehouse.warehouseCountryCode || '',
+                    warehouseName:
+                      embeddedProduct.fpWarehouse.warehouseName || '',
+                    assignedAt: embeddedProduct.fpWarehouse.assignedAt,
+                    status:
+                      embeddedProduct.fpWarehouse.status === 'IN_TRANSIT'
+                        ? undefined
+                        : embeddedProduct.fpWarehouse.status,
+                  }
+                : undefined,
+            memberData: {
+              memberId: memberWithProduct._id as any,
+              memberEmail: memberWithProduct.email,
+              memberName: `${memberWithProduct.firstName} ${memberWithProduct.lastName}`,
+              assignedAt: new Date(),
+            },
+          });
+          console.log(
+            `🌐 [updateProductOnShipmentReceived] Global sync completed for member product ${productId}`,
+          );
+        } catch (error) {
+          console.error(
+            `❌ [updateProductOnShipmentReceived] Global sync failed for member product ${productId}:`,
+            error,
+          );
+        }
       }
     }
   }
@@ -1211,10 +1587,6 @@ export class LogisticsService {
     tenantId: string,
   ) {
     if (typeof memberEmail !== 'string') {
-      console.warn(
-        `❌ Email inválido recibido en clearMemberActiveShipmentFlagIfNoOtherShipments:`,
-        memberEmail,
-      );
       return;
     }
 
@@ -1224,7 +1596,6 @@ export class LogisticsService {
     const MemberModel =
       this.tenantModels.getMemberModelFromConnection(connection);
 
-    // Agregar logs detallados para debugging
     const activeShipments = await ShipmentModel.find({
       shipment_status: {
         $in: ['In Preparation', 'On Hold - Missing Data', 'On The Way'],
@@ -1236,18 +1607,6 @@ export class LogisticsService {
         { 'destinationDetails.assignedEmail': normalizedEmail },
       ],
       isDeleted: { $ne: true },
-    });
-
-    console.log(`🔍 Active shipments found for ${normalizedEmail}:`, {
-      count: activeShipments.length,
-      shipments: activeShipments.map((s) => ({
-        id: s._id,
-        status: s.shipment_status,
-        origin: s.origin,
-        destination: s.destination,
-        originEmail: s.originDetails?.assignedEmail,
-        destinationEmail: s.destinationDetails?.assignedEmail,
-      })),
     });
 
     const memberStillInvolved = activeShipments.length > 0;
@@ -1280,12 +1639,9 @@ export class LogisticsService {
     newAddress: AddressData,
     userId: string,
     ourOfficeEmail: string,
+    officeId?: string,
+    newOfficeName?: string,
   ) {
-    console.log('🔄 Starting office address update:', {
-      tenantName,
-      oldAddress,
-      newAddress,
-    });
     await new Promise((resolve) => process.nextTick(resolve));
     const connection = await this.tenantModels.getConnection(tenantName);
     const ShipmentModel = await this.tenantModels.getShipmentModel(tenantName);
@@ -1293,18 +1649,59 @@ export class LogisticsService {
 
     try {
       await session.withTransaction(async () => {
-        const shipments = await ShipmentModel.find({
-          $or: [{ origin: 'Our office' }, { destination: 'Our office' }],
+        // Buscar shipments por officeId (ya no buscamos por nombre "Our office")
+        const query: any = {
           shipment_status: {
             $in: ['In Preparation', 'On Hold - Missing Data'],
           },
           isDeleted: { $ne: true },
-        }).session(session);
+        };
+
+        if (officeId) {
+          // Si se proporciona officeId, buscar shipments de esa oficina específica
+          query.$or = [
+            { originOfficeId: new Types.ObjectId(officeId) },
+            { destinationOfficeId: new Types.ObjectId(officeId) },
+          ];
+        } else {
+          // Si no se proporciona officeId, buscar todos los shipments con oficinas
+          query.$or = [
+            { originOfficeId: { $exists: true } },
+            { destinationOfficeId: { $exists: true } },
+          ];
+        }
+
+        const shipments = await ShipmentModel.find(query).session(session);
 
         for (const shipment of shipments) {
           let updated = false;
 
-          if (shipment.origin === 'Our office') {
+          const originalShipmentData = { ...shipment.toObject() };
+
+          // Actualizar nombre de oficina si se proporciona
+          if (newOfficeName && officeId) {
+            if (
+              shipment.originOfficeId &&
+              shipment.originOfficeId.toString() === officeId
+            ) {
+              shipment.origin = newOfficeName;
+              updated = true;
+            }
+            if (
+              shipment.destinationOfficeId &&
+              shipment.destinationOfficeId.toString() === officeId
+            ) {
+              shipment.destination = newOfficeName;
+              updated = true;
+            }
+          }
+
+          // Actualizar detalles de origen SOLO si es la oficina que se modificó
+          if (
+            shipment.originOfficeId &&
+            officeId &&
+            shipment.originOfficeId.toString() === officeId
+          ) {
             const desirableDate = shipment.originDetails?.desirableDate || '';
 
             const updatedOriginDetails = {
@@ -1315,31 +1712,26 @@ export class LogisticsService {
               zipCode: newAddress.zipCode || '',
               apartment: newAddress.apartment || '',
               phone: newAddress.phone || '',
+              email:
+                newAddress.ourOfficeEmail ||
+                shipment.originDetails?.email ||
+                '',
+              personalEmail: shipment.originDetails?.personalEmail || '',
+              assignedEmail: shipment.originDetails?.assignedEmail || '',
+              dni: shipment.originDetails?.dni || '',
               desirableDate: desirableDate,
             };
 
-            await ShipmentModel.updateOne(
-              { _id: shipment._id },
-              {
-                $set: {
-                  'originDetails.address': updatedOriginDetails.address,
-                  'originDetails.city': updatedOriginDetails.city,
-                  'originDetails.state': updatedOriginDetails.state,
-                  'originDetails.country': updatedOriginDetails.country,
-                  'originDetails.zipCode': updatedOriginDetails.zipCode,
-                  'originDetails.apartment': updatedOriginDetails.apartment,
-                  'originDetails.phone': updatedOriginDetails.phone,
-                  'originDetails.desirableDate':
-                    updatedOriginDetails.desirableDate,
-                },
-              },
-              { session },
-            );
-
+            shipment.originDetails = updatedOriginDetails;
             updated = true;
           }
 
-          if (shipment.destination === 'Our office') {
+          // Actualizar detalles de destino SOLO si es la oficina que se modificó
+          if (
+            shipment.destinationOfficeId &&
+            officeId &&
+            shipment.destinationOfficeId.toString() === officeId
+          ) {
             const desirableDate =
               shipment.destinationDetails?.desirableDate || '';
 
@@ -1351,76 +1743,49 @@ export class LogisticsService {
               zipCode: newAddress.zipCode || '',
               apartment: newAddress.apartment || '',
               phone: newAddress.phone || '',
+              email:
+                newAddress.ourOfficeEmail ||
+                shipment.destinationDetails?.email ||
+                '',
+              personalEmail: shipment.destinationDetails?.personalEmail || '',
+              assignedEmail: shipment.destinationDetails?.assignedEmail || '',
+              dni: shipment.destinationDetails?.dni || '',
               desirableDate: desirableDate,
             };
 
-            await ShipmentModel.updateOne(
-              { _id: shipment._id },
-              {
-                $set: {
-                  'destinationDetails.address':
-                    updatedDestinationDetails.address,
-                  'destinationDetails.city': updatedDestinationDetails.city,
-                  'destinationDetails.state': updatedDestinationDetails.state,
-                  'destinationDetails.country':
-                    updatedDestinationDetails.country,
-                  'destinationDetails.zipCode':
-                    updatedDestinationDetails.zipCode,
-                  'destinationDetails.apartment':
-                    updatedDestinationDetails.apartment,
-                  'destinationDetails.phone': updatedDestinationDetails.phone,
-                  'destinationDetails.desirableDate':
-                    updatedDestinationDetails.desirableDate,
-                },
-              },
-              { session },
-            );
-
+            shipment.destinationDetails = updatedDestinationDetails;
             updated = true;
           }
 
           if (updated) {
+            await shipment.save({ session });
+
             const refreshedShipment = await ShipmentModel.findById(
               shipment._id,
             ).session(session);
 
             if (refreshedShipment) {
-              console.log('📋 Refreshed shipment details:', {
-                originDetails: refreshedShipment.originDetails,
-                destinationDetails: refreshedShipment.destinationDetails,
-              });
-
-              // Solo actualizar el status si es necesario
-              // El history se crea automáticamente en updateShipmentStatusOnAddressComplete
-              // cuando realmente cambia el status del shipment
-              await this.updateShipmentStatusOnAddressComplete(
+              await this.updateShipmentOnAddressComplete(
                 refreshedShipment,
                 connection,
                 session,
                 userId,
                 tenantName,
                 ourOfficeEmail,
+                originalShipmentData,
               );
             }
           }
         }
       });
-
-      console.log('✨ Completed office address update');
-
-      this.logger.debug(
-        `Sending websocket notification for tenant: ${tenantName}`,
-      );
-      this.eventsGateway.notifyTenant(tenantName, 'shipments-update', {
-        message: 'Shipments updated after office address change',
-        timestamp: new Date().toISOString(),
-      });
     } catch (error) {
-      console.error('❌ Failed to update office shipments:', error);
+      console.error('❌ Error in office address update:', error);
       throw error;
     } finally {
       await session.endSession();
     }
+
+    console.log('✨ Completed office address update');
   }
 
   async checkAndUpdateShipmentsForMember(
@@ -1431,7 +1796,7 @@ export class LogisticsService {
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
     const connection = await this.tenantModels.getConnection(tenantName);
-    // ✅ FIX: Usar la misma conexión para crear el modelo en lugar de obtener una nueva
+
     const ShipmentModel = connection.model(Shipment.name, ShipmentSchema);
     const session = await connection.startSession();
 
@@ -1448,7 +1813,6 @@ export class LogisticsService {
           return;
         }
 
-        // ✅ FIX: Usar findByEmailNotThrowError con conexión y sesión en lugar de findById
         const refreshed = await this.membersService.findByEmailNotThrowError(
           memberEmail,
           connection,
@@ -1464,7 +1828,6 @@ export class LogisticsService {
         member = refreshed;
 
         const fullName = `${member.firstName} ${member.lastName}`;
-        this.logger.debug(`Searching shipments for member: ${fullName}`);
 
         const shipments = await ShipmentModel.find({
           $or: [{ origin: fullName }, { destination: fullName }],
@@ -1473,12 +1836,9 @@ export class LogisticsService {
           },
         }).session(session);
 
-        this.logger.debug(`Found ${shipments.length} shipments to update`);
-
         for (const shipment of shipments) {
           let updated = false;
 
-          // Capturar datos originales ANTES de cualquier actualización
           const originalShipmentData = { ...shipment.toObject() };
 
           const desirableDateOrigin =
@@ -1514,9 +1874,6 @@ export class LogisticsService {
 
             shipment.originDetails = updatedShipment?.originDetails;
             updated = true;
-            this.logger.debug(
-              `✅ Replaced originDetails for shipment ${shipment._id}`,
-            );
           }
 
           if (shipment.destination === fullName) {
@@ -1545,9 +1902,6 @@ export class LogisticsService {
 
             shipment.destinationDetails = updatedShipment?.destinationDetails;
             updated = true;
-            this.logger.debug(
-              `✅ Replaced destinationDetails for shipment ${shipment._id}`,
-            );
           }
 
           if (updated) {
@@ -1555,9 +1909,6 @@ export class LogisticsService {
               shipment._id,
             ).session(session);
             if (refreshedShipment) {
-              // Solo actualizar el status si es necesario
-              // El history se crea automáticamente en updateShipmentOnAddressComplete
-              // cuando realmente cambia el status del shipment
               await this.updateShipmentOnAddressComplete(
                 refreshedShipment,
                 connection,
@@ -1578,7 +1929,6 @@ export class LogisticsService {
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      this.logger.error('Error updating shipments for member:', error);
       throw error;
     } finally {
       await session.endSession();
@@ -1638,14 +1988,14 @@ export class LogisticsService {
     userId: string,
     ourOfficeEmail: string,
   ): Promise<ShipmentDocument> {
-    console.log('🚨 [CANCEL SHIPMENT] Start for', shipmentId);
-
     await new Promise((resolve) => process.nextTick(resolve));
 
-    // Capturar el status original ANTES de cancelar
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
-    const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
+    const ShipmentModel = connection.model<ShipmentDocument>(
+      'Shipment',
+      ShipmentSchema,
+    );
     const originalShipment = await ShipmentModel.findById(shipmentId);
 
     if (!originalShipment) {
@@ -1657,12 +2007,20 @@ export class LogisticsService {
     const shipment = await this.shipmentsService.cancel(shipmentId, tenantName);
 
     if (userId) {
-      await recordShipmentHistory(
+      // 📍 Extraer datos de ubicación para history mejorado
+      const locationData = await this.extractLocationDataForHistory(
+        originalShipmentData,
+        tenantName,
+      );
+
+      await recordEnhancedShipmentHistory(
         this.historyService,
         'cancel',
         userId,
-        originalShipmentData,
-        shipment.toObject(),
+        originalShipmentData as ShipmentDocument,
+        shipment,
+        undefined,
+        locationData,
       );
     } else {
       console.warn(
@@ -1670,16 +2028,9 @@ export class LogisticsService {
       );
     }
 
-    await this.cancelAllProductsInShipment(
-      shipment.products,
-      tenantName,
-      // userId (si lo usás internamente)
-    );
+    await this.cancelAllProductsInShipment(shipment.products, tenantName);
 
-    // Solo enviar mensaje a Slack si el shipment estaba en 'In Preparation'
-    // Los shipments en 'On Hold - Missing Data' nunca fueron notificados a Slack
     if (originalShipmentData.shipment_status === 'In Preparation') {
-      // ✅ Obtener información del usuario desde el JWT
       const userInfo = await this.getUserInfoFromUserId(userId);
 
       const slackMessage = CreateShipmentMessageToSlack({
@@ -1797,6 +2148,7 @@ export class LogisticsService {
     productId: string,
     connection: mongoose.Connection,
     session: ClientSession,
+    tenantName?: string,
   ): Promise<ProductDocument | null> {
     const ProductModel =
       connection.models.Product || connection.model('Product', ProductSchema);
@@ -1809,6 +2161,46 @@ export class LogisticsService {
     if (product && product.status === 'In Transit') {
       product.status = 'In Transit - Missing Data';
       await product.save({ session });
+
+      // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+      if (tenantName) {
+        try {
+          await this.globalProductSyncService.syncProduct({
+            tenantId: tenantName,
+            tenantName: tenantName,
+            originalProductId: new Types.ObjectId(productId),
+            sourceCollection: 'products',
+            name: product.name || '',
+            category: product.category || '',
+            status: 'In Transit - Missing Data',
+            location: product.location || '',
+            attributes: product.attributes || [],
+            serialNumber: product.serialNumber,
+            assignedEmail: product.assignedEmail,
+            assignedMember: product.assignedMember,
+            lastAssigned: product.lastAssigned,
+            acquisitionDate: product.acquisitionDate,
+            price: product.price,
+            additionalInfo: product.additionalInfo,
+            productCondition: product.productCondition,
+            recoverable: product.recoverable,
+            fp_shipment: product.fp_shipment,
+            activeShipment: product.activeShipment,
+            imageUrl: product.imageUrl,
+            isDeleted: product.isDeleted,
+            fpWarehouse: product.fpWarehouse,
+          });
+          console.log(
+            `🌐 [updateProductStatusToMissingData] Global sync completed for product ${productId}`,
+          );
+        } catch (error) {
+          console.error(
+            `❌ [updateProductStatusToMissingData] Global sync failed for product ${productId}:`,
+            error,
+          );
+        }
+      }
+
       return product;
     }
     if (!product) {
@@ -1822,15 +2214,12 @@ export class LogisticsService {
       'products._id': productId,
       'products.status': 'In Transit',
     });
-    // Primero verificar que el producto específico tenga el status correcto
+
     const memberWithProduct = await MemberModel.findOne({
       'products._id': new Types.ObjectId(productId),
     }).session(session);
 
     if (!memberWithProduct) {
-      console.log(
-        `❌ [MISSING_DATA] No se encontró member con producto ${productId}`,
-      );
       return null;
     }
 
@@ -1839,16 +2228,10 @@ export class LogisticsService {
     );
 
     if (!targetProduct) {
-      console.log(
-        `❌ [MISSING_DATA] Producto ${productId} no encontrado en products array`,
-      );
       return null;
     }
 
     if (targetProduct.status !== 'In Transit') {
-      console.log(
-        `ℹ️ [MISSING_DATA] Producto ${productId} tiene status "${targetProduct.status}", no se actualiza`,
-      );
       return null;
     }
 
@@ -1889,6 +2272,51 @@ export class LogisticsService {
           assignedMember: `${member.firstName} ${member.lastName}`,
         };
 
+        // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+        if (tenantName) {
+          try {
+            await this.globalProductSyncService.syncProduct({
+              tenantId: tenantName,
+              tenantName: tenantName,
+              originalProductId: new Types.ObjectId(productId),
+              sourceCollection: 'members',
+              name: enrichedProduct.name || '',
+              category: enrichedProduct.category || '',
+              status: 'In Transit - Missing Data',
+              location: enrichedProduct.location || '',
+              attributes: enrichedProduct.attributes || [],
+              serialNumber: enrichedProduct.serialNumber,
+              assignedEmail: enrichedProduct.assignedEmail,
+              assignedMember: enrichedProduct.assignedMember,
+              lastAssigned: enrichedProduct.lastAssigned,
+              acquisitionDate: enrichedProduct.acquisitionDate,
+              price: enrichedProduct.price,
+              additionalInfo: enrichedProduct.additionalInfo,
+              productCondition: enrichedProduct.productCondition,
+              recoverable: enrichedProduct.recoverable,
+              fp_shipment: enrichedProduct.fp_shipment,
+              activeShipment: enrichedProduct.activeShipment,
+              imageUrl: enrichedProduct.imageUrl,
+              isDeleted: enrichedProduct.isDeleted,
+              fpWarehouse: enrichedProduct.fpWarehouse,
+              memberData: {
+                memberId: member._id,
+                memberEmail: member.email,
+                memberName: `${member.firstName} ${member.lastName}`,
+                assignedAt: new Date(),
+              },
+            });
+            console.log(
+              `🌐 [updateProductStatusToMissingData] Global sync completed for member product ${productId}`,
+            );
+          } catch (error) {
+            console.error(
+              `❌ [updateProductStatusToMissingData] Global sync failed for member product ${productId}:`,
+              error,
+            );
+          }
+        }
+
         return enrichedProduct as ProductDocument;
       }
     }
@@ -1900,6 +2328,7 @@ export class LogisticsService {
     productId: string,
     connection: mongoose.Connection,
     session: ClientSession,
+    tenantName?: string,
   ): Promise<ProductDocument | null> {
     try {
       const ProductModel =
@@ -1917,7 +2346,45 @@ export class LogisticsService {
         if (product.status === 'In Transit - Missing Data') {
           product.status = 'In Transit';
           await product.save({ session });
-          console.log(`✅ Producto actualizado a In Transit`);
+
+          // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+          if (tenantName) {
+            try {
+              await this.globalProductSyncService.syncProduct({
+                tenantId: tenantName,
+                tenantName: tenantName,
+                originalProductId: new Types.ObjectId(productId),
+                sourceCollection: 'products',
+                name: product.name || '',
+                category: product.category || '',
+                status: 'In Transit',
+                location: product.location || '',
+                attributes: product.attributes || [],
+                serialNumber: product.serialNumber,
+                assignedEmail: product.assignedEmail,
+                assignedMember: product.assignedMember,
+                lastAssigned: product.lastAssigned,
+                acquisitionDate: product.acquisitionDate,
+                price: product.price,
+                additionalInfo: product.additionalInfo,
+                productCondition: product.productCondition,
+                recoverable: product.recoverable,
+                fp_shipment: product.fp_shipment,
+                activeShipment: product.activeShipment,
+                imageUrl: product.imageUrl,
+                isDeleted: product.isDeleted,
+                fpWarehouse: product.fpWarehouse,
+              });
+              console.log(
+                `🌐 [updateProductStatusToInTransit] Global sync completed for product ${productId}`,
+              );
+            } catch (error) {
+              console.error(
+                `❌ [updateProductStatusToInTransit] Global sync failed for product ${productId}:`,
+                error,
+              );
+            }
+          }
         }
         return product;
       }
@@ -1932,9 +2399,6 @@ export class LogisticsService {
       }).session(session);
 
       if (!memberWithProduct) {
-        console.log(
-          `❌ [IN_TRANSIT] No se encontró member con producto ${productId}`,
-        );
         return null;
       }
 
@@ -1943,16 +2407,10 @@ export class LogisticsService {
       );
 
       if (!targetProduct) {
-        console.log(
-          `❌ [IN_TRANSIT] Producto ${productId} no encontrado en products array`,
-        );
         return null;
       }
 
       if (targetProduct.status !== 'In Transit - Missing Data') {
-        console.log(
-          `ℹ️ [IN_TRANSIT] Producto ${productId} tiene status "${targetProduct.status}", no se actualiza`,
-        );
         return null;
       }
 
@@ -2016,6 +2474,51 @@ export class LogisticsService {
             assignedMember: `${member.firstName} ${member.lastName}`,
           };
 
+          // 🌐 SINCRONIZAR A GLOBAL COLLECTION
+          if (tenantName) {
+            try {
+              await this.globalProductSyncService.syncProduct({
+                tenantId: tenantName,
+                tenantName: tenantName,
+                originalProductId: new Types.ObjectId(productId),
+                sourceCollection: 'members',
+                name: enrichedProduct.name || '',
+                category: enrichedProduct.category || '',
+                status: 'In Transit',
+                location: enrichedProduct.location || '',
+                attributes: enrichedProduct.attributes || [],
+                serialNumber: enrichedProduct.serialNumber,
+                assignedEmail: enrichedProduct.assignedEmail,
+                assignedMember: enrichedProduct.assignedMember,
+                lastAssigned: enrichedProduct.lastAssigned,
+                acquisitionDate: enrichedProduct.acquisitionDate,
+                price: enrichedProduct.price,
+                additionalInfo: enrichedProduct.additionalInfo,
+                productCondition: enrichedProduct.productCondition,
+                recoverable: enrichedProduct.recoverable,
+                fp_shipment: enrichedProduct.fp_shipment,
+                activeShipment: enrichedProduct.activeShipment,
+                imageUrl: enrichedProduct.imageUrl,
+                isDeleted: enrichedProduct.isDeleted,
+                fpWarehouse: enrichedProduct.fpWarehouse,
+                memberData: {
+                  memberId: member._id,
+                  memberEmail: member.email,
+                  memberName: `${member.firstName} ${member.lastName}`,
+                  assignedAt: new Date(),
+                },
+              });
+              console.log(
+                `🌐 [updateProductStatusToInTransit] Global sync completed for member product ${productId}`,
+              );
+            } catch (error) {
+              console.error(
+                `❌ [updateProductStatusToInTransit] Global sync failed for member product ${productId}:`,
+                error,
+              );
+            }
+          }
+
           return enrichedProduct as ProductDocument;
         }
       } else {
@@ -2023,11 +2526,6 @@ export class LogisticsService {
           `ℹ️ [IN_TRANSIT] Product ${productId} status in member was not 'In Transit - Missing Data' or not found`,
         );
       }
-
-      console.log(
-        `[🧪] [IN_TRANSIT] Resultado del updateOne a member.products:`,
-        updateResult,
-      );
 
       return null;
     } catch (error) {
@@ -2051,10 +2549,12 @@ export class LogisticsService {
       const originCode = this.shipmentsService.getLocationCode(
         shipment.origin,
         shipment.originDetails,
+        shipment.originOfficeId?.toString(),
       );
       const destinationCode = this.shipmentsService.getLocationCode(
         shipment.destination,
         shipment.destinationDetails,
+        shipment.destinationOfficeId?.toString(),
       );
       const originalShipment = { ...shipment.toObject() };
       const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
@@ -2074,10 +2574,12 @@ export class LogisticsService {
       const originComplete = this.areShipmentDetailsComplete(
         shipment.originDetails,
         shipment.origin,
+        shipment.originOfficeId?.toString(),
       );
       const destinationComplete = this.areShipmentDetailsComplete(
         shipment.destinationDetails,
         shipment.destination,
+        shipment.destinationOfficeId?.toString(),
       );
       const wasInPreparation = shipment.shipment_status === 'In Preparation';
       const isNowComplete = originComplete && destinationComplete;
@@ -2097,6 +2599,7 @@ export class LogisticsService {
             productId.toString(),
             connection,
             session,
+            tenantName,
           );
 
           const product = await this.findProductAcrossCollections(
@@ -2126,6 +2629,7 @@ export class LogisticsService {
             productId.toString(),
             connection,
             session,
+            tenantName,
           );
           if (updatedProduct) {
             updatedProducts.push(updatedProduct);
@@ -2140,6 +2644,8 @@ export class LogisticsService {
       }
 
       if (newStatus !== shipment.shipment_status) {
+        const oldStatus = shipment.shipment_status;
+
         await ShipmentModel.updateOne(
           { _id: shipment._id },
           {
@@ -2150,20 +2656,45 @@ export class LogisticsService {
           },
           { session },
         );
-        await this.historyService.create({
-          actionType: 'update',
-          itemType: 'shipments',
+
+        // 📍 Extraer datos de ubicación para history mejorado
+        const locationData = await this.extractLocationDataForHistory(
+          originalShipment,
+          tenantName,
+        );
+
+        const updatedShipmentData = {
+          ...originalShipment,
+          shipment_status: newStatus,
+          order_id: newOrderId,
+          snapshots: shipment.snapshots,
+        };
+
+        await recordEnhancedShipmentHistory(
+          this.historyService,
+          'update',
           userId,
-          changes: {
-            oldData: originalShipment,
-            newData: {
-              ...originalShipment,
-              shipment_status: newStatus,
-              order_id: newOrderId,
-              snapshots: shipment.snapshots,
-            },
-          },
-        });
+          originalShipment as ShipmentDocument,
+          updatedShipmentData as ShipmentDocument,
+          undefined,
+          locationData,
+        );
+
+        // 🏢 UPDATE: Coordinar actualización de flags de oficinas si el estado cambió
+        const originOfficeId = shipment.originOfficeId
+          ? new mongoose.Types.ObjectId(shipment.originOfficeId.toString())
+          : null;
+        const destinationOfficeId = shipment.destinationOfficeId
+          ? new mongoose.Types.ObjectId(shipment.destinationOfficeId.toString())
+          : null;
+
+        await this.shipmentOfficeCoordinator.handleShipmentStatusChange(
+          originOfficeId,
+          destinationOfficeId,
+          oldStatus,
+          newStatus,
+          tenantName,
+        );
       }
 
       // TODO: Status On Hold - Missing Data
@@ -2204,7 +2735,6 @@ export class LogisticsService {
         await this.slackService.sendMessage(slackMessage);
       }
 
-      console.log('📋 Final shipment status:', newStatus);
       return newStatus;
     } catch (error) {
       console.error(
@@ -2215,6 +2745,67 @@ export class LogisticsService {
     }
   }
 
+  private hasRelevantDetailsChanged(
+    oldOrigin: any,
+    newOrigin: any,
+    oldDestination: any,
+    newDestination: any,
+  ): boolean {
+    // Solo los campos que realmente se actualizan en la oficina
+    const officeRelevantFields = [
+      'address',
+      'city',
+      'state',
+      'country',
+      'zipCode',
+      'apartment',
+      'phone',
+      'desirableDate',
+    ];
+
+    // Para miembros incluimos también campos personales
+    const memberRelevantFields = [
+      'address',
+      'city',
+      'country',
+      'zipCode',
+      'apartment',
+      'phone',
+      'personalEmail',
+      'dni',
+      'desirableDate',
+    ];
+
+    // Verificar cambios en origin - solo campos relevantes
+    const fieldsToCheckOrigin = this.isOfficeLocation(oldOrigin)
+      ? officeRelevantFields
+      : memberRelevantFields;
+
+    for (const field of fieldsToCheckOrigin) {
+      if (oldOrigin?.[field] !== newOrigin?.[field]) {
+        return true;
+      }
+    }
+
+    // Verificar cambios en destination - solo campos relevantes
+    const fieldsToCheckDestination = this.isOfficeLocation(oldDestination)
+      ? officeRelevantFields
+      : memberRelevantFields;
+
+    for (const field of fieldsToCheckDestination) {
+      if (oldDestination?.[field] !== newDestination?.[field]) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private isOfficeLocation(details: any): boolean {
+    // Determinar si es oficina basado en la presencia de email vs personalEmail
+    return details?.email && !details?.personalEmail;
+  }
+
   public async updateShipmentOnAddressComplete(
     shipment: ShipmentDocument,
     connection: mongoose.Connection,
@@ -2223,263 +2814,58 @@ export class LogisticsService {
     tenantId: string,
     ourOfficeEmail: string,
     originalShipmentData?: any,
-  ) {
+  ): Promise<string> {
     try {
-      // const originalShipment = { ...shipment.toObject() };
-      const ShipmentModel = connection.model<ShipmentDocument>('Shipment');
-
-      const freshShipment = await ShipmentModel.findById(shipment._id).session(
-        session,
+      console.log(
+        '🔍 [SLACK_DEBUG] originalShipmentData provided:',
+        !!originalShipmentData,
       );
-      if (!freshShipment) {
-        throw new NotFoundException(`Shipment ${shipment._id} not found`);
-      }
 
-      shipment = freshShipment;
       const originalShipment = originalShipmentData || {
         ...shipment.toObject(),
       };
 
-      const orderNumber = parseInt(shipment.order_id.slice(-4));
-
-      const originCode = this.shipmentsService.getLocationCode(
-        shipment.origin,
+      const detailsChanged = this.hasRelevantDetailsChanged(
+        originalShipment.originDetails,
         shipment.originDetails,
-      );
-      const destinationCode = this.shipmentsService.getLocationCode(
-        shipment.destination,
+        originalShipment.destinationDetails,
         shipment.destinationDetails,
       );
 
-      const newOrderId = `${originCode}${destinationCode}${orderNumber.toString().padStart(4, '0')}`;
-
-      // const hasCodesForOrderId =
-      //   originCode !== 'XX' && destinationCode !== 'XX';
-
-      const originComplete = this.areShipmentDetailsComplete(
-        shipment.originDetails,
-        shipment.origin,
-      );
-      const destinationComplete = this.areShipmentDetailsComplete(
-        shipment.destinationDetails,
-        shipment.destination,
+      // Ejecutar la lógica completa de actualización de estado
+      const newStatus = await this.updateShipmentStatusOnAddressComplete(
+        shipment,
+        connection,
+        session,
+        userId,
+        tenantId,
+        ourOfficeEmail,
       );
 
-      const isNowComplete = originComplete && destinationComplete;
-      const wasInPreparation = shipment.shipment_status === 'In Preparation';
-
-      if (newOrderId !== shipment.order_id) {
-        await ShipmentModel.updateOne(
-          { _id: shipment._id },
-          { $set: { order_id: newOrderId } },
-          { session },
-        );
-        shipment.order_id = newOrderId;
-      }
-
-      let newStatus = shipment.shipment_status;
-
-      if (
-        isNowComplete &&
-        shipment.shipment_status === 'On Hold - Missing Data'
-      ) {
-        newStatus = 'In Preparation';
-        const updatedProducts: ProductDocument[] = [];
-
-        for (const productId of shipment.products) {
-          const updatedProduct = await this.updateProductStatusToInTransit(
-            productId.toString(),
-            connection,
-            session,
-          );
-          if (updatedProduct) updatedProducts.push(updatedProduct);
-        }
-
-        await session.commitTransaction();
-        await session.startTransaction();
-
-        await this.historyService.create({
-          actionType: 'update',
-          itemType: 'shipments',
-          userId,
-          changes: {
-            oldData: originalShipment,
-            newData: { ...originalShipment, shipment_status: newStatus },
-          },
-        });
-
-        console.log('📸 Generating product snapshots...');
-        await this.shipmentsService.createSnapshots(shipment, connection, {
-          providedProducts: updatedProducts,
-          force: true,
-        });
-      }
-
-      if (wasInPreparation && !isNowComplete) {
-        newStatus = 'On Hold - Missing Data';
-
-        const updatedProducts: ProductDocument[] = [];
-
-        for (const productId of shipment.products) {
-          const updatedProduct = await this.updateProductStatusToMissingData(
-            productId.toString(),
-            connection,
-            session,
-          );
-          if (updatedProduct) {
-            updatedProducts.push(updatedProduct);
-          }
-        }
-
-        await this.shipmentsService.createSnapshots(shipment, connection, {
-          providedProducts: updatedProducts,
-          force: true,
-        });
-
-        await this.historyService.create({
-          actionType: 'update',
-          itemType: 'shipments',
-          userId,
-          changes: {
-            oldData: originalShipment,
-            newData: { ...originalShipment, shipment_status: newStatus },
-          },
-        });
-      }
-
-      // También actualizar productos si el shipment se mantiene en 'On Hold - Missing Data'
-      // pero se actualizaron los datos (para asegurar consistencia)
-      if (
-        !isNowComplete &&
-        newStatus === 'On Hold - Missing Data' &&
-        originalShipment.shipment_status === 'On Hold - Missing Data'
-      ) {
-        console.log(
-          '🔄 Shipment remains On Hold - Missing Data, ensuring product status consistency',
-        );
-
-        const updatedProducts: ProductDocument[] = [];
-
-        for (const productId of shipment.products) {
-          const updatedProduct = await this.updateProductStatusToMissingData(
-            productId.toString(),
-            connection,
-            session,
-          );
-          if (updatedProduct) {
-            updatedProducts.push(updatedProduct);
-          }
-        }
-
-        if (updatedProducts.length > 0) {
-          await this.shipmentsService.createSnapshots(shipment, connection, {
-            providedProducts: updatedProducts,
-            force: true,
-          });
-        }
-      }
-
-      if (newStatus !== shipment.shipment_status) {
-        await ShipmentModel.updateOne(
-          { _id: shipment._id },
-          {
-            $set: {
-              shipment_status: newStatus,
-              snapshots: shipment.snapshots,
-            },
-          },
-          { session },
-        );
-      }
-
-      // TODO: Status On Hold - Missing Data
-      if (
-        newStatus === 'In Preparation' &&
-        isNowComplete &&
-        !wasInPreparation
-      ) {
-        // ✅ Obtener información del usuario desde el JWT
-        const userInfo = await this.getUserInfoFromUserId(userId);
-
-        const slackMessage = CreateShipmentMessageToSlack({
-          shipment: shipment,
-          tenantName: tenantId,
-          isOffboarding: false,
-          status: 'Updated',
-          previousShipment: originalShipment,
-          ourOfficeEmail: ourOfficeEmail,
-          userInfo: userInfo,
-        });
-        await this.slackService.sendMessage(slackMessage);
-      }
-
-      if (
-        newStatus === 'On Hold - Missing Data' &&
-        wasInPreparation &&
-        !isNowComplete
-      ) {
-        // ✅ Obtener información del usuario desde el JWT
-        const userInfo = await this.getUserInfoFromUserId(userId);
-
-        const slackMessage = CreateShipmentMessageToSlack({
-          shipment: shipment,
-          tenantName: tenantId,
-          isOffboarding: false,
-          status: 'Missing Data',
-          ourOfficeEmail: ourOfficeEmail,
-          userInfo: userInfo,
-        });
-        await this.slackService.sendMessage(slackMessage);
-      }
-
-      shipment.shipment_status = newStatus;
-
-      const detailsChanged =
-        JSON.stringify(originalShipment.originDetails) !==
-          JSON.stringify(shipment.originDetails) ||
-        JSON.stringify(originalShipment.destinationDetails) !==
-          JSON.stringify(shipment.destinationDetails);
-
+      // Verificar si necesitamos enviar notificación adicional por cambio de detalles
+      // (solo si ambos estados son 'In Preparation' y hubo cambios en los detalles)
       if (
         originalShipment.shipment_status === 'In Preparation' &&
-        shipment.shipment_status === 'In Preparation' &&
+        newStatus === 'In Preparation' &&
         detailsChanged
       ) {
-        // ✅ Obtener información del usuario desde el JWT
+        console.log(
+          '🔍 [SLACK_DEBUG] ✅ Sending Slack notification for shipment details update',
+        );
+
         const userInfo = await this.getUserInfoFromUserId(userId);
 
         const slackMessage = CreateShipmentMessageToSlack({
-          shipment,
+          shipment: shipment,
           tenantName: tenantId,
           isOffboarding: false,
           status: 'Updated',
           previousShipment: originalShipment,
-          ourOfficeEmail,
+          ourOfficeEmail: ourOfficeEmail,
           userInfo: userInfo,
         });
         await this.slackService.sendMessage(slackMessage);
-      }
-
-      // Debug: Verificar status final de productos embebidos
-      const MemberModel =
-        connection.models.Member || connection.model('Member', MemberSchema);
-      for (const productId of shipment.products) {
-        const member = await MemberModel.findOne({
-          'products._id': new Types.ObjectId(productId),
-        }).session(session);
-
-        if (member) {
-          const p = member.products.find((pr) => pr._id.equals(productId));
-          if (p) {
-            console.log(
-              `🔍 [FINAL_CHECK] Producto ${productId} → Status embebido en Member: "${p.status}"`,
-            );
-          }
-        } else {
-          console.log(
-            `❌ [FINAL_CHECK] No se encontró Member con producto ${productId}`,
-          );
-        }
+      } else {
       }
 
       return newStatus;
@@ -2533,7 +2919,6 @@ export class LogisticsService {
     }
 
     if (!productData) {
-      console.log(`❌ Product data not found for ${productId}`);
       return;
     }
 
@@ -2577,10 +2962,7 @@ export class LogisticsService {
 
       if (snapshotIndex !== undefined && snapshotIndex >= 0) {
         const existingSnapshot = shipment.snapshots[snapshotIndex];
-        console.log('📋 Comparing old vs new snapshot:', {
-          old: existingSnapshot,
-          new: updatedSnapshot,
-        });
+
         const hasChanges = this.shipmentsService.hasSnapshotChanged(
           existingSnapshot,
           updatedSnapshot,
@@ -2622,6 +3004,111 @@ export class LogisticsService {
   }
 
   /**
+   * 📍 Extraer datos de ubicación para history de shipments
+   */
+  private async extractLocationDataForHistory(
+    shipment: any,
+    tenantName: string,
+  ): Promise<{
+    origin?: {
+      officeName?: string;
+      officeCountry?: string;
+      warehouseCountry?: string;
+      warehouseName?: string;
+      memberName?: string;
+      memberCountry?: string;
+    };
+    destination?: {
+      officeName?: string;
+      officeCountry?: string;
+      warehouseCountry?: string;
+      warehouseName?: string;
+      memberName?: string;
+      memberCountry?: string;
+    };
+  }> {
+    const locationData: any = {};
+
+    // 🏢 ORIGIN - Our office
+    if (shipment.origin === 'Our office' && shipment.originOfficeId) {
+      try {
+        const office = await this.officesService.findByIdAndTenant(
+          shipment.originOfficeId,
+          tenantName,
+        );
+        if (office) {
+          locationData.origin = {
+            officeName: office.name,
+            officeCountry: office.country,
+          };
+        }
+      } catch (error) {
+        console.error('❌ Error getting origin office data:', error);
+      }
+    }
+    // 🏭 ORIGIN - FP warehouse
+    else if (
+      shipment.origin === 'FP warehouse' &&
+      shipment.originDetails?.country
+    ) {
+      locationData.origin = {
+        warehouseCountry: shipment.originDetails.country,
+        warehouseName: shipment.originDetails.name || '',
+      };
+    }
+    // 👤 ORIGIN - Employee
+    else if (
+      shipment.origin === 'Employee' &&
+      shipment.originDetails?.country
+    ) {
+      locationData.origin = {
+        memberName: shipment.originDetails.name || '',
+        memberCountry: shipment.originDetails.country,
+      };
+    }
+
+    // 🏢 DESTINATION - Our office
+    if (shipment.destination === 'Our office' && shipment.destinationOfficeId) {
+      try {
+        const office = await this.officesService.findByIdAndTenant(
+          shipment.destinationOfficeId,
+          tenantName,
+        );
+        if (office) {
+          locationData.destination = {
+            officeName: office.name,
+            officeCountry: office.country,
+          };
+        }
+      } catch (error) {
+        console.error('❌ Error getting destination office data:', error);
+      }
+    }
+    // 🏭 DESTINATION - FP warehouse
+    else if (
+      shipment.destination === 'FP warehouse' &&
+      shipment.destinationDetails?.country
+    ) {
+      locationData.destination = {
+        warehouseCountry: shipment.destinationDetails.country,
+        warehouseName: shipment.destinationDetails.name || '',
+      };
+    }
+    // 👤 DESTINATION - Employee
+    else if (
+      shipment.destination === 'Employee' &&
+      shipment.destinationDetails?.country
+    ) {
+      locationData.destination = {
+        memberName: shipment.destinationDetails.name || '',
+        memberCountry: shipment.destinationDetails.country,
+      };
+    }
+
+    return locationData;
+  }
+
+  /**
    * Ejecuta una operación con retry automático en caso de Write Conflicts
    */
   private async executeWithRetry<T>(
@@ -2659,5 +3146,52 @@ export class LogisticsService {
     }
 
     throw lastError;
+  }
+
+  /**
+   * 🏭 Obtiene el warehouseCountryCode para destino FP warehouse
+   * Según las reglas: cuando FP warehouse es destino, toma el countryCode del origen
+   */
+  public async getWarehouseCountryCodeForDestination(
+    product: ProductDocument,
+    tenantName: string,
+  ): Promise<string | undefined> {
+    // Si el producto actual está en una oficina, usar el countryCode de la oficina
+    if (
+      product.location === 'Our office' &&
+      product.office?.officeCountryCode
+    ) {
+      return product.office.officeCountryCode;
+    }
+
+    // Si el producto actual está en FP warehouse, usar su countryCode
+    if (
+      product.location === 'FP warehouse' &&
+      product.fpWarehouse?.warehouseCountryCode
+    ) {
+      return product.fpWarehouse.warehouseCountryCode;
+    }
+
+    // Si el producto está con un member, obtener el país del member
+    if (product.location === 'Employee' && product.assignedEmail) {
+      try {
+        const MemberModel = await this.tenantModels.getMemberModel(tenantName);
+        const member = await MemberModel.findOne({
+          email: product.assignedEmail.trim().toLowerCase(),
+        });
+
+        if (member?.country) {
+          // Normalizar el país a código de país
+          return this.getCountryCode(member.country);
+        }
+      } catch (error) {
+        console.error(
+          `Error getting member country for ${product.assignedEmail}:`,
+          error,
+        );
+      }
+    }
+
+    return undefined;
   }
 }

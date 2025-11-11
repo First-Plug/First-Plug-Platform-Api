@@ -67,6 +67,41 @@ export class Product {
 
   @Prop({
     type: {
+      officeId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Office',
+        required: false,
+      },
+      officeCountryCode: {
+        type: String,
+        required: false,
+      },
+      officeName: {
+        type: String,
+        required: false,
+      },
+      assignedAt: {
+        type: Date,
+        required: false,
+      },
+      isDefault: {
+        type: Boolean,
+        required: false,
+      },
+      _id: false,
+    },
+    required: false,
+  })
+  office?: {
+    officeId?: mongoose.Schema.Types.ObjectId;
+    officeCountryCode?: string;
+    officeName?: string;
+    assignedAt?: Date;
+    isDefault?: boolean;
+  };
+
+  @Prop({
+    type: {
       amount: { type: Number },
       currencyCode: {
         type: String,
@@ -247,8 +282,34 @@ export class Product {
   @Prop({ type: Boolean, default: false })
   activeShipment?: boolean;
 
+  // Objeto completo para datos de FP warehouse
+  @Prop({
+    type: {
+      warehouseId: { type: Schema.Types.ObjectId },
+      warehouseCountryCode: { type: String },
+      warehouseName: { type: String },
+      assignedAt: { type: Date },
+      status: {
+        type: String,
+        enum: ['STORED', 'IN_TRANSIT', 'IN_TRANSIT_IN', 'IN_TRANSIT_OUT'],
+      },
+    },
+    required: false,
+  })
+  fpWarehouse?: {
+    warehouseId?: mongoose.Schema.Types.ObjectId;
+    warehouseCountryCode?: string;
+    warehouseName?: string;
+    assignedAt?: Date;
+    status?: 'STORED' | 'IN_TRANSIT' | 'IN_TRANSIT_IN' | 'IN_TRANSIT_OUT';
+  };
+
   @Prop({ type: String })
   lastSerialNumber?: string;
+
+  // === CAMPOS ADICIONALES PARA SUPERADMIN ===
+  @Prop({ type: String, required: false })
+  createdBy?: string; // 'SuperAdmin' | 'User' | email
 
   isDeleted?: boolean;
 
@@ -257,3 +318,8 @@ export class Product {
 
 export const ProductSchema =
   SchemaFactory.createForClass(Product).plugin(softDeletePlugin);
+
+// Índices para optimizar consultas de warehouse
+ProductSchema.index({ 'fpWarehouse.warehouseId': 1, 'fpWarehouse.status': 1 });
+ProductSchema.index({ 'fpWarehouse.warehouseCountryCode': 1, location: 1 });
+ProductSchema.index({ location: 1, 'fpWarehouse.warehouseCountryCode': 1 });

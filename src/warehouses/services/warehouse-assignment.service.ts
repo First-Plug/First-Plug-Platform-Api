@@ -1,0 +1,346 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Warehouse, WarehouseDocument } from '../schemas/warehouse.schema';
+import { countryCodes } from '../../shipments/helpers/countryCodes';
+import { SlackService } from '../../slack/slack.service';
+import { WarehousesService } from '../warehouses.service';
+
+export interface WarehouseAssignmentResult {
+  success: boolean;
+  warehouseId?: string;
+  warehouseCountryCode?: string;
+  warehouseName?: string;
+  country?: string;
+  message: string;
+  requiresSlackNotification?: boolean;
+  slackMessage?: string;
+}
+
+@Injectable()
+export class WarehouseAssignmentService {
+  private readonly logger = new Logger(WarehouseAssignmentService.name);
+
+  constructor(
+    @InjectModel(Warehouse.name, 'firstPlug')
+    private warehouseModel: Model<WarehouseDocument>,
+    private readonly slackService: SlackService,
+    private readonly warehousesService: WarehousesService,
+  ) {}
+
+  /**
+   * Asignar un producto a un warehouse basado en el país de origen
+   */
+  async assignProductToWarehouse(
+    originCountry: string,
+    tenantName: string,
+    productId: string,
+    productCategory: string,
+  ): Promise<WarehouseAssignmentResult> {
+    try {
+      console.log(
+        `🔍 [assignProductToWarehouse] ENTRY - originCountry: ${originCountry}`,
+      );
+
+      // 1. Determinar código de país
+      const countryCode = this.getCountryCode(originCountry);
+      console.log(`🔍 [assignProductToWarehouse] countryCode: ${countryCode}`);
+
+      if (!countryCode) {
+        console.log(
+          `🔍 [assignProductToWarehouse] FAIL - Unknown country: ${originCountry}`,
+        );
+        return {
+          success: false,
+          message: `Unknown country: ${originCountry}`,
+          requiresSlackNotification: true,
+          slackMessage: `🚨 Unknown country detected: "${originCountry}" for tenant ${tenantName}. Please add this country to the system.`,
+        };
+      }
+
+      // 2. Buscar país (primero con warehouse activo, luego cualquier warehouse)
+      console.log(
+        `🔍 [assignProductToWarehouse] Searching for active warehouse in ${countryCode}`,
+      );
+      let countryDoc = await this.warehouseModel.findOne({
+        countryCode,
+        hasActiveWarehouse: true,
+      });
+      console.log(
+        `🔍 [assignProductToWarehouse] Active warehouse found: ${!!countryDoc}`,
+      );
+
+      // Si no hay warehouse activo, buscar cualquier warehouse en el país
+      if (!countryDoc) {
+        console.log(
+          `🔍 [assignProductToWarehouse] Searching for any warehouse in ${countryCode}`,
+        );
+        countryDoc = await this.warehouseModel.findOne({
+          countryCode,
+        });
+        console.log(
+          `🔍 [assignProductToWarehouse] Any warehouse found: ${!!countryDoc}`,
+        );
+      }
+
+      if (!countryDoc) {
+        // 🏭 AUTO-CREATE: Crear warehouse default automáticamente
+
+        try {
+          const createdCountryDoc =
+            await this.warehousesService.initializeCountry(
+              originCountry,
+              countryCode,
+            );
+
+          // Buscar el warehouse default recién creado
+          const defaultWarehouse = createdCountryDoc.warehouses.find(
+            (w) => !w.isDeleted,
+          );
+
+          if (defaultWarehouse) {
+            return {
+              success: true,
+              warehouseId: defaultWarehouse._id.toString(),
+              warehouseCountryCode: countryCode,
+              warehouseName: defaultWarehouse.name || '',
+              country: originCountry,
+              message: `Product assigned to default warehouse in ${originCountry}`,
+            };
+          }
+        } catch (error) {
+          this.logger.error(
+            `❌ Failed to create default warehouse for ${originCountry}:`,
+            error,
+          );
+        }
+
+        return {
+          success: false,
+          message: `No warehouse found for country: ${originCountry} (${countryCode})`,
+          requiresSlackNotification: true,
+          slackMessage: `🏭 No warehouse available in ${originCountry} (${countryCode}) for tenant ${tenantName}. Product ${productId} (${productCategory}) needs warehouse assignment. Please set up a partner in this country.`,
+        };
+      }
+
+      // 3. Encontrar el warehouse activo o default
+      let selectedWarehouse = countryDoc.warehouses.find(
+        (w) => w.isActive && !w.isDeleted,
+      );
+
+      // Si no hay warehouse activo, usar el default (inactivo)
+      if (!selectedWarehouse) {
+        selectedWarehouse = countryDoc.warehouses.find(
+          (w) => !w.isDeleted && w.partnerType === 'default',
+        );
+      }
+
+      // Si aún no hay warehouse, usar cualquier warehouse no eliminado
+      if (!selectedWarehouse) {
+        selectedWarehouse = countryDoc.warehouses.find((w) => !w.isDeleted);
+      }
+
+      if (!selectedWarehouse) {
+        return {
+          success: false,
+          message: `No warehouse available in ${originCountry}`,
+          requiresSlackNotification: true,
+          slackMessage: `⚠️ Country ${originCountry} has warehouses but none are available for tenant ${tenantName}. Product ${productId} (${productCategory}) cannot be assigned.`,
+        };
+      }
+
+      // 4. Asignación exitosa
+
+      return {
+        success: true,
+        warehouseId: selectedWarehouse._id.toString(),
+        warehouseCountryCode: countryCode,
+        warehouseName: selectedWarehouse.name || '',
+        country: originCountry,
+        message: `Product assigned to ${selectedWarehouse.name || 'warehouse without name'} in ${originCountry}`,
+      };
+    } catch (error) {
+      this.logger.error(`Error assigning product to warehouse:`, error);
+      return {
+        success: false,
+        message: `Error during warehouse assignment: ${error.message}`,
+        requiresSlackNotification: true,
+        slackMessage: `🔥 Error assigning product ${productId} for tenant ${tenantName}: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Obtener código de país desde el nombre
+   */
+  private getCountryCode(countryInput: string): string | null {
+    // Si ya es un código de país válido, devolverlo
+    const upperInput = countryInput.toUpperCase();
+    const validCodes = Object.values(countryCodes);
+    if (validCodes.includes(upperInput)) {
+      return upperInput;
+    }
+
+    // Buscar exacto primero por nombre
+    if (countryCodes[countryInput]) {
+      return countryCodes[countryInput];
+    }
+
+    // Buscar case-insensitive por nombre
+    const lowerCountryName = countryInput.toLowerCase();
+    for (const [name, code] of Object.entries(countryCodes)) {
+      if (name.toLowerCase() === lowerCountryName) {
+        return code;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Validar si un país tiene warehouse activo
+   */
+  async validateCountryHasActiveWarehouse(countryName: string): Promise<{
+    hasWarehouse: boolean;
+    countryCode?: string;
+    warehouseId?: string;
+    warehouseName?: string;
+  }> {
+    const countryCode = this.getCountryCode(countryName);
+    if (!countryCode) {
+      return { hasWarehouse: false };
+    }
+
+    const countryDoc = await this.warehouseModel.findOne({
+      countryCode,
+      hasActiveWarehouse: true,
+    });
+
+    if (!countryDoc) {
+      return { hasWarehouse: false, countryCode };
+    }
+
+    const activeWarehouse = countryDoc.warehouses.find(
+      (w) => w.isActive && !w.isDeleted,
+    );
+
+    if (!activeWarehouse) {
+      return { hasWarehouse: false, countryCode };
+    }
+
+    return {
+      hasWarehouse: true,
+      countryCode,
+      warehouseId: activeWarehouse._id.toString(),
+      warehouseName: activeWarehouse.name || '',
+    };
+  }
+
+  /**
+   * Obtener lista de países sin warehouses activos
+   */
+  async getCountriesWithoutActiveWarehouses(): Promise<string[]> {
+    const allCountries = Object.keys(countryCodes);
+    const countriesWithWarehouses = await this.warehouseModel
+      .find({
+        hasActiveWarehouse: true,
+      })
+      .select('country');
+
+    const countriesWithActiveWarehouses = countriesWithWarehouses.map(
+      (doc) => doc.country,
+    );
+
+    return allCountries.filter(
+      (country) => !countriesWithActiveWarehouses.includes(country),
+    );
+  }
+
+  /**
+   * Asignar producto a warehouse con notificación automática si es warehouse default
+   * Este método extiende assignProductToWarehouse con notificaciones Slack
+   */
+  async assignProductToWarehouseWithNotification(
+    originCountry: string,
+    tenantName: string,
+    productId: string,
+    productCategory: string,
+    userName: string,
+    action: 'assign' | 'reassign' | 'return',
+    productCount: number = 1,
+  ): Promise<WarehouseAssignmentResult> {
+    try {
+      // 1. Realizar asignación normal
+      const assignmentResult = await this.assignProductToWarehouse(
+        originCountry,
+        tenantName,
+        productId,
+        productCategory,
+      );
+
+      // 2. Si la asignación fue exitosa, verificar si es warehouse default
+      if (assignmentResult.success && assignmentResult.warehouseId) {
+        const countryCode = this.getCountryCode(originCountry);
+        if (countryCode) {
+          const isDefaultWarehouse = await this.checkIfWarehouseIsDefault(
+            countryCode,
+            assignmentResult.warehouseId,
+          );
+
+          // 3. Si es warehouse default, enviar notificación Slack
+          if (isDefaultWarehouse) {
+            await this.slackService.notifyDefaultWarehouseUsage(
+              userName,
+              tenantName,
+              originCountry,
+              countryCode,
+              action,
+              productCount,
+            );
+
+            // Actualizar el resultado para indicar que se envió notificación
+            assignmentResult.requiresSlackNotification = true;
+            assignmentResult.slackMessage = `Default warehouse notification sent for ${originCountry}`;
+          }
+        }
+      }
+
+      return assignmentResult;
+    } catch (error) {
+      this.logger.error(
+        `Error in assignProductToWarehouseWithNotification:`,
+        error,
+      );
+      return {
+        success: false,
+        message: `Error during warehouse assignment with notification: ${error.message}`,
+        requiresSlackNotification: true,
+        slackMessage: `🔥 Error assigning product ${productId} for tenant ${tenantName}: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Verificar si un warehouse es de tipo default
+   */
+  private async checkIfWarehouseIsDefault(
+    countryCode: string,
+    warehouseId: string,
+  ): Promise<boolean> {
+    try {
+      const countryDoc = await this.warehouseModel.findOne({ countryCode });
+      if (!countryDoc) return false;
+
+      const warehouse = countryDoc.warehouses.find(
+        (w) => w._id.toString() === warehouseId && !w.isDeleted,
+      );
+
+      if (!warehouse) return false;
+
+      // Es default si: isActive = false Y partnerType = 'default'
+      return !warehouse.isActive && warehouse.partnerType === 'default';
+    } catch (error) {
+      return false;
+    }
+  }
+}

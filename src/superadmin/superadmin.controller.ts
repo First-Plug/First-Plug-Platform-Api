@@ -18,12 +18,28 @@ import { UpdateShipmentCompleteDto } from './dto/update-shipment-complete.dto';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { UpdateTenantOfficeDto } from './dto/update-tenant-office.dto';
+import { CreateProductForTenantDto } from './dto/create-product-for-tenant.dto';
+import { BulkCreateProductsForTenantDto } from './dto/bulk-create-products-for-tenant.dto';
 import { Request } from 'express';
+import { WarehousesService } from '../warehouses/warehouses.service';
+import {
+  CreateWarehouseDto,
+  UpdateWarehouseDto,
+  UpdateWarehouseDataDto,
+  ToggleWarehouseActiveDto,
+} from '../warehouses/dto';
+import { InitializeWarehousesScript } from '../warehouses/scripts/initialize-warehouses.script';
+import { GlobalWarehouseMetricsService } from './services/global-warehouse-metrics.service';
 
 @Controller('superadmin')
 @UseGuards(JwtGuard, SuperAdminGuard)
 export class SuperAdminController {
-  constructor(private readonly superAdminService: SuperAdminService) {}
+  constructor(
+    private readonly superAdminService: SuperAdminService,
+    private readonly warehousesService: WarehousesService,
+    private readonly initializeWarehousesScript: InitializeWarehousesScript,
+    private readonly globalWarehouseMetricsService: GlobalWarehouseMetricsService,
+  ) {}
 
   // ==================== SHIPMENTS ENDPOINTS ====================
 
@@ -189,13 +205,308 @@ export class SuperAdminController {
     return await this.superAdminService.deleteTenant(tenantId);
   }
 
-  // ==================== MIGRATION ENDPOINTS ====================
+  // ==================== WAREHOUSES ENDPOINTS ====================
 
   /**
-   * Migrar tenant del modelo viejo al nuevo (SuperAdmin only)
+   * Obtener todos los países con sus warehouses (SuperAdmin only)
    */
-  @Post('migrate-tenant/:tenantName')
-  async migrateTenant(@Param('tenantName') tenantName: string) {
-    return await this.superAdminService.migrateTenantArchitecture(tenantName);
+  @Get('warehouses')
+  async getAllWarehouses() {
+    return await this.warehousesService.findAll();
+  }
+
+  /**
+   * Obtener warehouses de un país específico (SuperAdmin only)
+   */
+  @Get('warehouses/:country')
+  async getWarehousesByCountry(@Param('country') country: string) {
+    return await this.warehousesService.findByCountry(country);
+  }
+
+  /**
+   * Obtener datos específicos de un warehouse para edición (SuperAdmin only)
+   */
+  @Get('warehouses/:country/:warehouseId')
+  async getWarehouseById(
+    @Param('country') country: string,
+    @Param('warehouseId') warehouseId: string,
+  ) {
+    return await this.warehousesService.getWarehouseForEdit(
+      country,
+      warehouseId,
+    );
+  }
+
+  /**
+   * Crear un nuevo warehouse en un país (SuperAdmin only)
+   */
+  @Post('warehouses/:country')
+  async createWarehouse(
+    @Param('country') country: string,
+    @Body() createWarehouseDto: CreateWarehouseDto,
+  ) {
+    return await this.warehousesService.createWarehouse(
+      country,
+      createWarehouseDto,
+    );
+  }
+
+  /**
+   * Actualizar datos de un warehouse (sin cambiar isActive) (SuperAdmin only)
+   * Para cambiar isActive, usar el endpoint /toggle-active
+   */
+  @Patch('warehouses/:country/:warehouseId/data')
+  async updateWarehouseData(
+    @Param('country') country: string,
+    @Param('warehouseId') warehouseId: string,
+    @Body() updateWarehouseDataDto: UpdateWarehouseDataDto,
+  ) {
+    return await this.warehousesService.updateWarehouseData(
+      country,
+      warehouseId,
+      updateWarehouseDataDto,
+    );
+  }
+
+  /**
+   * Toggle del estado isActive de un warehouse (SuperAdmin only)
+   * Requiere confirmación del frontend antes de llamar
+   */
+  @Patch('warehouses/:country/:warehouseId/toggle-active')
+  async toggleWarehouseActive(
+    @Param('country') country: string,
+    @Param('warehouseId') warehouseId: string,
+    @Body() toggleDto: ToggleWarehouseActiveDto,
+  ) {
+    return await this.warehousesService.toggleWarehouseActive(
+      country,
+      warehouseId,
+      toggleDto.isActive,
+    );
+  }
+
+  /**
+   * Actualizar un warehouse específico (SuperAdmin only)
+   * @deprecated Usar /data para actualizar datos y /toggle-active para cambiar estado
+   */
+  @Patch('warehouses/:country/:warehouseId')
+  async updateWarehouse(
+    @Param('country') country: string,
+    @Param('warehouseId') warehouseId: string,
+    @Body() updateWarehouseDto: UpdateWarehouseDto,
+  ) {
+    return await this.warehousesService.updateWarehouse(
+      country,
+      warehouseId,
+      updateWarehouseDto,
+    );
+  }
+
+  /**
+   * Activar un warehouse específico (SuperAdmin only)
+   * @deprecated Usar /toggle-active con isActive: true
+   */
+  @Post('warehouses/:country/:warehouseId/activate')
+  async activateWarehouse(
+    @Param('country') country: string,
+    @Param('warehouseId') warehouseId: string,
+  ) {
+    return await this.warehousesService.activateWarehouse(country, warehouseId);
+  }
+
+  /**
+   * Eliminar un warehouse (soft delete) (SuperAdmin only)
+   */
+  @Delete('warehouses/:country/:warehouseId')
+  async deleteWarehouse(
+    @Param('country') country: string,
+    @Param('warehouseId') warehouseId: string,
+  ) {
+    await this.warehousesService.deleteWarehouse(country, warehouseId);
+    return { message: 'Warehouse deleted successfully' };
+  }
+
+  // ==================== WAREHOUSES INITIALIZATION ENDPOINTS ====================
+
+  /**
+   * Inicializar todos los países con warehouses vacíos (SuperAdmin only)
+   */
+  @Post('warehouses/initialize-all')
+  async initializeAllWarehouses() {
+    await this.initializeWarehousesScript.initializeAllCountries();
+    return { message: 'Warehouses initialization completed successfully' };
+  }
+
+  /**
+   * Inicializar un país específico (SuperAdmin only)
+   */
+  @Post('warehouses/initialize/:country')
+  async initializeCountryWarehouse(@Param('country') country: string) {
+    await this.initializeWarehousesScript.initializeCountry(country);
+    return { message: `Country ${country} initialized successfully` };
+  }
+
+  /**
+   * Verificar estado de inicialización de warehouses (SuperAdmin only)
+   */
+  @Get('warehouses/initialization-status')
+  async getWarehousesInitializationStatus() {
+    return await this.initializeWarehousesScript.checkInitializationStatus();
+  }
+
+  // ==================== GLOBAL METRICS ENDPOINTS ====================
+
+  /**
+   * Obtener resumen general del sistema (SuperAdmin only)
+   */
+  @Get('metrics/overview')
+  async getGlobalOverview() {
+    const overview =
+      await this.globalWarehouseMetricsService.getGlobalOverview();
+    return {
+      success: true,
+      data: overview,
+    };
+  }
+
+  /**
+   * Obtener métricas de todos los warehouses activos (SuperAdmin only)
+   */
+  @Get('metrics/warehouses')
+  async getAllWarehouseMetrics() {
+    const metrics =
+      await this.globalWarehouseMetricsService.getAllWarehouseMetrics();
+    return {
+      success: true,
+      data: metrics,
+    };
+  }
+
+  /**
+   * Obtener métricas de todos los warehouses CON detalle de tenants (SuperAdmin only)
+   * Incluye tabla principal + tabla desplegable de tenants
+   * Ordenados: primero los que tienen productos
+   */
+  @Get('metrics/warehouses-with-tenants')
+  async getAllWarehousesWithTenants() {
+    const warehouses =
+      await this.globalWarehouseMetricsService.getAllWarehousesWithTenants();
+    return {
+      success: true,
+      data: warehouses,
+    };
+  }
+
+  /**
+   * Obtener métricas de un warehouse específico (SuperAdmin only)
+   */
+  @Get('metrics/warehouses/:countryCode/:warehouseId')
+  async getWarehouseMetrics(
+    @Param('countryCode') countryCode: string,
+    @Param('warehouseId') warehouseId: string,
+  ) {
+    const metrics =
+      await this.globalWarehouseMetricsService.getWarehouseMetrics(
+        countryCode,
+        warehouseId,
+      );
+
+    if (!metrics) {
+      return {
+        success: false,
+        message: `Warehouse ${warehouseId} not found in ${countryCode}`,
+      };
+    }
+
+    return {
+      success: true,
+      data: metrics,
+    };
+  }
+
+  /**
+   * Obtener detalle de tenants para un warehouse específico (SuperAdmin only)
+   */
+  @Get('metrics/warehouses/:countryCode/:warehouseId/tenants')
+  async getWarehouseTenantDetails(@Param('warehouseId') warehouseId: string) {
+    const tenants =
+      await this.globalWarehouseMetricsService.getWarehouseTenantDetails(
+        warehouseId,
+      );
+
+    return {
+      success: true,
+      data: tenants,
+    };
+  }
+
+  /**
+   * Obtener métricas de un país específico (SuperAdmin only)
+   */
+  @Get('metrics/countries/:countryCode')
+  async getCountryMetrics(@Param('countryCode') countryCode: string) {
+    const metrics =
+      await this.globalWarehouseMetricsService.getCountryMetrics(countryCode);
+
+    if (!metrics) {
+      return {
+        success: false,
+        message: `Country ${countryCode} not found`,
+      };
+    }
+
+    return {
+      success: true,
+      data: metrics,
+    };
+  }
+
+  /**
+   * Obtener métricas por categoría de producto (SuperAdmin only)
+   */
+  @Get('metrics/categories')
+  async getProductCategoryMetrics() {
+    const metrics =
+      await this.globalWarehouseMetricsService.getProductCategoryMetrics();
+    return {
+      success: true,
+      data: metrics,
+    };
+  }
+
+  // ==================== PRODUCT CREATION ENDPOINTS ====================
+
+  /**
+   * Crear producto para un tenant específico (SuperAdmin only)
+   * El producto se asigna automáticamente a FP warehouse del país seleccionado
+   */
+  @Post('products/create-for-tenant')
+  async createProductForTenant(
+    @Body() createProductDto: CreateProductForTenantDto,
+  ) {
+    return await this.superAdminService.createProductForTenant(
+      createProductDto,
+    );
+  }
+
+  /**
+   * Crear múltiples productos del mismo tipo para un tenant específico (SuperAdmin only)
+   * Cada producto puede asignarse a diferentes warehouses
+   */
+  @Post('products/bulk-create-for-tenant')
+  async bulkCreateProductsForTenant(
+    @Body() bulkCreateDto: BulkCreateProductsForTenantDto,
+  ) {
+    return await this.superAdminService.bulkCreateProductsForTenant(
+      bulkCreateDto,
+    );
+  }
+
+  /**
+   * Obtener productos de la colección global
+   */
+  @Get('global-products')
+  async getGlobalProducts() {
+    return await this.superAdminService.getGlobalProducts();
   }
 }

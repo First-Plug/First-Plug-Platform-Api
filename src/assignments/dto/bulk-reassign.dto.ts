@@ -8,6 +8,9 @@ export class BulkReassignItemDto {
 
   newLocation?: 'Our office' | 'FP warehouse';
 
+  // Campo para especificar la oficina cuando newLocation = 'Our office'
+  officeId?: string;
+
   fp_shipment: boolean;
 
   desirableDate?: {

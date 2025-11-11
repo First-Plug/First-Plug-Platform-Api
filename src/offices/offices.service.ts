@@ -14,6 +14,9 @@ import { EventTypes } from 'src/infra/event-bus/types';
 import { TenantModelRegistry } from '../infra/db/tenant-model-registry';
 import { HistoryService } from '../history/history.service';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
+import { GlobalProductSyncService } from '../products/services/global-product-sync.service';
+import { recordOfficeHistory } from './helpers/office-history.helper';
+import { ACTIVE_SHIPMENT_STATUSES } from '../shipments/interface/shipment.interface';
 
 @Injectable()
 export class OfficesService {
@@ -24,6 +27,7 @@ export class OfficesService {
     private eventEmitter: EventEmitter2,
     private tenantModelRegistry: TenantModelRegistry,
     @Optional() private historyService?: HistoryService,
+    @Optional() private globalProductSyncService?: GlobalProductSyncService,
   ) {}
 
   /**
@@ -82,18 +86,15 @@ export class OfficesService {
       ourOfficeEmail: office.email,
     };
 
-    // Crear registro de history para la creación de la oficina
+    // 📝 HISTORY: Crear registro mejorado para la creación de la oficina
     if (this.historyService) {
-      await this.historyService.create({
-        actionType: 'create',
-        itemType: 'offices',
+      await recordOfficeHistory(
+        this.historyService,
+        'create',
         userId,
-        changes: {
-          oldData: null,
-          newData: office.toObject(),
-          context: 'setup-default-office',
-        },
-      });
+        null,
+        office,
+      );
     }
 
     this.eventEmitter.emit(
@@ -185,10 +186,28 @@ export class OfficesService {
           new Date(),
           userId,
           currentOffice.email,
+          currentOffice._id.toString(),
+          currentOffice.name,
+          currentOffice.isDefault,
         ),
       );
 
       return currentOffice;
+    }
+
+    // Validar que el nombre no se repita en el tenant (case-insensitive) si se está actualizando el nombre
+    if (updateData.name && updateData.name !== currentOffice.name) {
+      const existingOfficeWithName = await OfficeModel.findOne({
+        name: { $regex: new RegExp(`^${updateData.name}$`, 'i') },
+        _id: { $ne: currentOffice._id },
+        isDeleted: false,
+      });
+
+      if (existingOfficeWithName) {
+        throw new BadRequestException(
+          `Ya existe una oficina con el nombre "${updateData.name}" en este tenant`,
+        );
+      }
     }
 
     const oldAddress = {
@@ -214,19 +233,16 @@ export class OfficesService {
       throw new NotFoundException('Error actualizando oficina');
     }
 
-    // Crear registro de history para la actualización de la oficina
+    // 📝 HISTORY: Crear registro mejorado para la actualización de la oficina
     if (this.historyService) {
       try {
-        await this.historyService.create({
-          actionType: 'update',
-          itemType: 'offices',
+        await recordOfficeHistory(
+          this.historyService,
+          'update',
           userId,
-          changes: {
-            oldData: currentOffice.toObject(),
-            newData: updatedOffice.toObject(),
-            context: 'office-address-update',
-          },
-        });
+          currentOffice,
+          updatedOffice,
+        );
       } catch (error) {
         console.error('❌ Error creando history de oficina:', error);
       }
@@ -251,8 +267,19 @@ export class OfficesService {
       (key) => oldAddress[key] !== newAddress[key],
     );
 
-    if (hasAddressChanges) {
-      console.log('📍 Dirección de oficina actualizada, emitiendo evento');
+    // Detectar cambios en el nombre de la oficina
+    const hasNameChange = currentOffice.name !== updatedOffice.name;
+
+    if (hasAddressChanges || hasNameChange) {
+      if (hasAddressChanges) {
+        console.log('📍 Dirección de oficina actualizada, emitiendo evento');
+      }
+      if (hasNameChange) {
+        console.log(
+          `📝 Nombre de oficina actualizado: "${currentOffice.name}" → "${updatedOffice.name}", emitiendo evento`,
+        );
+      }
+
       this.eventEmitter.emit(
         EventTypes.OFFICE_ADDRESS_UPDATED,
         new OfficeAddressUpdatedEvent(
@@ -262,6 +289,9 @@ export class OfficesService {
           new Date(),
           userId,
           updatedOffice.email,
+          updatedOffice._id.toString(),
+          updatedOffice.name,
+          updatedOffice.isDefault,
         ),
       );
     }
@@ -295,9 +325,635 @@ export class OfficesService {
     return office?.email || null;
   }
 
-  async create(createOfficeDto: CreateOfficeDto): Promise<Office> {
-    const office = await this.officeModel.create(createOfficeDto);
+  /**
+   * Gestión automática de oficina por defecto
+   * - Si es la primera oficina creada, la marca como default
+   * - Si se borra la oficina default y hay otras, asigna una nueva default aleatoriamente
+   * - Solo considera oficinas con isDeleted=false
+   */
+  private async ensureDefaultOffice(
+    tenantName: string,
+    excludeOfficeId?: Types.ObjectId,
+  ): Promise<void> {
+    const OfficeModel =
+      await this.tenantModelRegistry.getOfficeModel(tenantName);
+
+    // Buscar oficina default actual (excluyendo la que se está procesando si aplica)
+    const query: any = { isDeleted: false, isDefault: true };
+    if (excludeOfficeId) {
+      query._id = { $ne: excludeOfficeId };
+    }
+
+    const currentDefault = await OfficeModel.findOne(query);
+
+    // Si ya hay una oficina default válida, no hacer nada
+    if (currentDefault) {
+      return;
+    }
+
+    // Buscar todas las oficinas disponibles (excluyendo la que se está procesando si aplica)
+    const availableQuery: any = { isDeleted: false };
+    if (excludeOfficeId) {
+      availableQuery._id = { $ne: excludeOfficeId };
+    }
+
+    const availableOffices = await OfficeModel.find(availableQuery);
+
+    // Si no hay oficinas disponibles, no hacer nada
+    if (availableOffices.length === 0) {
+      console.log('📋 No hay oficinas disponibles para marcar como default');
+      return;
+    }
+
+    // Seleccionar la primera oficina disponible como nueva default
+    const newDefaultOffice = availableOffices[0];
+
+    await OfficeModel.findByIdAndUpdate(newDefaultOffice._id, {
+      $set: { isDefault: true },
+    });
+
+    console.log('✅ Nueva oficina default asignada automáticamente:', {
+      tenantName,
+      officeId: newDefaultOffice._id,
+      name: newDefaultOffice.name,
+    });
+  }
+
+  /**
+   * Crear nueva oficina para un tenant específico
+   */
+  async createOffice(
+    tenantName: string,
+    tenantId: Types.ObjectId,
+    createOfficeDto: CreateOfficeDto,
+    userId: string,
+  ): Promise<Office> {
+    console.log('🏢 Creando nueva oficina:', {
+      tenantName,
+      officeName: createOfficeDto.name,
+      userId,
+    });
+
+    const OfficeModel =
+      await this.tenantModelRegistry.getOfficeModel(tenantName);
+
+    // Validar que el nombre no se repita en el tenant (case-insensitive)
+    const existingOfficeWithName = await OfficeModel.findOne({
+      name: { $regex: new RegExp(`^${createOfficeDto.name}$`, 'i') },
+      isDeleted: false,
+    });
+
+    if (existingOfficeWithName) {
+      throw new BadRequestException(
+        `Ya existe una oficina con el nombre "${createOfficeDto.name}" en este tenant`,
+      );
+    }
+
+    // Verificar si es la primera oficina (no hay ninguna oficina no eliminada)
+    const existingOfficesCount = await OfficeModel.countDocuments({
+      isDeleted: false,
+    });
+
+    const isFirstOffice = existingOfficesCount === 0;
+
+    // Si se marca como default explícitamente, desmarcar las demás
+    if (createOfficeDto.isDefault) {
+      await OfficeModel.updateMany(
+        { isDeleted: false },
+        { $set: { isDefault: false } },
+      );
+    }
+
+    const officeData = {
+      ...createOfficeDto,
+      tenantId,
+      isDeleted: false,
+      // Si es la primera oficina y no se especificó isDefault, marcarla como default automáticamente
+      isDefault: createOfficeDto.isDefault || isFirstOffice,
+    };
+
+    const office = await OfficeModel.create(officeData);
+
+    console.log('✅ Oficina creada:', {
+      tenantName,
+      officeId: office._id,
+      name: office.name,
+      isDefault: office.isDefault,
+      isFirstOffice,
+    });
+
+    // 📝 HISTORY: Crear registro mejorado de history
+    if (this.historyService) {
+      await recordOfficeHistory(
+        this.historyService,
+        'create',
+        userId,
+        null,
+        office,
+      );
+    }
+
     return office;
+  }
+
+  /**
+   * Obtener todas las oficinas de un tenant por nombre
+   */
+  async findAllByTenantName(tenantName: string): Promise<Office[]> {
+    const OfficeModel =
+      await this.tenantModelRegistry.getOfficeModel(tenantName);
+
+    return OfficeModel.find({ isDeleted: false }).sort({
+      isDefault: -1,
+      name: 1,
+    });
+  }
+
+  /**
+   * Obtener oficina por ID y validar que pertenece al tenant
+   */
+  async findByIdAndTenant(
+    id: Types.ObjectId,
+    tenantName: string,
+  ): Promise<Office | null> {
+    const OfficeModel =
+      await this.tenantModelRegistry.getOfficeModel(tenantName);
+
+    return OfficeModel.findOne({ _id: id, isDeleted: false });
+  }
+
+  /**
+   * Actualizar oficina específica
+   */
+  async updateOffice(
+    id: Types.ObjectId,
+    tenantName: string,
+    updateOfficeDto: UpdateOfficeDto,
+    userId: string,
+  ): Promise<Office> {
+    const OfficeModel =
+      await this.tenantModelRegistry.getOfficeModel(tenantName);
+
+    const office = await OfficeModel.findOne({ _id: id, isDeleted: false });
+    if (!office) throw new NotFoundException('Office not found');
+
+    // 🚫 VALIDACIÓN: No permitir edición si hay shipments "On The Way"
+    const hasOnTheWayShipments = await this.hasOnTheWayShipments(
+      id,
+      tenantName,
+    );
+
+    if (hasOnTheWayShipments) {
+      throw new BadRequestException(
+        'No se puede editar la oficina porque tiene envíos en tránsito. Espere a que los envíos se completen antes de realizar cambios.',
+      );
+    }
+
+    // 🚫 VALIDACIÓN: No permitir cambiar country si se está intentando
+    if (updateOfficeDto.country && updateOfficeDto.country !== office.country) {
+      throw new BadRequestException(
+        'No se puede cambiar el país de la oficina. Este campo no es editable.',
+      );
+    }
+
+    // Validar que el nombre no se repita en el tenant (case-insensitive) si se está actualizando el nombre
+    if (updateOfficeDto.name && updateOfficeDto.name !== office.name) {
+      const existingOfficeWithName = await OfficeModel.findOne({
+        name: { $regex: new RegExp(`^${updateOfficeDto.name}$`, 'i') },
+        _id: { $ne: id },
+        isDeleted: false,
+      });
+
+      if (existingOfficeWithName) {
+        throw new BadRequestException(
+          `Ya existe una oficina con el nombre "${updateOfficeDto.name}" en este tenant`,
+        );
+      }
+    }
+
+    // Si se marca como default, desmarcar las demás
+    if (updateOfficeDto.isDefault) {
+      await OfficeModel.updateMany(
+        { _id: { $ne: id }, isDeleted: false },
+        { $set: { isDefault: false } },
+      );
+    }
+
+    const oldAddress = {
+      address: office.address,
+      apartment: office.apartment,
+      city: office.city,
+      state: office.state,
+      country: office.country,
+      zipCode: office.zipCode,
+      phone: office.phone,
+      ourOfficeEmail: office.email,
+    };
+
+    const updated = await OfficeModel.findByIdAndUpdate(
+      id,
+      { $set: updateOfficeDto },
+      { new: true },
+    );
+
+    if (!updated) {
+      throw new NotFoundException('Office not found');
+    }
+
+    // 📝 HISTORY: Crear registro mejorado de history
+    if (this.historyService) {
+      try {
+        await recordOfficeHistory(
+          this.historyService,
+          'update',
+          userId,
+          office,
+          updated,
+        );
+      } catch (error) {
+        console.error('❌ Error creando history de oficina:', error);
+      }
+    }
+
+    const newAddress = {
+      address: updated.address,
+      apartment: updated.apartment,
+      city: updated.city,
+      state: updated.state,
+      country: updated.country,
+      zipCode: updated.zipCode,
+      phone: updated.phone,
+      ourOfficeEmail: updated.email,
+    };
+
+    const hasAddressChanges = Object.keys(oldAddress).some(
+      (key) => oldAddress[key] !== newAddress[key],
+    );
+
+    // Detectar cambios en el nombre de la oficina
+    const hasNameChange = office.name !== updated.name;
+
+    if (hasAddressChanges || hasNameChange) {
+      if (hasAddressChanges) {
+        console.log('📍 Dirección de oficina actualizada, emitiendo evento');
+      }
+      if (hasNameChange) {
+        console.log(
+          `📝 Nombre de oficina actualizado: "${office.name}" → "${updated.name}", emitiendo evento`,
+        );
+      }
+
+      this.eventEmitter.emit(
+        EventTypes.OFFICE_ADDRESS_UPDATED,
+        new OfficeAddressUpdatedEvent(
+          tenantName,
+          oldAddress,
+          newAddress,
+          new Date(),
+          userId,
+          updated.email,
+          updated._id.toString(),
+          updated.name,
+          updated.isDefault,
+        ),
+      );
+    }
+
+    this.eventsGateway.notifyTenant('superadmin', 'superadmin', {
+      office: updated,
+    });
+
+    // 🔄 PROPAGACIÓN: Si cambió el name, propagar a productos
+    if (updateOfficeDto.name && updateOfficeDto.name !== office.name) {
+      try {
+        console.log(
+          `🔄 [UPDATE_OFFICE] Propagando cambio de nombre de oficina`,
+        );
+        await this.propagateOfficeNameChange(
+          id.toString(),
+          updateOfficeDto.name,
+          tenantName,
+        );
+      } catch (error) {
+        console.error(
+          `❌ [UPDATE_OFFICE] Error en propagación de nombre:`,
+          error,
+        );
+        // No fallar el update de oficina por error en propagación
+        // El update de oficina ya se completó exitosamente
+      }
+    }
+
+    return updated;
+  }
+
+  /**
+   * Toggle oficina como default (desmarcar las demás)
+   */
+  async toggleDefaultOffice(
+    id: Types.ObjectId,
+    tenantName: string,
+    userId: string,
+  ): Promise<Office> {
+    const OfficeModel =
+      await this.tenantModelRegistry.getOfficeModel(tenantName);
+
+    const office = await OfficeModel.findOne({ _id: id, isDeleted: false });
+    if (!office) throw new NotFoundException('Office not found');
+
+    // Desmarcar todas las oficinas como default
+    await OfficeModel.updateMany(
+      { isDeleted: false },
+      { $set: { isDefault: false } },
+    );
+
+    // Marcar esta oficina como default
+    const updated = await OfficeModel.findByIdAndUpdate(
+      id,
+      { $set: { isDefault: true } },
+      { new: true },
+    );
+
+    if (!updated) {
+      throw new NotFoundException('Office not found');
+    }
+
+    console.log('✅ Oficina marcada como default:', {
+      tenantName,
+      officeId: updated._id,
+      name: updated.name,
+    });
+
+    // 📝 HISTORY: Crear registro mejorado de history
+    if (this.historyService) {
+      try {
+        await recordOfficeHistory(
+          this.historyService,
+          'update',
+          userId,
+          office,
+          updated,
+        );
+      } catch (error) {
+        console.error('❌ Error creando history de oficina:', error);
+      }
+    }
+
+    return updated;
+  }
+
+  /**
+   * Verificar si una oficina tiene productos asignados que sean recoverable: true
+   * Solo productos recoverable: true impiden el borrado de la oficina
+   */
+  async hasAssignedProducts(
+    officeId: Types.ObjectId,
+    tenantName: string,
+  ): Promise<boolean> {
+    try {
+      const ProductModel =
+        await this.tenantModelRegistry.getProductModel(tenantName);
+
+      const productCount = await ProductModel.countDocuments({
+        $or: [{ officeId: officeId }, { 'office.officeId': officeId }],
+        location: 'Our office',
+        isDeleted: { $ne: true },
+        recoverable: true, // ✅ Solo productos recoverable: true impiden el borrado
+      });
+
+      return productCount > 0;
+    } catch (error) {
+      console.error('Error checking assigned products:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Verificar si una oficina tiene shipments activos
+   */
+  async hasActiveShipments(
+    officeId: Types.ObjectId,
+    tenantName: string,
+  ): Promise<boolean> {
+    try {
+      const ShipmentModel =
+        await this.tenantModelRegistry.getShipmentModel(tenantName);
+
+      const activeStatuses = ACTIVE_SHIPMENT_STATUSES;
+
+      const query = {
+        $or: [{ originOfficeId: officeId }, { destinationOfficeId: officeId }],
+        shipment_status: { $in: activeStatuses },
+        isDeleted: { $ne: true },
+      };
+
+      const shipmentCount = await ShipmentModel.countDocuments(query);
+
+      return shipmentCount > 0;
+    } catch (error) {
+      console.error('Error checking active shipments:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Verificar si una oficina tiene shipments "On The Way" específicamente
+   */
+  async hasOnTheWayShipments(
+    officeId: Types.ObjectId,
+    tenantName: string,
+  ): Promise<boolean> {
+    try {
+      const ShipmentModel =
+        await this.tenantModelRegistry.getShipmentModel(tenantName);
+
+      const shipmentCount = await ShipmentModel.countDocuments({
+        $or: [{ originOfficeId: officeId }, { destinationOfficeId: officeId }],
+        shipment_status: 'On The Way',
+        isDeleted: { $ne: true },
+      });
+
+      return shipmentCount > 0;
+    } catch (error) {
+      console.error('Error checking On The Way shipments:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Actualizar el flag activeShipments para una oficina específica
+   */
+  async updateActiveShipmentsFlag(
+    officeId: Types.ObjectId,
+    tenantName: string,
+  ): Promise<void> {
+    try {
+      const OfficeModel =
+        await this.tenantModelRegistry.getOfficeModel(tenantName);
+
+      const hasActiveShipments = await this.hasActiveShipments(
+        officeId,
+        tenantName,
+      );
+
+      await OfficeModel.findByIdAndUpdate(
+        officeId,
+        { $set: { activeShipments: hasActiveShipments } },
+        { new: true },
+      );
+
+      console.log(
+        `🏢 [updateActiveShipmentsFlag] Office ${officeId} activeShipments flag updated to: ${hasActiveShipments}`,
+      );
+    } catch (error) {
+      console.error('Error updating activeShipments flag:', error);
+    }
+  }
+
+  /**
+   * Actualizar flags activeShipments para todas las oficinas involucradas en un shipment
+   */
+  async updateActiveShipmentsFlagsForShipment(
+    originOfficeId: Types.ObjectId | null,
+    destinationOfficeId: Types.ObjectId | null,
+    tenantName: string,
+  ): Promise<void> {
+    try {
+      const officeIds = [originOfficeId, destinationOfficeId].filter(
+        (id) => id !== null,
+      ) as Types.ObjectId[];
+
+      for (const officeId of officeIds) {
+        await this.updateActiveShipmentsFlag(officeId, tenantName);
+      }
+    } catch (error) {
+      console.error(
+        'Error updating activeShipments flags for shipment:',
+        error,
+      );
+    }
+  }
+
+  /**
+   * Soft delete de oficina con gestión automática de oficina default
+   */
+  async softDeleteOffice(
+    id: Types.ObjectId,
+    tenantName: string,
+    userId: string,
+  ): Promise<Office> {
+    const OfficeModel =
+      await this.tenantModelRegistry.getOfficeModel(tenantName);
+
+    const office = await OfficeModel.findOne({ _id: id, isDeleted: false });
+    if (!office) throw new NotFoundException('Office not found');
+
+    // Verificar si tiene productos recoverable asignados
+    const hasRecoverableProducts = await this.hasAssignedProducts(
+      id,
+      tenantName,
+    );
+    if (hasRecoverableProducts) {
+      throw new BadRequestException(
+        'No se puede eliminar la oficina porque tiene productos recuperables asignados. Por favor, reasigne estos productos primero.',
+      );
+    }
+
+    // 🗑️ SOFT DELETE: Obtener lista de productos no recuperables ANTES de eliminarlos
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
+    const nonRecoverableProducts = await ProductModel.find({
+      $or: [{ officeId: id }, { 'office.officeId': id }],
+      location: 'Our office',
+      isDeleted: { $ne: true },
+      recoverable: false, // Solo productos non-recoverable
+    });
+
+    // Formatear productos para history
+    const nonRecoverableProductsForHistory = nonRecoverableProducts.map(
+      (product) => {
+        // Extraer brand y model de attributes
+        const brandAttr = product.attributes?.find(
+          (attr) => attr.key === 'brand',
+        );
+        const modelAttr = product.attributes?.find(
+          (attr) => attr.key === 'model',
+        );
+
+        return {
+          serialNumber:
+            product.serialNumber || product.lastSerialNumber || 'N/A',
+          name: product.name || '',
+          brand: String(brandAttr?.value || ''),
+          model: String(modelAttr?.value || ''),
+        };
+      },
+    );
+
+    // Aplicar soft delete automáticamente a productos non-recoverable
+    await this.softDeleteNonRecoverableProducts(id, tenantName);
+
+    // Verificar si tiene shipments activos
+    const hasShipments = await this.hasActiveShipments(id, tenantName);
+    if (hasShipments) {
+      throw new BadRequestException(
+        'No se puede eliminar la oficina porque tiene envíos activos.',
+      );
+    }
+
+    const wasDefault = office.isDefault;
+
+    const updated = await OfficeModel.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          isDeleted: true,
+          isActive: false,
+          isDefault: false, // 🧹 Prolijidad: ninguna oficina borrada debe quedar con isDefault: true
+          deletedAt: new Date(),
+        },
+      },
+      { new: true },
+    );
+
+    if (!updated) {
+      throw new NotFoundException('Office not found');
+    }
+
+    console.log('🗑️ Oficina eliminada (soft delete):', {
+      tenantName,
+      officeId: updated._id,
+      name: updated.name,
+      wasDefault,
+    });
+
+    // Si la oficina eliminada era la default, asignar automáticamente una nueva default
+    if (wasDefault) {
+      console.log(
+        '🔄 La oficina eliminada era default, buscando nueva oficina default...',
+      );
+      await this.ensureDefaultOffice(tenantName, id);
+    }
+
+    // 📝 HISTORY: Crear registro mejorado de history (DELETE con productos no recuperables)
+    if (this.historyService) {
+      try {
+        await recordOfficeHistory(
+          this.historyService,
+          'delete',
+          userId,
+          office,
+          null,
+          nonRecoverableProductsForHistory.length > 0
+            ? nonRecoverableProductsForHistory
+            : undefined,
+        );
+      } catch (error) {
+        console.error('❌ Error creando history de oficina:', error);
+      }
+    }
+
+    return updated;
   }
 
   async update(
@@ -342,6 +998,9 @@ export class OfficesService {
           new Date(),
           userId,
           updated.email,
+          updated._id.toString(),
+          updated.name,
+          updated.isDefault,
         ),
       );
     }
@@ -429,7 +1088,297 @@ export class OfficesService {
     updateData: UpdateOfficeDto,
     userId: string,
   ): Promise<Office> {
-    // Usar el método existente que ya maneja eventos y history
-    return await this.updateDefaultOffice(tenantName, updateData, userId);
+    // Usar el método updateOffice que maneja oficinas específicas
+    return await this.updateOffice(
+      new Types.ObjectId(officeId),
+      tenantName,
+      updateData,
+      userId,
+    );
+  }
+
+  /**
+   * Propaga el cambio de nombre de oficina a todos los productos que la referencian
+   * @param officeId ID de la oficina
+   * @param newOfficeName Nuevo nombre de la oficina
+   * @param tenantName Nombre del tenant
+   */
+  private async propagateOfficeNameChange(
+    officeId: string,
+    newOfficeName: string,
+    tenantName: string,
+  ): Promise<void> {
+    console.log(`🔄 [OFFICE_NAME_PROPAGATION] Iniciando propagación:`, {
+      officeId,
+      newOfficeName,
+      tenantName,
+    });
+
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
+    const MemberModel =
+      await this.tenantModelRegistry.getMemberModel(tenantName);
+    const connection = ProductModel.db;
+
+    const session = await connection.startSession();
+    session.startTransaction();
+
+    try {
+      // 1. Actualizar productos en collection products
+      await ProductModel.updateMany(
+        { 'office.officeId': officeId },
+        { $set: { 'office.officeName': newOfficeName } },
+        { session },
+      );
+
+      // 2. Actualizar productos en collection members
+      await MemberModel.updateMany(
+        { 'products.office.officeId': officeId },
+        { $set: { 'products.$[elem].office.officeName': newOfficeName } },
+        {
+          arrayFilters: [{ 'elem.office.officeId': officeId }],
+          session,
+        },
+      );
+
+      await session.commitTransaction();
+
+      // 3. Sincronizar productos afectados a global collection (fuera de la transacción)
+      await this.syncAffectedProductsToGlobal(officeId, tenantName);
+    } catch (error) {
+      await session.abortTransaction();
+
+      throw error;
+    } finally {
+      session.endSession();
+    }
+  }
+
+  /**
+   * Sincroniza productos afectados por el cambio de nombre a la global collection
+   * @param officeId ID de la oficina
+   * @param tenantName Nombre del tenant
+   */
+  private async syncAffectedProductsToGlobal(
+    officeId: string,
+    tenantName: string,
+  ): Promise<void> {
+    if (!this.globalProductSyncService) {
+      return;
+    }
+
+    const ProductModel =
+      await this.tenantModelRegistry.getProductModel(tenantName);
+    const MemberModel =
+      await this.tenantModelRegistry.getMemberModel(tenantName);
+
+    try {
+      // 1. Sincronizar productos de products collection
+      const affectedProducts = await ProductModel.find({
+        'office.officeId': officeId,
+      });
+
+      for (const product of affectedProducts) {
+        try {
+          await this.globalProductSyncService.syncProduct({
+            tenantId: tenantName,
+            tenantName: tenantName,
+            originalProductId: product._id as any,
+            sourceCollection: 'products',
+            name: product.name || '',
+            category: product.category,
+            status: product.status,
+            location: product.location || 'Our office',
+            attributes:
+              product.attributes?.map((attr: any) => ({
+                key: attr.key,
+                value: String(attr.value),
+              })) || [],
+            serialNumber: product.serialNumber || undefined,
+            assignedEmail: product.assignedEmail,
+            assignedMember: product.assignedMember,
+            lastAssigned: product.lastAssigned,
+            acquisitionDate: product.acquisitionDate,
+            price: product.price,
+            additionalInfo: product.additionalInfo,
+            productCondition: product.productCondition,
+            recoverable: product.recoverable,
+            fp_shipment: product.fp_shipment,
+            activeShipment: product.activeShipment,
+            office: product.office
+              ? {
+                  officeId: product.office.officeId as any,
+                  officeCountryCode: product.office.officeCountryCode || '',
+                  officeName: product.office.officeName || '',
+                  assignedAt: product.office.assignedAt,
+                  isDefault: product.office.isDefault,
+                }
+              : undefined,
+            sourceUpdatedAt: (product as any).updatedAt || new Date(),
+          });
+        } catch (error) {
+          console.error(
+            `❌ [OFFICE_NAME_PROPAGATION] Error syncing product ${product._id}:`,
+            error,
+          );
+        }
+      }
+
+      // 2. Sincronizar productos de members collection
+      const membersWithAffectedProducts = await MemberModel.find({
+        'products.office.officeId': officeId,
+      });
+
+      for (const member of membersWithAffectedProducts) {
+        for (const product of member.products || []) {
+          if (product.office?.officeId?.toString() === officeId) {
+            try {
+              await this.globalProductSyncService.syncProduct({
+                tenantId: tenantName,
+                tenantName: tenantName,
+                originalProductId: product._id as any,
+                sourceCollection: 'members',
+                name: product.name || '',
+                category: product.category,
+                status: product.status,
+                location: 'Employee',
+                attributes:
+                  product.attributes?.map((attr: any) => ({
+                    key: attr.key,
+                    value: String(attr.value),
+                  })) || [],
+                serialNumber: product.serialNumber || undefined,
+                assignedEmail: member.email,
+                assignedMember: `${member.firstName} ${member.lastName}`,
+                lastAssigned: product.lastAssigned,
+                acquisitionDate: product.acquisitionDate,
+                price: product.price,
+                additionalInfo: product.additionalInfo,
+                productCondition: product.productCondition,
+                recoverable: product.recoverable,
+                fp_shipment: product.fp_shipment,
+                activeShipment: product.activeShipment,
+                office: product.office
+                  ? {
+                      officeId: product.office.officeId as any,
+                      officeCountryCode: product.office.officeCountryCode || '',
+                      officeName: product.office.officeName || '',
+                      assignedAt: product.office.assignedAt,
+                      isDefault: product.office.isDefault,
+                    }
+                  : undefined,
+                memberData: {
+                  memberId: member._id as any,
+                  memberEmail: member.email,
+                  memberName: `${member.firstName} ${member.lastName}`,
+                  assignedAt: (product as any).assignedAt || new Date(),
+                },
+                sourceUpdatedAt: (product as any).updatedAt || new Date(),
+              });
+            } catch (error) {
+              console.error(
+                `❌ [OFFICE_NAME_PROPAGATION] Error syncing member product ${product._id}:`,
+                error,
+              );
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error(
+        `❌ [OFFICE_NAME_PROPAGATION] Error en sincronización global:`,
+        error,
+      );
+      // No fallar la operación principal por error en sincronización
+    }
+  }
+
+  /**
+   * Aplicar soft delete automáticamente a productos non-recoverable de una oficina
+   * Esto se ejecuta antes de borrar la oficina para evitar productos "huérfanos"
+   * NOTA: Solo marca los productos como eliminados, sin lógica compleja de negocio
+   */
+  private async softDeleteNonRecoverableProducts(
+    officeId: Types.ObjectId,
+    tenantName: string,
+  ): Promise<void> {
+    try {
+      const ProductModel =
+        await this.tenantModelRegistry.getProductModel(tenantName);
+
+      // Buscar productos non-recoverable en esta oficina
+      const nonRecoverableProducts = await ProductModel.find({
+        $or: [{ officeId: officeId }, { 'office.officeId': officeId }],
+        location: 'Our office',
+        isDeleted: { $ne: true },
+        recoverable: false, // Solo productos non-recoverable
+      });
+
+      if (nonRecoverableProducts.length === 0) {
+        return;
+      }
+
+      // 🗑️ SOFT DELETE DIRECTO: Actualizar cada producto individualmente para preservar serialNumber
+      for (const product of nonRecoverableProducts) {
+        try {
+          const updatedProduct = await ProductModel.findByIdAndUpdate(
+            product._id,
+            {
+              $set: {
+                status: 'Deprecated',
+                isDeleted: true,
+                deletedAt: new Date(),
+                // ✅ CORRECTO: Guardar el valor real del serialNumber
+                lastSerialNumber: product.serialNumber || undefined,
+              },
+              $unset: {
+                // Limpiar serialNumber para evitar conflictos futuros
+                serialNumber: 1,
+              },
+            },
+            { new: true },
+          );
+
+          console.log(
+            `🗑️ [softDeleteNonRecoverableProducts] Soft deleted product ${product._id} (${product.serialNumber})`,
+          );
+
+          // 🌐 SYNC: Marcar producto como eliminado en la colección global
+          if (updatedProduct && this.globalProductSyncService) {
+            try {
+              await this.globalProductSyncService.markProductAsDeleted(
+                tenantName,
+                updatedProduct._id as any,
+                updatedProduct.lastSerialNumber,
+              );
+              console.log(
+                `🌐 [softDeleteNonRecoverableProducts] Product ${product._id} marked as deleted in global collection`,
+              );
+            } catch (syncError) {
+              console.error(
+                `⚠️ [softDeleteNonRecoverableProducts] Error marking product ${product._id} as deleted in global:`,
+                syncError,
+              );
+              // No fallar la operación principal por error de sync
+            }
+          }
+        } catch (productError) {
+          console.error(
+            `❌ [softDeleteNonRecoverableProducts] Error deleting product ${product._id}:`,
+            productError,
+          );
+          // Continuar con los demás productos aunque uno falle
+        }
+      }
+
+      // 📝 HISTORY: NO crear registros individuales de assets
+      // Los productos no recuperables ya aparecen en el registro de delete de la oficina
+    } catch (error) {
+      console.error(
+        `❌ [softDeleteNonRecoverableProducts] Error processing office ${officeId}:`,
+        error,
+      );
+      // No lanzar error para no bloquear el borrado de la oficina
+    }
   }
 }

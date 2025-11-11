@@ -1,10 +1,4 @@
-import { PartialType } from '@nestjs/mapped-types';
-import { CreateOfficeDto } from './create-office.dto';
-import { IsOptional, IsEmail, ValidateIf } from 'class-validator';
+import { createZodDto } from '@anatine/zod-nestjs';
+import { UpdateOfficeSchemaZod } from '../validations/create-office.zod';
 
-export class UpdateOfficeDto extends PartialType(CreateOfficeDto) {
-  @IsOptional()
-  @ValidateIf((o) => o.email !== '')
-  @IsEmail()
-  email?: string;
-}
+export class UpdateOfficeDto extends createZodDto(UpdateOfficeSchemaZod) {}

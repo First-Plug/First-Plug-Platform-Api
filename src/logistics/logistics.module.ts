@@ -12,6 +12,7 @@ import { ProductsModule } from 'src/products/products.module';
 import { OfficesModule } from '../offices/offices.module';
 import { UsersModule } from '../users/users.module';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
+import { ShipmentOfficeCoordinatorService } from '../shipments/services/shipment-office-coordinator.service';
 
 @Module({
   imports: [
@@ -25,7 +26,13 @@ import { EventsGateway } from 'src/infra/event-bus/events.gateway';
     SlackModule,
     HistoryModule,
   ],
-  providers: [TenantModelRegistry, LogisticsService, JwtService, EventsGateway],
+  providers: [
+    TenantModelRegistry,
+    LogisticsService,
+    ShipmentOfficeCoordinatorService,
+    JwtService,
+    EventsGateway,
+  ],
   exports: [LogisticsService],
 })
 export class LogisticsModule {}

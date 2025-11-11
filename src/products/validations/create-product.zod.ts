@@ -201,6 +201,7 @@ export const ProductSchemaZod = z
     assignedMember: z.string().optional(),
     acquisitionDate: z.string().optional(),
     location: z.enum(LOCATIONS),
+    officeId: z.string().optional(),
     status: z.enum(STATES),
     additionalInfo: z.string().trim().optional(),
     productCondition: z.enum(CONDITION),
@@ -390,7 +391,7 @@ export const ProductSchemaZod = z
       if (val.status === 'Available') {
         return {
           message:
-            'must be FP warehouse, or Our office when status is Available.',
+            'must be FP warehouse or Our office when status is Available.',
           path: ['location'],
         };
       }
@@ -406,6 +407,113 @@ export const ProductSchemaZod = z
         path: ['location'],
       };
     },
+  )
+  .refine(
+    (data) => {
+      // Solo bloquear FP warehouse para creación inicial (sin actionType)
+      // Permitir FP warehouse para updates/movimientos (con actionType)
+      if (data.location === 'FP warehouse' && !data.actionType) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message:
+        'FP warehouse location is not allowed for initial product creation. Please use "Our office" instead.',
+      path: ['location'],
+    },
   );
 
-export const ProductSchemaZodArray = z.array(ProductSchemaZod);
+export const ProductSchemaZodArray = z.array(ProductSchemaZod).refine(
+  (products) => {
+    // Validar que ningún producto tenga location "FP warehouse" en creación inicial
+    const fpWarehouseProducts = products.filter(
+      (product) => product.location === 'FP warehouse',
+    );
+    return fpWarehouseProducts.length === 0;
+  },
+  {
+    message:
+      'FP warehouse location is not allowed for initial product creation via CSV. Please use "Employee" instead.',
+    path: ['location'],
+  },
+);
+// ✅ REMOVIDO: Validación de "Our office" movida al service level
+// Ahora manejamos esto con endpoints separados: /bulkcreate (UI) vs /bulkcreate-csv (CSV)
+
+/**
+ * Schema separado para updates de productos
+ * Incluye todos los campos pero sin la validación de FP warehouse
+ */
+export const UpdateProductSchemaZod = z
+  .object({
+    actionType: z.enum(['return', 'relocate', 'assign', 'reassign']).optional(),
+    name: z.string().optional(),
+    category: z.enum(CATEGORIES).optional(),
+    attributes: z
+      .array(
+        z.object({
+          key: z.enum(ATTRIBUTES),
+          value: z.string().optional().default(''),
+        }),
+      )
+      .refine(
+        (attrs) => {
+          const keys = attrs.map((attr) => attr.key);
+          return new Set(keys).size === keys.length;
+        },
+        {
+          message: 'Attribute keys must be unique.',
+        },
+      )
+      .optional(),
+    serialNumber: z
+      .string()
+      .transform((val) => val.toLowerCase())
+      .optional()
+      .nullable(),
+    recoverable: z.boolean().optional(),
+    assignedEmail: z.string().optional(),
+    assignedMember: z.string().optional(),
+    acquisitionDate: z.string().optional(),
+    location: z.enum(LOCATIONS).optional(), // ✅ Sin validación de FP warehouse
+    officeId: z.string().optional(),
+    status: z.enum(STATES).optional(),
+    additionalInfo: z.string().trim().optional(),
+    productCondition: z.enum(CONDITION).optional(),
+    price: z
+      .object({
+        amount: z
+          .number()
+          .min(0, { message: 'Amount must be non-negative' })
+          .optional(),
+        currencyCode: z
+          .enum(CURRENCY_CODES, { message: 'Invalid currency code' })
+          .optional(),
+      })
+      .partial()
+      .refine(
+        (data) =>
+          (data.amount !== undefined && data.currencyCode !== undefined) ||
+          (data.amount === undefined && data.currencyCode === undefined),
+        {
+          message:
+            'Both amount and currencyCode must be defined if price is set',
+          path: ['price'],
+        },
+      )
+      .optional()
+      .nullable(),
+    fp_shipment: z.boolean().optional(),
+    activeShipment: z.boolean().optional(),
+    desirableDate: z
+      .union([
+        z.string(),
+        z.object({
+          origin: z.union([z.string(), z.date()]).optional(),
+          destination: z.string().optional(),
+        }),
+      ])
+      .optional(),
+  })
+  .partial(); // ✅ Todos los campos opcionales

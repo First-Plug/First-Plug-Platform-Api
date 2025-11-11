@@ -74,12 +74,20 @@ export class MembersController {
 
     console.log('offboarding → userId:', userId);
 
+    // Si no hay oficina default, usar email personal como fallback
+    const emailToUse = ourOfficeEmail || req.user.email;
+    if (!ourOfficeEmail) {
+      console.warn(
+        `⚠️ No default office found for tenant ${tenantName}. Using personal email for offboarding.`,
+      );
+    }
+
     return this.assignmentsService.offboardMember(
       id,
       data,
       userId,
       tenantName,
-      ourOfficeEmail || req.user.email, // Fallback al email personal si no hay oficina
+      emailToUse,
     );
   }
 

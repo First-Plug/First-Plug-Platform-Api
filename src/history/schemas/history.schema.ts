@@ -16,17 +16,15 @@ export class History {
   itemType: string;
 
   @Prop({
-    type: {
-      oldData: { type: Object },
-      newData: { type: Object },
-      context: { type: String },
-    },
+    type: mongoose.Schema.Types.Mixed, // ✅ Permite cualquier estructura
     required: true,
   })
   changes: {
     oldData: Record<string, any>;
     newData: Record<string, any>;
-    context: string;
+    context?: string;
+    nonRecoverableProducts?: Array<{ serialNumber: string; name: string }>;
+    [key: string]: any; // ✅ Permite campos adicionales
   };
 
   createdAt: Date;

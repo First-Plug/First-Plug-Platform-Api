@@ -1,10 +1,14 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Model } from 'mongoose';
 import { CreateHistoryDto } from './dto/create-history.dto';
 import { History } from './schemas/history.schema';
 import { Team } from 'src/teams/schemas/team.schema';
-import { TenantUserAdapterService } from 'src/common/services/tenant-user-adapter.service';
+import { UsersService } from 'src/users/users.service';
+import { TenantsService } from 'src/tenants/tenants.service';
 import { isValidObjectId } from 'mongoose';
+import { LegacyRecordDetector } from './helpers/legacy-detector.helper';
+import { AssetHistoryCompatibility } from './helpers/asset-compatibility.helper';
+import { SafeTeamPopulation } from './helpers/safe-team-population.helper';
 
 @Injectable()
 export class HistoryService {
@@ -12,7 +16,8 @@ export class HistoryService {
     @Inject('HISTORY_MODEL')
     private readonly historyRepository: Model<History>,
     @Inject('TEAM_MODEL') private teamRepository: Model<Team>,
-    @Optional() private readonly tenantUserAdapter?: TenantUserAdapterService,
+    private readonly usersService: UsersService,
+    private readonly tenantsService: TenantsService,
   ) {}
 
   async create(createHistoryDto: CreateHistoryDto) {
@@ -20,7 +25,6 @@ export class HistoryService {
       createHistoryDto.itemType === 'assets' &&
       createHistoryDto.actionType === 'offboarding'
     ) {
-      console.log('🟡 Skipping offboarding history creation');
       return null;
     }
     return this.historyRepository.create(createHistoryDto);
@@ -39,13 +43,26 @@ export class HistoryService {
 
     return await Promise.all(
       data.map(async (record) => {
+        // Convertir el documento de Mongoose a objeto plano para poder modificarlo
+        const recordObj = record.toObject();
+
         const tenant = tenants.find(
-          (tenant) => tenant._id.toString() === record.userId.toString(),
+          (tenant) =>
+            tenant && tenant._id.toString() === record.userId.toString(),
         );
         if (tenant) {
-          record.userId = tenant.email;
+          recordObj.userId = tenant.email;
         }
-        return record;
+
+        // 🔧 COMPATIBILITY: Normalizar assets legacy para frontend
+        const finalRecord =
+          recordObj.itemType === 'assets'
+            ? AssetHistoryCompatibility.normalizeAssetRecordForFrontend(
+                recordObj,
+              )
+            : recordObj;
+
+        return finalRecord;
       }),
     );
   }
@@ -78,64 +95,39 @@ export class HistoryService {
 
     const updatedData = await Promise.all(
       data.map(async (record) => {
+        // Convertir el documento de Mongoose a objeto plano para poder modificarlo
+        const recordObj = record.toObject();
+
         const tenant = tenants.find(
-          (tenant) => tenant._id.toString() === record.userId.toString(),
+          (tenant) =>
+            tenant && tenant._id.toString() === record.userId.toString(),
         );
         if (tenant) {
-          record.userId = tenant.email;
-        }
-        if (
-          (record.itemType === 'members' &&
-            ['update', 'create', 'delete', 'bulk-create'].includes(
-              record.actionType,
-            )) ||
-          (record.itemType === 'teams' &&
-            ['reassign', 'assign', 'unassign'].includes(record.actionType))
-        ) {
-          if (
-            record.itemType === 'members' &&
-            record.actionType === 'bulk-create'
-          ) {
-            if (Array.isArray(record.changes?.newData)) {
-              for (const member of record.changes.newData) {
-                if (member.team && typeof member.team === 'string') {
-                  const newTeam = await this.teamRepository
-                    .findById(member.team)
-                    .exec();
-                  if (newTeam) {
-                    member.team = newTeam;
-                  }
-                }
-              }
-            }
-          } else {
-            if (
-              record.changes?.oldData?.team &&
-              typeof record.changes.oldData.team === 'string'
-            ) {
-              const oldTeam = await this.teamRepository
-                .findById(record.changes.oldData.team)
-                .exec();
-              if (oldTeam) {
-                record.changes.oldData.team = oldTeam;
-              }
-            }
-
-            if (
-              record.changes?.newData?.team &&
-              typeof record.changes.newData.team === 'string'
-            ) {
-              const newTeam = await this.teamRepository
-                .findById(record.changes.newData.team)
-                .exec();
-              if (newTeam) {
-                record.changes.newData.team = newTeam;
-              }
-            }
-          }
+          recordObj.userId = tenant.email;
         }
 
-        return record;
+        // 🌍 TRANSFORM: Reemplazar "FP warehouse" con country code del warehouse
+        // Solo aplicar transformaciones a registros nuevos, no a legacy
+        if (!LegacyRecordDetector.isLegacyRecord(recordObj)) {
+          recordObj.changes = await this.transformWarehouseLocations(
+            recordObj.changes,
+          );
+        }
+        // 👥 POPULATE: Poblar teams de forma segura usando helper
+        await SafeTeamPopulation.populateTeamsInHistoryRecord(
+          this.teamRepository,
+          recordObj,
+        );
+
+        // 🔧 COMPATIBILITY: Normalizar assets legacy para frontend
+        const finalRecord =
+          recordObj.itemType === 'assets'
+            ? AssetHistoryCompatibility.normalizeAssetRecordForFrontend(
+                recordObj,
+              )
+            : recordObj;
+
+        return finalRecord;
       }),
     );
 
@@ -146,23 +138,107 @@ export class HistoryService {
     };
   }
 
+  /**
+   * 🌍 Helper para transformar "FP warehouse" locations a country codes
+   * ⚠️  SOLO se aplica a registros nuevos, no a legacy (para mantener compatibilidad)
+   */
+  private async transformWarehouseLocations(changes: any): Promise<any> {
+    if (!changes) return changes;
+
+    const transformedChanges = { ...changes };
+
+    // Transformar oldData si existe
+    if (changes.oldData) {
+      transformedChanges.oldData = await this.transformLocationInData(
+        changes.oldData,
+      );
+    }
+
+    // Transformar newData si existe
+    if (changes.newData) {
+      transformedChanges.newData = await this.transformLocationInData(
+        changes.newData,
+      );
+    }
+
+    return transformedChanges;
+  }
+
+  /**
+   * 🌍 Helper para transformar location en un objeto de datos
+   */
+  private async transformLocationInData(data: any): Promise<any> {
+    if (!data) return data;
+
+    // Si es un array, transformar cada elemento
+    if (Array.isArray(data)) {
+      return Promise.all(
+        data.map((item) => this.transformLocationInData(item)),
+      );
+    }
+
+    // Si es un objeto, verificar si tiene location === "FP warehouse"
+    if (typeof data === 'object' && data.location === 'FP warehouse') {
+      const transformedData = { ...data };
+
+      // Si tiene fpWarehouse.warehouseCountryCode, agregarlo como campo separado
+      if (data.fpWarehouse?.warehouseCountryCode) {
+        // ✅ AGREGAR campo warehouseCountryCode, NO reemplazar location
+        transformedData.warehouseCountryCode =
+          data.fpWarehouse.warehouseCountryCode;
+      }
+      // Si no tiene fpWarehouse pero tiene _id, buscar el producto actual
+      else if (data._id) {
+        // TODO: Implementar búsqueda del producto si es necesario
+        // Por ahora, mantener "FP warehouse" sin country code
+      }
+
+      return transformedData;
+    }
+
+    return data;
+  }
+
   async getTenantsByUserIds(userIds: string[]) {
     try {
       const validUserIds = userIds.filter((id) => isValidObjectId(id));
 
-      // Usar el adaptador para obtener usuarios/tenants con la estructura esperada
-      if (!this.tenantUserAdapter) {
-        console.warn('TenantUserAdapter not available, returning empty array');
-        return [];
-      }
+      // Obtener usuarios directamente para evitar dependencias circulares
+      const users = await Promise.all(
+        validUserIds.map(async (id) => {
+          try {
+            const user = await this.usersService.findById(id);
+            if (user) {
+              return {
+                _id: user._id,
+                email: user.email,
+              };
+            }
 
-      const tenants =
-        await this.tenantUserAdapter.findTenantsByIds(validUserIds);
+            // Si no es un usuario, intentar buscar como tenant viejo
+            const tenant = await this.tenantsService.getTenantById(id);
+            if (tenant && (tenant as any).email) {
+              return {
+                _id: tenant._id,
+                email: (tenant as any).email,
+              };
+            }
 
-      return tenants;
+            return null;
+          } catch (error) {
+            console.warn(
+              `Error obteniendo usuario/tenant ${id}:`,
+              error.message,
+            );
+            return null;
+          }
+        }),
+      );
+
+      return users.filter((user) => user !== null);
     } catch (error) {
-      console.error('Error al obtener los tenants:', error);
-      throw new Error('Error al obtener los tenants');
+      console.error('Error al obtener los usuarios:', error);
+      throw new Error('Error al obtener los usuarios');
     }
   }
 }

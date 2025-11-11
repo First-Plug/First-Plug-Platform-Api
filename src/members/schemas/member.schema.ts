@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose, { Document, SchemaTimestampsConfig, Types } from 'mongoose';
 import { Product } from '../../products/schemas/product.schema';
 import { softDeletePlugin } from 'soft-delete-plugin-mongoose';
+import { CountryHelper } from '../../common/helpers/country.helper';
 
 export type MemberDocument = Member & Document & SchemaTimestampsConfig;
 
@@ -41,7 +42,22 @@ export class Member {
   @Prop({ type: String })
   city?: string;
 
-  @Prop({ type: String })
+  @Prop({
+    type: String,
+    validate: {
+      validator: function (value: string) {
+        // Permitir valores vacíos/null para compatibilidad durante migración
+        if (!value || value === '') return true;
+        // Permitir ubicaciones especiales
+        if (CountryHelper.isSpecialLocation(value)) return true;
+        // Validar códigos ISO
+        const normalized = CountryHelper.normalizeCountryCode(value);
+        return CountryHelper.isISOCountryCode(normalized);
+      },
+      message:
+        'Country must be a valid ISO 3166-1 alpha-2 code (e.g., AR, BR, US) or special location (Our office, FP warehouse)',
+    },
+  })
   country?: string;
 
   @Prop({ type: String })

@@ -2,6 +2,7 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  BadRequestException,
   Logger,
   forwardRef,
   Inject,
@@ -21,7 +22,7 @@ import {
 } from './schemas/product.schema';
 import { CreateProductDto, UpdateProductDto } from './dto';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
-import { BadRequestException } from '@nestjs/common';
+
 import { TenantsService } from 'src/tenants/tenants.service';
 import { Attribute, Status } from './interfaces/product.interface';
 import { MemberDocument } from 'src/members/schemas/member.schema';
@@ -37,7 +38,8 @@ import { AssignmentsService } from 'src/assignments/assignments.service';
 import { EventTypes } from 'src/infra/event-bus/types';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 import { LogisticsService } from 'src/logistics/logistics.sevice';
-import { normalizeSerialForHistory } from './helpers/history.helper';
+import { recordEnhancedAssetHistory } from './helpers/history.helper';
+import { GlobalProductSyncService } from './services/global-product-sync.service';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
 
 export interface ProductModel
@@ -47,6 +49,105 @@ export interface ProductModel
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
+
+  /**
+   * Helper para sincronizar producto a colección global
+   * No falla la operación principal si hay error en sincronización
+   */
+  private async syncProductToGlobal(
+    product: ProductDocument | any,
+    tenantName: string,
+    sourceCollection: 'products' | 'members' = 'products',
+    memberData?: {
+      memberId: Types.ObjectId;
+      memberEmail: string;
+      memberName: string;
+      assignedAt?: Date;
+    },
+    fpWarehouseData?: {
+      warehouseId: Types.ObjectId;
+      warehouseCountryCode: string;
+      warehouseName: string;
+      assignedAt?: Date;
+      status?: 'STORED' | 'IN_TRANSIT_IN' | 'IN_TRANSIT_OUT';
+    },
+  ): Promise<void> {
+    try {
+      // 🔍 [DEBUG] Log para verificar datos de office antes de sincronizar
+      console.log(
+        `🔄 [SYNC] Sincronizando producto ${product.name} (${product._id}):`,
+        {
+          location: product.location,
+          hasOffice: !!product.office,
+          officeData: product.office,
+          sourceCollection,
+          hasMemberData: !!memberData,
+          hasFpWarehouseData: !!fpWarehouseData,
+        },
+      );
+      await this.globalProductSyncService.syncProduct({
+        tenantId: tenantName, // Se corregirá automáticamente en GlobalProductSyncService
+        tenantName: tenantName,
+        originalProductId: product._id as any,
+        sourceCollection: sourceCollection,
+
+        // Datos básicos del producto
+        name: product.name || '',
+        category: product.category,
+        status: product.status,
+        location: product.location || 'FP warehouse',
+
+        // Convertir atributos a formato string
+        attributes:
+          product.attributes?.map((attr: any) => ({
+            key: attr.key,
+            value: String(attr.value),
+          })) || [],
+
+        serialNumber: product.serialNumber || undefined,
+        assignedEmail: product.assignedEmail,
+        assignedMember: product.assignedMember,
+        lastAssigned: product.lastAssigned,
+        acquisitionDate: product.acquisitionDate,
+        price: product.price,
+        additionalInfo: product.additionalInfo,
+        productCondition: product.productCondition,
+        recoverable: product.recoverable,
+        fp_shipment: product.fp_shipment,
+        activeShipment: product.activeShipment,
+
+        // Datos del member si aplica
+        memberData: memberData,
+
+        // Datos del warehouse si aplica
+        fpWarehouse: fpWarehouseData,
+
+        // Datos del office si aplica
+        office:
+          product.office &&
+          product.office.officeId &&
+          product.office.officeCountryCode &&
+          product.office.officeName
+            ? {
+                officeId: product.office.officeId as any,
+                officeCountryCode: product.office.officeCountryCode,
+                officeName: product.office.officeName,
+                assignedAt: product.office.assignedAt,
+                isDefault: product.office.isDefault,
+              }
+            : undefined,
+
+        sourceUpdatedAt: (product as any).updatedAt || new Date(),
+      });
+    } catch (error) {
+      this.logger.error(
+        `❌ Error syncing product ${product._id} to global:`,
+        error,
+      );
+      // No lanzar error para no fallar la operación principal
+    }
+  }
+
   constructor(
     private readonly tenantModelRegistry: TenantModelRegistry,
     private tenantsService: TenantsService,
@@ -58,6 +159,7 @@ export class ProductsService {
     private readonly assignmentsService: AssignmentsService,
     @Inject(forwardRef(() => LogisticsService))
     private readonly logisticsService: LogisticsService,
+    private readonly globalProductSyncService: GlobalProductSyncService,
     private readonly eventsGateway: EventsGateway,
   ) {}
 
@@ -220,11 +322,48 @@ export class ProductsService {
     userId: string,
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
+
+    // � [DEBUG] Log completo del DTO recibido del frontend
+    console.log(
+      '📦 [CREATE] DTO recibido del frontend:',
+      JSON.stringify(createProductDto, null, 2),
+    );
+
+    // �🚫 Validación: Los usuarios normales no pueden crear productos iniciales en FP warehouse
+    // (Los movimientos/updates a FP warehouse sí están permitidos)
+    if (createProductDto.location === 'FP warehouse') {
+      throw new BadRequestException(
+        'FP warehouse location is not allowed for initial product creation. Please use "Our office" instead.',
+      );
+    }
+
     const ProductModel =
       await this.tenantModelRegistry.getProductModel(tenantName);
     const normalizedProduct = this.normalizeProductData(createProductDto);
-    const { assignedEmail, serialNumber, price, productCondition, ...rest } =
-      normalizedProduct;
+
+    // 🔍 [DEBUG] Log después de normalización
+    console.log(
+      '🔄 [CREATE] Producto normalizado:',
+      JSON.stringify(normalizedProduct, null, 2),
+    );
+
+    const {
+      assignedEmail,
+      serialNumber,
+      price,
+      productCondition,
+      officeId,
+      ...rest
+    } = normalizedProduct;
+
+    // 🔍 [DEBUG] Log de campos extraídos
+    console.log('📋 [CREATE] Campos extraídos:', {
+      assignedEmail,
+      serialNumber,
+      productCondition,
+      officeId,
+      location: rest.location,
+    });
 
     const recoverableConfig =
       await this.getRecoverableConfigForTenant(tenantName);
@@ -252,6 +391,23 @@ export class ProductsService {
       }
     }
 
+    // Construir objeto office si officeId está presente y location es "Our office"
+    let officeData = {};
+    console.log('🏢 [CREATE] Office assignment check:', {
+      location,
+      officeId,
+      hasOfficeId: !!officeId,
+    });
+
+    if (officeId && location === 'Our office') {
+      console.log('🏢 [CREATE] Building office object for officeId:', officeId);
+      officeData = await this.assignmentsService.buildOfficeObject(
+        officeId as string,
+        tenantName,
+      );
+      console.log('🏢 [CREATE] Office data built:', officeData);
+    }
+
     const createData = {
       ...rest,
       recoverable: isRecoverable,
@@ -261,28 +417,34 @@ export class ProductsService {
       location,
       status,
       ...(price?.amount !== undefined && price?.currencyCode ? { price } : {}),
+      ...officeData, // Incluir datos de oficina si existen
     };
 
     let assignedMember = '';
-    console.log('createData before assigning:', createData);
+
     if (assignedEmail) {
       const member = await this.assignmentsService.assignProduct(
         assignedEmail,
         createData,
+        undefined, // session
+        tenantName, // ✅ FIX: Pasar tenantName para sincronización global
       );
 
       if (member) {
         assignedMember = this.getFullName(member);
 
-        await this.historyService.create({
-          actionType: 'create',
-          itemType: 'assets',
-          userId: userId,
-          changes: {
-            oldData: null,
-            newData: member.products.at(-1) as Product,
-          },
-        });
+        // 📜 HISTORY: Crear registro con formato completo incluyendo country
+        const createdProduct = member.products.at(-1) as ProductDocument;
+        await recordEnhancedAssetHistory(
+          this.historyService,
+          'create',
+          userId,
+          null, // oldProduct
+          createdProduct, // newProduct
+          undefined, // context
+          member.country, // newMemberCountry
+          undefined, // oldMemberCountry
+        );
 
         return member.products.at(-1);
       }
@@ -296,15 +458,17 @@ export class ProductsService {
       productCondition: createData.productCondition,
     });
 
-    await this.historyService.create({
-      actionType: 'create',
-      itemType: 'assets',
-      userId: userId,
-      changes: {
-        oldData: null,
-        newData: newProduct,
-      },
-    });
+    // 🔄 SYNC: Sincronizar producto creado a colección global
+    await this.syncProductToGlobal(newProduct, tenantName, 'products');
+
+    // 📜 HISTORY: Registrar creación con formato mejorado
+    await recordEnhancedAssetHistory(
+      this.historyService,
+      'create',
+      userId,
+      null, // oldProduct
+      newProduct, // newProduct
+    );
 
     return newProduct;
   }
@@ -313,8 +477,50 @@ export class ProductsService {
     createProductDtos: CreateProductDto[],
     tenantName: string,
     userId: string,
+    options?: { isCSVUpload?: boolean },
   ) {
+    console.log(`🚀 [bulkCreate] Service called with options:`, options);
     await new Promise((resolve) => process.nextTick(resolve));
+
+    // � [DEBUG] Log inicial del bulk create
+
+    // �🚫 Validación: Los usuarios normales no pueden crear productos iniciales en FP warehouse
+    // (Los movimientos/updates a FP warehouse sí están permitidos)
+    const fpWarehouseProducts = createProductDtos.filter(
+      (dto) => dto.location === 'FP warehouse',
+    );
+    if (fpWarehouseProducts.length > 0) {
+      throw new BadRequestException(
+        'FP warehouse location is not allowed for initial product creation via CSV. Please use "Employee" instead.',
+      );
+    }
+
+    // 🚫 TEMPORAL: Bloquear "Our office" SOLO en CSV hasta próximo release
+    // Evita problemas con usuarios que tengan template anterior
+    // ✅ PERMITIR "Our office" desde UI Form (por defecto)
+    // ❌ BLOQUEAR "Our office" solo cuando source=csv
+    const isCSVUpload = options?.isCSVUpload === true;
+
+    console.log(
+      `📦 [bulkCreate] isCSVUpload: ${isCSVUpload}, options:`,
+      options,
+    );
+
+    if (isCSVUpload) {
+      const ourOfficeProducts = createProductDtos.filter(
+        (dto) => dto.location === 'Our office',
+      );
+      if (ourOfficeProducts.length > 0) {
+        throw new BadRequestException(
+          'Our office location is temporarily disabled for CSV uploads. Please use "Employee" instead and assign to offices manually.',
+        );
+      }
+    } else {
+      console.log(
+        `✅ [bulkCreate] UI Form detected - "Our office" location allowed`,
+      );
+    }
+
     const connection = await this.tenantModelRegistry.getConnection(tenantName);
     const ProductModel = connection.model(Product.name, ProductSchema);
     const session = await connection.startSession();
@@ -365,12 +571,35 @@ export class ProductsService {
         }
       }
 
-      const createData = normalizedProducts.map((product) => {
-        const { serialNumber, ...rest } = product;
-        return serialNumber && serialNumber.trim() !== ''
-          ? { ...rest, serialNumber }
-          : rest;
-      });
+      const createData = await Promise.all(
+        normalizedProducts.map(async (product) => {
+          const { serialNumber, officeId, ...rest } = product;
+
+          // ✅ FIX: Usar handleOfficeAssignment para manejar oficina default cuando no hay officeId
+          let officeData = {};
+          if (product.location === 'Our office') {
+            // Si no hay officeId pero location es "Our office", usar oficina default
+            const officeAssignment =
+              await this.assignmentsService.handleOfficeAssignment(
+                officeId as string,
+                product.location,
+                undefined, // currentOffice
+                tenantName,
+              );
+            officeData = officeAssignment;
+          }
+
+          const baseProduct =
+            serialNumber && serialNumber.trim() !== ''
+              ? { ...rest, serialNumber }
+              : rest;
+
+          return {
+            ...baseProduct,
+            ...officeData,
+          };
+        }),
+      );
 
       const productsWithIds = createData.map((product) => {
         return {
@@ -388,6 +617,22 @@ export class ProductsService {
       );
 
       const createdProducts: ProductDocument[] = [];
+      // Map para guardar relación producto-miembro para sincronización
+      const productMemberMap = new Map<
+        string,
+        { memberId: any; memberEmail: string; memberName: string }
+      >();
+      // Map para guardar relación producto-warehouse para sincronización
+      const productWarehouseMap = new Map<
+        string,
+        {
+          warehouseId: Types.ObjectId;
+          warehouseCountryCode: string;
+          warehouseName: string;
+          assignedAt: Date;
+          status: 'STORED' | 'IN_TRANSIT_IN' | 'IN_TRANSIT_OUT';
+        }
+      >();
 
       const assignProductPromises = productsWithAssignedEmail.map(
         async (product) => {
@@ -405,6 +650,15 @@ export class ProductsService {
             await member.save({ session });
             await ProductModel.deleteOne({ _id: product._id }).session(session);
             createdProducts.push(productDocument);
+
+            // Guardar relación para sincronización usando el _id original del producto
+            // El product._id es el que se generó en la línea 449 y es el que se usa en la colección
+            const productIdStr = product._id.toString();
+            productMemberMap.set(productIdStr, {
+              memberId: member._id,
+              memberEmail: member.email,
+              memberName: this.getFullName(member),
+            });
           } else {
             const createdProduct = await ProductModel.create([product], {
               session,
@@ -423,14 +677,116 @@ export class ProductsService {
 
       await session.commitTransaction();
 
-      // Registrar el historial
+      // 🔄 SYNC: Sincronizar productos creados en bulk a colección global
+
+      for (const product of createdProducts) {
+        try {
+          // Determinar sourceCollection basado en si tiene assignedEmail
+          const sourceCollection = product.assignedEmail
+            ? 'members'
+            : 'products';
+
+          // Obtener memberData si el producto está asignado
+          const productId = product._id?.toString();
+          const memberInfo = productId
+            ? productMemberMap.get(productId)
+            : undefined;
+
+          // Obtener fpWarehouseData si el producto está en FP warehouse
+          const warehouseInfo = productId
+            ? productWarehouseMap.get(productId)
+            : undefined;
+
+          // Sincronizar con memberData y/o fpWarehouseData según corresponda
+          if (memberInfo && warehouseInfo) {
+            await this.syncProductToGlobal(
+              product,
+              tenantName,
+              sourceCollection,
+              {
+                memberId: memberInfo.memberId,
+                memberEmail: memberInfo.memberEmail,
+                memberName: memberInfo.memberName,
+                assignedAt: new Date(),
+              },
+              warehouseInfo,
+            );
+          } else if (memberInfo) {
+            await this.syncProductToGlobal(
+              product,
+              tenantName,
+              sourceCollection,
+              {
+                memberId: memberInfo.memberId,
+                memberEmail: memberInfo.memberEmail,
+                memberName: memberInfo.memberName,
+                assignedAt: new Date(),
+              },
+            );
+          } else if (warehouseInfo) {
+            await this.syncProductToGlobal(
+              product,
+              tenantName,
+              sourceCollection,
+              undefined, // no memberData
+              warehouseInfo,
+            );
+          } else {
+            await this.syncProductToGlobal(
+              product,
+              tenantName,
+              sourceCollection,
+            );
+          }
+        } catch (error) {
+          this.logger.error(
+            `❌ [bulkCreate] Error syncing product ${product._id} to global collection:`,
+            error,
+          );
+          // No fallar el bulk create si falla la sincronización
+        }
+      }
+
+      // 📜 HISTORY: Registrar el historial con formato completo incluyendo country
+      // Crear un mapa de email -> country para evitar múltiples consultas
+      const memberCountryMap = new Map<string, string>();
+      for (const [, memberInfo] of productMemberMap.entries()) {
+        if (memberInfo.memberEmail) {
+          const member = await this.simpleFindByEmail(
+            memberInfo.memberEmail,
+            tenantName,
+          );
+          if (member?.country) {
+            memberCountryMap.set(memberInfo.memberEmail, member.country);
+          }
+        }
+      }
+
+      const { AssetHistoryFormatter } = await import(
+        '../history/helpers/history-formatters.helper'
+      );
+
+      const formattedProducts = createdProducts.map((product) => {
+        // Obtener country del member si está asignado
+        const memberCountry = product.assignedEmail
+          ? memberCountryMap.get(product.assignedEmail)
+          : undefined;
+
+        return AssetHistoryFormatter.formatAssetData(
+          product,
+          product.assignedMember,
+          undefined, // context
+          memberCountry, // country del member
+        );
+      });
+
       await this.historyService.create({
         actionType: 'bulk-create',
         itemType: 'assets',
         userId: userId,
         changes: {
           oldData: null,
-          newData: createdProducts,
+          newData: formattedProducts,
         },
       });
 
@@ -466,7 +822,7 @@ export class ProductsService {
 
     const productsFromRepository = await ProductModel.find({
       isDeleted: false,
-    });
+    }).lean();
 
     const productsFromMembers =
       await this.assignmentsService.getAllProductsWithMembers(tenantConnection);
@@ -495,6 +851,37 @@ export class ProductsService {
           additionalInfo,
           activeShipment,
         } = product;
+
+        // Calcular countryCode y officeName según la ubicación del producto
+        let countryCode: string | null = null;
+        let officeName: string | null = null;
+
+        if (location === 'Employee') {
+          // Para productos asignados a empleados, usar el country del member
+          const memberData = (product as any).memberData;
+          countryCode = memberData?.country || null;
+        } else if (location === 'FP warehouse') {
+          // Para productos en warehouse, usar warehouseCountryCode
+          const fpWarehouse = (product as any).fpWarehouse;
+          countryCode = fpWarehouse?.warehouseCountryCode || null;
+        } else if (location === 'Our office') {
+          // Para productos en oficina, usar officeCountryCode y officeName
+          const office = (product as any).office;
+          countryCode = office?.officeCountryCode || null;
+          officeName = office?.officeName || null;
+        }
+
+        // Debug: verificar si el producto tiene office cuando location es "Our office"
+        if (location === 'Our office') {
+          // console.log('🏢 Producto Our office:', {
+          //   productId: _id,
+          //   hasOffice: !!(product as any).office,
+          //   countryCode,
+          //   officeKeys: (product as any).office
+          //     ? Object.keys((product as any).office)
+          //     : 'null',
+          // });
+        }
         const filteredAttributes = attributes.filter(
           (attribute: Attribute) =>
             attribute.key !== 'keyboardLanguage' && attribute.key !== 'gpu',
@@ -571,6 +958,10 @@ export class ProductsService {
           shipmentDestination,
           shipmentId,
           shipmentStatus,
+          // Solo el countryCode según la ubicación
+          countryCode,
+          // Solo el officeName cuando location es "Our office"
+          officeName,
         };
       }),
     );
@@ -611,6 +1002,8 @@ export class ProductsService {
               (attr) => attr.key === 'screen',
             )?.value;
 
+            // 🎯 FIX: Solo agrupar por características VISUALES (brand, model, color, screen)
+            // NO incluir processor, ram, storage que son specs internas
             key = JSON.stringify({
               category: product.category,
               brand: computerBrand,
@@ -858,6 +1251,15 @@ export class ProductsService {
     userId: string,
     ourOfficeEmail: string,
   ) {
+    console.log(`🔁 [reassignProduct] DEBUG - Product ID: ${id}`);
+    console.log(`🔁 [reassignProduct] DEBUG - updateProductDto:`, {
+      location: updateProductDto.location,
+      assignedEmail: updateProductDto.assignedEmail,
+      fp_shipment: updateProductDto.fp_shipment,
+      actionType: updateProductDto.actionType,
+      officeId: updateProductDto.officeId,
+    });
+
     if (updateProductDto.assignedEmail === 'none') {
       updateProductDto.assignedEmail = '';
     }
@@ -895,6 +1297,30 @@ export class ProductsService {
         ) {
           console.log(
             '⚠️ Producto en shipment activo, ignorando cambio de activeShipment a false',
+          );
+          continue;
+        }
+
+        // 🏭 PRESERVAR fpWarehouse: No sobrescribir con null si el producto está en FP warehouse
+        if (
+          key === 'fpWarehouse' &&
+          updateProductDto[key] === null &&
+          product.location === 'FP warehouse'
+        ) {
+          console.log(
+            '⚠️ Producto en FP warehouse, preservando fpWarehouse existente',
+          );
+          continue;
+        }
+
+        // 👤 PRESERVAR memberData: No sobrescribir con null si el producto tiene member asignado
+        if (
+          key === 'memberData' &&
+          updateProductDto[key] === null &&
+          product.assignedMember
+        ) {
+          console.log(
+            '⚠️ Producto con member asignado, preservando memberData existente',
           );
           continue;
         }
@@ -941,7 +1367,14 @@ export class ProductsService {
     try {
       const { member, product, location } =
         await this.findProductAndLocationById(id, tenantName);
-      const productCopy = JSON.parse(JSON.stringify(product));
+
+      // 📸 HISTORY: Capturar estado original ANTES de cualquier modificación
+      const originalProduct = JSON.parse(
+        JSON.stringify(
+          (product as any).toObject ? (product as any).toObject() : product,
+        ),
+      );
+
       const isInActiveShipment = product.fp_shipment === true;
 
       if (isInActiveShipment) {
@@ -968,6 +1401,9 @@ export class ProductsService {
           ? updateProductDto.recoverable
           : product.recoverable;
 
+      // 🎯 FIX: Capturar serialNumber original ANTES de cualquier modificación
+      const originalSerialNumber = product.serialNumber;
+
       if (updateProductDto.price === null) {
         await ProductModel.updateOne(
           { _id: product._id },
@@ -981,12 +1417,20 @@ export class ProductsService {
         );
       }
 
-      if (updateProductDto.serialNumber === '' && location === 'products') {
-        await ProductModel.updateOne(
-          { _id: product._id },
-          { $unset: { serialNumber: '' } },
-        );
-        product.serialNumber = undefined;
+      // 🎯 FIX: Manejar serialNumber vacío para AMBAS ubicaciones
+      if (updateProductDto.serialNumber === '') {
+        if (location === 'products') {
+          await ProductModel.updateOne(
+            { _id: product._id },
+            { $unset: { serialNumber: '' } },
+          );
+          product.serialNumber = undefined;
+          // Para products, limpiar el campo para que no se incluya en updatedFields
+          updateProductDto.serialNumber = undefined;
+        } else if (location === 'members') {
+          // Para members, mantener como null para que llegue a updateEmbeddedProduct
+          updateProductDto.serialNumber = null;
+        }
       }
 
       if (
@@ -1011,6 +1455,7 @@ export class ProductsService {
       if (updateProductDto.price === null) {
         delete updatedFields.price;
       }
+      // 🎯 FIX: Manejar serialNumber null solo para products (members lo necesita en updatedFields)
       if (updateProductDto.serialNumber === null && location === 'products') {
         delete updatedFields.serialNumber;
       }
@@ -1047,20 +1492,57 @@ export class ProductsService {
           member,
           product._id,
           updatedFields,
+          tenantName, // 🎯 Pasar tenantName para sincronización
+        );
+      }
+
+      // 🔄 SYNC: Sincronizar producto actualizado a colección global
+      if (productUpdated) {
+        const sourceCollection =
+          location === 'members' ? 'members' : 'products';
+        let memberData: any = undefined;
+
+        if (location === 'members' && member) {
+          memberData = {
+            memberId: member._id as any,
+            memberEmail: member.email,
+            memberName: `${member.firstName} ${member.lastName}`,
+            assignedAt: (productUpdated as any).assignedAt || member.updatedAt,
+          };
+        }
+
+        // 🎯 FIX: Indicar si se debe eliminar serialNumber de global
+        // Detectar si el producto TENÍA serialNumber pero ahora no lo tiene
+        const hadSerialNumber =
+          originalSerialNumber !== undefined &&
+          originalSerialNumber !== null &&
+          originalSerialNumber !== '';
+        const hasSerialNumber =
+          productUpdated.serialNumber !== undefined &&
+          productUpdated.serialNumber !== null &&
+          productUpdated.serialNumber !== '';
+        const shouldRemoveSerialNumber = hadSerialNumber && !hasSerialNumber;
+
+        await this.assignmentsService.syncProductToGlobal(
+          productUpdated,
+          tenantName,
+          sourceCollection,
+          memberData,
+          shouldRemoveSerialNumber, // 🎯 Nuevo parámetro
         );
       }
 
       if (!userId)
         throw new Error('❌ userId is undefined antes de crear history');
-      await this.historyService.create({
-        actionType: 'update',
-        itemType: 'assets',
-        userId: userId,
-        changes: {
-          oldData: productCopy,
-          newData: productUpdated,
-        },
-      });
+
+      // 📜 HISTORY: Registrar actualización con formato mejorado
+      await recordEnhancedAssetHistory(
+        this.historyService,
+        'update',
+        userId,
+        originalProduct as ProductDocument, // ✅ producto original (antes de modificaciones)
+        productUpdated as ProductDocument, // ✅ producto actualizado
+      );
 
       if (isInActiveShipment && product?._id) {
         const shipmentSummary =
@@ -1120,6 +1602,15 @@ export class ProductsService {
     session?: ClientSession,
     connection?: Connection,
   ) {
+    console.log(`🔄 [update] DEBUG - Product ID: ${id}`);
+    console.log(`🔄 [update] DEBUG - updateProductDto:`, {
+      location: updateProductDto.location,
+      assignedEmail: updateProductDto.assignedEmail,
+      fp_shipment: updateProductDto.fp_shipment,
+      actionType: updateProductDto.actionType,
+      officeId: updateProductDto.officeId,
+    });
+
     await new Promise((resolve) => process.nextTick(resolve));
 
     const internalConnection =
@@ -1134,8 +1625,6 @@ export class ProductsService {
     }
 
     try {
-      console.log('🔄 [update] ID recibido:', id.toString());
-      console.log('🔄 [update] DTO recibido:', updateProductDto);
       await this.normalizeFpShipmentFlag(
         id,
         updateProductDto,
@@ -1143,14 +1632,12 @@ export class ProductsService {
         internalSession,
         tenantName,
       );
-      console.log('🧩 Buscando producto por ID en ProductModel...');
 
       // ✅ FIX: Usar la conexión interna en lugar de obtener una nueva
       const ProductModel = internalConnection.model(
         Product.name,
         ProductSchema,
       );
-      console.log('🧩 Obtenido ProductModel para tenant:', tenantName);
 
       const product = await ProductModel.findById(id).session(internalSession);
 
@@ -1200,17 +1687,69 @@ export class ProductsService {
         internalSession.endSession();
       }
 
-      return {
+      // � RESINCRONIZACIÓN FINAL: Para productos con fp_shipment
+      // NOTA: No resincronizar si el producto viene de moveToProductsCollection (reassign/return desde member)
+      // porque ya se sincronizó en ese método
+      const isFromMemberCollection =
+        updateProductDto.actionType === 'reassign' ||
+        updateProductDto.actionType === 'return';
+
+      if (
+        updateProductDto.fp_shipment &&
+        result.updatedProduct &&
+        !isFromMemberCollection
+      ) {
+        try {
+          // Buscar el producto en la colección local para obtener el status final correcto
+          const ProductModel = internalConnection.model(
+            'Product',
+            ProductSchema,
+          );
+          const localProduct = await ProductModel.findById(
+            result.updatedProduct._id,
+          );
+
+          if (localProduct) {
+            // Resincronizar con el status correcto después del shipment
+            await this.assignmentsService.syncProductToGlobal(
+              localProduct,
+              tenantName,
+              'products',
+              undefined,
+            );
+          }
+        } catch (error) {
+          this.logger.error(
+            `❌ [ProductsService] Final re-sync failed for product ${result.updatedProduct._id}:`,
+            error,
+          );
+        }
+      } else if (isFromMemberCollection) {
+        this.logger.log(
+          `⏭️ [ProductsService] Skipping final re-sync for product ${result.updatedProduct?._id} - already synced in moveToProductsCollection`,
+        );
+      }
+
+      const response = {
         message: `Product with id "${id}" updated successfully`,
         shipment: result.shipment ?? null,
         updatedProduct: result.updatedProduct ?? null,
       };
+
+      console.log('✅ [ProductsService.update] Returning response:', {
+        hasShipment: !!response.shipment,
+        hasUpdatedProduct: !!response.updatedProduct,
+        productId: response.updatedProduct?._id,
+        shipmentId: response.shipment?._id,
+      });
+
+      return response;
     } catch (error) {
       if (startedTransaction) {
         await internalSession.abortTransaction();
         internalSession.endSession();
       }
-      console.error('❌ Error en update:', error.message, error.stack);
+
       throw error;
     }
   }
@@ -1253,13 +1792,6 @@ export class ProductsService {
       if (existingProduct?.fp_shipment === true) {
         updateProductDto.fp_shipment = true;
       } else {
-        console.log(
-          '🪵 ID recibido en Logistics antes de getProductByMembers desde normalizeFpShipmentFlag dos:',
-          productId,
-          typeof productId,
-          productId instanceof Types.ObjectId,
-        );
-
         const memberProduct = await this.assignmentsService.getProductByMembers(
           productId,
           connection,
@@ -1345,6 +1877,9 @@ export class ProductsService {
           Product.name,
           ProductSchema,
         ) as any;
+        console.log(
+          `🔍 [softDelete] Looking for product ${id} in products collection`,
+        );
         const product = await ProductModel.findById(id).session(session);
         const changes: {
           oldData: Product | null;
@@ -1355,36 +1890,49 @@ export class ProductsService {
         };
 
         if (product) {
+          console.log(
+            `✅ [softDelete] Product ${id} found in products collection`,
+          );
+
           // ✅ VALIDACIÓN: No permitir eliminar productos con active shipment
           if (product.activeShipment) {
+            console.error(
+              `❌ [softDelete] Cannot delete product ${id} - has active shipment`,
+            );
             throw new BadRequestException(
               'Cannot delete product that is part of an active shipment',
             );
           }
 
           product.status = 'Deprecated';
-          product.lastSerialNumber = product.serialNumber;
+          product.lastSerialNumber = product.serialNumber || undefined;
           product.serialNumber = undefined;
           product.isDeleted = true;
           product.deletedAt = new Date(); // ✅ FIX: Establecer fecha de eliminación
 
           await product.save();
+
           await ProductModel.softDelete({ _id: id }, { session });
+
+          // 🔄 SYNC: Marcar producto como eliminado en colección global
+
+          await this.globalProductSyncService.markProductAsDeleted(
+            tenantName, // Se corregirá automáticamente en GlobalProductSyncService
+            id as any,
+            product.lastSerialNumber, // Pasar el lastSerialNumber para sincronización
+          );
 
           changes.oldData = product;
         } else {
-          console.log(
-            '🪵 ID recibido en Logistics antes de getProductByMembers desde softDelete:',
-            id,
-            typeof id,
-            id instanceof Types.ObjectId,
-          );
           const memberProduct =
             await this.assignmentsService.getProductByMembers(
               id,
               connection,
               session,
             );
+          console.log(
+            `🔍 [softDelete] Member product search result: ${memberProduct ? 'Found' : 'Not found'}`,
+          );
 
           if (memberProduct && memberProduct.product) {
             // ✅ VALIDACIÓN: No permitir eliminar productos con active shipment
@@ -1420,6 +1968,14 @@ export class ProductsService {
 
             await ProductModel.softDelete({ _id: id }, { session });
 
+            // 🔄 SYNC: Marcar producto como eliminado en colección global
+
+            await this.globalProductSyncService.markProductAsDeleted(
+              tenantName,
+              id as any,
+              memberProduct.product.serialNumber || undefined, // Pasar el serialNumber original
+            );
+
             const memberId = memberProduct.member._id;
             await this.assignmentsService.deleteProductFromMember(
               memberId,
@@ -1433,17 +1989,41 @@ export class ProductsService {
           }
         }
 
-        await this.historyService.create({
-          actionType: 'delete',
-          itemType: 'assets',
+        // 📜 HISTORY: Crear registro con formato completo incluyendo country
+        let memberCountry: string | undefined;
+
+        // Si el producto estaba asignado a un member, obtener su country
+        if (changes.oldData?.assignedEmail) {
+          try {
+            const member = await this.simpleFindByEmail(
+              changes.oldData.assignedEmail,
+              tenantName,
+            );
+            memberCountry = member?.country;
+          } catch (error) {
+            console.warn(
+              'Could not find member for country in delete history:',
+              error,
+            );
+          }
+        }
+
+        // Para productos en FP warehouse o Our office, el country ya está en fpWarehouse.warehouseCountryCode o office.officeCountryCode
+        // El AssetHistoryFormatter.formatAssetData() se encargará de extraerlo automáticamente
+
+        await recordEnhancedAssetHistory(
+          this.historyService,
+          'delete',
           userId,
-          changes: {
-            oldData: normalizeSerialForHistory(changes.oldData),
-            newData: null,
-          },
-        });
+          changes.oldData as ProductDocument, // oldProduct
+          null, // newProduct
+          undefined, // context
+          undefined, // newMemberCountry
+          memberCountry, // oldMemberCountry
+        );
 
         await session.commitTransaction();
+
         session.endSession();
 
         // 🔔 Notificar al cliente mediante websocket sobre la eliminación del producto
@@ -1467,10 +2047,7 @@ export class ProductsService {
 
         return { message: `Product with id ${id} has been soft deleted` };
       } catch (error) {
-        console.error(
-          `Error en softDelete para el producto con id ${id}:`,
-          error,
-        );
+        console.error(`❌ [softDelete] Error deleting product ${id}:`, error);
 
         if (error.message.includes('catalog changes')) {
           retries++;

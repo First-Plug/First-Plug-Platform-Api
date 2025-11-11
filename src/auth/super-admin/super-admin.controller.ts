@@ -33,7 +33,6 @@ export class SuperAdminController {
    */
   @Get('stats')
   async getSystemStats() {
-    this.logger.log('👑 SuperAdmin: Solicitando estadísticas del sistema');
     return this.superAdminService.getSystemStats();
   }
 
@@ -42,7 +41,6 @@ export class SuperAdminController {
    */
   @Get('users')
   async getAllUsers() {
-    this.logger.log('👑 SuperAdmin: Solicitando todos los usuarios');
     return this.superAdminService.getAllUsers();
   }
 
@@ -51,7 +49,6 @@ export class SuperAdminController {
    */
   @Get('users/without-tenant')
   async getUsersWithoutTenant() {
-    this.logger.log('👑 SuperAdmin: Solicitando usuarios sin tenant');
     return this.superAdminService.getUsersWithoutTenant();
   }
 
@@ -63,7 +60,6 @@ export class SuperAdminController {
     @Param('userId') userId: string,
     @Body() assignTenantDto: AssignTenantDto,
   ) {
-    this.logger.log(`👑 SuperAdmin: Asignando tenant a usuario ${userId}`);
     return this.superAdminService.assignTenantToUser(
       userId,
       assignTenantDto.tenantId,
@@ -75,7 +71,6 @@ export class SuperAdminController {
    */
   @Get('tenants')
   async getAllTenants() {
-    this.logger.log('👑 SuperAdmin: Solicitando todos los tenants');
     return this.superAdminService.getAllTenants();
   }
 
@@ -87,7 +82,6 @@ export class SuperAdminController {
     @Param('tenantId') tenantId: string,
     @Body() updateTenantDto: UpdateTenantDto,
   ) {
-    this.logger.log(`👑 SuperAdmin: Actualizando tenant ${tenantId}`);
     return this.superAdminService.updateTenant(tenantId, updateTenantDto);
   }
 
@@ -96,7 +90,6 @@ export class SuperAdminController {
    */
   @Get('tenants/:tenantName/office')
   async getTenantOffice(@Param('tenantName') tenantName: string) {
-    this.logger.log(`👑 SuperAdmin: Obteniendo oficina de ${tenantName}`);
     return this.superAdminService.getTenantDefaultOffice(tenantName);
   }
 
@@ -109,9 +102,6 @@ export class SuperAdminController {
     @Param('officeId') officeId: string,
     @Body() updateOfficeDto: UpdateOfficeDto,
   ) {
-    this.logger.log(
-      `👑 SuperAdmin: Actualizando oficina ${officeId} de ${tenantName}`,
-    );
     return this.superAdminService.updateTenantOffice(
       tenantName,
       officeId,
@@ -127,9 +117,6 @@ export class SuperAdminController {
     @Query('page', new ParseIntPipe({ optional: true })) page: number = 1,
     @Query('size', new ParseIntPipe({ optional: true })) size: number = 10,
   ) {
-    this.logger.log(
-      `👑 SuperAdmin: Obteniendo shipments (página ${page}, tamaño ${size})`,
-    );
     return this.superAdminService.getAllShipments(page, size);
   }
 
@@ -142,9 +129,6 @@ export class SuperAdminController {
     @Param('shipmentId') shipmentId: string,
     @Body() updateShipmentDto: UpdateShipmentDto,
   ) {
-    this.logger.log(
-      `👑 SuperAdmin: Actualizando shipment ${shipmentId} en ${tenantName}`,
-    );
     return this.superAdminService.updateShipment(
       tenantName,
       shipmentId,

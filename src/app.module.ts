@@ -20,6 +20,7 @@ import { LogisticsModule } from 'src/logistics/logistics.module';
 import { UsersModule } from 'src/users/users.module';
 import { OfficesModule } from 'src/offices/offices.module';
 import { SuperAdminModule } from 'src/superadmin/superadmin.module';
+import { WarehousesModule } from 'src/warehouses/warehouses.module';
 
 @Module({
   imports: [
@@ -35,6 +36,17 @@ import { SuperAdminModule } from 'src/superadmin/superadmin.module';
       imports: [ConfigModule],
       useFactory: async (config) => ({
         uri: config.get('database.connectionString'),
+        maxPoolSize: 10,
+        minPoolSize: 1,
+      }),
+      inject: [ConfigService],
+    }),
+    // Conexión con nombre 'firstPlug' que apunta a la misma DB
+    MongooseModule.forRootAsync({
+      connectionName: 'firstPlug',
+      imports: [ConfigModule],
+      useFactory: async (config) => ({
+        uri: config.get('database.connectionString'), // Misma URI, no cambiar
         maxPoolSize: 10,
         minPoolSize: 1,
       }),
@@ -60,6 +72,7 @@ import { SuperAdminModule } from 'src/superadmin/superadmin.module';
     LogisticsModule,
     UsersModule,
     OfficesModule,
+    WarehousesModule,
     SuperAdminModule,
   ],
   controllers: [],
