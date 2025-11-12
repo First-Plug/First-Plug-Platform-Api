@@ -46,8 +46,13 @@ async function runSingleTenantOfficeMigration(): Promise<void> {
   );
 
   // Mostrar URI que se va a usar
-  const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017';
-  console.log(`🔗 Conectando a: ${mongoUri}`);
+  const mongoUri =
+    process.env.DB_CONNECTION_STRING ||
+    process.env.MONGO_URI ||
+    'mongodb://localhost:27017';
+  console.log(
+    `🔗 Conectando a: ${mongoUri.replace(/\/\/.*:.*@/, '//***:***@')}`,
+  );
 
   // Conectar a MongoDB directamente
   const client = new MongoClient(mongoUri);
@@ -65,9 +70,17 @@ async function runSingleTenantOfficeMigration(): Promise<void> {
     await client.connect();
     console.log('✅ Conectado a MongoDB');
 
+    // Determinar qué base de datos usar para buscar tenants
+    let globalDbName = 'main'; // Por defecto para producción
+    if (mongoUri.includes('firstplug-dev')) {
+      globalDbName = 'firstPlug'; // Para desarrollo
+    }
+
+    console.log(`📂 Buscando tenants en base de datos: ${globalDbName}`);
+
     // 1. Buscar el tenant real por tenantName
-    const firstPlugDb = client.db('firstPlug');
-    const tenantsCollection = firstPlugDb.collection('tenants');
+    const globalDb = client.db(globalDbName);
+    const tenantsCollection = globalDb.collection('tenants');
 
     console.log(`🔍 Buscando tenant con nombre: ${tenantName}`);
     const tenant = await tenantsCollection.findOne({ tenantName: tenantName });
@@ -110,7 +123,7 @@ async function runSingleTenantOfficeMigration(): Promise<void> {
     await migrateTenantData(tenantDb, defaultOffice, stats);
 
     // 5. Migrar colección global
-    await migrateGlobalProducts(firstPlugDb, tenantName, defaultOffice, stats);
+    await migrateGlobalProducts(globalDb, tenantName, defaultOffice, stats);
 
     // 6. Reporte final
     console.log('\n📊 REPORTE DE MIGRACIÓN');
@@ -219,7 +232,7 @@ async function migrateTenantData(
 }
 
 async function migrateGlobalProducts(
-  firstPlugDb: any,
+  globalDb: any,
   tenantName: string,
   defaultOffice: any,
   stats: TenantMigrationStats,
@@ -227,7 +240,7 @@ async function migrateGlobalProducts(
   console.log(`🌐 Migrando productos globales para tenant ${tenantName}...`);
 
   try {
-    const globalProductsCollection = firstPlugDb.collection('global_products');
+    const globalProductsCollection = globalDb.collection('global_products');
 
     const globalResult = await globalProductsCollection.updateMany(
       {

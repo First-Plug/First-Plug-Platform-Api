@@ -11,9 +11,11 @@ config();
 async function createWarehouseMetricsIndexes() {
   console.log('📊 CREANDO ÍNDICES PARA MÉTRICAS DE WAREHOUSE\n');
 
-  const mongoUri = process.env.MONGO_URI;
+  const mongoUri = process.env.DB_CONNECTION_STRING || process.env.MONGO_URI;
   if (!mongoUri) {
-    console.error('❌ Error: MONGO_URI no está definido en .env');
+    console.error(
+      '❌ Error: DB_CONNECTION_STRING o MONGO_URI no está definido en .env',
+    );
     return;
   }
 
@@ -23,8 +25,15 @@ async function createWarehouseMetricsIndexes() {
     await client.connect();
     console.log('✅ Conectado a MongoDB\n');
 
-    const firstPlugDb = client.db('firstPlug');
-    const globalProductsCollection = firstPlugDb.collection('global_products');
+    // Determinar qué base de datos usar basado en la URI
+    let dbName = 'main'; // Por defecto para producción
+    if (mongoUri.includes('firstplug-dev')) {
+      dbName = 'firstPlug'; // Para desarrollo
+    }
+
+    console.log(`📂 Using database: ${dbName}`);
+    const db = client.db(dbName);
+    const globalProductsCollection = db.collection('global_products');
 
     console.log('🔍 Verificando índices existentes...\n');
     const existingIndexes = await globalProductsCollection.indexes();

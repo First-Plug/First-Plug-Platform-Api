@@ -40,8 +40,13 @@ async function runSimpleMigration() {
   );
 
   // Mostrar URI que se va a usar
-  const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017';
-  console.log(`🔗 Conectando a: ${mongoUri}`);
+  const mongoUri =
+    process.env.DB_CONNECTION_STRING ||
+    process.env.MONGO_URI ||
+    'mongodb://localhost:27017';
+  console.log(
+    `🔗 Conectando a: ${mongoUri.replace(/\/\/.*:.*@/, '//***:***@')}`,
+  );
 
   // Conectar a MongoDB directamente
   const client = new MongoClient(mongoUri);
@@ -50,9 +55,17 @@ async function runSimpleMigration() {
     await client.connect();
     console.log('✅ Conectado a MongoDB');
 
+    // Determinar qué base de datos usar para buscar tenants
+    let globalDbName = 'main'; // Por defecto para producción
+    if (mongoUri.includes('firstplug-dev')) {
+      globalDbName = 'firstPlug'; // Para desarrollo
+    }
+
+    console.log(`📂 Buscando tenants en base de datos: ${globalDbName}`);
+
     // 1. Buscar el tenant real por tenantName
-    const firstPlugDb = client.db('firstPlug');
-    const tenantsCollection = firstPlugDb.collection('tenants');
+    const globalDb = client.db(globalDbName);
+    const tenantsCollection = globalDb.collection('tenants');
 
     console.log(`🔍 Buscando tenant con nombre: ${tenantName}`);
     const tenant = await tenantsCollection.findOne({ tenantName: tenantName });
@@ -73,8 +86,8 @@ async function runSimpleMigration() {
     const productsCollection = tenantDb.collection('products');
 
     // 3. Conectar a la base de datos global
-    const globalProductsCollection = firstPlugDb.collection('global_products');
-    const warehousesCollection = firstPlugDb.collection('warehouses');
+    const globalProductsCollection = globalDb.collection('global_products');
+    const warehousesCollection = globalDb.collection('warehouses');
 
     // Obtener todos los warehouses default por país
     console.log('📍 Obteniendo warehouses default por país...');
