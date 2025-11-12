@@ -20,6 +20,7 @@ import { Response } from 'express';
 import { ObjectId } from 'mongoose';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { CreateProductArrayDto } from './dto/create-product-array.dto';
+import { CreateProductCSVArrayDto } from './dto/create-product-csv-array.dto';
 import { AssignmentsService } from 'src/assignments/assignments.service';
 import { TenantModelRegistry } from 'src/infra/db/tenant-model-registry';
 
@@ -77,7 +78,7 @@ export class ProductsController {
 
   @Post('/bulkcreate-csv')
   async bulkcreateCSV(
-    @Body() createProductDto: CreateProductArrayDto,
+    @Body() createProductDto: CreateProductCSVArrayDto,
     @Res() res: Response,
     @Request() req: any,
   ) {

@@ -20,6 +20,7 @@ import {
   GlobalProduct,
   GlobalProductSchema,
 } from 'src/products/schemas/global-product.schema';
+import { CSVOfficeCoordinatorService } from 'src/products/services/csv-office-coordinator.service';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import {
     TenantModelRegistry,
     AssignmentsService,
     GlobalProductSyncService,
+    CSVOfficeCoordinatorService,
     tenantModels.productModel,
     tenantModels.memberModel,
     JwtService,

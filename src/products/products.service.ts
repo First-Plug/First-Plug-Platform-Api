@@ -495,10 +495,7 @@ export class ProductsService {
       );
     }
 
-    // 🚫 TEMPORAL: Bloquear "Our office" SOLO en CSV hasta próximo release
-    // Evita problemas con usuarios que tengan template anterior
-    // ✅ PERMITIR "Our office" desde UI Form (por defecto)
-    // ❌ BLOQUEAR "Our office" solo cuando source=csv
+    // ✅ CSV Support: Manejar campos adicionales para CSV
     const isCSVUpload = options?.isCSVUpload === true;
 
     console.log(
@@ -507,18 +504,11 @@ export class ProductsService {
     );
 
     if (isCSVUpload) {
-      const ourOfficeProducts = createProductDtos.filter(
-        (dto) => dto.location === 'Our office',
-      );
-      if (ourOfficeProducts.length > 0) {
-        throw new BadRequestException(
-          'Our office location is temporarily disabled for CSV uploads. Please use "Employee" instead and assign to offices manually.',
-        );
-      }
-    } else {
       console.log(
-        `✅ [bulkCreate] UI Form detected - "Our office" location allowed`,
+        `✅ [bulkCreate] CSV detected - processing additional fields (country, officeName)`,
       );
+    } else {
+      console.log(`✅ [bulkCreate] UI Form detected - standard processing`);
     }
 
     const connection = await this.tenantModelRegistry.getConnection(tenantName);
@@ -573,20 +563,61 @@ export class ProductsService {
 
       const createData = await Promise.all(
         normalizedProducts.map(async (product) => {
-          const { serialNumber, officeId, ...rest } = product;
+          const { serialNumber, officeId, country, officeName, ...rest } =
+            product as any;
 
-          // ✅ FIX: Usar handleOfficeAssignment para manejar oficina default cuando no hay officeId
+          // 🏢 Manejar asignación de oficinas
           let officeData = {};
+          let fpWarehouseData = {};
+
           if (product.location === 'Our office') {
-            // Si no hay officeId pero location es "Our office", usar oficina default
-            const officeAssignment =
-              await this.assignmentsService.handleOfficeAssignment(
-                officeId as string,
-                product.location,
-                undefined, // currentOffice
-                tenantName,
+            if (isCSVUpload && country && officeName) {
+              // 📝 CSV: Delegar al servicio transversal AssignmentsService
+              console.log(
+                `🏢 [CSV] Processing office assignment: ${officeName} in ${country}`,
               );
-            officeData = officeAssignment;
+
+              const officeAssignment =
+                await this.assignmentsService.handleCSVOfficeAssignment(
+                  country,
+                  officeName,
+                  tenantName,
+                  userId,
+                );
+
+              officeData = officeAssignment;
+              console.log(`✅ [CSV] Office assigned:`, officeAssignment);
+            } else {
+              // 🖥️ UI Form: Usar officeId o oficina default
+              const officeAssignment =
+                await this.assignmentsService.handleOfficeAssignment(
+                  officeId as string,
+                  product.location,
+                  undefined, // currentOffice
+                  tenantName,
+                );
+              officeData = officeAssignment;
+            }
+          } else if (
+            product.location === 'FP warehouse' &&
+            isCSVUpload &&
+            country
+          ) {
+            // 🏭 CSV: Delegar al servicio transversal AssignmentsService
+            console.log(
+              `🏭 [CSV] Processing warehouse assignment for country: ${country}`,
+            );
+
+            const warehouseAssignment =
+              await this.assignmentsService.handleCSVWarehouseAssignment(
+                country,
+                tenantName,
+                userId,
+                product.category || 'Unknown',
+              );
+
+            fpWarehouseData = warehouseAssignment;
+            console.log(`✅ [CSV] Warehouse assigned:`, warehouseAssignment);
           }
 
           const baseProduct =
@@ -597,6 +628,7 @@ export class ProductsService {
           return {
             ...baseProduct,
             ...officeData,
+            ...fpWarehouseData,
           };
         }),
       );
