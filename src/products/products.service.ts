@@ -479,36 +479,22 @@ export class ProductsService {
     userId: string,
     options?: { isCSVUpload?: boolean },
   ) {
-    console.log(`🚀 [bulkCreate] Service called with options:`, options);
     await new Promise((resolve) => process.nextTick(resolve));
-
-    // � [DEBUG] Log inicial del bulk create
-
-    // �🚫 Validación: Los usuarios normales no pueden crear productos iniciales en FP warehouse
-    // (Los movimientos/updates a FP warehouse sí están permitidos)
-    const fpWarehouseProducts = createProductDtos.filter(
-      (dto) => dto.location === 'FP warehouse',
-    );
-    if (fpWarehouseProducts.length > 0) {
-      throw new BadRequestException(
-        'FP warehouse location is not allowed for initial product creation via CSV. Please use "Employee" instead.',
-      );
-    }
 
     // ✅ CSV Support: Manejar campos adicionales para CSV
     const isCSVUpload = options?.isCSVUpload === true;
 
-    console.log(
-      `📦 [bulkCreate] isCSVUpload: ${isCSVUpload}, options:`,
-      options,
-    );
-
-    if (isCSVUpload) {
-      console.log(
-        `✅ [bulkCreate] CSV detected - processing additional fields (country, officeName)`,
+    if (!isCSVUpload) {
+      // 🚫 Solo para UI Form: Validación de FP warehouse
+      // (Los movimientos/updates a FP warehouse sí están permitidos)
+      const fpWarehouseProducts = createProductDtos.filter(
+        (dto) => dto.location === 'FP warehouse',
       );
-    } else {
-      console.log(`✅ [bulkCreate] UI Form detected - standard processing`);
+      if (fpWarehouseProducts.length > 0) {
+        throw new BadRequestException(
+          'FP warehouse location is not allowed for initial product creation via UI Form. Please use "Our office" instead.',
+        );
+      }
     }
 
     const connection = await this.tenantModelRegistry.getConnection(tenantName);
@@ -525,13 +511,14 @@ export class ProductsService {
         await this.getRecoverableConfigForTenant(tenantName);
 
       const productsWithSerialNumbers = normalizedProducts.filter(
-        (product) => product.serialNumber,
+        (product) => product.serialNumber && product.serialNumber.trim() !== '',
       );
+
       const seenSerialNumbers = new Set<string>();
       const duplicates = new Set<string>();
 
       productsWithSerialNumbers.forEach((product) => {
-        if (product.serialNumber) {
+        if (product.serialNumber && product.serialNumber.trim() !== '') {
           if (seenSerialNumbers.has(product.serialNumber)) {
             duplicates.add(product.serialNumber);
           } else {
@@ -541,7 +528,9 @@ export class ProductsService {
       });
 
       if (duplicates.size > 0) {
-        throw new BadRequestException(`Serial Number already exists`);
+        throw new BadRequestException(
+          `Serial Number already exists: ${Array.from(duplicates).join(', ')}`,
+        );
       }
 
       for (const product of normalizedProducts) {
@@ -573,10 +562,6 @@ export class ProductsService {
           if (product.location === 'Our office') {
             if (isCSVUpload && country && officeName) {
               // 📝 CSV: Delegar al servicio transversal AssignmentsService
-              console.log(
-                `🏢 [CSV] Processing office assignment: ${officeName} in ${country}`,
-              );
-
               const officeAssignment =
                 await this.assignmentsService.handleCSVOfficeAssignment(
                   country,
@@ -586,7 +571,6 @@ export class ProductsService {
                 );
 
               officeData = officeAssignment;
-              console.log(`✅ [CSV] Office assigned:`, officeAssignment);
             } else {
               // 🖥️ UI Form: Usar officeId o oficina default
               const officeAssignment =
@@ -604,10 +588,6 @@ export class ProductsService {
             country
           ) {
             // 🏭 CSV: Delegar al servicio transversal AssignmentsService
-            console.log(
-              `🏭 [CSV] Processing warehouse assignment for country: ${country}`,
-            );
-
             const warehouseAssignment =
               await this.assignmentsService.handleCSVWarehouseAssignment(
                 country,
@@ -617,7 +597,6 @@ export class ProductsService {
               );
 
             fpWarehouseData = warehouseAssignment;
-            console.log(`✅ [CSV] Warehouse assigned:`, warehouseAssignment);
           }
 
           const baseProduct =
@@ -625,11 +604,13 @@ export class ProductsService {
               ? { ...rest, serialNumber }
               : rest;
 
-          return {
+          const finalProduct = {
             ...baseProduct,
             ...officeData,
             ...fpWarehouseData,
           };
+
+          return finalProduct;
         }),
       );
 

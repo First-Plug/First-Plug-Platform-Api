@@ -4,6 +4,7 @@ import { OfficesService } from '../../offices/offices.service';
 import { TenantsService } from '../../tenants/tenants.service';
 import { OfficeNormalizationHelper } from '../../common/helpers/office-normalization.helper';
 import { CountryHelper } from '../../common/helpers/country.helper';
+import { countryCodes } from '../../shipments/helpers/countryCodes';
 
 /**
  * 🏢 CSV Office Coordinator Service
@@ -35,6 +36,41 @@ export class CSVOfficeCoordinatorService {
   ) {}
 
   /**
+   * Convierte nombre de país a código ISO
+   * @param countryInput - Nombre del país o código ISO
+   * @returns Código ISO válido o null si no se encuentra
+   */
+  private getCountryCode(countryInput: string): string | null {
+    if (!countryInput || typeof countryInput !== 'string') {
+      return null;
+    }
+
+    // Si ya es un código de país válido (2 letras), devolverlo normalizado
+    const upperInput = countryInput.trim().toUpperCase();
+    if (
+      upperInput.length === 2 &&
+      CountryHelper.isValidCountryCode(upperInput)
+    ) {
+      return upperInput;
+    }
+
+    // Buscar exacto primero por nombre
+    if (countryCodes[countryInput]) {
+      return countryCodes[countryInput];
+    }
+
+    // Buscar case-insensitive por nombre
+    const lowerCountryName = countryInput.toLowerCase();
+    for (const [name, code] of Object.entries(countryCodes)) {
+      if (name.toLowerCase() === lowerCountryName) {
+        return code;
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Maneja la asignación de oficina para productos CSV
    * Implementa los 4 escenarios:
    * a. país nuevo + nombre nuevo → crear oficina nueva
@@ -57,14 +93,13 @@ export class CSVOfficeCoordinatorService {
         };
       }
 
-      // 2. Normalizar datos
-      const normalizedCountry = CountryHelper.normalizeCountryCode(country);
+      // 2. Convertir nombre de país a código ISO
+      const countryCode = this.getCountryCode(country);
 
-      // 3. Validar país
-      if (!CountryHelper.isValidCountryCode(normalizedCountry)) {
+      if (!countryCode) {
         return {
           success: false,
-          message: `Invalid country code: ${country}. Must be a valid ISO 3166-1 alpha-2 code.`,
+          message: `Invalid country: ${country}. Must be a valid country name or ISO 3166-1 alpha-2 code.`,
         };
       }
 
@@ -77,12 +112,12 @@ export class CSVOfficeCoordinatorService {
       }
 
       this.logger.log(
-        `🔍 [handleOfficeAssignmentForCSV] Searching for office: ${officeName} in ${normalizedCountry} for tenant ${tenantName}`,
+        `🔍 [handleOfficeAssignmentForCSV] Searching for office: ${officeName} in ${countryCode} for tenant ${tenantName}`,
       );
 
       // 5. Buscar oficina existente (case-insensitive, sin tildes)
       const existingOffice = await this.findExistingOffice(
-        normalizedCountry,
+        countryCode,
         officeName,
         tenantName,
       );
@@ -110,11 +145,11 @@ export class CSVOfficeCoordinatorService {
 
       // ESCENARIOS A, B, C: crear oficina nueva
       this.logger.log(
-        `🏗️ [handleOfficeAssignmentForCSV] Creating new office: ${officeName} in ${normalizedCountry}`,
+        `🏗️ [handleOfficeAssignmentForCSV] Creating new office: ${officeName} in ${countryCode}`,
       );
 
       const newOffice = await this.createNewOffice(
-        normalizedCountry,
+        countryCode,
         officeName,
         tenantName,
         userId,

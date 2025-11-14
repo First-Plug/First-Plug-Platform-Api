@@ -90,13 +90,11 @@ export class ProductsController {
         createProductDto,
         tenantName,
         userId,
-        { isCSVUpload: true }, // ❌ CSV Upload - bloquea "Our office"
+        { isCSVUpload: true }, // ✅ CSV Upload - habilitado con nuevos campos
       );
 
       res.status(HttpStatus.CREATED).json(products);
     } catch (error) {
-      console.error('Error en bulkcreate CSV:', error);
-
       // Si es un error de validación (BadRequestException o ZodError), devolver 400
       if (error instanceof BadRequestException || error.name === 'ZodError') {
         res.status(HttpStatus.BAD_REQUEST).json({
