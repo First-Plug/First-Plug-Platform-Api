@@ -195,17 +195,24 @@ export class OfficesService {
       return currentOffice;
     }
 
-    // Validar que el nombre no se repita en el tenant (case-insensitive) si se está actualizando el nombre
-    if (updateData.name && updateData.name !== currentOffice.name) {
-      const existingOfficeWithName = await OfficeModel.findOne({
-        name: { $regex: new RegExp(`^${updateData.name}$`, 'i') },
+    // Validar que la combinación nombre + país no se repita en el tenant (case-insensitive) si se está actualizando el nombre o país
+    if (
+      (updateData.name && updateData.name !== currentOffice.name) ||
+      (updateData.country && updateData.country !== currentOffice.country)
+    ) {
+      const nameToCheck = updateData.name || currentOffice.name;
+      const countryToCheck = updateData.country || currentOffice.country;
+
+      const existingOfficeWithNameAndCountry = await OfficeModel.findOne({
+        name: { $regex: new RegExp(`^${nameToCheck}$`, 'i') },
+        country: countryToCheck,
         _id: { $ne: currentOffice._id },
         isDeleted: false,
       });
 
-      if (existingOfficeWithName) {
+      if (existingOfficeWithNameAndCountry) {
         throw new BadRequestException(
-          `Ya existe una oficina con el nombre "${updateData.name}" en este tenant`,
+          `Ya existe una oficina con el nombre "${nameToCheck}" en el país "${countryToCheck}" en este tenant`,
         );
       }
     }
@@ -397,15 +404,16 @@ export class OfficesService {
     const OfficeModel =
       await this.tenantModelRegistry.getOfficeModel(tenantName);
 
-    // Validar que el nombre no se repita en el tenant (case-insensitive)
-    const existingOfficeWithName = await OfficeModel.findOne({
+    // Validar que la combinación nombre + país no se repita en el tenant (case-insensitive)
+    const existingOfficeWithNameAndCountry = await OfficeModel.findOne({
       name: { $regex: new RegExp(`^${createOfficeDto.name}$`, 'i') },
+      country: createOfficeDto.country,
       isDeleted: false,
     });
 
-    if (existingOfficeWithName) {
+    if (existingOfficeWithNameAndCountry) {
       throw new BadRequestException(
-        `Ya existe una oficina con el nombre "${createOfficeDto.name}" en este tenant`,
+        `Ya existe una oficina con el nombre "${createOfficeDto.name}" en el país "${createOfficeDto.country}" en este tenant`,
       );
     }
 
@@ -516,17 +524,18 @@ export class OfficesService {
       );
     }
 
-    // Validar que el nombre no se repita en el tenant (case-insensitive) si se está actualizando el nombre
+    // Validar que la combinación nombre + país no se repita en el tenant (case-insensitive) si se está actualizando el nombre
     if (updateOfficeDto.name && updateOfficeDto.name !== office.name) {
-      const existingOfficeWithName = await OfficeModel.findOne({
+      const existingOfficeWithNameAndCountry = await OfficeModel.findOne({
         name: { $regex: new RegExp(`^${updateOfficeDto.name}$`, 'i') },
+        country: office.country, // El país no se puede cambiar, usamos el actual
         _id: { $ne: id },
         isDeleted: false,
       });
 
-      if (existingOfficeWithName) {
+      if (existingOfficeWithNameAndCountry) {
         throw new BadRequestException(
-          `Ya existe una oficina con el nombre "${updateOfficeDto.name}" en este tenant`,
+          `Ya existe una oficina con el nombre "${updateOfficeDto.name}" en el país "${office.country}" en este tenant`,
         );
       }
     }

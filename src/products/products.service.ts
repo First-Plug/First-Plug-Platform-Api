@@ -647,6 +647,20 @@ export class ProductsService {
         }
       >();
 
+      // 🗺️ Poblar productWarehouseMap para productos con FP warehouse
+      productsWithIds.forEach((product) => {
+        if (product.location === 'FP warehouse' && product.fpWarehouse) {
+          const productIdStr = product._id.toString();
+          productWarehouseMap.set(productIdStr, {
+            warehouseId: product.fpWarehouse.warehouseId,
+            warehouseCountryCode: product.fpWarehouse.warehouseCountryCode,
+            warehouseName: product.fpWarehouse.warehouseName,
+            assignedAt: product.fpWarehouse.assignedAt,
+            status: product.fpWarehouse.status,
+          });
+        }
+      });
+
       const assignProductPromises = productsWithAssignedEmail.map(
         async (product) => {
           const member = await this.simpleFindByEmail(
