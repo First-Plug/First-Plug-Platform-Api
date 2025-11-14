@@ -479,46 +479,22 @@ export class ProductsService {
     userId: string,
     options?: { isCSVUpload?: boolean },
   ) {
-    console.log(`🚀 [bulkCreate] Service called with options:`, options);
     await new Promise((resolve) => process.nextTick(resolve));
 
-    // � [DEBUG] Log inicial del bulk create
-
-    // �🚫 Validación: Los usuarios normales no pueden crear productos iniciales en FP warehouse
-    // (Los movimientos/updates a FP warehouse sí están permitidos)
-    const fpWarehouseProducts = createProductDtos.filter(
-      (dto) => dto.location === 'FP warehouse',
-    );
-    if (fpWarehouseProducts.length > 0) {
-      throw new BadRequestException(
-        'FP warehouse location is not allowed for initial product creation via CSV. Please use "Employee" instead.',
-      );
-    }
-
-    // 🚫 TEMPORAL: Bloquear "Our office" SOLO en CSV hasta próximo release
-    // Evita problemas con usuarios que tengan template anterior
-    // ✅ PERMITIR "Our office" desde UI Form (por defecto)
-    // ❌ BLOQUEAR "Our office" solo cuando source=csv
+    // ✅ CSV Support: Manejar campos adicionales para CSV
     const isCSVUpload = options?.isCSVUpload === true;
 
-    console.log(
-      `📦 [bulkCreate] isCSVUpload: ${isCSVUpload}, options:`,
-      options,
-    );
-
-    if (isCSVUpload) {
-      const ourOfficeProducts = createProductDtos.filter(
-        (dto) => dto.location === 'Our office',
+    if (!isCSVUpload) {
+      // 🚫 Solo para UI Form: Validación de FP warehouse
+      // (Los movimientos/updates a FP warehouse sí están permitidos)
+      const fpWarehouseProducts = createProductDtos.filter(
+        (dto) => dto.location === 'FP warehouse',
       );
-      if (ourOfficeProducts.length > 0) {
+      if (fpWarehouseProducts.length > 0) {
         throw new BadRequestException(
-          'Our office location is temporarily disabled for CSV uploads. Please use "Employee" instead and assign to offices manually.',
+          'FP warehouse location is not allowed for initial product creation via UI Form. Please use "Our office" instead.',
         );
       }
-    } else {
-      console.log(
-        `✅ [bulkCreate] UI Form detected - "Our office" location allowed`,
-      );
     }
 
     const connection = await this.tenantModelRegistry.getConnection(tenantName);
@@ -535,13 +511,14 @@ export class ProductsService {
         await this.getRecoverableConfigForTenant(tenantName);
 
       const productsWithSerialNumbers = normalizedProducts.filter(
-        (product) => product.serialNumber,
+        (product) => product.serialNumber && product.serialNumber.trim() !== '',
       );
+
       const seenSerialNumbers = new Set<string>();
       const duplicates = new Set<string>();
 
       productsWithSerialNumbers.forEach((product) => {
-        if (product.serialNumber) {
+        if (product.serialNumber && product.serialNumber.trim() !== '') {
           if (seenSerialNumbers.has(product.serialNumber)) {
             duplicates.add(product.serialNumber);
           } else {
@@ -551,7 +528,9 @@ export class ProductsService {
       });
 
       if (duplicates.size > 0) {
-        throw new BadRequestException(`Serial Number already exists`);
+        throw new BadRequestException(
+          `Serial Number already exists: ${Array.from(duplicates).join(', ')}`,
+        );
       }
 
       for (const product of normalizedProducts) {
@@ -573,20 +552,51 @@ export class ProductsService {
 
       const createData = await Promise.all(
         normalizedProducts.map(async (product) => {
-          const { serialNumber, officeId, ...rest } = product;
+          const { serialNumber, officeId, country, officeName, ...rest } =
+            product as any;
 
-          // ✅ FIX: Usar handleOfficeAssignment para manejar oficina default cuando no hay officeId
+          // 🏢 Manejar asignación de oficinas
           let officeData = {};
+          let fpWarehouseData = {};
+
           if (product.location === 'Our office') {
-            // Si no hay officeId pero location es "Our office", usar oficina default
-            const officeAssignment =
-              await this.assignmentsService.handleOfficeAssignment(
-                officeId as string,
-                product.location,
-                undefined, // currentOffice
+            if (isCSVUpload && country && officeName) {
+              // 📝 CSV: Delegar al servicio transversal AssignmentsService
+              const officeAssignment =
+                await this.assignmentsService.handleCSVOfficeAssignment(
+                  country,
+                  officeName,
+                  tenantName,
+                  userId,
+                );
+
+              officeData = officeAssignment;
+            } else {
+              // 🖥️ UI Form: Usar officeId o oficina default
+              const officeAssignment =
+                await this.assignmentsService.handleOfficeAssignment(
+                  officeId as string,
+                  product.location,
+                  undefined, // currentOffice
+                  tenantName,
+                );
+              officeData = officeAssignment;
+            }
+          } else if (
+            product.location === 'FP warehouse' &&
+            isCSVUpload &&
+            country
+          ) {
+            // 🏭 CSV: Delegar al servicio transversal AssignmentsService
+            const warehouseAssignment =
+              await this.assignmentsService.handleCSVWarehouseAssignment(
+                country,
                 tenantName,
+                userId,
+                product.category || 'Unknown',
               );
-            officeData = officeAssignment;
+
+            fpWarehouseData = warehouseAssignment;
           }
 
           const baseProduct =
@@ -594,10 +604,13 @@ export class ProductsService {
               ? { ...rest, serialNumber }
               : rest;
 
-          return {
+          const finalProduct = {
             ...baseProduct,
             ...officeData,
+            ...fpWarehouseData,
           };
+
+          return finalProduct;
         }),
       );
 

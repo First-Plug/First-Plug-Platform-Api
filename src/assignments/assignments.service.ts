@@ -44,6 +44,7 @@ import { GlobalProductSyncService } from 'src/products/services/global-product-s
 import { LastAssignedHelper } from 'src/products/helpers/last-assigned.helper';
 import { WarehouseAssignmentService } from 'src/warehouses/services/warehouse-assignment.service';
 import { OfficesService } from 'src/offices/offices.service';
+import { CSVOfficeCoordinatorService } from 'src/products/services/csv-office-coordinator.service';
 
 @Injectable()
 export class AssignmentsService {
@@ -72,6 +73,7 @@ export class AssignmentsService {
     private readonly usersService: UsersService,
     @Inject(forwardRef(() => OfficesService))
     private readonly officesService: OfficesService,
+    private readonly csvOfficeCoordinatorService: CSVOfficeCoordinatorService,
   ) {}
 
   /**
@@ -3234,5 +3236,72 @@ export class AssignmentsService {
     }
 
     return cleanupFields;
+  }
+
+  // ==================== CSV METHODS ====================
+
+  /**
+   * 🏢 Maneja asignación de oficina para CSV
+   * Delega al coordinador específico para CSV
+   */
+  async handleCSVOfficeAssignment(
+    country: string,
+    officeName: string,
+    tenantName: string,
+    userId: string,
+  ) {
+    const result =
+      await this.csvOfficeCoordinatorService.handleOfficeAssignmentForCSV(
+        country,
+        officeName,
+        tenantName,
+        userId,
+      );
+
+    if (!result.success) {
+      throw new BadRequestException(
+        `Error assigning office: ${result.message}`,
+      );
+    }
+
+    return { office: result.office };
+  }
+
+  /**
+   * 🏭 Maneja asignación de warehouse para CSV
+   * Usa el servicio de warehouse assignment existente
+   */
+  async handleCSVWarehouseAssignment(
+    country: string,
+    tenantName: string,
+    userId: string,
+    category: string,
+  ) {
+    const warehouseAssignment =
+      await this.warehouseAssignmentService.assignProductToWarehouseWithNotification(
+        country,
+        tenantName,
+        'temp-product-id', // Se generará el ID real después
+        category,
+        'CSV User', // userName
+        'assign', // action
+        1, // productCount
+      );
+
+    if (!warehouseAssignment.success || !warehouseAssignment.warehouseId) {
+      throw new BadRequestException(
+        `Error assigning warehouse for country ${country}: ${warehouseAssignment.message}`,
+      );
+    }
+
+    return {
+      fpWarehouse: {
+        warehouseId: warehouseAssignment.warehouseId,
+        warehouseCountryCode: warehouseAssignment.warehouseCountryCode!,
+        warehouseName: warehouseAssignment.warehouseName!,
+        assignedAt: new Date(),
+        status: 'STORED',
+      },
+    };
   }
 }
