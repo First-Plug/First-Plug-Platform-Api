@@ -2783,7 +2783,6 @@ export class AssignmentsService {
           updateDto.officeId = item.officeId;
         }
 
-        console.log('🧪 En offboardMember → userId:', userId);
         const result = await this.productsService.update(
           product._id,
           updateDto,
@@ -2797,19 +2796,6 @@ export class AssignmentsService {
         // 🚢 Capturar el ID del último shipment creado
         if (result.shipment?._id) {
           lastShipmentCreated = result.shipment._id;
-          console.log('🚢 Shipment creado/consolidado:', {
-            productId: product._id.toString(),
-            shipmentId: result.shipment._id.toString(),
-            origin: result.shipment.origin,
-            destination: result.shipment.destination,
-            status: result.shipment.shipment_status,
-          });
-        } else {
-          console.log('⏭️ Producto sin shipment:', {
-            productId: product._id.toString(),
-            relocation: item.relocation,
-            fp_shipment: item.fp_shipment,
-          });
         }
         // 🏳️ Preparar datos para newData con country y officeName si aplica
         const newDataEntry: any = {
@@ -2882,14 +2868,6 @@ export class AssignmentsService {
       });
 
       await session.commitTransaction();
-
-      // 🚢 Log para verificar que se está retornando el shipment
-      console.log('✅ Offboarding completado:', {
-        memberId: memberId.toString(),
-        productsCount: data.length,
-        lastShipmentCreated: lastShipmentCreated?.toString() || 'undefined',
-      });
-
       return {
         message: 'Offboarding completed successfully',
         lastShipmentCreated: lastShipmentCreated || undefined,
@@ -2917,12 +2895,6 @@ export class AssignmentsService {
 
     try {
       // Registra las conexiones y sesiones para depuración
-      console.log(
-        `📊 Connection info: ${connection.name}, readyState: ${connection.readyState}`,
-      );
-      console.log(
-        `📊 Session info: ${session.id}, inTransaction: ${session.inTransaction()}`,
-      );
 
       for (const item of items) {
         const { productId, actionType, ...rest } = item;
