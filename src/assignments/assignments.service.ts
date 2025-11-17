@@ -2711,7 +2711,7 @@ export class AssignmentsService {
     userId: string,
     tenantName: string,
     ourOfficeEmail: string,
-  ): Promise<{ message: string }> {
+  ): Promise<{ message: string; lastShipmentCreated?: ObjectId }> {
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     const session = await connection.startSession();
@@ -2725,6 +2725,7 @@ export class AssignmentsService {
       const updatedProducts: any[] = [];
       const historyNewData: any[] = [];
       const initialMember = JSON.parse(JSON.stringify(member));
+      let lastShipmentCreated: ObjectId | null = null; // 🚢 Rastrear último shipment
 
       for (const item of data) {
         const product = item.product;
@@ -2792,6 +2793,24 @@ export class AssignmentsService {
         );
 
         updatedProducts.push(result.updatedProduct);
+
+        // 🚢 Capturar el ID del último shipment creado
+        if (result.shipment?._id) {
+          lastShipmentCreated = result.shipment._id;
+          console.log('🚢 Shipment creado/consolidado:', {
+            productId: product._id.toString(),
+            shipmentId: result.shipment._id.toString(),
+            origin: result.shipment.origin,
+            destination: result.shipment.destination,
+            status: result.shipment.shipment_status,
+          });
+        } else {
+          console.log('⏭️ Producto sin shipment:', {
+            productId: product._id.toString(),
+            relocation: item.relocation,
+            fp_shipment: item.fp_shipment,
+          });
+        }
         // 🏳️ Preparar datos para newData con country y officeName si aplica
         const newDataEntry: any = {
           productId: product._id,
@@ -2863,7 +2882,18 @@ export class AssignmentsService {
       });
 
       await session.commitTransaction();
-      return { message: 'Offboarding completed successfully' };
+
+      // 🚢 Log para verificar que se está retornando el shipment
+      console.log('✅ Offboarding completado:', {
+        memberId: memberId.toString(),
+        productsCount: data.length,
+        lastShipmentCreated: lastShipmentCreated?.toString() || 'undefined',
+      });
+
+      return {
+        message: 'Offboarding completed successfully',
+        lastShipmentCreated: lastShipmentCreated || undefined,
+      };
     } catch (error) {
       await session.abortTransaction();
       throw error;
