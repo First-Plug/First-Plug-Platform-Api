@@ -459,7 +459,7 @@ export const ProductSchemaZodCSV = z
     officeId: z.string().optional(),
     status: z.enum(STATES),
     additionalInfo: z.string().trim().optional(),
-    productCondition: z.enum(CONDITION),
+    productCondition: z.enum(CONDITION).optional(), // 🔧 Opcional en CSV - default 'Optimal'
     price: z
       .object({
         amount: z
@@ -566,11 +566,14 @@ export const ProductSchemaZodCSV = z
       }
     }
 
-    // 🔍 VALIDACIÓN 4: Name requerido solo para Merchandising
-    if (data.category === 'Merchandising' && !data.name) {
+    // 🔍 VALIDACIÓN 4: Name requerido para Merchandising y Other
+    if (
+      (data.category === 'Merchandising' || data.category === 'Other') &&
+      !data.name
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Name is required for Merchandising category.',
+        message: 'Name is required for Merchandising and Other categories.',
         path: ['name'],
       });
     }
