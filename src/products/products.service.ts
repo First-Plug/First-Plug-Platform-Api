@@ -474,7 +474,7 @@ export class ProductsService {
   }
 
   async bulkCreate(
-    createProductDtos: CreateProductDto[],
+    createProductDtos: CreateProductDto[] | any[],
     tenantName: string,
     userId: string,
     options?: { isCSVUpload?: boolean },
@@ -559,6 +559,18 @@ export class ProductsService {
           const { serialNumber, officeId, country, officeName, ...rest } =
             product as any;
 
+          // 🔍 DEBUG: Log de campos antes de procesar
+          console.log('📦 [bulkCreate] Producto antes de procesar:', {
+            productCondition: product.productCondition,
+            additionalInfo: product.additionalInfo,
+            recoverable: product.recoverable,
+            serialNumber,
+            officeId,
+            country,
+            officeName,
+            restKeys: Object.keys(rest),
+          });
+
           // 🏢 Manejar asignación de oficinas
           let officeData = {};
           let fpWarehouseData = {};
@@ -613,6 +625,13 @@ export class ProductsService {
             ...officeData,
             ...fpWarehouseData,
           };
+
+          // 🔍 DEBUG: Log del producto final
+          console.log('✅ [bulkCreate] Producto final:', {
+            productCondition: finalProduct.productCondition,
+            additionalInfo: finalProduct.additionalInfo,
+            recoverable: finalProduct.recoverable,
+          });
 
           return finalProduct;
         }),
