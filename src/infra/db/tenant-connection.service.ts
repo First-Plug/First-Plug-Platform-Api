@@ -72,7 +72,6 @@ export class TenantConnectionService
     if (connectionData) {
       try {
         await connectionData.connection.close();
-        console.log(`Conexión cerrada para tenant: ${tenantName}`);
       } catch (error) {
         console.error(
           `Error al cerrar conexión para tenant ${tenantName}:`,
@@ -93,7 +92,6 @@ export class TenantConnectionService
       { connection, lastUsed },
     ] of this.connections.entries()) {
       if (now - lastUsed > this.maxIdleTime) {
-        console.log(`Cerrando conexión inactiva para tenant: ${tenantName}`);
         this.closeTenantConnection(tenantName);
       }
     }

@@ -34,7 +34,7 @@ export class AuthController {
   @Get('debug/tenants')
   async debugTenants() {
     // Endpoint temporal para debug
-    console.log('🔍 Consultando tenants existentes...');
+
     return {
       message: 'Consulta la consola del servidor para ver los tenants',
       note: 'Usa MongoDB Compass o consulta directamente la colección tenants',
@@ -42,13 +42,6 @@ export class AuthController {
   }
   @Post('register')
   async registerUser(@Body() registerData: any) {
-    console.log('👤 Registro de usuario (SIN tenant)');
-    console.log('📋 Datos recibidos:', {
-      name: registerData.name,
-      email: registerData.email,
-      hasPassword: !!registerData.password,
-    });
-
     try {
       const nameParts = registerData.name.trim().split(' ');
       const firstName = nameParts[0] || registerData.name;
@@ -60,14 +53,6 @@ export class AuthController {
         email: registerData.email,
         password: registerData.password,
         accountProvider: 'credentials',
-      });
-
-      console.log('✅ Usuario creado SIN tenant:', {
-        _id: user._id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName || '(sin apellido)',
-        tenantId: user.tenantId || 'null (sin asignar)',
       });
 
       return {
@@ -91,14 +76,11 @@ export class AuthController {
   @UseGuards(JwtGuard, SuperAdminGuard)
   @Post('create-tenant')
   async createTenant(@Body() createTenantDto: CreateTenantDto) {
-    console.log('🏢 Creando tenant:', createTenantDto.tenantName);
-
     try {
       const tenant = await this.tenantService.createTenant(
         createTenantDto,
         null as any,
       );
-      console.log('✅ Tenant creado:', tenant.tenantName);
 
       return {
         message: 'Tenant creado exitosamente',
@@ -121,8 +103,6 @@ export class AuthController {
     @Body()
     { userEmail, tenantName }: { userEmail: string; tenantName: string },
   ) {
-    console.log('🔗 Asignando tenant:', tenantName, 'a usuario:', userEmail);
-
     try {
       // 1. Buscar usuario por email
       const user = await this.usersService.findByEmail(userEmail);
@@ -138,7 +118,6 @@ export class AuthController {
 
       // 3. Asignar tenant al usuario
       await this.usersService.assignTenant(user._id, tenant._id);
-      console.log('✅ Usuario asignado al tenant exitosamente');
 
       return {
         message: 'Usuario asignado al tenant exitosamente',

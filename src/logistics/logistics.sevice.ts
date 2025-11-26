@@ -669,11 +669,6 @@ export class LogisticsService {
       }
 
       if (!office) {
-        console.log('❌ Oficina no encontrada:', {
-          tenantName,
-          officeId,
-          useDefault: !officeId,
-        });
         return false;
       }
 
