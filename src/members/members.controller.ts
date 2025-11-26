@@ -72,8 +72,6 @@ export class MembersController {
     const ourOfficeEmail =
       await this.officesService.getDefaultOfficeEmail(tenantName);
 
-    console.log('offboarding → userId:', userId);
-
     // Si no hay oficina default, usar email personal como fallback
     const emailToUse = ourOfficeEmail || req.user.email;
     if (!ourOfficeEmail) {

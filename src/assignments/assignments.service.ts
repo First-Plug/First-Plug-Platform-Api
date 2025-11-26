@@ -2711,7 +2711,7 @@ export class AssignmentsService {
     userId: string,
     tenantName: string,
     ourOfficeEmail: string,
-  ): Promise<{ message: string }> {
+  ): Promise<{ message: string; lastShipmentCreated?: ObjectId }> {
     const connection =
       await this.connectionService.getTenantConnection(tenantName);
     const session = await connection.startSession();
@@ -2725,6 +2725,7 @@ export class AssignmentsService {
       const updatedProducts: any[] = [];
       const historyNewData: any[] = [];
       const initialMember = JSON.parse(JSON.stringify(member));
+      let lastShipmentCreated: ObjectId | null = null; // 🚢 Rastrear último shipment
 
       for (const item of data) {
         const product = item.product;
@@ -2782,7 +2783,6 @@ export class AssignmentsService {
           updateDto.officeId = item.officeId;
         }
 
-        console.log('🧪 En offboardMember → userId:', userId);
         const result = await this.productsService.update(
           product._id,
           updateDto,
@@ -2792,6 +2792,11 @@ export class AssignmentsService {
         );
 
         updatedProducts.push(result.updatedProduct);
+
+        // 🚢 Capturar el ID del último shipment creado
+        if (result.shipment?._id) {
+          lastShipmentCreated = result.shipment._id;
+        }
         // 🏳️ Preparar datos para newData con country y officeName si aplica
         const newDataEntry: any = {
           productId: product._id,
@@ -2863,7 +2868,10 @@ export class AssignmentsService {
       });
 
       await session.commitTransaction();
-      return { message: 'Offboarding completed successfully' };
+      return {
+        message: 'Offboarding completed successfully',
+        lastShipmentCreated: lastShipmentCreated || undefined,
+      };
     } catch (error) {
       await session.abortTransaction();
       throw error;
@@ -2887,12 +2895,6 @@ export class AssignmentsService {
 
     try {
       // Registra las conexiones y sesiones para depuración
-      console.log(
-        `📊 Connection info: ${connection.name}, readyState: ${connection.readyState}`,
-      );
-      console.log(
-        `📊 Session info: ${session.id}, inTransaction: ${session.inTransaction()}`,
-      );
 
       for (const item of items) {
         const { productId, actionType, ...rest } = item;
