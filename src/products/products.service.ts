@@ -412,7 +412,10 @@ export class ProductsService {
       ...rest,
       recoverable: isRecoverable,
       serialNumber: serialNumber?.trim() || undefined,
-      productCondition: productCondition || 'Optimal',
+      productCondition:
+        productCondition && productCondition.trim() !== ''
+          ? productCondition
+          : 'Optimal',
       additionalInfo: createProductDto.additionalInfo?.trim() || undefined,
       location,
       status,
@@ -537,8 +540,8 @@ export class ProductsService {
         const { serialNumber, category, recoverable, productCondition } =
           product;
 
-        // 🔧 Si no viene productCondition en CSV, usar 'Optimal' como default
-        if (!productCondition) {
+        // 🔧 Si no viene productCondition en CSV o viene vacío, usar 'Optimal' como default
+        if (!productCondition || productCondition.trim() === '') {
           product.productCondition = 'Optimal';
         }
 
