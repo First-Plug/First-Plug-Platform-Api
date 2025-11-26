@@ -474,7 +474,7 @@ export class ProductsService {
   }
 
   async bulkCreate(
-    createProductDtos: CreateProductDto[],
+    createProductDtos: CreateProductDto[] | any[],
     tenantName: string,
     userId: string,
     options?: { isCSVUpload?: boolean },
@@ -534,9 +534,13 @@ export class ProductsService {
       }
 
       for (const product of normalizedProducts) {
-        const { serialNumber, category, recoverable } = product;
+        const { serialNumber, category, recoverable, productCondition } =
+          product;
 
-        product.productCondition = 'Optimal';
+        // 🔧 Si no viene productCondition en CSV, usar 'Optimal' como default
+        if (!productCondition) {
+          product.productCondition = 'Optimal';
+        }
 
         const isRecoverable =
           recoverable !== undefined

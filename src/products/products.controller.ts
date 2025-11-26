@@ -78,7 +78,7 @@ export class ProductsController {
 
   @Post('/bulkcreate-csv')
   async bulkcreateCSV(
-    @Body() createProductDto: CreateProductCSVArrayDto,
+    @Body() createProductDto: CreateProductCSVArrayDto | any,
     @Res() res: Response,
     @Request() req: any,
   ) {
@@ -87,7 +87,7 @@ export class ProductsController {
       const { userId } = req;
 
       const products = await this.productsService.bulkCreate(
-        createProductDto,
+        createProductDto as CreateProductDto[],
         tenantName,
         userId,
         { isCSVUpload: true }, // ✅ CSV Upload - habilitado con nuevos campos
