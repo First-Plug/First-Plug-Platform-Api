@@ -41,6 +41,7 @@ import { LogisticsService } from 'src/logistics/logistics.sevice';
 import { recordEnhancedAssetHistory } from './helpers/history.helper';
 import { GlobalProductSyncService } from './services/global-product-sync.service';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
+import { OfficeNormalizationHelper } from 'src/common/helpers/office-normalization.helper';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -524,6 +525,91 @@ export class ProductsService {
         }
       }
 
+      // 🏢 PRE-PROCESS: Crear un mapa de oficinas únicas para CSV
+      // Esto evita crear la misma oficina múltiples veces en un bulk
+      const officeMap = new Map<string, any>(); // key: "country|officeName"
+      const warehouseMap = new Map<string, any>(); // key: "country"
+
+      if (isCSVUpload) {
+        // Identificar oficinas únicas en los productos
+        const uniqueOffices = new Map<
+          string,
+          { country: string; officeName: string }
+        >();
+        const uniqueWarehouses = new Set<string>();
+
+        normalizedProducts.forEach((product) => {
+          const productAny = product as any;
+          if (
+            product.location === 'Our office' &&
+            productAny.country &&
+            productAny.officeName
+          ) {
+            // 🔑 Usar normalización para crear clave única (case-insensitive, sin tildes)
+            const key = OfficeNormalizationHelper.createOfficeKey(
+              productAny.country,
+              productAny.officeName,
+            );
+            if (!uniqueOffices.has(key)) {
+              uniqueOffices.set(key, {
+                country: productAny.country,
+                officeName: productAny.officeName,
+              });
+            }
+          } else if (
+            product.location === 'FP warehouse' &&
+            productAny.country
+          ) {
+            uniqueWarehouses.add(productAny.country);
+          }
+        });
+
+        // Crear todas las oficinas únicas de una sola vez
+        for (const { country, officeName } of uniqueOffices.values()) {
+          // 🔑 Usar normalización para crear clave única (case-insensitive, sin tildes)
+          const key = OfficeNormalizationHelper.createOfficeKey(
+            country,
+            officeName,
+          );
+          try {
+            const officeAssignment =
+              await this.assignmentsService.handleCSVOfficeAssignment(
+                country,
+                officeName,
+                tenantName,
+                userId,
+              );
+            officeMap.set(key, officeAssignment);
+          } catch (error) {
+            this.logger.error(
+              `❌ Error creating office ${officeName} in ${country}:`,
+              error,
+            );
+            throw error;
+          }
+        }
+
+        // Crear todos los warehouses únicos de una sola vez
+        for (const country of uniqueWarehouses) {
+          try {
+            const warehouseAssignment =
+              await this.assignmentsService.handleCSVWarehouseAssignment(
+                country,
+                tenantName,
+                userId,
+                'Unknown',
+              );
+            warehouseMap.set(country, warehouseAssignment);
+          } catch (error) {
+            this.logger.error(
+              `❌ Error creating warehouse for ${country}:`,
+              error,
+            );
+            throw error;
+          }
+        }
+      }
+
       const createData = await Promise.all(
         normalizedProducts.map(async (product) => {
           const { serialNumber, officeId, country, officeName, ...rest } =
@@ -535,16 +621,13 @@ export class ProductsService {
 
           if (product.location === 'Our office') {
             if (isCSVUpload && country && officeName) {
-              // 📝 CSV: Delegar al servicio transversal AssignmentsService
-              const officeAssignment =
-                await this.assignmentsService.handleCSVOfficeAssignment(
-                  country,
-                  officeName,
-                  tenantName,
-                  userId,
-                );
-
-              officeData = officeAssignment;
+              // 📝 CSV: Usar oficina del mapa pre-creado
+              // 🔑 Usar normalización para crear clave única (case-insensitive, sin tildes)
+              const key = OfficeNormalizationHelper.createOfficeKey(
+                country,
+                officeName,
+              );
+              officeData = officeMap.get(key) || {};
             } else {
               // 🖥️ UI Form: Usar officeId o oficina default
               const officeAssignment =
@@ -561,16 +644,8 @@ export class ProductsService {
             isCSVUpload &&
             country
           ) {
-            // 🏭 CSV: Delegar al servicio transversal AssignmentsService
-            const warehouseAssignment =
-              await this.assignmentsService.handleCSVWarehouseAssignment(
-                country,
-                tenantName,
-                userId,
-                product.category || 'Unknown',
-              );
-
-            fpWarehouseData = warehouseAssignment;
+            // 🏭 CSV: Usar warehouse del mapa pre-creado
+            fpWarehouseData = warehouseMap.get(country) || {};
           }
 
           const baseProduct =
