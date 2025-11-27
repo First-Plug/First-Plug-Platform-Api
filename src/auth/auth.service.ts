@@ -53,9 +53,7 @@ export class AuthService {
 
     // Esta funcionalidad necesita ser reimplementada con la nueva arquitectura
     // donde los datos del tenant y usuario están separados
-    console.log(
-      'checkAndPropagateTenantConfig: Funcionalidad temporalmente deshabilitada',
-    );
+
     return;
   }
 

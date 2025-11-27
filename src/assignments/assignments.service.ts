@@ -1257,8 +1257,6 @@ export class AssignmentsService {
           newMember.country,
           oldMemberCountry,
         );
-
-        console.log('✅ [moveToMemberCollection] History created successfully');
       } catch (error) {
         this.logger.error(
           '❌ Error creating history in moveToMemberCollection:',
@@ -1386,9 +1384,6 @@ export class AssignmentsService {
     }
 
     // 📜 HISTORY: NO crear aquí - se creará en handleProductFromMemberCollection después de asignar warehouse
-    console.log(
-      '📜 [moveToProductsCollection] History creation deferred to handleProductFromMemberCollection',
-    );
 
     return createdProducts;
   }
@@ -2135,10 +2130,6 @@ export class AssignmentsService {
           undefined, // newMemberCountry (no aplica)
           undefined, // oldMemberCountry (no aplica para products collection)
         );
-
-        console.log(
-          '✅ [handleProductFromProductsCollection] History created successfully',
-        );
       } catch (error) {
         this.logger.error(
           '❌ Error creating history in handleProductFromProductsCollection:',
@@ -2622,10 +2613,6 @@ export class AssignmentsService {
           undefined, // newMemberCountry (no aplica)
           member.country, // 🏳️ Country code del member original para mostrar bandera
         );
-
-        console.log(
-          '✅ [handleProductFromMemberCollection] History created successfully',
-        );
       } catch (error) {
         this.logger.error(
           '❌ Error creating history in handleProductFromMemberCollection:',
@@ -2673,7 +2660,6 @@ export class AssignmentsService {
     userId?: string,
   ) {
     if (currentMember) {
-      console.log('🔁 Llamando a moveToProductsCollection...');
       const created = await this.moveToProductsCollection(
         session,
         product,

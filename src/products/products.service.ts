@@ -41,6 +41,7 @@ import { LogisticsService } from 'src/logistics/logistics.sevice';
 import { recordEnhancedAssetHistory } from './helpers/history.helper';
 import { GlobalProductSyncService } from './services/global-product-sync.service';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
+import { OfficeNormalizationHelper } from 'src/common/helpers/office-normalization.helper';
 
 export interface ProductModel
   extends Model<ProductDocument>,
@@ -73,18 +74,6 @@ export class ProductsService {
     },
   ): Promise<void> {
     try {
-      // 🔍 [DEBUG] Log para verificar datos de office antes de sincronizar
-      console.log(
-        `🔄 [SYNC] Sincronizando producto ${product.name} (${product._id}):`,
-        {
-          location: product.location,
-          hasOffice: !!product.office,
-          officeData: product.office,
-          sourceCollection,
-          hasMemberData: !!memberData,
-          hasFpWarehouseData: !!fpWarehouseData,
-        },
-      );
       await this.globalProductSyncService.syncProduct({
         tenantId: tenantName, // Se corregirá automáticamente en GlobalProductSyncService
         tenantName: tenantName,
@@ -323,12 +312,6 @@ export class ProductsService {
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
 
-    // � [DEBUG] Log completo del DTO recibido del frontend
-    console.log(
-      '📦 [CREATE] DTO recibido del frontend:',
-      JSON.stringify(createProductDto, null, 2),
-    );
-
     // �🚫 Validación: Los usuarios normales no pueden crear productos iniciales en FP warehouse
     // (Los movimientos/updates a FP warehouse sí están permitidos)
     if (createProductDto.location === 'FP warehouse') {
@@ -341,12 +324,6 @@ export class ProductsService {
       await this.tenantModelRegistry.getProductModel(tenantName);
     const normalizedProduct = this.normalizeProductData(createProductDto);
 
-    // 🔍 [DEBUG] Log después de normalización
-    console.log(
-      '🔄 [CREATE] Producto normalizado:',
-      JSON.stringify(normalizedProduct, null, 2),
-    );
-
     const {
       assignedEmail,
       serialNumber,
@@ -355,15 +332,6 @@ export class ProductsService {
       officeId,
       ...rest
     } = normalizedProduct;
-
-    // 🔍 [DEBUG] Log de campos extraídos
-    console.log('📋 [CREATE] Campos extraídos:', {
-      assignedEmail,
-      serialNumber,
-      productCondition,
-      officeId,
-      location: rest.location,
-    });
 
     const recoverableConfig =
       await this.getRecoverableConfigForTenant(tenantName);
@@ -412,7 +380,10 @@ export class ProductsService {
       ...rest,
       recoverable: isRecoverable,
       serialNumber: serialNumber?.trim() || undefined,
-      productCondition: productCondition || 'Optimal',
+      productCondition:
+        productCondition && productCondition.trim() !== ''
+          ? productCondition
+          : 'Optimal',
       additionalInfo: createProductDto.additionalInfo?.trim() || undefined,
       location,
       status,
@@ -474,7 +445,7 @@ export class ProductsService {
   }
 
   async bulkCreate(
-    createProductDtos: CreateProductDto[],
+    createProductDtos: CreateProductDto[] | any[],
     tenantName: string,
     userId: string,
     options?: { isCSVUpload?: boolean },
@@ -534,9 +505,13 @@ export class ProductsService {
       }
 
       for (const product of normalizedProducts) {
-        const { serialNumber, category, recoverable } = product;
+        const { serialNumber, category, recoverable, productCondition } =
+          product;
 
-        product.productCondition = 'Optimal';
+        // 🔧 Si no viene productCondition en CSV o viene vacío, usar 'Optimal' como default
+        if (!productCondition || productCondition.trim() === '') {
+          product.productCondition = 'Optimal';
+        }
 
         const isRecoverable =
           recoverable !== undefined
@@ -547,6 +522,91 @@ export class ProductsService {
 
         if (serialNumber && serialNumber.trim() !== '') {
           await this.validateSerialNumber(serialNumber, tenantName);
+        }
+      }
+
+      // 🏢 PRE-PROCESS: Crear un mapa de oficinas únicas para CSV
+      // Esto evita crear la misma oficina múltiples veces en un bulk
+      const officeMap = new Map<string, any>(); // key: "country|officeName"
+      const warehouseMap = new Map<string, any>(); // key: "country"
+
+      if (isCSVUpload) {
+        // Identificar oficinas únicas en los productos
+        const uniqueOffices = new Map<
+          string,
+          { country: string; officeName: string }
+        >();
+        const uniqueWarehouses = new Set<string>();
+
+        normalizedProducts.forEach((product) => {
+          const productAny = product as any;
+          if (
+            product.location === 'Our office' &&
+            productAny.country &&
+            productAny.officeName
+          ) {
+            // 🔑 Usar normalización para crear clave única (case-insensitive, sin tildes)
+            const key = OfficeNormalizationHelper.createOfficeKey(
+              productAny.country,
+              productAny.officeName,
+            );
+            if (!uniqueOffices.has(key)) {
+              uniqueOffices.set(key, {
+                country: productAny.country,
+                officeName: productAny.officeName,
+              });
+            }
+          } else if (
+            product.location === 'FP warehouse' &&
+            productAny.country
+          ) {
+            uniqueWarehouses.add(productAny.country);
+          }
+        });
+
+        // Crear todas las oficinas únicas de una sola vez
+        for (const { country, officeName } of uniqueOffices.values()) {
+          // 🔑 Usar normalización para crear clave única (case-insensitive, sin tildes)
+          const key = OfficeNormalizationHelper.createOfficeKey(
+            country,
+            officeName,
+          );
+          try {
+            const officeAssignment =
+              await this.assignmentsService.handleCSVOfficeAssignment(
+                country,
+                officeName,
+                tenantName,
+                userId,
+              );
+            officeMap.set(key, officeAssignment);
+          } catch (error) {
+            this.logger.error(
+              `❌ Error creating office ${officeName} in ${country}:`,
+              error,
+            );
+            throw error;
+          }
+        }
+
+        // Crear todos los warehouses únicos de una sola vez
+        for (const country of uniqueWarehouses) {
+          try {
+            const warehouseAssignment =
+              await this.assignmentsService.handleCSVWarehouseAssignment(
+                country,
+                tenantName,
+                userId,
+                'Unknown',
+              );
+            warehouseMap.set(country, warehouseAssignment);
+          } catch (error) {
+            this.logger.error(
+              `❌ Error creating warehouse for ${country}:`,
+              error,
+            );
+            throw error;
+          }
         }
       }
 
@@ -561,16 +621,13 @@ export class ProductsService {
 
           if (product.location === 'Our office') {
             if (isCSVUpload && country && officeName) {
-              // 📝 CSV: Delegar al servicio transversal AssignmentsService
-              const officeAssignment =
-                await this.assignmentsService.handleCSVOfficeAssignment(
-                  country,
-                  officeName,
-                  tenantName,
-                  userId,
-                );
-
-              officeData = officeAssignment;
+              // 📝 CSV: Usar oficina del mapa pre-creado
+              // 🔑 Usar normalización para crear clave única (case-insensitive, sin tildes)
+              const key = OfficeNormalizationHelper.createOfficeKey(
+                country,
+                officeName,
+              );
+              officeData = officeMap.get(key) || {};
             } else {
               // 🖥️ UI Form: Usar officeId o oficina default
               const officeAssignment =
@@ -587,16 +644,8 @@ export class ProductsService {
             isCSVUpload &&
             country
           ) {
-            // 🏭 CSV: Delegar al servicio transversal AssignmentsService
-            const warehouseAssignment =
-              await this.assignmentsService.handleCSVWarehouseAssignment(
-                country,
-                tenantName,
-                userId,
-                product.category || 'Unknown',
-              );
-
-            fpWarehouseData = warehouseAssignment;
+            // 🏭 CSV: Usar warehouse del mapa pre-creado
+            fpWarehouseData = warehouseMap.get(country) || {};
           }
 
           const baseProduct =
@@ -1278,15 +1327,6 @@ export class ProductsService {
     userId: string,
     ourOfficeEmail: string,
   ) {
-    console.log(`🔁 [reassignProduct] DEBUG - Product ID: ${id}`);
-    console.log(`🔁 [reassignProduct] DEBUG - updateProductDto:`, {
-      location: updateProductDto.location,
-      assignedEmail: updateProductDto.assignedEmail,
-      fp_shipment: updateProductDto.fp_shipment,
-      actionType: updateProductDto.actionType,
-      officeId: updateProductDto.officeId,
-    });
-
     if (updateProductDto.assignedEmail === 'none') {
       updateProductDto.assignedEmail = '';
     }
@@ -1629,15 +1669,6 @@ export class ProductsService {
     session?: ClientSession,
     connection?: Connection,
   ) {
-    console.log(`🔄 [update] DEBUG - Product ID: ${id}`);
-    console.log(`🔄 [update] DEBUG - updateProductDto:`, {
-      location: updateProductDto.location,
-      assignedEmail: updateProductDto.assignedEmail,
-      fp_shipment: updateProductDto.fp_shipment,
-      actionType: updateProductDto.actionType,
-      officeId: updateProductDto.officeId,
-    });
-
     await new Promise((resolve) => process.nextTick(resolve));
 
     const internalConnection =
