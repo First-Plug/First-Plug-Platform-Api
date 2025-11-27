@@ -241,12 +241,28 @@ export const ProductSchemaZod = z
       .optional(),
   })
   .superRefine((data, ctx) => {
+    // 🔍 VALIDACIÓN: Name requerido para Merchandising y cuando model='Other'
+    // Caso 1: Categoría Merchandising siempre requiere name
     if (data.category === 'Merchandising' && !data.name) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Name is required for Merchandising category.',
         path: ['name'],
       });
+    }
+
+    // Caso 2: Cuando model='Other' en cualquier otra categoría (no Merchandising)
+    if (data.category !== 'Merchandising') {
+      const modelAttribute = data.attributes.find(
+        (attr) => attr.key === 'model',
+      );
+      if (modelAttribute?.value === 'Other' && !data.name) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Name is required when model is "Other".',
+          path: ['name'],
+        });
+      }
     }
 
     if (data.category !== 'Merchandising') {
@@ -566,16 +582,28 @@ export const ProductSchemaZodCSV = z
       }
     }
 
-    // 🔍 VALIDACIÓN 4: Name requerido para Merchandising y Other
-    if (
-      (data.category === 'Merchandising' || data.category === 'Other') &&
-      !data.name
-    ) {
+    // 🔍 VALIDACIÓN 4: Name requerido para Merchandising y cuando model='Other'
+    // Caso 1: Categoría Merchandising siempre requiere name
+    if (data.category === 'Merchandising' && !data.name) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Name is required for Merchandising and Other categories.',
+        message: 'Name is required for Merchandising category.',
         path: ['name'],
       });
+    }
+
+    // Caso 2: Cuando model='Other' en cualquier otra categoría (no Merchandising)
+    if (data.category !== 'Merchandising') {
+      const modelAttribute = data.attributes.find(
+        (attr) => attr.key === 'model',
+      );
+      if (modelAttribute?.value === 'Other' && !data.name) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Name is required when model is "Other".',
+          path: ['name'],
+        });
+      }
     }
   })
   .refine(

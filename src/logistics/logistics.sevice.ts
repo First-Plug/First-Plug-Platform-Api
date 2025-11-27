@@ -669,11 +669,6 @@ export class LogisticsService {
       }
 
       if (!office) {
-        console.log('❌ Oficina no encontrada:', {
-          tenantName,
-          officeId,
-          useDefault: !officeId,
-        });
         return false;
       }
 
@@ -2816,11 +2811,6 @@ export class LogisticsService {
     originalShipmentData?: any,
   ): Promise<string> {
     try {
-      console.log(
-        '🔍 [SLACK_DEBUG] originalShipmentData provided:',
-        !!originalShipmentData,
-      );
-
       const originalShipment = originalShipmentData || {
         ...shipment.toObject(),
       };
@@ -2849,10 +2839,6 @@ export class LogisticsService {
         newStatus === 'In Preparation' &&
         detailsChanged
       ) {
-        console.log(
-          '🔍 [SLACK_DEBUG] ✅ Sending Slack notification for shipment details update',
-        );
-
         const userInfo = await this.getUserInfoFromUserId(userId);
 
         const slackMessage = CreateShipmentMessageToSlack({

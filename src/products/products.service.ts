@@ -73,18 +73,6 @@ export class ProductsService {
     },
   ): Promise<void> {
     try {
-      // 🔍 [DEBUG] Log para verificar datos de office antes de sincronizar
-      console.log(
-        `🔄 [SYNC] Sincronizando producto ${product.name} (${product._id}):`,
-        {
-          location: product.location,
-          hasOffice: !!product.office,
-          officeData: product.office,
-          sourceCollection,
-          hasMemberData: !!memberData,
-          hasFpWarehouseData: !!fpWarehouseData,
-        },
-      );
       await this.globalProductSyncService.syncProduct({
         tenantId: tenantName, // Se corregirá automáticamente en GlobalProductSyncService
         tenantName: tenantName,
@@ -323,12 +311,6 @@ export class ProductsService {
   ) {
     await new Promise((resolve) => process.nextTick(resolve));
 
-    // � [DEBUG] Log completo del DTO recibido del frontend
-    console.log(
-      '📦 [CREATE] DTO recibido del frontend:',
-      JSON.stringify(createProductDto, null, 2),
-    );
-
     // �🚫 Validación: Los usuarios normales no pueden crear productos iniciales en FP warehouse
     // (Los movimientos/updates a FP warehouse sí están permitidos)
     if (createProductDto.location === 'FP warehouse') {
@@ -341,12 +323,6 @@ export class ProductsService {
       await this.tenantModelRegistry.getProductModel(tenantName);
     const normalizedProduct = this.normalizeProductData(createProductDto);
 
-    // 🔍 [DEBUG] Log después de normalización
-    console.log(
-      '🔄 [CREATE] Producto normalizado:',
-      JSON.stringify(normalizedProduct, null, 2),
-    );
-
     const {
       assignedEmail,
       serialNumber,
@@ -355,15 +331,6 @@ export class ProductsService {
       officeId,
       ...rest
     } = normalizedProduct;
-
-    // 🔍 [DEBUG] Log de campos extraídos
-    console.log('📋 [CREATE] Campos extraídos:', {
-      assignedEmail,
-      serialNumber,
-      productCondition,
-      officeId,
-      location: rest.location,
-    });
 
     const recoverableConfig =
       await this.getRecoverableConfigForTenant(tenantName);
@@ -412,7 +379,10 @@ export class ProductsService {
       ...rest,
       recoverable: isRecoverable,
       serialNumber: serialNumber?.trim() || undefined,
-      productCondition: productCondition || 'Optimal',
+      productCondition:
+        productCondition && productCondition.trim() !== ''
+          ? productCondition
+          : 'Optimal',
       additionalInfo: createProductDto.additionalInfo?.trim() || undefined,
       location,
       status,
@@ -537,8 +507,8 @@ export class ProductsService {
         const { serialNumber, category, recoverable, productCondition } =
           product;
 
-        // 🔧 Si no viene productCondition en CSV, usar 'Optimal' como default
-        if (!productCondition) {
+        // 🔧 Si no viene productCondition en CSV o viene vacío, usar 'Optimal' como default
+        if (!productCondition || productCondition.trim() === '') {
           product.productCondition = 'Optimal';
         }
 
@@ -1282,15 +1252,6 @@ export class ProductsService {
     userId: string,
     ourOfficeEmail: string,
   ) {
-    console.log(`🔁 [reassignProduct] DEBUG - Product ID: ${id}`);
-    console.log(`🔁 [reassignProduct] DEBUG - updateProductDto:`, {
-      location: updateProductDto.location,
-      assignedEmail: updateProductDto.assignedEmail,
-      fp_shipment: updateProductDto.fp_shipment,
-      actionType: updateProductDto.actionType,
-      officeId: updateProductDto.officeId,
-    });
-
     if (updateProductDto.assignedEmail === 'none') {
       updateProductDto.assignedEmail = '';
     }
@@ -1633,15 +1594,6 @@ export class ProductsService {
     session?: ClientSession,
     connection?: Connection,
   ) {
-    console.log(`🔄 [update] DEBUG - Product ID: ${id}`);
-    console.log(`🔄 [update] DEBUG - updateProductDto:`, {
-      location: updateProductDto.location,
-      assignedEmail: updateProductDto.assignedEmail,
-      fp_shipment: updateProductDto.fp_shipment,
-      actionType: updateProductDto.actionType,
-      officeId: updateProductDto.officeId,
-    });
-
     await new Promise((resolve) => process.nextTick(resolve));
 
     const internalConnection =

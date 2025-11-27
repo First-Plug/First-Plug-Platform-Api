@@ -23,16 +23,11 @@ export class TenantUserAdapterService {
     const user = await this.usersService.findById(userId);
 
     if (!user) {
-      console.log('❌ Usuario no encontrado para widgets:', userId);
       return [];
     }
 
     // CASO 1: Usuario nuevo (tiene tenantId) - widgets en user
     if (user.tenantId) {
-      console.log('📱 Widgets desde usuario nuevo:', {
-        email: user.email,
-        widgetsCount: user.widgets?.length || 0,
-      });
       return user.widgets || [];
     }
 
@@ -40,15 +35,9 @@ export class TenantUserAdapterService {
     // Buscar en la colección tenants por email (usuario embebido)
     const oldUserData = await this.tenantsService.findByEmail(user.email);
     if (oldUserData) {
-      console.log('📱 Widgets desde usuario viejo embebido:', {
-        email: user.email,
-        tenantName: (oldUserData as any).tenantName,
-        widgetsCount: (oldUserData as any).widgets?.length || 0,
-      });
       return (oldUserData as any).widgets || [];
     }
 
-    console.log('⚠️ No se encontraron widgets para usuario:', user.email);
     return [];
   }
 
@@ -68,19 +57,12 @@ export class TenantUserAdapterService {
     // CASO 1: Usuario nuevo (tiene tenantId) - actualizar widgets en user
     if (user.tenantId) {
       await this.usersService.updateUserConfig(user._id, { widgets });
-      console.log('📱 Widgets actualizados en usuario nuevo:', {
-        email: user.email,
-        widgetsCount: widgets.length,
-      });
+
       return;
     }
 
     // CASO 2: Usuario viejo (sin tenantId) - actualizar widgets en tenant
     await this.tenantsService.updateUserConfig(user._id as any, { widgets });
-    console.log('📱 Widgets actualizados en tenant viejo:', {
-      email: user.email,
-      widgetsCount: widgets.length,
-    });
   }
 
   /**
