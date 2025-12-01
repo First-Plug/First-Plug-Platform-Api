@@ -89,7 +89,10 @@ async function fixProductCondition() {
     console.log('\n📦 Procesando colección "products"...');
     const productsWithoutCondition = await productsCollection
       .find({
-        productCondition: { $exists: false },
+        $or: [
+          { productCondition: { $exists: false } },
+          { productCondition: null },
+        ],
         isDeleted: { $ne: true },
       })
       .toArray();
@@ -101,7 +104,10 @@ async function fixProductCondition() {
     if (productsWithoutCondition.length > 0) {
       const result = await productsCollection.updateMany(
         {
-          productCondition: { $exists: false },
+          $or: [
+            { productCondition: { $exists: false } },
+            { productCondition: null },
+          ],
           isDeleted: { $ne: true },
         },
         {
@@ -131,13 +137,15 @@ async function fixProductCondition() {
       })
       .toArray();
 
-    // Filtrar members que tienen productos sin productCondition
+    // Filtrar members que tienen productos sin productCondition (null o undefined)
     const membersWithBrokenProducts = allMembers.filter((member: any) => {
       return (
         member.products &&
         Array.isArray(member.products) &&
         member.products.length > 0 &&
-        member.products.some((p: any) => !p.productCondition)
+        member.products.some(
+          (p: any) => !p.productCondition || p.productCondition === null,
+        )
       );
     });
 
@@ -203,22 +211,106 @@ async function fixProductCondition() {
     console.log('\n🌍 Sincronizando con global_products...');
     let globalUpdated = 0;
 
-    for (const productId of productsToUpdate) {
-      const result = await globalProductsCollection.updateMany(
-        {
-          originalProductId: productId,
-          tenantId: new ObjectId(tenant._id),
-          productCondition: { $exists: false },
-        },
-        {
-          $set: {
-            productCondition: 'Optimal',
-            updatedAt: new Date(),
-          },
-        },
+    try {
+      // Verificar que la colección existe
+      const collections = await globalDb.listCollections().toArray();
+      const hasGlobalProducts = collections.some(
+        (c) => c.name === 'global_products',
+      );
+      console.log(
+        `   ✓ Colección global_products existe: ${hasGlobalProducts}`,
       );
 
-      globalUpdated += result.modifiedCount;
+      if (hasGlobalProducts) {
+        // Primero, sincronizar los productos que ya actualizamos en el tenant
+        console.log(
+          `   Sincronizando ${productsToUpdate.length} productos del tenant...`,
+        );
+        for (const productId of productsToUpdate) {
+          const result = await globalProductsCollection.updateMany(
+            {
+              originalProductId: productId,
+              tenantId: new ObjectId(tenant._id),
+              productCondition: { $exists: false },
+            },
+            {
+              $set: {
+                productCondition: 'Optimal',
+                updatedAt: new Date(),
+              },
+            },
+          );
+
+          globalUpdated += result.modifiedCount;
+        }
+
+        // Segundo, buscar directamente en global_products productos sin productCondition
+        console.log(
+          `   Buscando productos sin productCondition en global_products...`,
+        );
+        const globalProductsWithoutCondition = await globalProductsCollection
+          .find({
+            $and: [
+              { tenantId: new ObjectId(tenant._id) },
+              {
+                $or: [
+                  { productCondition: { $exists: false } },
+                  { productCondition: null },
+                ],
+              },
+              { isDeleted: { $ne: true } },
+            ],
+          })
+          .toArray();
+
+        console.log(
+          `   Productos en global_products sin productCondition: ${globalProductsWithoutCondition.length}`,
+        );
+
+        if (globalProductsWithoutCondition.length > 0) {
+          console.log(`   Sincronizando valores reales desde el tenant...`);
+
+          // Para cada producto en global_products, buscar el valor real en el tenant
+          for (const globalProduct of globalProductsWithoutCondition) {
+            let conditionValue = 'Optimal'; // default
+
+            // Buscar el producto original en la BD del tenant
+            if (globalProduct.originalProductId) {
+              const originalProduct = await productsCollection.findOne({
+                _id: globalProduct.originalProductId,
+              });
+
+              if (originalProduct && originalProduct.productCondition) {
+                conditionValue = originalProduct.productCondition;
+                console.log(
+                  `     Producto ${globalProduct._id}: usando valor del tenant = ${conditionValue}`,
+                );
+              } else {
+                console.log(
+                  `     Producto ${globalProduct._id}: no encontrado en tenant, usando default = Optimal`,
+                );
+              }
+            }
+
+            // Actualizar este producto específico con el valor correcto
+            const result = await globalProductsCollection.updateOne(
+              { _id: globalProduct._id },
+              {
+                $set: {
+                  productCondition: conditionValue,
+                  updatedAt: new Date(),
+                },
+              },
+            );
+
+            if (result.modifiedCount > 0) {
+              globalUpdated += result.modifiedCount;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`   ❌ Error sincronizando global_products:`, error);
     }
 
     console.log(
