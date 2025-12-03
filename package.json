@@ -59,7 +59,8 @@
     "migrate:single-tenant": "ts-node -r tsconfig-paths/register src/scripts/migration/single-tenant-office-migration-simple.ts",
     "fix:office-country-codes": "ts-node -r tsconfig-paths/register scripts/fix-office-country-codes.ts",
     "fix:member-country-codes": "ts-node -r tsconfig-paths/register scripts/fix-member-country-codes.ts",
-    "fix:shipment-country-codes": "ts-node -r tsconfig-paths/register scripts/fix-shipment-country-codes.ts"
+    "fix:shipment-country-codes": "ts-node -r tsconfig-paths/register scripts/fix-shipment-country-codes.ts",
+    "migrate:fix-product-condition": "ts-node -r tsconfig-paths/register src/scripts/migration/fix-product-condition.ts"
   },
   "dependencies": {
     "@anatine/zod-nestjs": "^2.0.8",
