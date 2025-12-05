@@ -27,6 +27,11 @@ export function validateCategoryKeys(
 /**
  * Valida valores de atributos
  * Ahora permite custom values además de los valores hardcodeados
+ * Solo rechaza valores vacíos en atributos OBLIGATORIOS
+ *
+ * REGLAS DE ATRIBUTOS OBLIGATORIOS:
+ * - Para Merchandising: NO hay atributos obligatorios (solo color es requerido como key)
+ * - Para otras categorías: brand y model son SIEMPRE obligatorios
  *
  * @param attributes - Array de atributos a validar
  * @param category - Categoría del producto (opcional)
@@ -38,14 +43,25 @@ export function validateAttributeValues(
 ): Array<ValidationError> {
   const errors: Array<ValidationError> = [];
 
+  // Para Merchandising, NO hay atributos con valores obligatorios
+  // Solo color es requerido como KEY, pero puede tener valor vacío
+  if (category === 'Merchandising') {
+    return errors;
+  }
+
+  // Para otras categorías: brand y model son OBLIGATORIOS
+  const requiredAttributes: Set<AttributeKey> = new Set(['brand', 'model']);
+
   for (const attr of attributes) {
-    // Validar que el valor no esté vacío
-    if (!attr.value || attr.value.trim() === '') {
-      errors.push({
-        message: `${attr.key} cannot be empty`,
-        path: ['attributes'],
-      });
-      continue;
+    // Solo validar valores vacíos para atributos obligatorios
+    if (requiredAttributes.has(attr.key)) {
+      if (!attr.value || attr.value.trim() === '') {
+        errors.push({
+          message: `${attr.key} cannot be empty`,
+          path: ['attributes'],
+        });
+        continue;
+      }
     }
 
     // Nota: Ya no validamos contra listas hardcodeadas
