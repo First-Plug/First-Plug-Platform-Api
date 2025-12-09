@@ -37,6 +37,13 @@ export class ProductsController {
   create(@Body() createProductDto: CreateProductDto, @Request() req: any) {
     const tenantName = req.user.tenantName;
     const { userId } = req;
+
+    // 🔍 DEBUG: Ver qué datos manda el front
+    console.log('📦 [CREATE PRODUCT] Payload recibido del front:');
+    console.log(JSON.stringify(createProductDto, null, 2));
+    console.log('📦 [CREATE PRODUCT] Atributos:');
+    console.log(JSON.stringify(createProductDto.attributes, null, 2));
+
     return this.productsService.create(createProductDto, tenantName, userId);
   }
 
@@ -49,6 +56,13 @@ export class ProductsController {
     try {
       const tenantName = req.user.tenantName;
       const { userId } = req;
+
+      // 🔍 DEBUG: Ver qué datos manda el front
+      console.log('📦 [BULK CREATE] Payload recibido del front:');
+      console.log(JSON.stringify(createProductDto, null, 2));
+      console.log(
+        `📦 [BULK CREATE] Total de productos: ${createProductDto.length}`,
+      );
 
       const products = await this.productsService.bulkCreate(
         createProductDto,
@@ -85,6 +99,13 @@ export class ProductsController {
     try {
       const tenantName = req.user.tenantName;
       const { userId } = req;
+
+      // 🔍 DEBUG: Ver qué datos manda el front
+      console.log('📦 [BULK CREATE CSV] Payload recibido del front:');
+      console.log(JSON.stringify(createProductDto, null, 2));
+      console.log(
+        `📦 [BULK CREATE CSV] Total de productos: ${createProductDto.length}`,
+      );
 
       const products = await this.productsService.bulkCreate(
         createProductDto as CreateProductDto[],
@@ -203,15 +224,6 @@ export class ProductsController {
     const tenantName = req.user.tenantName;
     const { userId } = req;
     const ourOfficeEmail = req.user.email;
-
-    console.log(
-      `🔄 Update PATCH - Product ID: ${id} | Tenant: ${tenantName} | User: ${userId}`,
-    );
-    console.log(
-      '📦 updateProductDto recibido (generic update):',
-      JSON.stringify(updateProductDto, null, 2),
-    );
-    console.log('🏢 ourOfficeEmail:', ourOfficeEmail);
 
     return this.productsService.update(
       id,
