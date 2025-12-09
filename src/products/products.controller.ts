@@ -225,15 +225,6 @@ export class ProductsController {
     const { userId } = req;
     const ourOfficeEmail = req.user.email;
 
-    console.log(
-      `🔄 Update PATCH - Product ID: ${id} | Tenant: ${tenantName} | User: ${userId}`,
-    );
-    console.log(
-      '📦 updateProductDto recibido (generic update):',
-      JSON.stringify(updateProductDto, null, 2),
-    );
-    console.log('🏢 ourOfficeEmail:', ourOfficeEmail);
-
     return this.productsService.update(
       id,
       updateProductDto,
