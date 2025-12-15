@@ -31,7 +31,7 @@ export interface ComputerItem {
   // STEP 3: Datos de entrega (por producto)
   country: string; // ✅ OBLIGATORIO (ISO code)
   city?: string;
-  deliveryDate?: Date;
+  deliveryDate?: string; // ISO 8601 format
   comments?: string;
 }
 
@@ -75,4 +75,3 @@ export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
 
 export const OS_OPTIONS = ['macOS', 'Windows', 'Linux'] as const;
 export type OSOption = (typeof OS_OPTIONS)[number];
-

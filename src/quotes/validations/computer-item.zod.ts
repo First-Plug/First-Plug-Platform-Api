@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import validator from 'validator';
 
 /**
  * Zod Schema para ComputerItem
@@ -42,7 +43,12 @@ export const ComputerItemSchema = z
       .min(1, 'Country es obligatorio')
       .max(2, 'Country debe ser un código ISO válido'),
     city: z.string().optional(),
-    deliveryDate: z.date().optional(),
+    deliveryDate: z
+      .string()
+      .refine(validator.isISO8601, {
+        message: 'Delivery date debe ser una fecha válida en formato ISO 8601',
+      })
+      .optional(),
     comments: z.string().optional(),
   })
   .refine(

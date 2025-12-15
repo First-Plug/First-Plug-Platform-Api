@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { TenantConnectionService } from '../infra/db/tenant-connection.service';
 import { Quote, QuoteDocument, QuoteSchema } from './schemas/quote.schema';
+import { ShipmentMetadataSchema } from '../shipments/schema/shipment-metadata.schema';
 import { CreateQuoteDto, UpdateQuoteDto } from './dto';
 
 /**
@@ -11,6 +12,8 @@ import { CreateQuoteDto, UpdateQuoteDto } from './dto';
  */
 @Injectable()
 export class QuotesService {
+  private readonly logger = new Logger(QuotesService.name);
+
   constructor(
     private readonly tenantConnectionService: TenantConnectionService,
   ) {}
@@ -31,7 +34,7 @@ export class QuotesService {
     const QuoteModel = connection.model<QuoteDocument>('Quote', QuoteSchema);
 
     // Generar requestId único
-    const requestId = await this.generateRequestId(QuoteModel, tenantName);
+    const requestId = await this.generateRequestId(connection, tenantName);
 
     const quote = new QuoteModel({
       requestId,
@@ -44,7 +47,9 @@ export class QuotesService {
       isDeleted: false,
     });
 
-    return quote.save();
+    const savedQuote = await quote.save();
+
+    return savedQuote;
   }
 
   /**
@@ -150,26 +155,56 @@ export class QuotesService {
 
   /**
    * Generar requestId único: QR-{tenantName}-{autoIncrement}
-   * Usa contador en colección separada para garantizar unicidad
+   * ✅ Usa colección shipmentmetadata (reutiliza patrón existente)
+   * ✅ Garantiza unicidad incluso con deletes
+   * ✅ Atómico: no hay race conditions
+   * ✅ Incremental: nunca repite números
+   *
+   * Nota: Reutilizamos ShipmentMetadataSchema que ya existe.
+   * En la colección 'shipmentmetadata' guardamos dos registros:
+   * - _id: "orderCounter" (para shipments)
+   * - _id: "quote_counter" (para quotes)
    */
   private async generateRequestId(
-    QuoteModel: any,
+    connection: any,
     tenantName: string,
   ): Promise<string> {
-    // Obtener el último número de quote
-    const lastQuote = await QuoteModel.findOne()
-      .sort({ createdAt: -1 })
-      .lean()
-      .exec();
+    // Reutilizamos ShipmentMetadata model (misma colección)
+    const MetadataModel = connection.model(
+      'ShipmentMetadata',
+      ShipmentMetadataSchema,
+      'shipmentmetadata',
+    );
 
-    let nextNumber = 1;
-    if (lastQuote?.requestId) {
-      const match = lastQuote.requestId.match(/QR-[^-]+-(\d+)/);
-      if (match) {
-        nextNumber = parseInt(match[1], 10) + 1;
+    // 🔐 OPERACIÓN ATÓMICA: Incrementar contador y obtener nuevo valor
+    const docId = 'quote_counter';
+
+    try {
+      // Primero intentar encontrar el documento
+      const metadata = await MetadataModel.findOne({ _id: docId });
+
+      // Si no existe, crear con lastQuoteNumber: 0
+      if (!metadata) {
+        // Usar insertOne para tener control total sobre los campos
+        await MetadataModel.collection.insertOne({
+          _id: docId,
+          lastQuoteNumber: 0,
+        });
       }
-    }
 
-    return `QR-${tenantName}-${String(nextNumber).padStart(6, '0')}`;
+      // Ahora incrementar usando $inc (más confiable que agregación pipeline)
+      const updated = await MetadataModel.findOneAndUpdate(
+        { _id: docId },
+        { $inc: { lastQuoteNumber: 1 } },
+        { new: true },
+      );
+
+      const nextNumber = updated.lastQuoteNumber;
+      const requestId = `QR-${tenantName}-${String(nextNumber).padStart(6, '0')}`;
+      return requestId;
+    } catch (error) {
+      this.logger.error('Error generating request ID:', error);
+      throw error;
+    }
   }
 }

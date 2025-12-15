@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { JwtService } from '@nestjs/jwt';
 import { QuotesService } from './quotes.service';
 import { QuotesCoordinatorService } from './quotes-coordinator.service';
 import { QuotesController } from './quotes.controller';
@@ -19,7 +20,12 @@ import { TenantConnectionService } from '../infra/db/tenant-connection.service';
     SlackModule,
     HistoryModule,
   ],
-  providers: [QuotesService, QuotesCoordinatorService, TenantConnectionService],
+  providers: [
+    QuotesService,
+    QuotesCoordinatorService,
+    TenantConnectionService,
+    JwtService,
+  ],
   controllers: [QuotesController],
   exports: [QuotesService, QuotesCoordinatorService],
 })

@@ -55,8 +55,8 @@ export class ComputerItemSchema {
   @Prop({ type: String })
   city?: string;
 
-  @Prop({ type: Date })
-  deliveryDate?: Date;
+  @Prop({ type: String })
+  deliveryDate?: string;
 
   @Prop({ type: String })
   comments?: string;

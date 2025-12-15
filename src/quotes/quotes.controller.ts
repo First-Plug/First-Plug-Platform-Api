@@ -10,12 +10,15 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { QuotesCoordinatorService } from './quotes-coordinator.service';
 import { CreateQuoteDto, UpdateQuoteDto, QuoteTableDto } from './dto';
 import { QuoteResponseDto } from './dto/quote-response.dto';
 import { JwtGuard } from '../auth/guard/jwt.guard';
 import { Types } from 'mongoose';
+import { CreateQuoteSchema, UpdateQuoteSchema } from './validations';
+import { ZodError } from 'zod';
 
 /**
  * QuotesController
@@ -29,6 +32,7 @@ export class QuotesController {
   /**
    * POST /quotes
    * Crear una nueva quote
+   * ✅ Valida estructura de productos con Zod
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -36,17 +40,34 @@ export class QuotesController {
     @Body() createQuoteDto: CreateQuoteDto,
     @Req() req: any,
   ): Promise<QuoteResponseDto> {
-    const { tenantId, tenantName, email: userEmail, name: userName } = req.user;
+    try {
+      // ✅ Validar con Zod
+      const validated = CreateQuoteSchema.parse(createQuoteDto);
 
-    const quote = await this.quotesCoordinator.createQuoteWithCoordination(
-      createQuoteDto,
-      new Types.ObjectId(tenantId),
-      tenantName,
-      userEmail,
-      userName,
-    );
+      const {
+        _id: userId,
+        tenantId,
+        tenantName,
+        email: userEmail,
+        firstName,
+        lastName,
+      } = req.user;
 
-    return this.mapToResponseDto(quote);
+      const userName = `${firstName} ${lastName}`.trim();
+
+      const quote = await this.quotesCoordinator.createQuoteWithCoordination(
+        validated,
+        new Types.ObjectId(tenantId),
+        tenantName,
+        userEmail,
+        userName,
+        userId,
+      );
+
+      return this.mapToResponseDto(quote);
+    } catch (error) {
+      this.handleValidationError(error);
+    }
   }
 
   /**
@@ -68,12 +89,14 @@ export class QuotesController {
   /**
    * GET /quotes/:id
    * Obtener una quote específica
+   * ✅ Valida formato de ID
    */
   @Get(':id')
   async findById(
     @Param('id') id: string,
     @Req() req: any,
   ): Promise<QuoteResponseDto> {
+    this.validateObjectId(id);
     const { tenantName, email: userEmail } = req.user;
 
     const quote = await this.quotesCoordinator.quotesService.findById(
@@ -88,6 +111,7 @@ export class QuotesController {
   /**
    * PATCH /quotes/:id
    * Actualizar una quote
+   * ✅ Valida formato de ID y estructura de datos
    */
   @Patch(':id')
   async update(
@@ -95,25 +119,35 @@ export class QuotesController {
     @Body() updateQuoteDto: UpdateQuoteDto,
     @Req() req: any,
   ): Promise<QuoteResponseDto> {
-    const { tenantName, email: userEmail } = req.user;
+    try {
+      this.validateObjectId(id);
+      // ✅ Validar con Zod
+      const validated = UpdateQuoteSchema.parse(updateQuoteDto);
 
-    const quote = await this.quotesCoordinator.quotesService.update(
-      id,
-      updateQuoteDto,
-      tenantName,
-      userEmail,
-    );
+      const { tenantName, email: userEmail } = req.user;
 
-    return this.mapToResponseDto(quote);
+      const quote = await this.quotesCoordinator.quotesService.update(
+        id,
+        validated,
+        tenantName,
+        userEmail,
+      );
+
+      return this.mapToResponseDto(quote);
+    } catch (error) {
+      this.handleValidationError(error);
+    }
   }
 
   /**
    * DELETE /quotes/:id
    * Cancelar una quote (soft delete)
+   * ✅ Valida formato de ID
    */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string, @Req() req: any): Promise<void> {
+    this.validateObjectId(id);
     const { tenantName, email: userEmail } = req.user;
 
     await this.quotesCoordinator.cancelQuoteWithCoordination(
@@ -162,5 +196,32 @@ export class QuotesController {
       updatedAt: quote.updatedAt,
       status: quote.isDeleted ? 'cancelled' : 'active',
     };
+  }
+
+  /**
+   * Validar que el ID sea un ObjectId válido
+   * ✅ Lanza BadRequestException si es inválido
+   */
+  private validateObjectId(id: string): void {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException(`Invalid ID format: ${id}`);
+    }
+  }
+
+  /**
+   * Manejar errores de validación Zod
+   * ✅ Convierte ZodError a respuesta HTTP clara
+   */
+  private handleValidationError(error: any): never {
+    if (error instanceof ZodError) {
+      throw new BadRequestException({
+        message: 'Validation failed',
+        errors: error.errors.map((e) => ({
+          path: e.path.join('.'),
+          message: e.message,
+        })),
+      });
+    }
+    throw error;
   }
 }

@@ -46,6 +46,36 @@ export class SlackService {
     }
   }
 
+  /**
+   * Enviar mensaje de quote a Slack
+   * Usa el webhook específico para quotes
+   */
+  async sendQuoteMessage(message: any): Promise<void> {
+    try {
+      const webhookUrl = process.env.SLACK_WEBHOOK_URL_QUOTES;
+      if (!webhookUrl) {
+        this.logger.warn('SLACK_WEBHOOK_URL_QUOTES not configured');
+        return;
+      }
+
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to send Slack quote message: ${response.statusText}`,
+        );
+      }
+    } catch (error) {
+      this.logger.error('Error sending Slack quote message:', error);
+    }
+  }
+
   async sendOffboardingMessage(
     member: any,
     products: any,
