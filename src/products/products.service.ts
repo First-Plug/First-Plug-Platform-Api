@@ -1054,7 +1054,9 @@ export class ProductsService {
             key = JSON.stringify({
               category: product.category,
               name: product.name,
-              color: colorValue,
+              color: colorValue
+                ? (colorValue as string).trim().toLowerCase()
+                : colorValue,
             });
             break;
 
@@ -1080,15 +1082,28 @@ export class ProductsService {
 
             // 🎯 FIX: Solo agrupar por características VISUALES (brand, model, color, screen)
             // NO incluir processor, ram, storage que son specs internas
+            // ✅ NORMALIZAR: trim() + toLowerCase() para evitar fragmentación
             key = JSON.stringify({
               category: product.category,
-              brand: computerBrand,
-              model: computerModel,
+              brand: computerBrand
+                ? (computerBrand as string).trim().toLowerCase()
+                : computerBrand,
+              model: computerModel
+                ? (computerModel as string).trim().toLowerCase()
+                : computerModel,
               name: computerModel === 'Other' ? product.name : undefined,
-              processor: computerProcessor,
-              ram: computerRam,
-              storage: computerStorage,
-              screen: computerScreen,
+              processor: computerProcessor
+                ? (computerProcessor as string).trim().toLowerCase()
+                : computerProcessor,
+              ram: computerRam
+                ? (computerRam as string).trim().toLowerCase()
+                : computerRam,
+              storage: computerStorage
+                ? (computerStorage as string).trim().toLowerCase()
+                : computerStorage,
+              screen: computerScreen
+                ? (computerScreen as string).trim().toLowerCase()
+                : computerScreen,
             });
             break;
 
@@ -1103,12 +1118,19 @@ export class ProductsService {
               (attr) => attr.key === 'screen',
             )?.value;
 
+            // ✅ NORMALIZAR: trim() + toLowerCase()
             key = JSON.stringify({
               category: product.category,
-              brand: monitorBrand,
-              model: monitorModel,
+              brand: monitorBrand
+                ? (monitorBrand as string).trim().toLowerCase()
+                : monitorBrand,
+              model: monitorModel
+                ? (monitorModel as string).trim().toLowerCase()
+                : monitorModel,
               name: monitorModel === 'Other' ? product.name : undefined,
-              screen: monitorScreen,
+              screen: monitorScreen
+                ? (monitorScreen as string).trim().toLowerCase()
+                : monitorScreen,
             });
             break;
 
@@ -1120,10 +1142,15 @@ export class ProductsService {
               (attr) => attr.key === 'model',
             )?.value;
 
+            // ✅ NORMALIZAR: trim() + toLowerCase()
             key = JSON.stringify({
               category: product.category,
-              brand: audioBrand,
-              model: audioModel,
+              brand: audioBrand
+                ? (audioBrand as string).trim().toLowerCase()
+                : audioBrand,
+              model: audioModel
+                ? (audioModel as string).trim().toLowerCase()
+                : audioModel,
               name: audioModel === 'Other' ? product.name : undefined,
             });
             break;
@@ -1136,10 +1163,15 @@ export class ProductsService {
               (attr) => attr.key === 'model',
             )?.value;
 
+            // ✅ NORMALIZAR: trim() + toLowerCase()
             key = JSON.stringify({
               category: product.category,
-              brand: peripheralsBrand,
-              model: peripheralsModel,
+              brand: peripheralsBrand
+                ? (peripheralsBrand as string).trim().toLowerCase()
+                : peripheralsBrand,
+              model: peripheralsModel
+                ? (peripheralsModel as string).trim().toLowerCase()
+                : peripheralsModel,
               name: peripheralsModel === 'Other' ? product.name : undefined,
             });
             break;
@@ -1152,10 +1184,15 @@ export class ProductsService {
               (attr) => attr.key === 'model',
             )?.value;
 
+            // ✅ NORMALIZAR: trim() + toLowerCase()
             key = JSON.stringify({
               category: product.category,
-              brand: otherBrand,
-              model: otherModel,
+              brand: otherBrand
+                ? (otherBrand as string).trim().toLowerCase()
+                : otherBrand,
+              model: otherModel
+                ? (otherModel as string).trim().toLowerCase()
+                : otherModel,
               name: otherModel === 'Other' ? product.name : undefined,
             });
             break;
