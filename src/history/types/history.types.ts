@@ -31,7 +31,8 @@ export type HistoryItemType =
   | 'teams'
   | 'assets'
   | 'shipments'
-  | 'offices';
+  | 'offices'
+  | 'quotes';
 
 export type HistoryData = Record<string, any> | Record<string, any>[] | null;
 

@@ -21,7 +21,14 @@ export const CreateHistorySchema = z.object({
     'consolidate',
   ]),
   userId: z.string().min(1, 'User ID is required'),
-  itemType: z.enum(['members', 'teams', 'assets', 'shipments', 'offices']),
+  itemType: z.enum([
+    'members',
+    'teams',
+    'assets',
+    'shipments',
+    'offices',
+    'quotes',
+  ]),
   changes: z
     .object({
       oldData: z.union([
