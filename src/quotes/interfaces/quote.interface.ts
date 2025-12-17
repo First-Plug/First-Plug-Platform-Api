@@ -115,6 +115,7 @@ export interface Quote {
   userEmail: string; // Del token
   userName?: string; // Del token
   requestType: 'Comprar productos'; // Fijo
+  status: 'Requested'; // Estado de la cotización (auto-seteado en creación)
   products: any[]; // Array de productos (múltiples categorías)
   isDeleted: boolean;
   createdAt?: Date;
@@ -141,6 +142,9 @@ export type ProductData =
  */
 export const REQUEST_TYPES = ['Comprar productos'] as const;
 export type RequestType = (typeof REQUEST_TYPES)[number];
+
+export const QUOTE_STATUSES = ['Requested'] as const;
+export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
 
 export const PRODUCT_CATEGORIES = [
   'Computer',

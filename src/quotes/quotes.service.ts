@@ -43,6 +43,7 @@ export class QuotesService {
       userEmail,
       userName,
       requestType: 'Comprar productos',
+      status: 'Requested', // Auto-seteado en creación
       products: createQuoteDto.products,
       isDeleted: false,
     });

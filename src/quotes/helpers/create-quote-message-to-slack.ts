@@ -10,8 +10,13 @@ const getProperty = (obj: any, key: string): any => {
 /**
  * Construye el mensaje de Slack para una quote según el formato especificado
  * Soporta múltiples categorías de productos con campos específicos para cada una
+ * @param quote - Documento de quote
+ * @param actionType - Tipo de acción: 'New' (crear), 'Updated' (actualizar), 'Cancelled' (cancelar)
  */
-export const CreateQuoteMessageToSlack = (quote: Quote) => {
+export const CreateQuoteMessageToSlack = (
+  quote: Quote,
+  actionType: 'New' | 'Updated' | 'Cancelled' = 'New',
+) => {
   // Construir bloques de detalles para cada producto
   const productBlocks = quote.products.flatMap(
     (product: any, index: number) => {
@@ -22,7 +27,7 @@ export const CreateQuoteMessageToSlack = (quote: Quote) => {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Item ${index + 1}: ${product.quantity}x ${product.category}*`,
+          text: `*Item ${index + 1}: x${product.quantity} ${product.category}*`,
         },
       });
 
@@ -191,7 +196,7 @@ export const CreateQuoteMessageToSlack = (quote: Quote) => {
         fields: [
           {
             type: 'mrkdwn',
-            text: `*Type:*\nQuote`,
+            text: `*Type:*\n${actionType}`,
           },
           {
             type: 'mrkdwn',

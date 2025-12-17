@@ -75,9 +75,10 @@ export class QuotesCoordinatorService {
 
   /**
    * Notificar creación de quote a Slack con todos los detalles
+   * Usa actionType 'New' por defecto (para creación)
    */
   private async notifyQuoteCreatedToSlack(quote: Quote): Promise<void> {
-    const message = CreateQuoteMessageToSlack(quote);
+    const message = CreateQuoteMessageToSlack(quote, 'New');
     await this.slackService.sendQuoteMessage(message);
   }
 

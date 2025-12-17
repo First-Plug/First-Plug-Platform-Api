@@ -23,9 +23,11 @@ MongoDB (tenant_{tenantName}.quotes)
 ## 🏗️ Archivos Creados
 
 ### **1. QuotesService** (`src/quotes/quotes.service.ts`)
+
 **Responsabilidad**: CRUD de quotes en BD
 
 **Métodos**:
+
 - `create()` - Crear quote con requestId auto-generado
 - `findAll()` - Obtener quotes del usuario
 - `findById()` - Obtener quote específica
@@ -34,30 +36,37 @@ MongoDB (tenant_{tenantName}.quotes)
 - `generateRequestId()` - Generar QR-{tenantName}-{autoIncrement}
 
 ### **2. QuotesCoordinatorService** (`src/quotes/quotes-coordinator.service.ts`)
+
 **Responsabilidad**: Coordinación entre servicios
 
 **Métodos**:
+
 - `createQuoteWithCoordination()` - Crear + Slack + History
 - `cancelQuoteWithCoordination()` - Cancelar + History
 - `notifyQuoteCreatedToSlack()` - Notificación a Slack
 
 ### **3. QuotesModule** (`src/quotes/quotes.module.ts`)
+
 **Responsabilidad**: Configuración NestJS
 
 **Imports**:
+
 - MongooseModule (Quote schema)
 - SlackModule
 - HistoryModule
 
 **Providers**:
+
 - QuotesService
 - QuotesCoordinatorService
 - TenantConnectionService
 
 ### **4. QuotesController** (`src/quotes/quotes.controller.ts`)
+
 **Responsabilidad**: Endpoints REST
 
 **Endpoints**:
+
 - `POST /quotes` - Crear quote
 - `GET /quotes` - Listar quotes (tabla)
 - `GET /quotes/:id` - Obtener quote
@@ -65,6 +74,7 @@ MongoDB (tenant_{tenantName}.quotes)
 - `DELETE /quotes/:id` - Cancelar quote
 
 ### **5. QuoteTableDto** (`src/quotes/dto/quote-table.dto.ts`)
+
 **Responsabilidad**: Datos para tabla en frontend
 
 ---
@@ -73,14 +83,14 @@ MongoDB (tenant_{tenantName}.quotes)
 
 ```typescript
 interface QuoteTableDto {
-  _id: string;                    // ID de la quote
-  requestId: string;              // QR-{tenantName}-{autoIncrement}
-  userName?: string;              // Nombre del usuario
-  userEmail: string;              // Email del usuario
-  productCount: number;           // Cantidad de productos
-  totalQuantity: number;          // Suma de quantities
-  createdAt: Date;                // Fecha de creación
-  updatedAt: Date;                // Fecha de actualización
+  _id: string; // ID de la quote
+  requestId: string; // QR-{tenantName}-{autoIncrement}
+  userName?: string; // Nombre del usuario
+  userEmail: string; // Email del usuario
+  productCount: number; // Cantidad de productos
+  totalQuantity: number; // Suma de quantities
+  createdAt: Date; // Fecha de creación
+  updatedAt: Date; // Fecha de actualización
   status: 'active' | 'cancelled'; // Estado (basado en isDeleted)
 }
 ```
@@ -127,7 +137,8 @@ interface QuoteResponseDto {
   userEmail: string;
   userName?: string;
   requestType: 'Comprar productos';
-  products: ComputerItem[];        // Array completo de productos
+  status: 'Requested'; // Estado de la cotización (auto-seteado)
+  products: ComputerItem[]; // Array completo de productos
   isDeleted: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -194,22 +205,25 @@ interface QuoteResponseDto {
 ## 🎯 Próximos Pasos - FASE 3
 
 1. **Validación de Zod en Controller**
+
    - Aplicar validaciones en endpoints
    - Manejo de errores
 
 2. **Integración con SlackService**
+
    - Verificar que SlackService existe
    - Configurar canal #quotes
 
 3. **Integración con HistoryService**
+
    - Verificar que HistoryService existe
    - Registrar acciones correctamente
 
 4. **Tests**
+
    - Unit tests para QuotesService
    - Integration tests para endpoints
 
 5. **Documentación API**
    - Swagger/OpenAPI
    - Ejemplos de requests/responses
-
