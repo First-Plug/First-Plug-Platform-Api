@@ -128,6 +128,9 @@ export class MerchandisingItemSchema extends BaseProductSchema {
 
   @Prop({ type: String })
   description?: string;
+
+  @Prop({ type: String })
+  additionalRequirements?: string;
 }
 
 /**

@@ -1,6 +1,13 @@
 import { Quote } from '../interfaces/quote.interface';
 
 /**
+ * Helper para acceder a propiedades de forma segura
+ */
+const getProperty = (obj: any, key: string): any => {
+  return obj?.[key];
+};
+
+/**
  * Construye el mensaje de Slack para una quote según el formato especificado
  * Soporta múltiples categorías de productos con campos específicos para cada una
  */
@@ -102,8 +109,14 @@ export const CreateQuoteMessageToSlack = (quote: Quote) => {
       }
       // Merchandising
       else if (product.category === 'Merchandising') {
-        if (product.description)
-          specs.push(`*Description:* ${product.description}`);
+        const description = getProperty(product, 'description');
+        if (description) specs.push(`*Description:* ${description}`);
+        const additionalRequirements = getProperty(
+          product,
+          'additionalRequirements',
+        );
+        if (additionalRequirements)
+          specs.push(`*Additional requirements:* ${additionalRequirements}`);
         if (product.otherSpecifications)
           specs.push(`*Other specifications:* ${product.otherSpecifications}`);
       }

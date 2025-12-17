@@ -64,6 +64,7 @@ export interface PeripheralsItem extends BaseProductItem {
 export interface MerchandisingItem extends BaseProductItem {
   category: 'Merchandising';
   description?: string;
+  additionalRequirements?: string;
 }
 
 /**
