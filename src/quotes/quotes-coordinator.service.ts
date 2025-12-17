@@ -7,6 +7,7 @@ import { CreateQuoteDto } from './dto';
 import { Quote } from './interfaces/quote.interface';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { HistorySchema } from 'src/history/schemas/history.schema';
+import { CreateQuoteMessageToSlack } from './helpers/create-quote-message-to-slack';
 
 /**
  * QuotesCoordinatorService - Servicio Transversal
@@ -76,125 +77,7 @@ export class QuotesCoordinatorService {
    * Notificar creación de quote a Slack con todos los detalles
    */
   private async notifyQuoteCreatedToSlack(quote: Quote): Promise<void> {
-    // Construir bloques de detalles para cada producto
-    const productBlocks = quote.products.flatMap((product, index) => {
-      const specs: string[] = [];
-
-      // Especificaciones del producto
-      if (product.os) specs.push(`*SO:* ${product.os}`);
-      if (product.brand && product.brand.length > 0)
-        specs.push(`*Marcas:* ${product.brand.join(', ')}`);
-      if (product.model && product.model.length > 0)
-        specs.push(`*Modelos:* ${product.model.join(', ')}`);
-      if (product.processor && product.processor.length > 0)
-        specs.push(`*Procesadores:* ${product.processor.join(', ')}`);
-      if (product.ram && product.ram.length > 0)
-        specs.push(`*RAM:* ${product.ram.join(', ')}`);
-      if (product.storage && product.storage.length > 0)
-        specs.push(`*Almacenamiento:* ${product.storage.join(', ')}`);
-      if (product.screenSize && product.screenSize.length > 0)
-        specs.push(`*Tamaño Pantalla:* ${product.screenSize.join(', ')}`);
-      if (product.otherSpecifications)
-        specs.push(`*Otras Especificaciones:* ${product.otherSpecifications}`);
-
-      // Información de entrega
-      const deliveryInfo: string[] = [];
-      if (product.country) deliveryInfo.push(`*País:* ${product.country}`);
-      if (product.city) deliveryInfo.push(`*Ciudad:* ${product.city}`);
-      if (product.deliveryDate)
-        deliveryInfo.push(`*Fecha Entrega:* ${product.deliveryDate}`);
-
-      // Información adicional
-      const additionalInfo: string[] = [];
-      if (product.extendedWarranty)
-        additionalInfo.push(
-          `*Garantía Extendida:* ${product.extendedWarrantyYears} años`,
-        );
-      if (product.deviceEnrollment)
-        additionalInfo.push(`*Device Enrollment:* Sí`);
-      if (product.comments)
-        additionalInfo.push(`*Comentarios:* ${product.comments}`);
-
-      return [
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*Producto ${index + 1}: ${product.quantity}x ${product.category}*\n${specs.join('\n')}`,
-          },
-        },
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*Entrega:*\n${deliveryInfo.join('\n')}`,
-          },
-        },
-        ...(additionalInfo.length > 0
-          ? [
-              {
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Información Adicional:*\n${additionalInfo.join('\n')}`,
-                },
-              },
-            ]
-          : []),
-        {
-          type: 'divider',
-        },
-      ];
-    });
-
-    const message = {
-      channel: '#quotes',
-      text: `📋 Nueva Quote Creada - ${quote.requestId}`,
-      blocks: [
-        {
-          type: 'header',
-          text: {
-            type: 'plain_text',
-            text: '📋 Nueva Quote Creada',
-            emoji: true,
-          },
-        },
-        {
-          type: 'section',
-          fields: [
-            {
-              type: 'mrkdwn',
-              text: `*ID Quote:*\n${quote.requestId}`,
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Tenant:*\n${quote.tenantName}`,
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Usuario:*\n${quote.userName || quote.userEmail}`,
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Email:*\n${quote.userEmail}`,
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Variedad de Productos:*\n${quote.products.length}`,
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Cantidad Total de Unidades:*\n${quote.products.reduce((sum, p) => sum + p.quantity, 0)}`,
-            },
-          ],
-        },
-        {
-          type: 'divider',
-        },
-        ...productBlocks.slice(0, -1), // Remover último divider
-      ],
-    };
-
+    const message = CreateQuoteMessageToSlack(quote);
     await this.slackService.sendQuoteMessage(message);
   }
 

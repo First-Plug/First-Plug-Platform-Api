@@ -67,6 +67,10 @@ export class SlackService {
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(
+          `Failed to send Slack quote message: ${response.statusText} - ${errorText}`,
+        );
         throw new Error(
           `Failed to send Slack quote message: ${response.statusText}`,
         );

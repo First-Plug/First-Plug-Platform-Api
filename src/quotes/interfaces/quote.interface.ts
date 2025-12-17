@@ -1,38 +1,105 @@
 import { Types } from 'mongoose';
 
 /**
- * Computer Item - MVP (Único tipo de producto en primer release)
- * Contiene todos los datos de un producto Computer incluyendo delivery
+ * Base interface para todos los productos
  */
-export interface ComputerItem {
-  category: 'Computer';
-
-  // STEP 2a: OS Selection
-  os?: 'macOS' | 'Windows' | 'Linux';
-
-  // STEP 2b: Datos específicos
+export interface BaseProductItem {
   quantity: number; // ✅ OBLIGATORIO (entero positivo)
+  country: string; // ✅ OBLIGATORIO (ISO code)
+  city?: string;
+  deliveryDate?: string; // ISO 8601 format
+  comments?: string;
+  otherSpecifications?: string;
+}
 
-  // Arrays de strings (usuario puede seleccionar múltiples)
+/**
+ * Computer Item
+ */
+export interface ComputerItem extends BaseProductItem {
+  category: 'Computer';
+  os?: 'macOS' | 'Windows' | 'Linux';
   brand?: string[];
   model?: string[];
   processor?: string[];
   ram?: string[];
   storage?: string[];
   screenSize?: string[];
-
-  otherSpecifications?: string;
-
-  // Checkboxes
   extendedWarranty?: boolean;
-  extendedWarrantyYears?: number; // ✅ OBLIGATORIO si extendedWarranty === true
+  extendedWarrantyYears?: number;
   deviceEnrollment?: boolean;
+}
 
-  // STEP 3: Datos de entrega (por producto)
-  country: string; // ✅ OBLIGATORIO (ISO code)
-  city?: string;
-  deliveryDate?: string; // ISO 8601 format
-  comments?: string;
+/**
+ * Monitor Item
+ */
+export interface MonitorItem extends BaseProductItem {
+  category: 'Monitor';
+  brand?: string[];
+  model?: string[];
+  screenSize?: string[];
+  screenTechnology?: string;
+}
+
+/**
+ * Audio Item
+ */
+export interface AudioItem extends BaseProductItem {
+  category: 'Audio';
+  brand?: string[];
+  model?: string[];
+}
+
+/**
+ * Peripherals Item
+ */
+export interface PeripheralsItem extends BaseProductItem {
+  category: 'Peripherals';
+  brand?: string[];
+  model?: string[];
+}
+
+/**
+ * Merchandising Item
+ */
+export interface MerchandisingItem extends BaseProductItem {
+  category: 'Merchandising';
+  description?: string;
+}
+
+/**
+ * Phone Item
+ */
+export interface PhoneItem extends BaseProductItem {
+  category: 'Phone';
+  brand?: string[];
+  model?: string[];
+}
+
+/**
+ * Furniture Item
+ */
+export interface FurnitureItem extends BaseProductItem {
+  category: 'Furniture';
+  furnitureType?: string;
+}
+
+/**
+ * Tablet Item
+ */
+export interface TabletItem extends BaseProductItem {
+  category: 'Tablet';
+  brand?: string[];
+  model?: string[];
+  screenSize?: string[];
+}
+
+/**
+ * Other Item
+ */
+export interface OtherItem extends BaseProductItem {
+  category: 'Other';
+  brand?: string[];
+  model?: string[];
 }
 
 /**
@@ -46,23 +113,27 @@ export interface Quote {
   tenantName: string; // Necesario para requestId único
   userEmail: string; // Del token
   userName?: string; // Del token
-  requestType: 'Comprar productos'; // Fijo en MVP
-  products: ComputerItem[]; // Array de productos
+  requestType: 'Comprar productos'; // Fijo
+  products: any[]; // Array de productos (múltiples categorías)
   isDeleted: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 /**
- * Tipos para discriminated union (futuro)
- * En MVP solo Computer, pero preparado para futuro
+ * Tipos para discriminated union
+ * Soporta múltiples categorías de productos
  */
-export type ProductData = ComputerItem;
-// | MonitorItem
-// | AudioItem
-// | PeripheralsItem
-// | MerchandisingItem
-// | OtherItem;
+export type ProductData =
+  | ComputerItem
+  | MonitorItem
+  | AudioItem
+  | PeripheralsItem
+  | MerchandisingItem
+  | PhoneItem
+  | FurnitureItem
+  | TabletItem
+  | OtherItem;
 
 /**
  * Constantes para validación
@@ -70,7 +141,17 @@ export type ProductData = ComputerItem;
 export const REQUEST_TYPES = ['Comprar productos'] as const;
 export type RequestType = (typeof REQUEST_TYPES)[number];
 
-export const PRODUCT_CATEGORIES = ['Computer'] as const; // MVP
+export const PRODUCT_CATEGORIES = [
+  'Computer',
+  'Monitor',
+  'Audio',
+  'Peripherals',
+  'Merchandising',
+  'Phone',
+  'Furniture',
+  'Tablet',
+  'Other',
+] as const;
 export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
 
 export const OS_OPTIONS = ['macOS', 'Windows', 'Linux'] as const;

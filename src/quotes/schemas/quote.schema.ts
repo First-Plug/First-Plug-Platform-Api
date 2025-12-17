@@ -1,23 +1,43 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, SchemaTimestampsConfig, Types } from 'mongoose';
 import { softDeletePlugin } from 'soft-delete-plugin-mongoose';
-import { ComputerItem } from '../interfaces/quote.interface';
 
 export type QuoteDocument = Quote & Document & SchemaTimestampsConfig;
+
+/**
+ * Base Schema para todos los productos
+ */
+@Schema({ _id: false, discriminatorKey: 'category' })
+export class BaseProductSchema {
+  @Prop({ type: Number, required: true, min: 1 })
+  quantity: number;
+
+  @Prop({ type: String, required: true, maxlength: 2 })
+  country: string;
+
+  @Prop({ type: String })
+  city?: string;
+
+  @Prop({ type: String })
+  deliveryDate?: string;
+
+  @Prop({ type: String })
+  comments?: string;
+
+  @Prop({ type: String })
+  otherSpecifications?: string;
+}
 
 /**
  * Subdocumento para ComputerItem
  */
 @Schema({ _id: false })
-export class ComputerItemSchema {
+export class ComputerItemSchema extends BaseProductSchema {
   @Prop({ type: String, enum: ['Computer'], required: true })
   category: 'Computer';
 
   @Prop({ type: String, enum: ['macOS', 'Windows', 'Linux'] })
   os?: 'macOS' | 'Windows' | 'Linux';
-
-  @Prop({ type: Number, required: true, min: 1 })
-  quantity: number;
 
   @Prop({ type: [String] })
   brand?: string[];
@@ -37,9 +57,6 @@ export class ComputerItemSchema {
   @Prop({ type: [String] })
   screenSize?: string[];
 
-  @Prop({ type: String })
-  otherSpecifications?: string;
-
   @Prop({ type: Boolean })
   extendedWarranty?: boolean;
 
@@ -48,18 +65,129 @@ export class ComputerItemSchema {
 
   @Prop({ type: Boolean })
   deviceEnrollment?: boolean;
+}
 
-  @Prop({ type: String, required: true, maxlength: 2 })
-  country: string;
+/**
+ * Subdocumento para MonitorItem
+ */
+@Schema({ _id: false })
+export class MonitorItemSchema extends BaseProductSchema {
+  @Prop({ type: String, enum: ['Monitor'], required: true })
+  category: 'Monitor';
+
+  @Prop({ type: [String] })
+  brand?: string[];
+
+  @Prop({ type: [String] })
+  model?: string[];
+
+  @Prop({ type: [String] })
+  screenSize?: string[];
 
   @Prop({ type: String })
-  city?: string;
+  screenTechnology?: string;
+}
+
+/**
+ * Subdocumento para AudioItem
+ */
+@Schema({ _id: false })
+export class AudioItemSchema extends BaseProductSchema {
+  @Prop({ type: String, enum: ['Audio'], required: true })
+  category: 'Audio';
+
+  @Prop({ type: [String] })
+  brand?: string[];
+
+  @Prop({ type: [String] })
+  model?: string[];
+}
+
+/**
+ * Subdocumento para PeripheralsItem
+ */
+@Schema({ _id: false })
+export class PeripheralsItemSchema extends BaseProductSchema {
+  @Prop({ type: String, enum: ['Peripherals'], required: true })
+  category: 'Peripherals';
+
+  @Prop({ type: [String] })
+  brand?: string[];
+
+  @Prop({ type: [String] })
+  model?: string[];
+}
+
+/**
+ * Subdocumento para MerchandisingItem
+ */
+@Schema({ _id: false })
+export class MerchandisingItemSchema extends BaseProductSchema {
+  @Prop({ type: String, enum: ['Merchandising'], required: true })
+  category: 'Merchandising';
 
   @Prop({ type: String })
-  deliveryDate?: string;
+  description?: string;
+}
+
+/**
+ * Subdocumento para PhoneItem
+ */
+@Schema({ _id: false })
+export class PhoneItemSchema extends BaseProductSchema {
+  @Prop({ type: String, enum: ['Phone'], required: true })
+  category: 'Phone';
+
+  @Prop({ type: [String] })
+  brand?: string[];
+
+  @Prop({ type: [String] })
+  model?: string[];
+}
+
+/**
+ * Subdocumento para FurnitureItem
+ */
+@Schema({ _id: false })
+export class FurnitureItemSchema extends BaseProductSchema {
+  @Prop({ type: String, enum: ['Furniture'], required: true })
+  category: 'Furniture';
 
   @Prop({ type: String })
-  comments?: string;
+  furnitureType?: string;
+}
+
+/**
+ * Subdocumento para TabletItem
+ */
+@Schema({ _id: false })
+export class TabletItemSchema extends BaseProductSchema {
+  @Prop({ type: String, enum: ['Tablet'], required: true })
+  category: 'Tablet';
+
+  @Prop({ type: [String] })
+  brand?: string[];
+
+  @Prop({ type: [String] })
+  model?: string[];
+
+  @Prop({ type: [String] })
+  screenSize?: string[];
+}
+
+/**
+ * Subdocumento para OtherItem
+ */
+@Schema({ _id: false })
+export class OtherItemSchema extends BaseProductSchema {
+  @Prop({ type: String, enum: ['Other'], required: true })
+  category: 'Other';
+
+  @Prop({ type: [String] })
+  brand?: string[];
+
+  @Prop({ type: [String] })
+  model?: string[];
 }
 
 /**
@@ -92,8 +220,27 @@ export class Quote {
   @Prop({ type: String, required: true, enum: ['Comprar productos'] })
   requestType: 'Comprar productos';
 
-  @Prop({ type: [ComputerItemSchema], required: true, default: [] })
-  products: ComputerItem[];
+  @Prop({
+    type: [
+      {
+        type: Object,
+        enum: [
+          ComputerItemSchema,
+          MonitorItemSchema,
+          AudioItemSchema,
+          PeripheralsItemSchema,
+          MerchandisingItemSchema,
+          PhoneItemSchema,
+          FurnitureItemSchema,
+          TabletItemSchema,
+          OtherItemSchema,
+        ],
+      },
+    ],
+    required: true,
+    default: [],
+  })
+  products: any[];
 
   @Prop({ type: Boolean, default: false })
   isDeleted: boolean;
