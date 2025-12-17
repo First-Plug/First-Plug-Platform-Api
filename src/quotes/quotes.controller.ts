@@ -169,6 +169,7 @@ export class QuotesController {
       userEmail: quote.userEmail,
       userName: quote.userName,
       requestType: quote.requestType,
+      status: quote.status,
       products: quote.products,
       isDeleted: quote.isDeleted,
       createdAt: quote.createdAt,
@@ -192,9 +193,10 @@ export class QuotesController {
       userEmail: quote.userEmail,
       productCount: quote.products.length,
       totalQuantity,
+      quoteStatus: quote.status,
+      isActive: !quote.isDeleted,
       createdAt: quote.createdAt,
       updatedAt: quote.updatedAt,
-      status: quote.isDeleted ? 'cancelled' : 'active',
     };
   }
 

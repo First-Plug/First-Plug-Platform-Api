@@ -12,6 +12,7 @@ export class QuoteResponseDto {
   userEmail: string;
   userName?: string;
   requestType: 'Comprar productos';
+  status: 'Requested';
   products: ComputerItem[];
   isDeleted: boolean;
   createdAt: Date;

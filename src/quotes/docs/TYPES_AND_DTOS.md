@@ -31,6 +31,7 @@ export interface Quote {
   userEmail: string;
   userName?: string;
   requestType: 'Comprar productos';
+  status: 'Requested'; // Estado de la cotización (auto-seteado en creación)
   products: ComputerItem[];
   isDeleted: boolean;
   createdAt: Date;
@@ -75,6 +76,7 @@ export class QuoteResponseDTO {
   userEmail: string;
   userName?: string;
   requestType: 'Comprar productos';
+  status: 'Requested'; // Estado de la cotización (auto-seteado en creación)
   products: ComputerItemResponseDTO[];
   isDeleted: boolean;
   createdAt: Date;
@@ -88,9 +90,10 @@ export class QuoteTableDTO {
   userEmail: string;
   productCount: number;
   totalQuantity: number;
+  quoteStatus: 'Requested'; // Estado de la cotización
+  isActive: boolean; // true = activa, false = cancelada
   createdAt: Date;
   updatedAt: Date;
-  status: 'active' | 'cancelled';
 }
 
 export class UpdateQuoteDTO {
@@ -129,4 +132,3 @@ src/quotes/
 └── schemas/
     └── quote.schema.ts
 ```
-

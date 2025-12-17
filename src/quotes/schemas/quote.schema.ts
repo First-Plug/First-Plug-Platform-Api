@@ -224,6 +224,14 @@ export class Quote {
   requestType: 'Comprar productos';
 
   @Prop({
+    type: String,
+    required: true,
+    enum: ['Requested'],
+    default: 'Requested',
+  })
+  status: 'Requested';
+
+  @Prop({
     type: [
       {
         type: Object,
