@@ -71,6 +71,42 @@ export const MerchandisingItemSchema = BaseProductSchema.extend({
 export type MerchandisingItem = z.infer<typeof MerchandisingItemSchema>;
 
 /**
+ * Phone Item Schema
+ */
+export const PhoneItemSchema = BaseProductSchema.extend({
+  category: z.literal('Phone'),
+  brand: z.array(z.string()).optional(),
+  model: z.array(z.string()).optional(),
+  otherSpecifications: z.string().optional(),
+});
+
+export type PhoneItem = z.infer<typeof PhoneItemSchema>;
+
+/**
+ * Tablet Item Schema
+ */
+export const TabletItemSchema = BaseProductSchema.extend({
+  category: z.literal('Tablet'),
+  brand: z.array(z.string()).optional(),
+  model: z.array(z.string()).optional(),
+  screenSize: z.array(z.string()).optional(),
+  otherSpecifications: z.string().optional(),
+});
+
+export type TabletItem = z.infer<typeof TabletItemSchema>;
+
+/**
+ * Furniture Item Schema
+ */
+export const FurnitureItemSchema = BaseProductSchema.extend({
+  category: z.literal('Furniture'),
+  furnitureType: z.array(z.string()).optional(),
+  otherSpecifications: z.string().optional(),
+});
+
+export type FurnitureItem = z.infer<typeof FurnitureItemSchema>;
+
+/**
  * Other Item Schema
  */
 export const OtherItemSchema = BaseProductSchema.extend({

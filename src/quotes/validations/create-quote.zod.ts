@@ -5,6 +5,9 @@ import {
   AudioItemSchema,
   PeripheralsItemSchema,
   MerchandisingItemSchema,
+  PhoneItemSchema,
+  TabletItemSchema,
+  FurnitureItemSchema,
   OtherItemSchema,
 } from './product-data.zod';
 
@@ -18,6 +21,9 @@ const ProductUnion = z.union([
   AudioItemSchema,
   PeripheralsItemSchema,
   MerchandisingItemSchema,
+  PhoneItemSchema,
+  TabletItemSchema,
+  FurnitureItemSchema,
   OtherItemSchema,
 ]);
 
