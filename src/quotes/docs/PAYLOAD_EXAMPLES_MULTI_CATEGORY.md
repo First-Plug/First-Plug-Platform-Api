@@ -153,6 +153,102 @@
 }
 ```
 
+## 7. Quote con Phone
+
+```json
+{
+  "products": [
+    {
+      "category": "Phone",
+      "quantity": 2,
+      "brand": ["Apple", "Samsung"],
+      "model": ["iPhone 15", "Galaxy S24"],
+      "otherSpecifications": "Need protective cases",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25"
+    }
+  ]
+}
+```
+
+## 8. Quote con Tablet
+
+```json
+{
+  "products": [
+    {
+      "category": "Tablet",
+      "quantity": 3,
+      "brand": ["Apple"],
+      "model": ["iPad Pro 11 (M4)"],
+      "screenSize": ["11\""],
+      "otherSpecifications": "With Apple Pencil and protective case",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25"
+    }
+  ]
+}
+```
+
+## 9. Quote con Furniture
+
+```json
+{
+  "products": [
+    {
+      "category": "Furniture",
+      "quantity": 5,
+      "furnitureType": ["Standing Desk", "Chair"],
+      "otherSpecifications": "Ergonomic design preferred, adjustable height",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25"
+    }
+  ]
+}
+```
+
+## 10. Quote con Múltiples Categorías (Phone + Tablet + Furniture)
+
+```json
+{
+  "products": [
+    {
+      "category": "Phone",
+      "quantity": 2,
+      "brand": ["Apple"],
+      "model": ["iPhone 15 Pro"],
+      "otherSpecifications": "Need protective cases and screen protectors",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25"
+    },
+    {
+      "category": "Tablet",
+      "quantity": 3,
+      "brand": ["Apple"],
+      "model": ["iPad Pro 11 (M4)"],
+      "screenSize": ["11\""],
+      "otherSpecifications": "With Apple Pencil Pro",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25"
+    },
+    {
+      "category": "Furniture",
+      "quantity": 5,
+      "furnitureType": ["Standing Desk", "Chair"],
+      "otherSpecifications": "Ergonomic design, adjustable height for standing desk",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25"
+    }
+  ]
+}
+```
+
 ## Endpoint
 
 ```
@@ -170,4 +266,3 @@ Authorization: Bearer {token}
 - `city`, `deliveryDate`, `comments` son **opcionales** en todas las categorías
 - Cada categoría tiene sus propios campos específicos
 - Puedes mezclar múltiples categorías en un mismo quote
-
