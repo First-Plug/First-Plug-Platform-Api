@@ -1,10 +1,54 @@
 import { Quote } from '../interfaces/quote.interface';
+import { countryCodes } from 'src/shipments/helpers/countryCodes';
 
 /**
  * Helper para acceder a propiedades de forma segura
  */
 const getProperty = (obj: any, key: string): any => {
   return obj?.[key];
+};
+
+/**
+ * Convierte código de país a nombre
+ */
+const convertCountryCodeToName = (countryCode: string): string => {
+  if (!countryCode) return '';
+
+  // Casos especiales que no se convierten
+  if (countryCode === 'Our office' || countryCode === 'FP warehouse') {
+    return countryCode;
+  }
+
+  // Si ya es un nombre (no código de 2 letras), devolverlo tal como está
+  if (countryCode.length !== 2 || !/^[A-Z]{2}$/.test(countryCode)) {
+    return countryCode;
+  }
+
+  // Crear mapa inverso: código -> nombre
+  const codeToName = Object.entries(countryCodes).reduce(
+    (acc, [name, code]) => {
+      acc[code] = name;
+      return acc;
+    },
+    {} as Record<string, string>,
+  );
+
+  return codeToName[countryCode] || countryCode;
+};
+
+/**
+ * Formatea fecha a formato DD/MM/YYYY (solo días, sin hora)
+ */
+const formatDateToDay = (dateString: string): string => {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '-';
+
+  return date.toLocaleDateString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
 };
 
 /**
@@ -34,11 +78,12 @@ export const CreateQuoteMessageToSlack = (
       // Información de entrega
       const deliveryInfo: string[] = [];
       if (product.deliveryDate)
-        deliveryInfo.push(`*Required Delivery Date:* ${product.deliveryDate}`);
+        deliveryInfo.push(
+          `*Required Delivery Date:* ${formatDateToDay(product.deliveryDate)}`,
+        );
       if (product.country || product.city) {
-        const location = [product.country, product.city]
-          .filter(Boolean)
-          .join(', ');
+        const countryName = convertCountryCodeToName(product.country);
+        const location = [countryName, product.city].filter(Boolean).join(', ');
         deliveryInfo.push(`*Location:* ${location}`);
       }
       if (product.comments)
