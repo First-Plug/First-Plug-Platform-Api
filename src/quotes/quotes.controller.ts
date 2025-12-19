@@ -11,9 +11,14 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  Query,
 } from '@nestjs/common';
 import { QuotesCoordinatorService } from './quotes-coordinator.service';
-import { CreateQuoteDto, UpdateQuoteDto, QuoteTableDto } from './dto';
+import {
+  CreateQuoteDto,
+  UpdateQuoteDto,
+  QuoteTableWithDetailsDto,
+} from './dto';
 import { QuoteResponseDto } from './dto/quote-response.dto';
 import { JwtGuard } from '../auth/guard/jwt.guard';
 import { Types } from 'mongoose';
@@ -72,18 +77,48 @@ export class QuotesController {
 
   /**
    * GET /quotes
-   * Obtener todas las quotes del usuario (para tabla)
+   * Obtener todas las quotes del usuario CON paginación y filtrado por fecha
+   * Query params:
+   *   - page: número de página (default: 1)
+   *   - size: cantidad de registros por página (default: 10)
+   *   - startDate: fecha inicio (ISO 8601)
+   *   - endDate: fecha fin (ISO 8601)
+   * Retorna: datos completos de cada quote incluyendo todos los productos
    */
   @Get()
-  async findAll(@Req() req: any): Promise<QuoteTableDto[]> {
+  async findAll(
+    @Query('page') page: string = '1',
+    @Query('size') size: string = '10',
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Req() req: any,
+  ): Promise<{
+    data: QuoteTableWithDetailsDto[];
+    totalCount: number;
+    totalPages: number;
+  }> {
     const { tenantName, email: userEmail } = req.user;
 
-    const quotes = await this.quotesCoordinator.quotesService.findAll(
+    const pageNumber = parseInt(page, 10) || 1;
+    const pageSize = parseInt(size, 10) || 10;
+
+    const start = startDate ? new Date(startDate) : undefined;
+    const end = endDate ? new Date(endDate) : undefined;
+
+    const result = await this.quotesCoordinator.quotesService.findAllPaginated(
       tenantName,
       userEmail,
+      pageNumber,
+      pageSize,
+      start,
+      end,
     );
 
-    return quotes.map((quote) => this.mapToTableDto(quote));
+    return {
+      data: result.data.map((quote) => this.mapToTableWithDetailsDto(quote)),
+      totalCount: result.totalCount,
+      totalPages: result.totalPages,
+    };
   }
 
   /**
@@ -178,9 +213,11 @@ export class QuotesController {
   }
 
   /**
-   * Mapear Quote a QuoteTableDto
+   * Mapear Quote a QuoteTableWithDetailsDto (CON TODOS LOS DETALLES)
+   * Incluye todos los datos del quote y productos para que el frontend
+   * NO necesite hacer un GET by ID adicional
    */
-  private mapToTableDto(quote: any): QuoteTableDto {
+  private mapToTableWithDetailsDto(quote: any): QuoteTableWithDetailsDto {
     const totalQuantity = quote.products.reduce(
       (sum: number, product: any) => sum + (product.quantity || 0),
       0,
@@ -189,11 +226,15 @@ export class QuotesController {
     return {
       _id: quote._id?.toString(),
       requestId: quote.requestId,
+      tenantId: quote.tenantId?.toString(),
+      tenantName: quote.tenantName,
       userName: quote.userName,
       userEmail: quote.userEmail,
+      requestType: quote.requestType,
+      status: quote.isDeleted ? 'Cancelled' : 'Requested',
       productCount: quote.products.length,
       totalQuantity,
-      quoteStatus: quote.status,
+      products: quote.products, // ✅ Todos los datos de los productos
       isActive: !quote.isDeleted,
       createdAt: quote.createdAt,
       updatedAt: quote.updatedAt,

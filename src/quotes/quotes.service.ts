@@ -54,7 +54,7 @@ export class QuotesService {
   }
 
   /**
-   * Obtener todas las quotes del usuario
+   * Obtener todas las quotes del usuario (sin paginación - legacy)
    */
   async findAll(tenantName: string, userEmail: string): Promise<Quote[]> {
     const connection =
@@ -68,6 +68,66 @@ export class QuotesService {
       .sort({ createdAt: -1 })
       .lean()
       .exec();
+  }
+
+  /**
+   * Obtener quotes del usuario CON paginación y filtrado por fecha
+   * Similar al endpoint de history
+   * Si NO se envían startDate/endDate, retorna TODAS las quotes
+   */
+  async findAllPaginated(
+    tenantName: string,
+    userEmail: string,
+    page: number,
+    size: number,
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<{
+    data: Quote[];
+    totalCount: number;
+    totalPages: number;
+  }> {
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const QuoteModel = connection.model<QuoteDocument>('Quote', QuoteSchema);
+
+    const skip = (page - 1) * size;
+
+    // Construir filtro de fecha
+    // ⚠️ IMPORTANTE: Si NO se envían fechas, NO filtrar por fecha
+    const dateFilter: any = {};
+    if (startDate || endDate) {
+      if (startDate && endDate) {
+        dateFilter.createdAt = { $gte: startDate, $lte: endDate };
+      } else if (startDate) {
+        dateFilter.createdAt = { $gte: startDate };
+      } else if (endDate) {
+        dateFilter.createdAt = { $lte: endDate };
+      }
+    }
+
+    // Combinar filtros: usuario + fecha (opcional) + no eliminadas
+    const query = {
+      userEmail,
+      isDeleted: false,
+      ...dateFilter,
+    };
+
+    const [data, totalCount] = await Promise.all([
+      QuoteModel.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(size)
+        .lean()
+        .exec(),
+      QuoteModel.countDocuments(query).exec(),
+    ]);
+
+    return {
+      data,
+      totalCount,
+      totalPages: Math.ceil(totalCount / size),
+    };
   }
 
   /**

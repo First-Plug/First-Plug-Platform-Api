@@ -132,12 +132,9 @@ export class QuotesCoordinatorService {
               (sum, p) => sum + p.quantity,
               0,
             ),
-            products: quote.products.map((p) => ({
-              category: p.category,
-              quantity: p.quantity,
-              os: p.os,
-              country: p.country,
-            })),
+            products: quote.products.map((p) =>
+              this.formatProductForHistory(p),
+            ),
           },
         },
       };
@@ -175,6 +172,113 @@ export class QuotesCoordinatorService {
         error,
       );
       // No lanzar error, solo loguear
+    }
+  }
+
+  /**
+   * Formatear producto para historial - Incluye todos los campos específicos de cada categoría
+   */
+  private formatProductForHistory(product: any): Record<string, any> {
+    const baseFields = {
+      category: product.category,
+      quantity: product.quantity,
+      country: product.country,
+      ...(product.city && { city: product.city }),
+      ...(product.deliveryDate && { deliveryDate: product.deliveryDate }),
+      ...(product.comments && { comments: product.comments }),
+      ...(product.otherSpecifications && {
+        otherSpecifications: product.otherSpecifications,
+      }),
+    };
+
+    // Campos específicos por categoría
+    switch (product.category) {
+      case 'Computer':
+        return {
+          ...baseFields,
+          ...(product.os && { os: product.os }),
+          ...(product.brand && { brand: product.brand }),
+          ...(product.model && { model: product.model }),
+          ...(product.processor && { processor: product.processor }),
+          ...(product.ram && { ram: product.ram }),
+          ...(product.storage && { storage: product.storage }),
+          ...(product.screenSize && { screenSize: product.screenSize }),
+          ...(product.extendedWarranty !== undefined && {
+            extendedWarranty: product.extendedWarranty,
+          }),
+          ...(product.extendedWarrantyYears && {
+            extendedWarrantyYears: product.extendedWarrantyYears,
+          }),
+          ...(product.deviceEnrollment !== undefined && {
+            deviceEnrollment: product.deviceEnrollment,
+          }),
+        };
+
+      case 'Monitor':
+        return {
+          ...baseFields,
+          ...(product.brand && { brand: product.brand }),
+          ...(product.model && { model: product.model }),
+          ...(product.screenSize && { screenSize: product.screenSize }),
+          ...(product.screenTechnology && {
+            screenTechnology: product.screenTechnology,
+          }),
+        };
+
+      case 'Audio':
+        return {
+          ...baseFields,
+          ...(product.brand && { brand: product.brand }),
+          ...(product.model && { model: product.model }),
+        };
+
+      case 'Peripherals':
+        return {
+          ...baseFields,
+          ...(product.brand && { brand: product.brand }),
+          ...(product.model && { model: product.model }),
+        };
+
+      case 'Merchandising':
+        return {
+          ...baseFields,
+          ...(product.description && { description: product.description }),
+          ...(product.additionalRequirements && {
+            additionalRequirements: product.additionalRequirements,
+          }),
+        };
+
+      case 'Phone':
+        return {
+          ...baseFields,
+          ...(product.brand && { brand: product.brand }),
+          ...(product.model && { model: product.model }),
+        };
+
+      case 'Tablet':
+        return {
+          ...baseFields,
+          ...(product.brand && { brand: product.brand }),
+          ...(product.model && { model: product.model }),
+          ...(product.screenSize && { screenSize: product.screenSize }),
+        };
+
+      case 'Furniture':
+        return {
+          ...baseFields,
+          ...(product.furnitureType && {
+            furnitureType: product.furnitureType,
+          }),
+        };
+
+      case 'Other':
+        return {
+          ...baseFields,
+          ...(product.description && { description: product.description }),
+        };
+
+      default:
+        return baseFields;
     }
   }
 }
