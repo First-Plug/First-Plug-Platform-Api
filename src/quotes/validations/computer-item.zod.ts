@@ -19,6 +19,7 @@ const BaseProductSchema = z.object({
     .refine(validator.isISO8601, {
       message: 'Delivery date debe ser una fecha válida en formato ISO 8601',
     })
+    .transform((val) => val.split('T')[0]) // Extrae solo YYYY-MM-DD
     .optional(),
   comments: z.string().optional(),
   otherSpecifications: z.string().optional(),
