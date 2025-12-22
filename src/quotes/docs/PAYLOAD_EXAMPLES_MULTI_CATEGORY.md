@@ -249,6 +249,96 @@
 }
 ```
 
+## 11. Quote con IT Support Service (Solo Servicio) - Computer en SG Warehouse
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "IT Support",
+      "productId": "690b9d8e3c2dc7018e2f5036",
+      "productSnapshot": {
+        "serialNumber": "grupo 6",
+        "location": "FP warehouse",
+        "assignedTo": "warehouse",
+        "countryCode": "SG"
+      },
+      "issues": ["Device not connecting to network", "Slow performance"],
+      "description": "Computer device experiencing connectivity issues and performance degradation. Needs diagnostic and repair.",
+      "issueStartDate": "2025-12-15",
+      "impactLevel": "high"
+    }
+  ]
+}
+```
+
+## 12. Quote con IT Support Service para Member (Solo Servicio) - Audio para Alfredo Rolon
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "IT Support",
+      "productId": "690a4b12672c966f9351fc4f",
+      "productSnapshot": {
+        "serialNumber": "serialserial1",
+        "location": "Employee",
+        "assignedTo": "Alfredo Rolon",
+        "countryCode": "PY"
+      },
+      "issues": ["Audio not working", "Microphone not responding"],
+      "description": "Audio device assigned to Alfredo Rolon is experiencing hardware issues. Needs immediate attention and repair.",
+      "issueStartDate": "2025-12-14",
+      "impactLevel": "high"
+    }
+  ]
+}
+```
+
+## 13. Quote Mixto: Productos + Servicios
+
+```json
+{
+  "products": [
+    {
+      "category": "Computer",
+      "quantity": 1,
+      "os": "Windows",
+      "brand": ["Dell"],
+      "model": ["XPS 13"],
+      "processor": ["Intel i7"],
+      "ram": ["16GB"],
+      "storage": ["512GB SSD"],
+      "screenSize": ["13.3\""],
+      "otherSpecifications": "Touchscreen",
+      "extendedWarranty": true,
+      "extendedWarrantyYears": 2,
+      "deviceEnrollment": true,
+      "country": "SG",
+      "city": "Singapore",
+      "deliveryDate": "2025-12-20",
+      "comments": "Para nuevo empleado en SG"
+    }
+  ],
+  "services": [
+    {
+      "serviceCategory": "IT Support",
+      "productId": "690a4b12672c966f9351fc4f",
+      "productSnapshot": {
+        "serialNumber": "serialserial1",
+        "location": "Employee",
+        "assignedTo": "Alfredo Rolon",
+        "countryCode": "PY"
+      },
+      "issues": ["Audio not working"],
+      "description": "Audio device assigned to Alfredo Rolon needs IT support for audio connectivity issues.",
+      "issueStartDate": "2025-12-15",
+      "impactLevel": "medium"
+    }
+  ]
+}
+```
+
 ## Endpoint
 
 ```
@@ -261,8 +351,11 @@ Authorization: Bearer {token}
 
 ## Notas
 
-- `quantity` es **requerido** en todas las categorías
-- `country` es **requerido** en todas las categorías
-- `city`, `deliveryDate`, `comments` son **opcionales** en todas las categorías
-- Cada categoría tiene sus propios campos específicos
-- Puedes mezclar múltiples categorías en un mismo quote
+- **Productos**: `quantity` y `country` son **requeridos**
+- **Servicios**: `serviceCategory`, `issues` (array min 1), `description`, `impactLevel` son **requeridos**
+- **Snapshot**: Incluye `serialNumber`, `location`, `assignedTo`, `countryCode` del producto
+- **requestType** se calcula automáticamente:
+  - Solo productos → `"Comprar productos"`
+  - Solo servicios → `"Solicitar servicio"`
+  - Ambos → `"Mixto"`
+- Puedes mezclar múltiples categorías de productos con múltiples servicios en un mismo quote

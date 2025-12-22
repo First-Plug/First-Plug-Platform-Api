@@ -83,7 +83,10 @@ export class QuotesController {
    *   - size: cantidad de registros por página (default: 10)
    *   - startDate: fecha inicio (ISO 8601)
    *   - endDate: fecha fin (ISO 8601)
-   * Retorna: datos completos de cada quote incluyendo todos los productos
+   * Retorna: datos completos de cada quote incluyendo todos los productos y servicios
+   *
+   * NOTA: Si una quote tiene servicios, se expanden como filas adicionales
+   * Ejemplo: 1 quote con 2 productos + 1 servicio = 3 filas en la tabla
    */
   @Get()
   async findAll(
@@ -114,8 +117,13 @@ export class QuotesController {
       end,
     );
 
+    // Expandir servicios como filas adicionales
+    const expandedData = result.data.flatMap((quote) =>
+      this.expandQuoteWithServices(quote),
+    );
+
     return {
-      data: result.data.map((quote) => this.mapToTableWithDetailsDto(quote)),
+      data: expandedData,
       totalCount: result.totalCount,
       totalPages: result.totalPages,
     };
@@ -193,6 +201,35 @@ export class QuotesController {
   }
 
   /**
+   * Expandir quote con servicios como filas adicionales
+   * Si una quote tiene servicios, crea una fila por cada servicio
+   * Ejemplo: 1 quote con 2 productos + 1 servicio = 2 filas (1 para productos, 1 para servicio)
+   */
+  private expandQuoteWithServices(quote: any): QuoteTableWithDetailsDto[] {
+    const baseRow = this.mapToTableWithDetailsDto(quote);
+
+    // Si no hay servicios, retornar solo la fila base
+    if (!quote.services || quote.services.length === 0) {
+      return [baseRow];
+    }
+
+    // Si hay servicios, crear una fila por cada servicio
+    return quote.services.map((service: any, index: number) => ({
+      ...baseRow,
+      // Marcar como fila de servicio
+      _id: `${quote._id?.toString()}-service-${index}`,
+      // Mostrar solo este servicio
+      services: [service],
+      // Limpiar productos en filas de servicio
+      products: [],
+      productCount: 0,
+      totalQuantity: 0,
+      // Mantener el conteo total de servicios
+      serviceCount: quote.services.length,
+    }));
+  }
+
+  /**
    * Mapear Quote a QuoteResponseDto
    */
   private mapToResponseDto(quote: any): QuoteResponseDto {
@@ -205,7 +242,8 @@ export class QuotesController {
       userName: quote.userName,
       requestType: quote.requestType,
       status: quote.status,
-      products: quote.products,
+      products: quote.products || [],
+      services: quote.services || [],
       isDeleted: quote.isDeleted,
       createdAt: quote.createdAt,
       updatedAt: quote.updatedAt,
@@ -214,11 +252,11 @@ export class QuotesController {
 
   /**
    * Mapear Quote a QuoteTableWithDetailsDto (CON TODOS LOS DETALLES)
-   * Incluye todos los datos del quote y productos para que el frontend
+   * Incluye todos los datos del quote, productos y servicios para que el frontend
    * NO necesite hacer un GET by ID adicional
    */
   private mapToTableWithDetailsDto(quote: any): QuoteTableWithDetailsDto {
-    const totalQuantity = quote.products.reduce(
+    const totalQuantity = (quote.products || []).reduce(
       (sum: number, product: any) => sum + (product.quantity || 0),
       0,
     );
@@ -232,9 +270,11 @@ export class QuotesController {
       userEmail: quote.userEmail,
       requestType: quote.requestType,
       status: quote.isDeleted ? 'Cancelled' : 'Requested',
-      productCount: quote.products.length,
+      productCount: (quote.products || []).length,
+      serviceCount: (quote.services || []).length,
       totalQuantity,
-      products: quote.products, // ✅ Todos los datos de los productos
+      products: quote.products || [], // ✅ Todos los datos de los productos
+      services: quote.services || [], // ✅ Todos los datos de los servicios
       isActive: !quote.isDeleted,
       createdAt: quote.createdAt,
       updatedAt: quote.updatedAt,

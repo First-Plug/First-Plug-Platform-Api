@@ -52,6 +52,87 @@ const formatDateToDay = (dateString: string): string => {
 };
 
 /**
+ * Construye bloques de Slack para servicios
+ */
+const buildServiceBlocks = (services: any[]): any[] => {
+  if (!services || services.length === 0) return [];
+
+  return services.flatMap((service: any, index: number) => {
+    const blocks: any[] = [];
+
+    // Encabezado del servicio
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Service ${index + 1}: ${service.serviceCategory}*`,
+      },
+    });
+
+    // Información del servicio
+    const serviceInfo: string[] = [];
+
+    // Issues
+    if (service.issues && service.issues.length > 0) {
+      serviceInfo.push(`*Issues:* ${service.issues.join(', ')}`);
+    }
+
+    // Description
+    if (service.description) {
+      serviceInfo.push(`*Description:* ${service.description}`);
+    }
+
+    // Issue start date
+    if (service.issueStartDate) {
+      serviceInfo.push(
+        `*Issue Start Date:* ${formatDateToDay(service.issueStartDate)}`,
+      );
+    }
+
+    // Impact level
+    if (service.impactLevel) {
+      serviceInfo.push(`*Impact Level:* ${service.impactLevel}`);
+    }
+
+    // Product snapshot
+    if (service.productSnapshot) {
+      const snapshot = service.productSnapshot;
+      const productInfo: string[] = [];
+
+      if (snapshot.serialNumber)
+        productInfo.push(`Serial: ${snapshot.serialNumber}`);
+      if (snapshot.location) productInfo.push(`Location: ${snapshot.location}`);
+      if (snapshot.assignedTo)
+        productInfo.push(`Assigned to: ${snapshot.assignedTo}`);
+      if (snapshot.countryCode)
+        productInfo.push(
+          `Country: ${convertCountryCodeToName(snapshot.countryCode)}`,
+        );
+
+      if (productInfo.length > 0) {
+        serviceInfo.push(`*Product:* ${productInfo.join(' | ')}`);
+      }
+    }
+
+    if (serviceInfo.length > 0) {
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: serviceInfo.join('\n'),
+        },
+      });
+    }
+
+    blocks.push({
+      type: 'divider',
+    });
+
+    return blocks;
+  });
+};
+
+/**
  * Construye el mensaje de Slack para una quote según el formato especificado
  * Soporta múltiples categorías de productos con campos específicos para cada una
  * @param quote - Documento de quote
@@ -225,6 +306,53 @@ export const CreateQuoteMessageToSlack = (
     },
   );
 
+  // Construir bloques de servicios
+  const serviceBlocks = buildServiceBlocks(quote.services);
+
+  // Construir campos de resumen
+  const summaryFields: any[] = [
+    {
+      type: 'mrkdwn',
+      text: `*Type:*\n${actionType}`,
+    },
+    {
+      type: 'mrkdwn',
+      text: `*Tenant:*\n${quote.tenantName}`,
+    },
+    {
+      type: 'mrkdwn',
+      text: `*Request Type:*\n${quote.requestType}`,
+    },
+  ];
+
+  // Agregar conteo de items si hay productos
+  if (quote.products && quote.products.length > 0) {
+    summaryFields.push({
+      type: 'mrkdwn',
+      text: `*Products:*\n${quote.products.length}`,
+    });
+  }
+
+  // Agregar conteo de servicios si hay servicios
+  if (quote.services && quote.services.length > 0) {
+    summaryFields.push({
+      type: 'mrkdwn',
+      text: `*Services:*\n${quote.services.length}`,
+    });
+  }
+
+  // Agregar usuario
+  summaryFields.push(
+    {
+      type: 'mrkdwn',
+      text: `*userName:*\n${quote.userName || quote.userEmail}`,
+    },
+    {
+      type: 'mrkdwn',
+      text: `*usermail:*\n${quote.userEmail}`,
+    },
+  );
+
   const message = {
     text: `📋 Pedido de cotización n°: ${quote.requestId}`,
     blocks: [
@@ -238,33 +366,15 @@ export const CreateQuoteMessageToSlack = (
       },
       {
         type: 'section',
-        fields: [
-          {
-            type: 'mrkdwn',
-            text: `*Type:*\n${actionType}`,
-          },
-          {
-            type: 'mrkdwn',
-            text: `*Tenant:*\n${quote.tenantName}`,
-          },
-          {
-            type: 'mrkdwn',
-            text: `*Items requested:*\n${quote.products.length}`,
-          },
-          {
-            type: 'mrkdwn',
-            text: `*userName:*\n${quote.userName || quote.userEmail}`,
-          },
-          {
-            type: 'mrkdwn',
-            text: `*usermail:*\n${quote.userEmail}`,
-          },
-        ],
+        fields: summaryFields,
       },
       {
         type: 'divider',
       },
-      ...productBlocks.slice(0, -1), // Remover último divider
+      // Agregar bloques de productos (sin último divider)
+      ...(productBlocks.length > 0 ? productBlocks.slice(0, -1) : []),
+      // Agregar bloques de servicios (sin último divider)
+      ...(serviceBlocks.length > 0 ? serviceBlocks.slice(0, -1) : []),
     ],
   };
 

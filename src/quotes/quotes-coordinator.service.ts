@@ -104,6 +104,7 @@ export class QuotesCoordinatorService {
 
   /**
    * Registrar creación de quote en History
+   * Incluye productos y servicios
    */
   private async recordQuoteCreationInHistory(
     quote: Quote,
@@ -116,26 +117,41 @@ export class QuotesCoordinatorService {
         await this.tenantConnectionService.getTenantConnection(tenantName);
       const HistoryModel = connection.model('History', HistorySchema);
 
+      const newData: any = {
+        requestId: quote.requestId,
+        tenantName: quote.tenantName,
+        userEmail: quote.userEmail,
+        userName: quote.userName,
+        requestType: quote.requestType,
+      };
+
+      // Agregar productos si existen
+      if (quote.products && quote.products.length > 0) {
+        newData.productCount = quote.products.length;
+        newData.totalQuantity = quote.products.reduce(
+          (sum, p) => sum + p.quantity,
+          0,
+        );
+        newData.products = quote.products.map((p) =>
+          this.formatProductForHistory(p),
+        );
+      }
+
+      // Agregar servicios si existen
+      if (quote.services && quote.services.length > 0) {
+        newData.serviceCount = quote.services.length;
+        newData.services = quote.services.map((s) =>
+          this.formatServiceForHistory(s),
+        );
+      }
+
       const historyData = {
         actionType: 'create',
         userId: userId,
         itemType: 'quotes',
         changes: {
           oldData: null,
-          newData: {
-            requestId: quote.requestId,
-            tenantName: quote.tenantName,
-            userEmail: quote.userEmail,
-            userName: quote.userName,
-            productCount: quote.products.length,
-            totalQuantity: quote.products.reduce(
-              (sum, p) => sum + p.quantity,
-              0,
-            ),
-            products: quote.products.map((p) =>
-              this.formatProductForHistory(p),
-            ),
-          },
+          newData,
         },
       };
 
@@ -280,5 +296,43 @@ export class QuotesCoordinatorService {
       default:
         return baseFields;
     }
+  }
+
+  /**
+   * Formatear servicio para historial - Incluye todos los campos del servicio
+   */
+  private formatServiceForHistory(service: any): Record<string, any> {
+    const baseFields = {
+      serviceCategory: service.serviceCategory,
+      issues: service.issues,
+      description: service.description,
+      impactLevel: service.impactLevel,
+      ...(service.issueStartDate && { issueStartDate: service.issueStartDate }),
+    };
+
+    // Agregar snapshot del producto si existe
+    if (service.productSnapshot) {
+      baseFields['productSnapshot'] = {
+        ...(service.productSnapshot.serialNumber && {
+          serialNumber: service.productSnapshot.serialNumber,
+        }),
+        ...(service.productSnapshot.location && {
+          location: service.productSnapshot.location,
+        }),
+        ...(service.productSnapshot.assignedTo && {
+          assignedTo: service.productSnapshot.assignedTo,
+        }),
+        ...(service.productSnapshot.countryCode && {
+          countryCode: service.productSnapshot.countryCode,
+        }),
+      };
+    }
+
+    // Agregar productId si existe
+    if (service.productId) {
+      baseFields['productId'] = service.productId;
+    }
+
+    return baseFields;
   }
 }

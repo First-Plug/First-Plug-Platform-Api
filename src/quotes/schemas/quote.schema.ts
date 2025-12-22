@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, SchemaTimestampsConfig, Types } from 'mongoose';
 import { softDeletePlugin } from 'soft-delete-plugin-mongoose';
+import { ITSupportServiceSchema } from './service.schema';
 
 export type QuoteDocument = Quote & Document & SchemaTimestampsConfig;
 
@@ -220,8 +221,12 @@ export class Quote {
   @Prop({ type: String })
   userName?: string;
 
-  @Prop({ type: String, required: true, enum: ['Comprar productos'] })
-  requestType: 'Comprar productos';
+  @Prop({
+    type: String,
+    required: true,
+    enum: ['Comprar productos', 'Solicitar servicio', 'Mixto'],
+  })
+  requestType: 'Comprar productos' | 'Solicitar servicio' | 'Mixto';
 
   @Prop({
     type: String,
@@ -252,6 +257,18 @@ export class Quote {
     default: [],
   })
   products: any[];
+
+  @Prop({
+    type: [
+      {
+        type: Object,
+        enum: [ITSupportServiceSchema],
+      },
+    ],
+    required: true,
+    default: [],
+  })
+  services: any[];
 
   @Prop({ type: Boolean, default: false })
   isDeleted: boolean;
