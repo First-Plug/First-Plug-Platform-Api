@@ -42,14 +42,14 @@ export class QuotesService {
       createQuoteDto.products && createQuoteDto.products.length > 0;
     const hasServices =
       createQuoteDto.services && createQuoteDto.services.length > 0;
-    let requestType: 'Comprar productos' | 'Solicitar servicio' | 'Mixto';
+    let requestType: 'product' | 'service' | 'mixed';
 
     if (hasProducts && hasServices) {
-      requestType = 'Mixto';
+      requestType = 'mixed';
     } else if (hasServices) {
-      requestType = 'Solicitar servicio';
+      requestType = 'service';
     } else {
-      requestType = 'Comprar productos';
+      requestType = 'product';
     }
 
     const quote = new QuoteModel({

@@ -355,7 +355,7 @@ Authorization: Bearer {token}
 - **Servicios**: `serviceCategory`, `issues` (array min 1), `description`, `impactLevel` son **requeridos**
 - **Snapshot**: Incluye `serialNumber`, `location`, `assignedTo`, `countryCode` del producto
 - **requestType** se calcula automáticamente:
-  - Solo productos → `"Comprar productos"`
-  - Solo servicios → `"Solicitar servicio"`
-  - Ambos → `"Mixto"`
+  - Solo productos → `"product"`
+  - Solo servicios → `"service"`
+  - Ambos → `"mixed"`
 - Puedes mezclar múltiples categorías de productos con múltiples servicios en un mismo quote

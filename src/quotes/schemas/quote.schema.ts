@@ -224,9 +224,9 @@ export class Quote {
   @Prop({
     type: String,
     required: true,
-    enum: ['Comprar productos', 'Solicitar servicio', 'Mixto'],
+    enum: ['product', 'service', 'mixed'],
   })
-  requestType: 'Comprar productos' | 'Solicitar servicio' | 'Mixto';
+  requestType: 'product' | 'service' | 'mixed';
 
   @Prop({
     type: String,

@@ -12,7 +12,7 @@ export class QuoteResponseDto {
   tenantName: string;
   userEmail: string;
   userName?: string;
-  requestType: 'Comprar productos' | 'Solicitar servicio' | 'Mixto';
+  requestType: 'product' | 'service' | 'mixed';
   status: 'Requested';
   products: ComputerItem[];
   services: ServiceData[];

@@ -27,7 +27,7 @@ export class QuoteTableWithDetailsDto {
   tenantName: string;
   userName?: string;
   userEmail: string;
-  requestType: 'Comprar productos' | 'Solicitar servicio' | 'Mixto';
+  requestType: 'product' | 'service' | 'mixed';
   status: 'Requested' | 'Cancelled'; // Puede ser Requested o Cancelled
   productCount: number; // Cantidad de productos en la quote
   serviceCount?: number; // Cantidad de servicios en la quote
