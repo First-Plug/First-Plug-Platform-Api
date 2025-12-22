@@ -10,6 +10,7 @@ import {
   FurnitureItemSchema,
   OtherItemSchema,
 } from './product-data.zod';
+import { ServiceUnion } from './service.zod';
 
 /**
  * Union de todos los tipos de productos
@@ -29,11 +30,17 @@ const ProductUnion = z.union([
 
 /**
  * Zod Schema para CreateQuote DTO
- * Valida que al menos un producto esté presente
- * Soporta múltiples categorías de productos
+ * Valida que al menos un producto O un servicio esté presente
+ * Soporta múltiples categorías de productos y servicios
  */
-export const CreateQuoteSchema = z.object({
-  products: z.array(ProductUnion).min(1, 'Al menos un producto es requerido'),
-});
+export const CreateQuoteSchema = z
+  .object({
+    products: z.array(ProductUnion).default([]),
+    services: z.array(ServiceUnion).default([]),
+  })
+  .refine((data) => data.products.length > 0 || data.services.length > 0, {
+    message: 'Al menos un producto o servicio es requerido',
+    path: ['products'],
+  });
 
 export type CreateQuoteDTO = z.infer<typeof CreateQuoteSchema>;

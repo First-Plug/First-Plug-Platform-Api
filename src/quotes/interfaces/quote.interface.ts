@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { ServiceData } from './service.interface';
 
 /**
  * Base interface para todos los productos
@@ -114,9 +115,10 @@ export interface Quote {
   tenantName: string; // Necesario para requestId único
   userEmail: string; // Del token
   userName?: string; // Del token
-  requestType: 'Comprar productos'; // Fijo
+  requestType: 'product' | 'service' | 'mixed'; // product, service, o mixed
   status: 'Requested'; // Estado de la cotización (auto-seteado en creación)
   products: any[]; // Array de productos (múltiples categorías)
+  services: ServiceData[]; // Array de servicios
   isDeleted: boolean;
   createdAt?: Date;
   updatedAt?: Date;

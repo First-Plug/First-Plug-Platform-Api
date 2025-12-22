@@ -21,6 +21,7 @@ export class QuotesService {
   /**
    * Crear una nueva quote
    * Genera requestId automáticamente
+   * Calcula requestType basado en productos y servicios
    */
   async create(
     createQuoteDto: CreateQuoteDto,
@@ -36,15 +37,31 @@ export class QuotesService {
     // Generar requestId único
     const requestId = await this.generateRequestId(connection, tenantName);
 
+    // Calcular requestType basado en productos y servicios
+    const hasProducts =
+      createQuoteDto.products && createQuoteDto.products.length > 0;
+    const hasServices =
+      createQuoteDto.services && createQuoteDto.services.length > 0;
+    let requestType: 'product' | 'service' | 'mixed';
+
+    if (hasProducts && hasServices) {
+      requestType = 'mixed';
+    } else if (hasServices) {
+      requestType = 'service';
+    } else {
+      requestType = 'product';
+    }
+
     const quote = new QuoteModel({
       requestId,
       tenantId,
       tenantName,
       userEmail,
       userName,
-      requestType: 'Comprar productos',
+      requestType,
       status: 'Requested', // Auto-seteado en creación
-      products: createQuoteDto.products,
+      products: createQuoteDto.products || [],
+      services: createQuoteDto.services || [],
       isDeleted: false,
     });
 
