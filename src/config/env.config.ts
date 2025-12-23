@@ -12,6 +12,7 @@ export const EnvConfiguration = () => ({
     slackWebhookUrlShipments: process.env.SLACK_WEBHOOK_URL_SHIPMENTS,
     slackWebhookUrlWarehouseAlerts:
       process.env.SLACK_WEBHOOK_URL_WAREHOUSE_ALERTS,
+    slackWebhookUrlQuotes: process.env.SLACK_WEBHOOK_URL_QUOTES,
   },
   database: {
     connectionString: process.env.DB_CONNECTION_STRING,

@@ -8,6 +8,9 @@ export class ShipmentMetadata extends Document {
 
   @Prop({ required: true, default: 0 })
   lastOrderNumber: number;
+
+  @Prop({ required: true, default: 0 })
+  lastQuoteNumber: number;
 }
 
 export const ShipmentMetadataSchema =
