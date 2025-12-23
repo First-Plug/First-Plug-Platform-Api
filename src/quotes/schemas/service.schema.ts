@@ -8,6 +8,18 @@ import { Types } from 'mongoose';
 @Schema({ _id: false })
 export class ProductSnapshotSchema {
   @Prop({ type: String })
+  category?: string; // Categoría del producto (Computer, Monitor, Audio, etc.)
+
+  @Prop({ type: String })
+  name?: string; // Nombre del producto
+
+  @Prop({ type: String })
+  brand?: string; // Marca del producto
+
+  @Prop({ type: String })
+  model?: string; // Modelo del producto
+
+  @Prop({ type: String })
   serialNumber?: string;
 
   @Prop({ type: String })
@@ -52,4 +64,3 @@ export class ITSupportServiceSchema extends BaseServiceSchema {
   @Prop({ type: String, enum: ['IT Support'], required: true })
   serviceCategory: 'IT Support';
 }
-

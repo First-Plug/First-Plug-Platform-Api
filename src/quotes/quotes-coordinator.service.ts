@@ -313,6 +313,18 @@ export class QuotesCoordinatorService {
     // Agregar snapshot del producto si existe
     if (service.productSnapshot) {
       baseFields['productSnapshot'] = {
+        ...(service.productSnapshot.category && {
+          category: service.productSnapshot.category,
+        }),
+        ...(service.productSnapshot.name && {
+          name: service.productSnapshot.name,
+        }),
+        ...(service.productSnapshot.brand && {
+          brand: service.productSnapshot.brand,
+        }),
+        ...(service.productSnapshot.model && {
+          model: service.productSnapshot.model,
+        }),
         ...(service.productSnapshot.serialNumber && {
           serialNumber: service.productSnapshot.serialNumber,
         }),

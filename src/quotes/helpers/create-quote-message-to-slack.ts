@@ -65,61 +65,118 @@ const buildServiceBlocks = (services: any[]): any[] => {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*Service ${index + 1}: ${service.serviceCategory}*`,
+        text: `*Item ${index + 1}: ${service.serviceCategory}*`,
       },
     });
 
-    // Información del servicio
-    const serviceInfo: string[] = [];
-
-    // Issues
-    if (service.issues && service.issues.length > 0) {
-      serviceInfo.push(`*Issues:* ${service.issues.join(', ')}`);
-    }
-
-    // Description
-    if (service.description) {
-      serviceInfo.push(`*Description:* ${service.description}`);
-    }
-
-    // Issue start date
-    if (service.issueStartDate) {
-      serviceInfo.push(
-        `*Issue Start Date:* ${formatDateToDay(service.issueStartDate)}`,
-      );
-    }
-
-    // Impact level
-    if (service.impactLevel) {
-      serviceInfo.push(`*Impact Level:* ${service.impactLevel}`);
-    }
-
-    // Product snapshot
+    // Información del producto
     if (service.productSnapshot) {
       const snapshot = service.productSnapshot;
-      const productInfo: string[] = [];
 
-      if (snapshot.serialNumber)
-        productInfo.push(`Serial: ${snapshot.serialNumber}`);
-      if (snapshot.location) productInfo.push(`Location: ${snapshot.location}`);
-      if (snapshot.assignedTo)
-        productInfo.push(`Assigned to: ${snapshot.assignedTo}`);
-      if (snapshot.countryCode)
-        productInfo.push(
-          `Country: ${convertCountryCodeToName(snapshot.countryCode)}`,
-        );
+      // Mostrar categoría si existe
+      if (snapshot.category) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Category:* ${snapshot.category}`,
+          },
+        });
+      }
 
-      if (productInfo.length > 0) {
-        serviceInfo.push(`*Product:* ${productInfo.join(' | ')}`);
+      // Construir identificación del producto: Brand + Model + Name
+      const brandModelName: string[] = [];
+      if (snapshot.brand) brandModelName.push(snapshot.brand);
+      if (snapshot.model) brandModelName.push(snapshot.model);
+      if (snapshot.name) brandModelName.push(snapshot.name);
+
+      if (brandModelName.length > 0) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+          },
+        });
+      }
+
+      // Serial Number
+      if (snapshot.serialNumber) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Serial Number:* ${snapshot.serialNumber}`,
+          },
+        });
+      }
+
+      // Location + Country
+      if (snapshot.location || snapshot.countryCode) {
+        let locationText = '';
+        if (snapshot.location && snapshot.assignedTo && snapshot.countryCode) {
+          locationText = `${snapshot.location} + ${snapshot.assignedTo} + ${convertCountryCodeToName(snapshot.countryCode)}`;
+        } else if (snapshot.location && snapshot.countryCode) {
+          locationText = `${snapshot.location} + ${convertCountryCodeToName(snapshot.countryCode)}`;
+        } else if (snapshot.location) {
+          locationText = snapshot.location;
+        }
+
+        if (locationText) {
+          blocks.push({
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Location:* ${locationText}`,
+            },
+          });
+        }
       }
     }
 
-    if (serviceInfo.length > 0) {
+    // Issues
+    if (service.issues && service.issues.length > 0) {
       blocks.push({
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: serviceInfo.join('\n'),
+          text: `*Issues:* ${service.issues.join(', ')}`,
+        },
+      });
+    }
+
+    // Description
+    if (service.description) {
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Description:* ${service.description}`,
+        },
+      });
+    }
+
+    // Issue start date
+    if (service.issueStartDate) {
+      // Convertir YYYY-MM-DD a dd/mm/yyyy sin problemas de zona horaria
+      const [year, month, day] = service.issueStartDate.split('-');
+      const formattedDate = `${day}/${month}/${year}`;
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Started:* ${formattedDate}`,
+        },
+      });
+    }
+
+    // Impact level
+    if (service.impactLevel) {
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Impact Level:* ${service.impactLevel}`,
         },
       });
     }
