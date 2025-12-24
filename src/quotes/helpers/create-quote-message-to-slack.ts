@@ -410,14 +410,21 @@ export const CreateQuoteMessageToSlack = (
     },
   );
 
+  // Determinar icono y título según el tipo de acción
+  const headerIcon = actionType === 'Cancelled' ? '❌' : '📋';
+  const headerTitle =
+    actionType === 'Cancelled'
+      ? `Cancelación del pedido de cotización n°: ${quote.requestId}`
+      : `Pedido de cotización n°: ${quote.requestId}`;
+
   const message = {
-    text: `📋 Pedido de cotización n°: ${quote.requestId}`,
+    text: `${headerIcon} ${headerTitle}`,
     blocks: [
       {
         type: 'header',
         text: {
           type: 'plain_text',
-          text: `📋 Pedido de cotización n°: ${quote.requestId}`,
+          text: `${headerIcon} ${headerTitle}`,
           emoji: true,
         },
       },

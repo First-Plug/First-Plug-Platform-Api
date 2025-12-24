@@ -351,7 +351,9 @@
 }
 ```
 
-## Endpoint
+## Endpoints
+
+### Crear Quote
 
 ```
 POST /api/quotes
@@ -360,6 +362,99 @@ Authorization: Bearer {token}
 
 {payload}
 ```
+
+### Cancelar Quote
+
+```
+PATCH /api/quotes/:id/cancel
+Content-Type: application/json
+Authorization: Bearer {token}
+```
+
+**Respuesta:**
+
+```json
+{
+  "id": "67a1b2c3d4e5f6g7h8i9j0k1",
+  "tenantName": "firstplug",
+  "userName": "John Doe",
+  "userEmail": "john@example.com",
+  "requestType": "mixed",
+  "status": "Cancelled",
+  "products": [...],
+  "services": [...],
+  "createdAt": "2025-12-23T10:30:00Z",
+  "updatedAt": "2025-12-23T11:45:00Z"
+}
+```
+
+**Nota:** No requiere payload en el body. Solo cambia el status de "Requested" a "Cancelled" y desencadena:
+
+- Mensaje a Slack informando la cancelación (con icono ❌ y título "Cancelación del pedido de cotización n°: ...")
+- History record con oldData (status: Requested) y newData (status: Cancelled)
+
+**Mensaje de Slack para Cancelación:**
+
+```
+❌ Cancelación del pedido de cotización n°: QR-mechi_test-000030
+
+Type: Cancelled
+Tenant: mechi_test
+Request Type: mixed
+Products: 2
+Services: 1
+userName: John Doe
+usermail: john@example.com
+
+[Detalles de productos y servicios...]
+```
+
+**History Record para Cancelación (GET /history):**
+
+```json
+{
+  "_id": "67a1b2c3d4e5f6g7h8i9j0k2",
+  "actionType": "cancel",
+  "userId": "john@example.com",
+  "itemType": "quotes",
+  "changes": {
+    "oldData": {
+      "requestId": "QR-mechi_test-000030",
+      "tenantName": "mechi_test",
+      "userEmail": "john@example.com",
+      "userName": "John Doe",
+      "requestType": "mixed",
+      "status": "Requested",
+      "productCount": 2,
+      "totalQuantity": 3,
+      "products": [...],
+      "serviceCount": 1,
+      "services": [...]
+    },
+    "newData": {
+      "requestId": "QR-mechi_test-000030",
+      "tenantName": "mechi_test",
+      "userEmail": "john@example.com",
+      "userName": "John Doe",
+      "requestType": "mixed",
+      "status": "Cancelled",
+      "productCount": 2,
+      "totalQuantity": 3,
+      "products": [...],
+      "serviceCount": 1,
+      "services": [...]
+    }
+  },
+  "createdAt": "2025-12-23T11:45:00Z",
+  "updatedAt": "2025-12-23T11:45:00Z"
+}
+```
+
+**Nota para el Frontend:**
+
+- Usar `actionType === 'cancel'` para identificar cancelaciones
+- Comparar `oldData.status` (Requested) vs `newData.status` (Cancelled)
+- Mostrar icono ❌ o color rojo para cancelaciones
 
 ## Notas
 
