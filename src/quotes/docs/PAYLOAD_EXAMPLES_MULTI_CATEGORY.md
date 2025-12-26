@@ -395,6 +395,91 @@
 - Agregar detalles adicionales opcionales
 - Contar automáticamente dispositivos por tipo (Mac vs Windows)
 
+## 15. Quote Completo: Productos + Enrollment + IT Support
+
+```json
+{
+  "products": [
+    {
+      "category": "Monitor",
+      "quantity": 2,
+      "brand": ["Dell"],
+      "model": ["U2720Q"],
+      "screenSize": ["27\""],
+      "screenTechnology": ["IPS"],
+      "otherSpecifications": "USB-C connectivity, 4K resolution",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25",
+      "comments": "Para la oficina principal"
+    }
+  ],
+  "services": [
+    {
+      "serviceCategory": "Enrollment",
+      "productIds": ["690b9d8e3c2dc7018e2f5036", "690b9d8e3c2dc7018e2f5037"],
+      "enrolledDevices": [
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "MacBook Pro",
+          "serialNumber": "5dys87g1s27",
+          "location": "FP warehouse",
+          "assignedTo": "Sede FirstPlug P",
+          "countryCode": "AR"
+        },
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "iMac",
+          "serialNumber": "imac-serial-2025",
+          "location": "Our office",
+          "assignedTo": "NuevoConShipments",
+          "countryCode": "FR"
+        }
+      ],
+      "additionalDetails": "Enroll 2 Mac devices for MDM management. Require Apple Business Manager integration and device supervision."
+    },
+    {
+      "serviceCategory": "IT Support",
+      "productId": "690b9d8e3c2dc7018e2f5038",
+      "productSnapshot": {
+        "category": "Computer",
+        "name": "Computer",
+        "brand": "Asus",
+        "model": "IdeaPad Serie S",
+        "serialNumber": "grupo-6-asus",
+        "location": "FP warehouse",
+        "assignedTo": "Default Warehouse",
+        "countryCode": "SG"
+      },
+      "issues": [
+        "Device not connecting to network",
+        "Slow performance",
+        "Battery not charging"
+      ],
+      "description": "Asus IdeaPad Serie S experiencing connectivity issues, performance degradation, and battery charging problems. Needs diagnostic and repair.",
+      "issueStartDate": "2025-12-10",
+      "impactLevel": "high"
+    }
+  ]
+}
+```
+
+**Estructura del ejemplo:**
+
+- **1 Producto**: Monitor Dell 27\" (cantidad 2)
+- **1 Enrollment Service**: 2 computadoras Mac (MacBook Pro + iMac) para enrollar en MDM
+- **1 IT Support Service**: Asus IdeaPad con problemas de conectividad y batería
+
+**En Slack se mostrará:**
+
+- Sección de productos: 2 monitores Dell
+- Sección de Enrollment: "Devices to Enroll: 2 Mac" + detalles de cada Mac
+- Sección de IT Support: Detalles del Asus con issues, descripción, fecha de inicio e impacto
+
 ## Endpoints
 
 ### Crear Quote
