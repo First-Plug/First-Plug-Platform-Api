@@ -64,3 +64,22 @@ export class ITSupportServiceSchema extends BaseServiceSchema {
   @Prop({ type: String, enum: ['IT Support'], required: true })
   serviceCategory: 'IT Support';
 }
+
+/**
+ * Subdocumento para Enrollment Service
+ * Permite enrollar múltiples dispositivos (Mac, Windows, etc.)
+ */
+@Schema({ _id: false })
+export class EnrollmentServiceSchema {
+  @Prop({ type: String, enum: ['Enrollment'], required: true })
+  serviceCategory: 'Enrollment';
+
+  @Prop({ type: [Types.ObjectId] })
+  productIds?: Types.ObjectId[]; // IDs de los productos a enrollar (referencia)
+
+  @Prop({ type: [ProductSnapshotSchema], required: true })
+  enrolledDevices: ProductSnapshotSchema[]; // Array de dispositivos a enrollar con snapshots
+
+  @Prop({ type: String })
+  additionalDetails?: string; // Detalles adicionales (opcional)
+}

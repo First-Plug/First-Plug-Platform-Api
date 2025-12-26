@@ -56,10 +56,34 @@ export const ITSupportServiceSchema = BaseServiceSchema.extend({
 export type ITSupportService = z.infer<typeof ITSupportServiceSchema>;
 
 /**
- * Por ahora solo IT Support, pero preparado para extensión
- * Cuando haya más servicios, cambiar a z.union([...])
+ * Enrollment Service Schema
+ * Permite enrollar múltiples dispositivos
  */
-export const ServiceUnion = ITSupportServiceSchema;
+export const EnrollmentServiceSchema = z.object({
+  serviceCategory: z.literal('Enrollment'),
+  productIds: z
+    .array(z.string())
+    .optional()
+    .describe('IDs de los productos a enrollar (referencia)'),
+  enrolledDevices: z
+    .array(ProductSnapshotSchema)
+    .min(1, 'Al menos un dispositivo es requerido para enrollar'),
+  additionalDetails: z
+    .string()
+    .max(1000, 'Additional details no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+export type EnrollmentService = z.infer<typeof EnrollmentServiceSchema>;
+
+/**
+ * Union de todos los servicios
+ * Soporta IT Support y Enrollment
+ */
+export const ServiceUnion = z.union([
+  ITSupportServiceSchema,
+  EnrollmentServiceSchema,
+]);
 
 /**
  * Zod Schema para CreateService DTO

@@ -34,7 +34,18 @@ export interface ITSupportService extends BaseServiceItem {
 }
 
 /**
+ * Enrollment Service
+ * Permite enrollar múltiples dispositivos (Mac, Windows, etc.)
+ */
+export interface EnrollmentService {
+  serviceCategory: 'Enrollment';
+  productIds?: string[]; // IDs de los productos a enrollar (referencia)
+  enrolledDevices: ProductSnapshot[]; // Array de dispositivos a enrollar con snapshots
+  additionalDetails?: string; // Detalles adicionales (opcional)
+}
+
+/**
  * Tipos para discriminated union
  * Soporta múltiples categorías de servicios
  */
-export type ServiceData = ITSupportService;
+export type ServiceData = ITSupportService | EnrollmentService;

@@ -8,12 +8,16 @@ import { CreateServiceSchema } from '../validations/service.zod';
 export class CreateServiceDto extends createZodDto(CreateServiceSchema) {}
 
 /**
- * DTO para respuesta de Service
+ * DTO para respuesta de IT Support Service
  */
-export class ServiceResponseDto {
+export class ITSupportServiceResponseDto {
   serviceCategory: 'IT Support';
   productId?: string;
   productSnapshot?: {
+    category?: string;
+    name?: string;
+    brand?: string;
+    model?: string;
     serialNumber?: string;
     location?: string;
     assignedTo?: string;
@@ -24,6 +28,32 @@ export class ServiceResponseDto {
   issueStartDate?: string;
   impactLevel: 'low' | 'medium' | 'high';
 }
+
+/**
+ * DTO para respuesta de Enrollment Service
+ */
+export class EnrollmentServiceResponseDto {
+  serviceCategory: 'Enrollment';
+  productIds?: string[]; // IDs de los productos a enrollar (referencia)
+  enrolledDevices: Array<{
+    category?: string;
+    name?: string;
+    brand?: string;
+    model?: string;
+    serialNumber?: string;
+    location?: string;
+    assignedTo?: string;
+    countryCode?: string;
+  }>;
+  additionalDetails?: string;
+}
+
+/**
+ * Union de todos los Service Response DTOs
+ */
+export type ServiceResponseDto =
+  | ITSupportServiceResponseDto
+  | EnrollmentServiceResponseDto;
 
 /**
  * DTO para agregar servicio a quote

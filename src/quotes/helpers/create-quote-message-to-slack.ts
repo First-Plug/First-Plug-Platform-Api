@@ -52,7 +52,77 @@ const formatDateToDay = (dateString: string): string => {
 };
 
 /**
+ * Helper para mostrar snapshot de producto
+ */
+const buildProductSnapshotBlock = (snapshot: any): any[] => {
+  const blocks: any[] = [];
+
+  // Mostrar categoría si existe
+  if (snapshot.category) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Category:* ${snapshot.category}`,
+      },
+    });
+  }
+
+  // Construir identificación del producto: Brand + Model + Name
+  const brandModelName: string[] = [];
+  if (snapshot.brand) brandModelName.push(snapshot.brand);
+  if (snapshot.model) brandModelName.push(snapshot.model);
+  if (snapshot.name) brandModelName.push(snapshot.name);
+
+  if (brandModelName.length > 0) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+      },
+    });
+  }
+
+  // Serial Number
+  if (snapshot.serialNumber) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Serial Number:* ${snapshot.serialNumber}`,
+      },
+    });
+  }
+
+  // Location + Country
+  if (snapshot.location || snapshot.countryCode) {
+    let locationText = '';
+    if (snapshot.location && snapshot.assignedTo && snapshot.countryCode) {
+      locationText = `${snapshot.location} + ${snapshot.assignedTo} + ${convertCountryCodeToName(snapshot.countryCode)}`;
+    } else if (snapshot.location && snapshot.countryCode) {
+      locationText = `${snapshot.location} + ${convertCountryCodeToName(snapshot.countryCode)}`;
+    } else if (snapshot.location) {
+      locationText = snapshot.location;
+    }
+
+    if (locationText) {
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Location:* ${locationText}`,
+        },
+      });
+    }
+  }
+
+  return blocks;
+};
+
+/**
  * Construye bloques de Slack para servicios
+ * Soporta IT Support y Enrollment
  */
 const buildServiceBlocks = (services: any[]): any[] => {
   if (!services || services.length === 0) return [];
@@ -69,116 +139,112 @@ const buildServiceBlocks = (services: any[]): any[] => {
       },
     });
 
-    // Información del producto
-    if (service.productSnapshot) {
-      const snapshot = service.productSnapshot;
+    // IT Support Service
+    if (service.serviceCategory === 'IT Support') {
+      // Información del producto
+      if (service.productSnapshot) {
+        blocks.push(...buildProductSnapshotBlock(service.productSnapshot));
+      }
 
-      // Mostrar categoría si existe
-      if (snapshot.category) {
+      // Issues
+      if (service.issues && service.issues.length > 0) {
         blocks.push({
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Category:* ${snapshot.category}`,
+            text: `*Issues:* ${service.issues.join(', ')}`,
           },
         });
       }
 
-      // Construir identificación del producto: Brand + Model + Name
-      const brandModelName: string[] = [];
-      if (snapshot.brand) brandModelName.push(snapshot.brand);
-      if (snapshot.model) brandModelName.push(snapshot.model);
-      if (snapshot.name) brandModelName.push(snapshot.name);
-
-      if (brandModelName.length > 0) {
+      // Description
+      if (service.description) {
         blocks.push({
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+            text: `*Description:* ${service.description}`,
           },
         });
       }
 
-      // Serial Number
-      if (snapshot.serialNumber) {
+      // Issue start date
+      if (service.issueStartDate) {
+        const [year, month, day] = service.issueStartDate.split('-');
+        const formattedDate = `${day}/${month}/${year}`;
         blocks.push({
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Serial Number:* ${snapshot.serialNumber}`,
+            text: `*Started:* ${formattedDate}`,
           },
         });
       }
 
-      // Location + Country
-      if (snapshot.location || snapshot.countryCode) {
-        let locationText = '';
-        if (snapshot.location && snapshot.assignedTo && snapshot.countryCode) {
-          locationText = `${snapshot.location} + ${snapshot.assignedTo} + ${convertCountryCodeToName(snapshot.countryCode)}`;
-        } else if (snapshot.location && snapshot.countryCode) {
-          locationText = `${snapshot.location} + ${convertCountryCodeToName(snapshot.countryCode)}`;
-        } else if (snapshot.location) {
-          locationText = snapshot.location;
-        }
+      // Impact level
+      if (service.impactLevel) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Impact Level:* ${service.impactLevel}`,
+          },
+        });
+      }
+    }
+    // Enrollment Service
+    else if (service.serviceCategory === 'Enrollment') {
+      // Contar dispositivos por tipo (Mac vs Windows)
+      const macCount = (service.enrolledDevices || []).filter(
+        (device: any) =>
+          device.category === 'Computer' &&
+          device.brand &&
+          device.brand.toLowerCase().includes('apple'),
+      ).length;
+      const windowsCount = (service.enrolledDevices || []).filter(
+        (device: any) =>
+          device.category === 'Computer' &&
+          device.brand &&
+          !device.brand.toLowerCase().includes('apple'),
+      ).length;
 
-        if (locationText) {
+      // Resumen de dispositivos
+      const deviceSummary: string[] = [];
+      if (macCount > 0) deviceSummary.push(`${macCount} Mac`);
+      if (windowsCount > 0) deviceSummary.push(`${windowsCount} Windows`);
+
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Devices to Enroll:* ${deviceSummary.join(', ') || 'N/A'}`,
+        },
+      });
+
+      // Detalles de cada dispositivo
+      if (service.enrolledDevices && service.enrolledDevices.length > 0) {
+        service.enrolledDevices.forEach((device: any, deviceIndex: number) => {
           blocks.push({
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `*Location:* ${locationText}`,
+              text: `*Device ${deviceIndex + 1}:*`,
             },
           });
-        }
+          blocks.push(...buildProductSnapshotBlock(device));
+        });
       }
-    }
 
-    // Issues
-    if (service.issues && service.issues.length > 0) {
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Issues:* ${service.issues.join(', ')}`,
-        },
-      });
-    }
-
-    // Description
-    if (service.description) {
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Description:* ${service.description}`,
-        },
-      });
-    }
-
-    // Issue start date
-    if (service.issueStartDate) {
-      // Convertir YYYY-MM-DD a dd/mm/yyyy sin problemas de zona horaria
-      const [year, month, day] = service.issueStartDate.split('-');
-      const formattedDate = `${day}/${month}/${year}`;
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Started:* ${formattedDate}`,
-        },
-      });
-    }
-
-    // Impact level
-    if (service.impactLevel) {
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Impact Level:* ${service.impactLevel}`,
-        },
-      });
+      // Additional details
+      if (service.additionalDetails) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Additional Details:* ${service.additionalDetails}`,
+          },
+        });
+      }
     }
 
     blocks.push({

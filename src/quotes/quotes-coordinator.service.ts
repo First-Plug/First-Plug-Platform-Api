@@ -397,52 +397,76 @@ export class QuotesCoordinatorService {
   }
 
   /**
+   * Helper para formatear snapshot de producto
+   */
+  private formatProductSnapshot(snapshot: any): Record<string, any> {
+    return {
+      ...(snapshot.category && { category: snapshot.category }),
+      ...(snapshot.name && { name: snapshot.name }),
+      ...(snapshot.brand && { brand: snapshot.brand }),
+      ...(snapshot.model && { model: snapshot.model }),
+      ...(snapshot.serialNumber && { serialNumber: snapshot.serialNumber }),
+      ...(snapshot.location && { location: snapshot.location }),
+      ...(snapshot.assignedTo && { assignedTo: snapshot.assignedTo }),
+      ...(snapshot.countryCode && { countryCode: snapshot.countryCode }),
+    };
+  }
+
+  /**
    * Formatear servicio para historial - Incluye todos los campos del servicio
+   * Soporta IT Support y Enrollment
    */
   private formatServiceForHistory(service: any): Record<string, any> {
-    const baseFields = {
-      serviceCategory: service.serviceCategory,
-      issues: service.issues,
-      description: service.description,
-      impactLevel: service.impactLevel,
-      ...(service.issueStartDate && { issueStartDate: service.issueStartDate }),
-    };
-
-    // Agregar snapshot del producto si existe
-    if (service.productSnapshot) {
-      baseFields['productSnapshot'] = {
-        ...(service.productSnapshot.category && {
-          category: service.productSnapshot.category,
-        }),
-        ...(service.productSnapshot.name && {
-          name: service.productSnapshot.name,
-        }),
-        ...(service.productSnapshot.brand && {
-          brand: service.productSnapshot.brand,
-        }),
-        ...(service.productSnapshot.model && {
-          model: service.productSnapshot.model,
-        }),
-        ...(service.productSnapshot.serialNumber && {
-          serialNumber: service.productSnapshot.serialNumber,
-        }),
-        ...(service.productSnapshot.location && {
-          location: service.productSnapshot.location,
-        }),
-        ...(service.productSnapshot.assignedTo && {
-          assignedTo: service.productSnapshot.assignedTo,
-        }),
-        ...(service.productSnapshot.countryCode && {
-          countryCode: service.productSnapshot.countryCode,
+    // IT Support Service
+    if (service.serviceCategory === 'IT Support') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        issues: service.issues,
+        description: service.description,
+        impactLevel: service.impactLevel,
+        ...(service.issueStartDate && {
+          issueStartDate: service.issueStartDate,
         }),
       };
+
+      // Agregar snapshot del producto si existe
+      if (service.productSnapshot) {
+        baseFields['productSnapshot'] = this.formatProductSnapshot(
+          service.productSnapshot,
+        );
+      }
+
+      // Agregar productId si existe
+      if (service.productId) {
+        baseFields['productId'] = service.productId;
+      }
+
+      return baseFields;
+    }
+    // Enrollment Service
+    else if (service.serviceCategory === 'Enrollment') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        deviceCount: service.enrolledDevices?.length || 0,
+        ...(service.productIds && { productIds: service.productIds }),
+        ...(service.additionalDetails && {
+          additionalDetails: service.additionalDetails,
+        }),
+      };
+
+      // Agregar snapshots de dispositivos enrollados
+      if (service.enrolledDevices && service.enrolledDevices.length > 0) {
+        baseFields['enrolledDevices'] = service.enrolledDevices.map(
+          (device: any) => this.formatProductSnapshot(device),
+        );
+      }
+
+      return baseFields;
     }
 
-    // Agregar productId si existe
-    if (service.productId) {
-      baseFields['productId'] = service.productId;
-    }
-
-    return baseFields;
+    // Fallback para servicios desconocidos
+    return {
+      serviceCategory: service.serviceCategory,
+    };
   }
 }

@@ -351,6 +351,50 @@
 }
 ```
 
+## 14. Quote con Enrollment Service (Enrollar Múltiples Dispositivos)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Enrollment",
+      "productIds": ["690b9d8e3c2dc7018e2f5036", "690b9d8e3c2dc7018e2f5037"],
+      "enrolledDevices": [
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "MacBook Pro",
+          "serialNumber": "5dys87g1s27",
+          "location": "FP warehouse",
+          "assignedTo": "Sede FirstPlug P",
+          "countryCode": "AR"
+        },
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "ipod",
+          "serialNumber": "ipod-serial-001",
+          "location": "Our office",
+          "assignedTo": "NuevoConShipments",
+          "countryCode": "FR"
+        }
+      ],
+      "additionalDetails": "Enroll 2 Mac devices for MDM management. Require Apple Business Manager integration."
+    }
+  ]
+}
+```
+
+**Nota:** El servicio de Enrollment permite:
+
+- Enrollar múltiples dispositivos en una sola solicitud
+- Guardar IDs de los productos como referencia (`productIds`)
+- Capturar snapshots de cada dispositivo (brand, model, serial, location, etc.)
+- Agregar detalles adicionales opcionales
+- Contar automáticamente dispositivos por tipo (Mac vs Windows)
+
 ## Endpoints
 
 ### Crear Quote
@@ -458,18 +502,45 @@ usermail: john@example.com
 
 ## Notas
 
-- **Productos**: `quantity` y `country` son **requeridos**
-- **Servicios**: `serviceCategory`, `issues` (array min 1), `description`, `impactLevel` son **requeridos**
+### Productos
+
+- `quantity` y `country` son **requeridos**
+
+### Servicios
+
+#### IT Support Service
+
+- **Requeridos**: `serviceCategory`, `issues` (array min 1), `description`, `impactLevel`
+- **Opcionales**: `productId`, `productSnapshot`, `issueStartDate`
+- Soporta un único producto con snapshot
+
+#### Enrollment Service
+
+- **Requeridos**: `serviceCategory`, `enrolledDevices` (array min 1)
+- **Opcionales**: `additionalDetails`
+- Soporta múltiples dispositivos en `enrolledDevices`
+- Cada dispositivo debe tener su `productSnapshot` con datos completos
+- En Slack se muestra:
+  - Conteo de dispositivos por tipo (Mac vs Windows)
+  - Detalles de cada dispositivo enrollado
+  - Detalles adicionales si existen
+
+### ProductSnapshot
+
+Incluye identificación completa del producto (importante para history y Slack):
+
+- `category`: Categoría del producto (Computer, Audio, Monitor, etc.) - **IMPORTANTE**
+- `name`: Nombre del producto (ej: "Audio", "Computer")
+- `brand`: Marca (ej: "Sony", "Asus", "Apple")
+- `model`: Modelo (ej: "Zone Vibe 125", "IdeaPad Serie S", "MacBook Pro")
+- `serialNumber`: Serial del dispositivo (ej: "serialserial1", "5dys87g1s27")
+- `location`: Dónde está (Employee, FP warehouse, Our office)
+- `assignedTo`: A quién está asignado (nombre del member, office, o warehouse)
+- `countryCode`: Código ISO del país (ej: "PY", "SG", "AR", "FR")
+
+### Otros
+
 - **issueStartDate**: Formato **YYYY-MM-DD** (ej: "2025-12-14") - Se guarda así en BD y se devuelve en GET así. En Slack se muestra como dd/mm/yyyy
-- **Snapshot**: Incluye identificación completa del producto
-  - `category`: Categoría del producto (Computer, Audio, Monitor, etc.) - **IMPORTANTE para el detail**
-  - `name`: Nombre del producto (ej: "Audio", "Computer")
-  - `brand`: Marca (ej: "Sony", "Asus")
-  - `model`: Modelo (ej: "Zone Vibe 125", "IdeaPad Serie S")
-  - `serialNumber`: Serial del dispositivo (ej: "serialserial1", "grupo 6")
-  - `location`: Dónde está (Employee, FP warehouse, Our office)
-  - `assignedTo`: A quién está asignado (nombre del member, office, o warehouse)
-  - `countryCode`: Código ISO del país (ej: "PY", "SG")
 - **requestType** se calcula automáticamente:
   - Solo productos → `"product"`
   - Solo servicios → `"service"`
