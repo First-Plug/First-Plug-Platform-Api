@@ -77,12 +77,95 @@ export const EnrollmentServiceSchema = z.object({
 export type EnrollmentService = z.infer<typeof EnrollmentServiceSchema>;
 
 /**
+ * Schemas para ubicaciones en Data Wipe
+ */
+const MemberLocationSchema = z.object({
+  memberId: z.string().optional(),
+  assignedMember: z.string().optional(),
+  assignedEmail: z.string().email().optional(),
+  countryCode: z.string().max(2).optional(),
+});
+
+const OfficeLocationSchema = z.object({
+  officeId: z.string().optional(),
+  officeName: z.string().optional(),
+  countryCode: z.string().max(2).optional(),
+});
+
+const WarehouseLocationSchema = z.object({
+  warehouseId: z.string().optional(),
+  warehouseName: z.string().optional(),
+  countryCode: z.string().max(2).optional(),
+});
+
+/**
+ * Schema para destino de Data Wipe
+ */
+const DataWipeDestinationSchema = z.object({
+  destinationType: z
+    .enum(['Employee', 'Our office', 'FP warehouse'])
+    .optional(),
+  member: MemberLocationSchema.optional(),
+  office: OfficeLocationSchema.optional(),
+  warehouse: WarehouseLocationSchema.optional(),
+});
+
+/**
+ * Schema para asset en Data Wipe
+ */
+const DataWipeAssetSchema = z.object({
+  productId: z.string().optional(),
+  productSnapshot: ProductSnapshotSchema.optional(),
+  desirableDate: z
+    .string()
+    .refine(
+      (val) => {
+        // Validar formato YYYY-MM-DD
+        return /^\d{4}-\d{2}-\d{2}$/.test(val);
+      },
+      {
+        message: 'Desirable date debe estar en formato YYYY-MM-DD',
+      },
+    )
+    .optional(),
+  currentLocation: z
+    .enum(['Employee', 'Our office', 'FP warehouse'])
+    .optional(),
+  currentMember: MemberLocationSchema.optional(),
+  currentOffice: OfficeLocationSchema.optional(),
+  currentWarehouse: WarehouseLocationSchema.optional(),
+  destination: DataWipeDestinationSchema.optional(),
+});
+
+/**
+ * Data Wipe Service Schema
+ * Permite solicitar data wipe para múltiples assets
+ */
+export const DataWipeServiceSchema = z.object({
+  serviceCategory: z.literal('Data Wipe'),
+  productIds: z
+    .array(z.string())
+    .optional()
+    .describe('IDs de los productos a hacer wipe (referencia)'),
+  assets: z
+    .array(DataWipeAssetSchema)
+    .min(1, 'Al menos un asset es requerido para data wipe'),
+  additionalDetails: z
+    .string()
+    .max(1000, 'Additional details no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+export type DataWipeService = z.infer<typeof DataWipeServiceSchema>;
+
+/**
  * Union de todos los servicios
- * Soporta IT Support y Enrollment
+ * Soporta IT Support, Enrollment y Data Wipe
  */
 export const ServiceUnion = z.union([
   ITSupportServiceSchema,
   EnrollmentServiceSchema,
+  DataWipeServiceSchema,
 ]);
 
 /**

@@ -123,11 +123,17 @@ const buildProductSnapshotBlock = (snapshot: any): any[] => {
 /**
  * Construye bloques de Slack para servicios
  * Soporta IT Support y Enrollment
+ * @param services - Array de servicios
+ * @param startItemNumber - Número de item inicial (para numeración secuencial con productos)
  */
-const buildServiceBlocks = (services: any[]): any[] => {
+const buildServiceBlocks = (
+  services: any[],
+  startItemNumber: number = 1,
+): any[] => {
   if (!services || services.length === 0) return [];
 
-  return services.flatMap((service: any, index: number) => {
+  let itemCounter = startItemNumber;
+  return services.flatMap((service: any) => {
     const blocks: any[] = [];
 
     // Encabezado del servicio
@@ -135,9 +141,10 @@ const buildServiceBlocks = (services: any[]): any[] => {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*Item ${index + 1}: ${service.serviceCategory}*`,
+        text: `*Item ${itemCounter}: ${service.serviceCategory}*`,
       },
     });
+    itemCounter++;
 
     // IT Support Service
     if (service.serviceCategory === 'IT Support') {
@@ -194,6 +201,11 @@ const buildServiceBlocks = (services: any[]): any[] => {
     }
     // Enrollment Service
     else if (service.serviceCategory === 'Enrollment') {
+      // Contar total de computadoras
+      const totalComputers = (service.enrolledDevices || []).filter(
+        (device: any) => device.category === 'Computer',
+      ).length;
+
       // Contar dispositivos por tipo (Mac vs Windows)
       const macCount = (service.enrolledDevices || []).filter(
         (device: any) =>
@@ -208,18 +220,29 @@ const buildServiceBlocks = (services: any[]): any[] => {
           !device.brand.toLowerCase().includes('apple'),
       ).length;
 
-      // Resumen de dispositivos
-      const deviceSummary: string[] = [];
-      if (macCount > 0) deviceSummary.push(`${macCount} Mac`);
-      if (windowsCount > 0) deviceSummary.push(`${windowsCount} Windows`);
-
+      // Total quantity of computers
       blocks.push({
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Devices to Enroll:* ${deviceSummary.join(', ') || 'N/A'}`,
+          text: `*Total quantity of computers:* ${totalComputers}`,
         },
       });
+
+      // Resumen de dispositivos por tipo
+      const deviceSummary: string[] = [];
+      if (macCount > 0) deviceSummary.push(`${macCount} Mac`);
+      if (windowsCount > 0) deviceSummary.push(`${windowsCount} Windows`);
+
+      if (deviceSummary.length > 0) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Device Types:* ${deviceSummary.join(', ')}`,
+          },
+        });
+      }
 
       // Detalles de cada dispositivo
       if (service.enrolledDevices && service.enrolledDevices.length > 0) {
@@ -228,20 +251,229 @@ const buildServiceBlocks = (services: any[]): any[] => {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `*Device ${deviceIndex + 1}:*`,
+              text: `*Computer ${deviceIndex + 1}:*`,
             },
           });
-          blocks.push(...buildProductSnapshotBlock(device));
+
+          // Brand + Model + Name
+          const brandModelName: string[] = [];
+          if (device.brand) brandModelName.push(device.brand);
+          if (device.model) brandModelName.push(device.model);
+          if (device.name) brandModelName.push(device.name);
+
+          if (brandModelName.length > 0) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+              },
+            });
+          }
+
+          // Serial Number
+          if (device.serialNumber) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Serial Number:* ${device.serialNumber}`,
+              },
+            });
+          }
+
+          // Location + Country
+          if (device.location || device.countryCode) {
+            let locationText = '';
+            if (device.location && device.countryCode) {
+              const countryName = convertCountryCodeToName(device.countryCode);
+              locationText = `${device.location} + ${countryName}`;
+            } else if (device.location) {
+              locationText = device.location;
+            } else if (device.countryCode) {
+              locationText = convertCountryCodeToName(device.countryCode);
+            }
+
+            if (locationText) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Location:* ${locationText}`,
+                },
+              });
+            }
+          }
         });
       }
 
-      // Additional details
+      // Additional info
       if (service.additionalDetails) {
         blocks.push({
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Additional Details:* ${service.additionalDetails}`,
+            text: `*Additional info:* ${service.additionalDetails}`,
+          },
+        });
+      }
+    }
+    // Data Wipe Service
+    else if (service.serviceCategory === 'Data Wipe') {
+      // Contar total de assets
+      const totalAssets = (service.assets || []).length;
+
+      // Total quantity of assets
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Total quantity of assets:* ${totalAssets}`,
+        },
+      });
+
+      // Detalles de cada asset
+      if (service.assets && service.assets.length > 0) {
+        service.assets.forEach((asset: any, assetIndex: number) => {
+          blocks.push({
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Product ${assetIndex + 1}: ${asset.productSnapshot?.category || 'Unknown'}*`,
+            },
+          });
+
+          // Requested date
+          if (asset.desirableDate) {
+            const [year, month, day] = asset.desirableDate.split('-');
+            const formattedDate = `${day}/${month}/${year}`;
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Requested date:* ${formattedDate}`,
+              },
+            });
+          }
+
+          // Serial Number
+          if (asset.productSnapshot?.serialNumber) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Serial Number:* ${asset.productSnapshot.serialNumber}`,
+              },
+            });
+          }
+
+          // Brand + Model + Name
+          const brandModelName: string[] = [];
+          if (asset.productSnapshot?.brand)
+            brandModelName.push(asset.productSnapshot.brand);
+          if (asset.productSnapshot?.model)
+            brandModelName.push(asset.productSnapshot.model);
+          if (asset.productSnapshot?.name)
+            brandModelName.push(asset.productSnapshot.name);
+
+          if (brandModelName.length > 0) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+              },
+            });
+          }
+
+          // Current Location
+          if (asset.currentLocation) {
+            let locationText = '';
+
+            if (asset.currentLocation === 'Employee' && asset.currentMember) {
+              const countryName = convertCountryCodeToName(
+                asset.currentMember.countryCode || '',
+              );
+              locationText = `${asset.currentMember.assignedMember || 'Unknown'} + ${countryName}`;
+            } else if (
+              asset.currentLocation === 'Our office' &&
+              asset.currentOffice
+            ) {
+              const countryName = convertCountryCodeToName(
+                asset.currentOffice.countryCode || '',
+              );
+              locationText = `${asset.currentOffice.officeName || 'Unknown'} + ${countryName}`;
+            } else if (
+              asset.currentLocation === 'FP warehouse' &&
+              asset.currentWarehouse
+            ) {
+              const countryName = convertCountryCodeToName(
+                asset.currentWarehouse.countryCode || '',
+              );
+              locationText = `${asset.currentWarehouse.warehouseName || 'FP warehouse'} + ${countryName}`;
+            }
+
+            if (locationText) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Location:* ${locationText}`,
+                },
+              });
+            }
+          }
+
+          // Destination
+          if (asset.destination && asset.destination.destinationType) {
+            let destinationText = '';
+
+            if (
+              asset.destination.destinationType === 'Employee' &&
+              asset.destination.member
+            ) {
+              const countryName = convertCountryCodeToName(
+                asset.destination.member.countryCode || '',
+              );
+              destinationText = `${asset.destination.member.assignedMember || 'Unknown'} + ${countryName}`;
+            } else if (
+              asset.destination.destinationType === 'Our office' &&
+              asset.destination.office
+            ) {
+              const countryName = convertCountryCodeToName(
+                asset.destination.office.countryCode || '',
+              );
+              destinationText = `${asset.destination.office.officeName || 'Unknown'} + ${countryName}`;
+            } else if (
+              asset.destination.destinationType === 'FP warehouse' &&
+              asset.destination.warehouse
+            ) {
+              const countryName = convertCountryCodeToName(
+                asset.destination.warehouse.countryCode || '',
+              );
+              destinationText = `${asset.destination.warehouse.warehouseName || 'FP warehouse'} + ${countryName}`;
+            }
+
+            if (destinationText) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Destination:* ${destinationText}`,
+                },
+              });
+            }
+          }
+        });
+      }
+
+      // Additional info
+      if (service.additionalDetails) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Additional info:* ${service.additionalDetails}`,
           },
         });
       }
@@ -265,172 +497,178 @@ export const CreateQuoteMessageToSlack = (
   quote: Quote,
   actionType: 'New' | 'Updated' | 'Cancelled' = 'New',
 ) => {
-  // Construir bloques de detalles para cada producto
-  const productBlocks = quote.products.flatMap(
-    (product: any, index: number) => {
-      const blocks: any[] = [];
+  // Contador global de items (productos + servicios)
+  let itemCounter = 1;
 
-      // Encabezado del producto
+  // Construir bloques de detalles para cada producto
+  const productBlocks = quote.products.flatMap((product: any) => {
+    const blocks: any[] = [];
+    const currentItemNumber = itemCounter++;
+
+    // Encabezado del producto
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Item ${currentItemNumber}: x${product.quantity} ${product.category}*`,
+      },
+    });
+
+    // Información de entrega
+    const deliveryInfo: string[] = [];
+    if (product.deliveryDate)
+      deliveryInfo.push(
+        `*Required Delivery Date:* ${formatDateToDay(product.deliveryDate)}`,
+      );
+    if (product.country || product.city) {
+      const countryName = convertCountryCodeToName(product.country);
+      const location = [countryName, product.city].filter(Boolean).join(', ');
+      deliveryInfo.push(`*Location:* ${location}`);
+    }
+    if (product.comments)
+      deliveryInfo.push(`*Additional quote comments:* ${product.comments}`);
+
+    if (deliveryInfo.length > 0) {
       blocks.push({
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Item ${index + 1}: x${product.quantity} ${product.category}*`,
+          text: deliveryInfo.join('\n'),
         },
       });
+    }
 
-      // Información de entrega
-      const deliveryInfo: string[] = [];
-      if (product.deliveryDate)
-        deliveryInfo.push(
-          `*Required Delivery Date:* ${formatDateToDay(product.deliveryDate)}`,
+    // Especificaciones según categoría
+    const specs: string[] = [];
+
+    // Computer
+    if (product.category === 'Computer') {
+      if (product.os) specs.push(`*OS:* ${product.os}`);
+      if (product.brand && product.brand.length > 0)
+        specs.push(`*Brand:* ${product.brand.join(', ')}`);
+      if (product.model && product.model.length > 0)
+        specs.push(`*Model:* ${product.model.join(', ')}`);
+      if (product.processor && product.processor.length > 0)
+        specs.push(`*Processor:* ${product.processor.join(', ')}`);
+      if (product.ram && product.ram.length > 0)
+        specs.push(`*RAM:* ${product.ram.join(', ')}`);
+      if (product.storage && product.storage.length > 0)
+        specs.push(`*Storage:* ${product.storage.join(', ')}`);
+      if (product.screenSize && product.screenSize.length > 0)
+        specs.push(`*Screen size:* ${product.screenSize.join(', ')}`);
+      if (product.otherSpecifications)
+        specs.push(`*Other specifications:* ${product.otherSpecifications}`);
+      if (product.extendedWarranty)
+        specs.push(
+          `*Extended warranty and extra years:* ${product.extendedWarrantyYears} años`,
         );
-      if (product.country || product.city) {
-        const countryName = convertCountryCodeToName(product.country);
-        const location = [countryName, product.city].filter(Boolean).join(', ');
-        deliveryInfo.push(`*Location:* ${location}`);
-      }
-      if (product.comments)
-        deliveryInfo.push(`*Additional quote comments:* ${product.comments}`);
+      if (product.deviceEnrollment)
+        specs.push(`*Device Enrollment (ABM/Intune/MDM setup):* Sí`);
+    }
+    // Monitor
+    else if (product.category === 'Monitor') {
+      if (product.brand && product.brand.length > 0)
+        specs.push(`*Brand:* ${product.brand.join(', ')}`);
+      if (product.model && product.model.length > 0)
+        specs.push(`*Model:* ${product.model.join(', ')}`);
+      if (product.screenSize && product.screenSize.length > 0)
+        specs.push(`*Screen size:* ${product.screenSize.join(', ')}`);
+      if (product.screenTechnology)
+        specs.push(`*Screen Technology:* ${product.screenTechnology}`);
+      if (product.otherSpecifications)
+        specs.push(`*Other specifications:* ${product.otherSpecifications}`);
+    }
+    // Audio
+    else if (product.category === 'Audio') {
+      if (product.brand && product.brand.length > 0)
+        specs.push(`*Brand:* ${product.brand.join(', ')}`);
+      if (product.model && product.model.length > 0)
+        specs.push(`*Model:* ${product.model.join(', ')}`);
+      if (product.otherSpecifications)
+        specs.push(`*Other specifications:* ${product.otherSpecifications}`);
+    }
+    // Peripherals
+    else if (product.category === 'Peripherals') {
+      if (product.brand && product.brand.length > 0)
+        specs.push(`*Brand:* ${product.brand.join(', ')}`);
+      if (product.model && product.model.length > 0)
+        specs.push(`*Model:* ${product.model.join(', ')}`);
+      if (product.otherSpecifications)
+        specs.push(`*Other specifications:* ${product.otherSpecifications}`);
+    }
+    // Merchandising
+    else if (product.category === 'Merchandising') {
+      const description = getProperty(product, 'description');
+      if (description) specs.push(`*Description:* ${description}`);
+      const additionalRequirements = getProperty(
+        product,
+        'additionalRequirements',
+      );
+      if (additionalRequirements)
+        specs.push(`*Additional requirements:* ${additionalRequirements}`);
+      if (product.otherSpecifications)
+        specs.push(`*Other specifications:* ${product.otherSpecifications}`);
+    }
+    // Phone
+    else if (product.category === 'Phone') {
+      if (product.brand && product.brand.length > 0)
+        specs.push(`*Brand:* ${product.brand.join(', ')}`);
+      if (product.model && product.model.length > 0)
+        specs.push(`*Model:* ${product.model.join(', ')}`);
+      if (product.otherSpecifications)
+        specs.push(`*Other specifications:* ${product.otherSpecifications}`);
+    }
+    // Furniture
+    else if (product.category === 'Furniture') {
+      if (product.furnitureType)
+        specs.push(`*Furniture Type:* ${product.furnitureType}`);
+      if (product.otherSpecifications)
+        specs.push(`*Other specifications:* ${product.otherSpecifications}`);
+    }
+    // Tablet
+    else if (product.category === 'Tablet') {
+      if (product.brand && product.brand.length > 0)
+        specs.push(`*Brand:* ${product.brand.join(', ')}`);
+      if (product.model && product.model.length > 0)
+        specs.push(`*Model:* ${product.model.join(', ')}`);
+      if (product.screenSize && product.screenSize.length > 0)
+        specs.push(`*Screen size:* ${product.screenSize.join(', ')}`);
+      if (product.otherSpecifications)
+        specs.push(`*Other specifications:* ${product.otherSpecifications}`);
+    }
+    // Other
+    else {
+      if (product.brand && product.brand.length > 0)
+        specs.push(`*Brand:* ${product.brand.join(', ')}`);
+      if (product.model && product.model.length > 0)
+        specs.push(`*Model:* ${product.model.join(', ')}`);
+      if (product.otherSpecifications)
+        specs.push(`*Other specifications:* ${product.otherSpecifications}`);
+    }
 
-      if (deliveryInfo.length > 0) {
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: deliveryInfo.join('\n'),
-          },
-        });
-      }
-
-      // Especificaciones según categoría
-      const specs: string[] = [];
-
-      // Computer
-      if (product.category === 'Computer') {
-        if (product.os) specs.push(`*OS:* ${product.os}`);
-        if (product.brand && product.brand.length > 0)
-          specs.push(`*Brand:* ${product.brand.join(', ')}`);
-        if (product.model && product.model.length > 0)
-          specs.push(`*Model:* ${product.model.join(', ')}`);
-        if (product.processor && product.processor.length > 0)
-          specs.push(`*Processor:* ${product.processor.join(', ')}`);
-        if (product.ram && product.ram.length > 0)
-          specs.push(`*RAM:* ${product.ram.join(', ')}`);
-        if (product.storage && product.storage.length > 0)
-          specs.push(`*Storage:* ${product.storage.join(', ')}`);
-        if (product.screenSize && product.screenSize.length > 0)
-          specs.push(`*Screen size:* ${product.screenSize.join(', ')}`);
-        if (product.otherSpecifications)
-          specs.push(`*Other specifications:* ${product.otherSpecifications}`);
-        if (product.extendedWarranty)
-          specs.push(
-            `*Extended warranty and extra years:* ${product.extendedWarrantyYears} años`,
-          );
-        if (product.deviceEnrollment)
-          specs.push(`*Device Enrollment (ABM/Intune/MDM setup):* Sí`);
-      }
-      // Monitor
-      else if (product.category === 'Monitor') {
-        if (product.brand && product.brand.length > 0)
-          specs.push(`*Brand:* ${product.brand.join(', ')}`);
-        if (product.model && product.model.length > 0)
-          specs.push(`*Model:* ${product.model.join(', ')}`);
-        if (product.screenSize && product.screenSize.length > 0)
-          specs.push(`*Screen size:* ${product.screenSize.join(', ')}`);
-        if (product.screenTechnology)
-          specs.push(`*Screen Technology:* ${product.screenTechnology}`);
-        if (product.otherSpecifications)
-          specs.push(`*Other specifications:* ${product.otherSpecifications}`);
-      }
-      // Audio
-      else if (product.category === 'Audio') {
-        if (product.brand && product.brand.length > 0)
-          specs.push(`*Brand:* ${product.brand.join(', ')}`);
-        if (product.model && product.model.length > 0)
-          specs.push(`*Model:* ${product.model.join(', ')}`);
-        if (product.otherSpecifications)
-          specs.push(`*Other specifications:* ${product.otherSpecifications}`);
-      }
-      // Peripherals
-      else if (product.category === 'Peripherals') {
-        if (product.brand && product.brand.length > 0)
-          specs.push(`*Brand:* ${product.brand.join(', ')}`);
-        if (product.model && product.model.length > 0)
-          specs.push(`*Model:* ${product.model.join(', ')}`);
-        if (product.otherSpecifications)
-          specs.push(`*Other specifications:* ${product.otherSpecifications}`);
-      }
-      // Merchandising
-      else if (product.category === 'Merchandising') {
-        const description = getProperty(product, 'description');
-        if (description) specs.push(`*Description:* ${description}`);
-        const additionalRequirements = getProperty(
-          product,
-          'additionalRequirements',
-        );
-        if (additionalRequirements)
-          specs.push(`*Additional requirements:* ${additionalRequirements}`);
-        if (product.otherSpecifications)
-          specs.push(`*Other specifications:* ${product.otherSpecifications}`);
-      }
-      // Phone
-      else if (product.category === 'Phone') {
-        if (product.brand && product.brand.length > 0)
-          specs.push(`*Brand:* ${product.brand.join(', ')}`);
-        if (product.model && product.model.length > 0)
-          specs.push(`*Model:* ${product.model.join(', ')}`);
-        if (product.otherSpecifications)
-          specs.push(`*Other specifications:* ${product.otherSpecifications}`);
-      }
-      // Furniture
-      else if (product.category === 'Furniture') {
-        if (product.furnitureType)
-          specs.push(`*Furniture Type:* ${product.furnitureType}`);
-        if (product.otherSpecifications)
-          specs.push(`*Other specifications:* ${product.otherSpecifications}`);
-      }
-      // Tablet
-      else if (product.category === 'Tablet') {
-        if (product.brand && product.brand.length > 0)
-          specs.push(`*Brand:* ${product.brand.join(', ')}`);
-        if (product.model && product.model.length > 0)
-          specs.push(`*Model:* ${product.model.join(', ')}`);
-        if (product.screenSize && product.screenSize.length > 0)
-          specs.push(`*Screen size:* ${product.screenSize.join(', ')}`);
-        if (product.otherSpecifications)
-          specs.push(`*Other specifications:* ${product.otherSpecifications}`);
-      }
-      // Other
-      else {
-        if (product.brand && product.brand.length > 0)
-          specs.push(`*Brand:* ${product.brand.join(', ')}`);
-        if (product.model && product.model.length > 0)
-          specs.push(`*Model:* ${product.model.join(', ')}`);
-        if (product.otherSpecifications)
-          specs.push(`*Other specifications:* ${product.otherSpecifications}`);
-      }
-
-      if (specs.length > 0) {
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: specs.join('\n'),
-          },
-        });
-      }
-
+    if (specs.length > 0) {
       blocks.push({
-        type: 'divider',
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: specs.join('\n'),
+        },
       });
+    }
 
-      return blocks;
-    },
-  );
+    blocks.push({
+      type: 'divider',
+    });
 
-  // Construir bloques de servicios
-  const serviceBlocks = buildServiceBlocks(quote.services);
+    return blocks;
+  });
+
+  // Construir bloques de servicios (con numeración secuencial después de productos)
+  const serviceBlocks = buildServiceBlocks(quote.services, itemCounter);
+
+  // Calcular total de items solicitados (productos + servicios)
+  const totalItems =
+    (quote.products?.length || 0) + (quote.services?.length || 0);
 
   // Construir campos de resumen
   const summaryFields: any[] = [
@@ -444,25 +682,9 @@ export const CreateQuoteMessageToSlack = (
     },
     {
       type: 'mrkdwn',
-      text: `*Request Type:*\n${quote.requestType}`,
+      text: `*Items requested:*\n${totalItems}`,
     },
   ];
-
-  // Agregar conteo de items si hay productos
-  if (quote.products && quote.products.length > 0) {
-    summaryFields.push({
-      type: 'mrkdwn',
-      text: `*Products:*\n${quote.products.length}`,
-    });
-  }
-
-  // Agregar conteo de servicios si hay servicios
-  if (quote.services && quote.services.length > 0) {
-    summaryFields.push({
-      type: 'mrkdwn',
-      text: `*Services:*\n${quote.services.length}`,
-    });
-  }
 
   // Agregar usuario
   summaryFields.push(

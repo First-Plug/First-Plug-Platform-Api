@@ -623,9 +623,22 @@ Incluye identificación completa del producto (importante para history y Slack):
 - `assignedTo`: A quién está asignado (nombre del member, office, o warehouse)
 - `countryCode`: Código ISO del país (ej: "PY", "SG", "AR", "FR")
 
+### Data Wipe Service
+
+- **Requeridos**: `serviceCategory`, `assets` (array min 1)
+- **Opcionales**: `desirableDate`, `destination`, `additionalDetails`
+- Soporta múltiples assets (Computer o Other)
+- Cada asset debe tener su `productSnapshot` con datos completos
+- Cada asset debe tener información de `currentLocation` (dónde está actualmente)
+- Cada asset puede tener `destination` (dónde se envía después del wipe)
+- En Slack se muestra:
+  - Total de assets a hacer wipe
+  - Para cada asset: categoría, fecha deseada, serial, brand+model+name, ubicación actual, destino
+  - Detalles adicionales si existen
+
 ### Otros
 
-- **issueStartDate**: Formato **YYYY-MM-DD** (ej: "2025-12-14") - Se guarda así en BD y se devuelve en GET así. En Slack se muestra como dd/mm/yyyy
+- **issueStartDate** y **desirableDate**: Formato **YYYY-MM-DD** (ej: "2025-12-14") - Se guarda así en BD y se devuelve en GET así. En Slack se muestra como dd/mm/yyyy
 - **requestType** se calcula automáticamente:
   - Solo productos → `"product"`
   - Solo servicios → `"service"`
@@ -635,3 +648,224 @@ Incluye identificación completa del producto (importante para history y Slack):
   - Auditoría completa
   - Personalización del detail (category + brand + model + serial)
   - Historial de cambios
+
+---
+
+## Example 16: Data Wipe Service - Single Computer
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Data Wipe",
+      "productIds": ["690b9d8e3c2dc7018e2f5039"],
+      "assets": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5039",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Dell",
+            "model": "Latitude 5520",
+            "serialNumber": "dell-latitude-001",
+            "location": "Employee",
+            "assignedTo": "John Doe",
+            "countryCode": "AR"
+          },
+          "desirableDate": "2025-12-28",
+          "currentLocation": "Employee",
+          "currentMember": {
+            "memberId": "690b9d8e3c2dc7018e2f5040",
+            "assignedMember": "John Doe",
+            "assignedEmail": "john@example.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "destinationType": "FP warehouse",
+            "warehouse": {
+              "warehouseId": "690b9d8e3c2dc7018e2f5041",
+              "warehouseName": "FP Warehouse Argentina",
+              "countryCode": "AR"
+            }
+          }
+        }
+      ],
+      "additionalDetails": "Secure data wipe required before returning to warehouse. Ensure all company data is completely removed."
+    }
+  ]
+}
+```
+
+## Example 17: Data Wipe Service - Multiple Assets (Computer + Other)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Data Wipe",
+      "productIds": ["690b9d8e3c2dc7018e2f5042", "690b9d8e3c2dc7018e2f5043"],
+      "assets": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5042",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Asus",
+            "model": "VivoBook 15",
+            "serialNumber": "asus-vivobook-001",
+            "location": "Our office",
+            "assignedTo": "Buenos Aires Office",
+            "countryCode": "AR"
+          },
+          "desirableDate": "2025-12-27",
+          "currentLocation": "Our office",
+          "currentOffice": {
+            "officeId": "690b9d8e3c2dc7018e2f5044",
+            "officeName": "Buenos Aires Office",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "destinationType": "Employee",
+            "member": {
+              "memberId": "690b9d8e3c2dc7018e2f5045",
+              "assignedMember": "Maria Garcia",
+              "assignedEmail": "maria@example.com",
+              "countryCode": "AR"
+            }
+          }
+        },
+        {
+          "productId": "690b9d8e3c2dc7018e2f5043",
+          "productSnapshot": {
+            "category": "Other",
+            "name": "External Hard Drive",
+            "brand": "Seagate",
+            "model": "Backup Plus",
+            "serialNumber": "seagate-backup-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Singapore",
+            "countryCode": "SG"
+          },
+          "desirableDate": "2025-12-30",
+          "currentLocation": "FP warehouse",
+          "currentWarehouse": {
+            "warehouseId": "690b9d8e3c2dc7018e2f5046",
+            "warehouseName": "FP Warehouse Singapore",
+            "countryCode": "SG"
+          }
+        }
+      ],
+      "additionalDetails": "Wipe both assets and prepare for disposal. Computer can be reassigned after wipe."
+    }
+  ]
+}
+```
+
+## Example 18: Complete Quote - Products + Enrollment + IT Support + Data Wipe
+
+```json
+{
+  "products": [
+    {
+      "category": "Monitor",
+      "quantity": 2,
+      "brand": ["Dell"],
+      "model": ["U2720Q"],
+      "screenSize": ["27\""],
+      "screenTechnology": ["IPS"],
+      "otherSpecifications": "USB-C connectivity, 4K resolution",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25",
+      "comments": "Para la oficina principal"
+    }
+  ],
+  "services": [
+    {
+      "serviceCategory": "Enrollment",
+      "productIds": ["690b9d8e3c2dc7018e2f5036", "690b9d8e3c2dc7018e2f5037"],
+      "enrolledDevices": [
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "MacBook Pro",
+          "serialNumber": "5dys87g1s27",
+          "location": "FP warehouse",
+          "assignedTo": "Sede FirstPlug P",
+          "countryCode": "AR"
+        },
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "iMac",
+          "serialNumber": "imac-serial-2025",
+          "location": "Our office",
+          "assignedTo": "NuevoConShipments",
+          "countryCode": "FR"
+        }
+      ],
+      "additionalDetails": "Enroll 2 Mac devices for MDM management. Require Apple Business Manager integration and device supervision."
+    },
+    {
+      "serviceCategory": "IT Support",
+      "productId": "690b9d8e3c2dc7018e2f5038",
+      "productSnapshot": {
+        "category": "Computer",
+        "name": "Computer",
+        "brand": "Asus",
+        "model": "IdeaPad Serie S",
+        "serialNumber": "grupo-6-asus",
+        "location": "FP warehouse",
+        "assignedTo": "Default Warehouse",
+        "countryCode": "SG"
+      },
+      "issues": [
+        "Device not connecting to network",
+        "Slow performance",
+        "Battery not charging"
+      ],
+      "description": "Asus IdeaPad Serie S experiencing connectivity issues, performance degradation, and battery charging problems. Needs diagnostic and repair.",
+      "issueStartDate": "2025-12-10",
+      "impactLevel": "high"
+    },
+    {
+      "serviceCategory": "Data Wipe",
+      "productIds": ["690b9d8e3c2dc7018e2f5047"],
+      "assets": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5047",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "HP",
+            "model": "EliteBook 840",
+            "serialNumber": "hp-elite-001",
+            "location": "Employee",
+            "assignedTo": "Carlos Lopez",
+            "countryCode": "AR"
+          },
+          "desirableDate": "2025-12-26",
+          "currentLocation": "Employee",
+          "currentMember": {
+            "memberId": "690b9d8e3c2dc7018e2f5048",
+            "assignedMember": "Carlos Lopez",
+            "assignedEmail": "carlos@example.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "destinationType": "FP warehouse",
+            "warehouse": {
+              "warehouseId": "690b9d8e3c2dc7018e2f5049",
+              "warehouseName": "FP Warehouse Argentina",
+              "countryCode": "AR"
+            }
+          }
+        }
+      ],
+      "additionalDetails": "Secure wipe before returning to warehouse."
+    }
+  ]
+}
+```

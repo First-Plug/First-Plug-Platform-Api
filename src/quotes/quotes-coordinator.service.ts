@@ -413,8 +413,26 @@ export class QuotesCoordinatorService {
   }
 
   /**
+   * Helper para formatear ubicación (member, office, warehouse)
+   */
+  private formatLocation(location: any): Record<string, any> {
+    return {
+      ...(location.memberId && { memberId: location.memberId }),
+      ...(location.assignedMember && {
+        assignedMember: location.assignedMember,
+      }),
+      ...(location.assignedEmail && { assignedEmail: location.assignedEmail }),
+      ...(location.officeId && { officeId: location.officeId }),
+      ...(location.officeName && { officeName: location.officeName }),
+      ...(location.warehouseId && { warehouseId: location.warehouseId }),
+      ...(location.warehouseName && { warehouseName: location.warehouseName }),
+      ...(location.countryCode && { countryCode: location.countryCode }),
+    };
+  }
+
+  /**
    * Formatear servicio para historial - Incluye todos los campos del servicio
-   * Soporta IT Support y Enrollment
+   * Soporta IT Support, Enrollment y Data Wipe
    */
   private formatServiceForHistory(service: any): Record<string, any> {
     // IT Support Service
@@ -459,6 +477,87 @@ export class QuotesCoordinatorService {
         baseFields['enrolledDevices'] = service.enrolledDevices.map(
           (device: any) => this.formatProductSnapshot(device),
         );
+      }
+
+      return baseFields;
+    }
+    // Data Wipe Service
+    else if (service.serviceCategory === 'Data Wipe') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        assetCount: service.assets?.length || 0,
+        ...(service.productIds && { productIds: service.productIds }),
+        ...(service.additionalDetails && {
+          additionalDetails: service.additionalDetails,
+        }),
+      };
+
+      // Agregar detalles de assets
+      if (service.assets && service.assets.length > 0) {
+        baseFields['assets'] = service.assets.map((asset: any) => {
+          const assetData: Record<string, any> = {};
+
+          // Agregar snapshot del producto
+          if (asset.productSnapshot) {
+            assetData['productSnapshot'] = this.formatProductSnapshot(
+              asset.productSnapshot,
+            );
+          }
+
+          // Agregar productId si existe
+          if (asset.productId) {
+            assetData['productId'] = asset.productId;
+          }
+
+          // Agregar fecha deseada
+          if (asset.desirableDate) {
+            assetData['desirableDate'] = asset.desirableDate;
+          }
+
+          // Agregar ubicación actual
+          if (asset.currentLocation) {
+            assetData['currentLocation'] = asset.currentLocation;
+
+            if (asset.currentMember) {
+              assetData['currentMember'] = this.formatLocation(
+                asset.currentMember,
+              );
+            } else if (asset.currentOffice) {
+              assetData['currentOffice'] = this.formatLocation(
+                asset.currentOffice,
+              );
+            } else if (asset.currentWarehouse) {
+              assetData['currentWarehouse'] = this.formatLocation(
+                asset.currentWarehouse,
+              );
+            }
+          }
+
+          // Agregar destino
+          if (asset.destination) {
+            assetData['destination'] = {
+              ...(asset.destination.destinationType && {
+                destinationType: asset.destination.destinationType,
+              }),
+            };
+
+            if (asset.destination.member) {
+              assetData['destination']['member'] = this.formatLocation(
+                asset.destination.member,
+              );
+            } else if (asset.destination.office) {
+              assetData['destination']['office'] = this.formatLocation(
+                asset.destination.office,
+              );
+            } else if (asset.destination.warehouse) {
+              assetData['destination']['warehouse'] = this.formatLocation(
+                asset.destination.warehouse,
+              );
+            }
+          }
+
+          return assetData;
+        });
       }
 
       return baseFields;
