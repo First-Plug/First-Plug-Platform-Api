@@ -13,7 +13,7 @@ export class QuoteResponseDto {
   userEmail: string;
   userName?: string;
   requestType: 'product' | 'service' | 'mixed';
-  status: 'Requested';
+  status: 'Requested' | 'Cancelled';
   products: ComputerItem[];
   services: ServiceData[];
   isDeleted: boolean;

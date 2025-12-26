@@ -4,6 +4,10 @@ import { Types } from 'mongoose';
  * Snapshot del producto para auditoría
  */
 export interface ProductSnapshot {
+  category?: string; // Categoría del producto (Computer, Monitor, Audio, etc.)
+  name?: string; // Nombre del producto
+  brand?: string; // Marca del producto
+  model?: string; // Modelo del producto
   serialNumber?: string;
   location?: string; // Employee, FP warehouse, Our office
   assignedTo?: string; // member name, office name, or warehouse name
@@ -34,4 +38,3 @@ export interface ITSupportService extends BaseServiceItem {
  * Soporta múltiples categorías de servicios
  */
 export type ServiceData = ITSupportService;
-
