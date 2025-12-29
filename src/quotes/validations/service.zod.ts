@@ -159,13 +159,49 @@ export const DataWipeServiceSchema = z.object({
 export type DataWipeService = z.infer<typeof DataWipeServiceSchema>;
 
 /**
+ * Schema para producto en Destruction and Recycling
+ */
+const DestructionProductSchema = z.object({
+  productId: z.string().optional(),
+  productSnapshot: ProductSnapshotSchema.optional(),
+});
+
+/**
+ * Destruction and Recycling Service Schema
+ * Permite solicitar destrucción y reciclaje de múltiples productos
+ */
+export const DestructionAndRecyclingServiceSchema = z.object({
+  serviceCategory: z.literal('Destruction and Recycling'),
+  productIds: z
+    .array(z.string())
+    .optional()
+    .describe('IDs de los productos a destruir (referencia)'),
+  products: z
+    .array(DestructionProductSchema)
+    .min(1, 'Al menos un producto es requerido para destrucción'),
+  requiresCertificate: z
+    .boolean()
+    .default(false)
+    .describe('¿Se requiere certificado de destrucción?'),
+  comments: z
+    .string()
+    .max(1000, 'Comments no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+export type DestructionAndRecyclingService = z.infer<
+  typeof DestructionAndRecyclingServiceSchema
+>;
+
+/**
  * Union de todos los servicios
- * Soporta IT Support, Enrollment y Data Wipe
+ * Soporta IT Support, Enrollment, Data Wipe y Destruction and Recycling
  */
 export const ServiceUnion = z.union([
   ITSupportServiceSchema,
   EnrollmentServiceSchema,
   DataWipeServiceSchema,
+  DestructionAndRecyclingServiceSchema,
 ]);
 
 /**

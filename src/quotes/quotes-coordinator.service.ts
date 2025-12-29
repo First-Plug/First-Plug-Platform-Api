@@ -562,6 +562,41 @@ export class QuotesCoordinatorService {
 
       return baseFields;
     }
+    // Destruction and Recycling Service
+    else if (service.serviceCategory === 'Destruction and Recycling') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        productCount: service.products?.length || 0,
+        ...(service.productIds && { productIds: service.productIds }),
+        ...(service.requiresCertificate !== undefined && {
+          requiresCertificate: service.requiresCertificate,
+        }),
+        ...(service.comments && { comments: service.comments }),
+      };
+
+      // Agregar detalles de productos
+      if (service.products && service.products.length > 0) {
+        baseFields['products'] = service.products.map((product: any) => {
+          const productData: Record<string, any> = {};
+
+          // Agregar snapshot del producto
+          if (product.productSnapshot) {
+            productData['productSnapshot'] = this.formatProductSnapshot(
+              product.productSnapshot,
+            );
+          }
+
+          // Agregar productId si existe
+          if (product.productId) {
+            productData['productId'] = product.productId;
+          }
+
+          return productData;
+        });
+      }
+
+      return baseFields;
+    }
 
     // Fallback para servicios desconocidos
     return {

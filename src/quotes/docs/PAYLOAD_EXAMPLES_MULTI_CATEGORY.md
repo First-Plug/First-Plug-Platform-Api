@@ -636,6 +636,19 @@ Incluye identificación completa del producto (importante para history y Slack):
   - Para cada asset: categoría, fecha deseada, serial, brand+model+name, ubicación actual, destino
   - Detalles adicionales si existen
 
+### Destruction and Recycling Service
+
+- **Requeridos**: `serviceCategory`, `products` (array min 1)
+- **Opcionales**: `requiresCertificate`, `comments`
+- Soporta múltiples productos (Computer, Monitor, Audio, Other, etc.)
+- Cada producto debe tener su `productSnapshot` con datos completos
+- `requiresCertificate`: Boolean que indica si se requiere certificado de destrucción
+- En Slack se muestra:
+  - Total de assets a destruir
+  - Para cada producto: categoría, serial, brand+model+name, ubicación
+  - Si requiere certificado (Yes/No)
+  - Comentarios si existen
+
 ### Otros
 
 - **issueStartDate** y **desirableDate**: Formato **YYYY-MM-DD** (ej: "2025-12-14") - Se guarda así en BD y se devuelve en GET así. En Slack se muestra como dd/mm/yyyy
@@ -865,6 +878,226 @@ Incluye identificación completa del producto (importante para history y Slack):
         }
       ],
       "additionalDetails": "Secure wipe before returning to warehouse."
+    }
+  ]
+}
+```
+
+## Example 19: Destruction and Recycling Service - Single Product
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Destruction and Recycling",
+      "productIds": ["690b9d8e3c2dc7018e2f5050"],
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5050",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Lenovo",
+            "model": "ThinkPad X1",
+            "serialNumber": "lenovo-x1-001",
+            "location": "Our office",
+            "assignedTo": "Buenos Aires Office",
+            "countryCode": "AR"
+          }
+        }
+      ],
+      "requiresCertificate": true,
+      "comments": "Secure destruction required. Please provide certificate of destruction."
+    }
+  ]
+}
+```
+
+## Example 20: Destruction and Recycling Service - Multiple Products
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Destruction and Recycling",
+      "productIds": [
+        "690b9d8e3c2dc7018e2f5051",
+        "690b9d8e3c2dc7018e2f5052",
+        "690b9d8e3c2dc7018e2f5053"
+      ],
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5051",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Dell",
+            "model": "OptiPlex 7090",
+            "serialNumber": "dell-optiplex-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Argentina",
+            "countryCode": "AR"
+          }
+        },
+        {
+          "productId": "690b9d8e3c2dc7018e2f5052",
+          "productSnapshot": {
+            "category": "Monitor",
+            "name": "Monitor",
+            "brand": "LG",
+            "model": "27UP550",
+            "serialNumber": "lg-27up550-001",
+            "location": "Employee",
+            "assignedTo": "John Smith",
+            "countryCode": "AR"
+          }
+        },
+        {
+          "productId": "690b9d8e3c2dc7018e2f5053",
+          "productSnapshot": {
+            "category": "Audio",
+            "name": "Speaker",
+            "brand": "Bose",
+            "model": "SoundLink Revolve",
+            "serialNumber": "bose-soundlink-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Singapore",
+            "countryCode": "SG"
+          }
+        }
+      ],
+      "requiresCertificate": true,
+      "comments": "End of life equipment. Recycle all components. Provide WEEE compliance certificate."
+    }
+  ]
+}
+```
+
+## Example 21: Complete Quote - Products + All Service Types
+
+```json
+{
+  "products": [
+    {
+      "category": "Monitor",
+      "quantity": 2,
+      "brand": ["Dell"],
+      "model": ["U2720Q"],
+      "screenSize": ["27\""],
+      "screenTechnology": ["IPS"],
+      "otherSpecifications": "USB-C connectivity, 4K resolution",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25",
+      "comments": "Para la oficina principal"
+    }
+  ],
+  "services": [
+    {
+      "serviceCategory": "Enrollment",
+      "productIds": ["690b9d8e3c2dc7018e2f5036", "690b9d8e3c2dc7018e2f5037"],
+      "enrolledDevices": [
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "MacBook Pro",
+          "serialNumber": "5dys87g1s27",
+          "location": "FP warehouse",
+          "assignedTo": "Sede FirstPlug P",
+          "countryCode": "AR"
+        },
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "iMac",
+          "serialNumber": "imac-serial-2025",
+          "location": "Our office",
+          "assignedTo": "NuevoConShipments",
+          "countryCode": "FR"
+        }
+      ],
+      "additionalDetails": "Enroll 2 Mac devices for MDM management."
+    },
+    {
+      "serviceCategory": "IT Support",
+      "productId": "690b9d8e3c2dc7018e2f5038",
+      "productSnapshot": {
+        "category": "Computer",
+        "name": "Computer",
+        "brand": "Asus",
+        "model": "IdeaPad Serie S",
+        "serialNumber": "grupo-6-asus",
+        "location": "FP warehouse",
+        "assignedTo": "Default Warehouse",
+        "countryCode": "SG"
+      },
+      "issues": [
+        "Device not connecting to network",
+        "Slow performance",
+        "Battery not charging"
+      ],
+      "description": "Asus IdeaPad experiencing connectivity issues and performance degradation.",
+      "issueStartDate": "2025-12-10",
+      "impactLevel": "high"
+    },
+    {
+      "serviceCategory": "Data Wipe",
+      "productIds": ["690b9d8e3c2dc7018e2f5047"],
+      "assets": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5047",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "HP",
+            "model": "EliteBook 840",
+            "serialNumber": "hp-elite-001",
+            "location": "Employee",
+            "assignedTo": "Carlos Lopez",
+            "countryCode": "AR"
+          },
+          "desirableDate": "2025-12-26",
+          "currentLocation": "Employee",
+          "currentMember": {
+            "memberId": "690b9d8e3c2dc7018e2f5048",
+            "assignedMember": "Carlos Lopez",
+            "assignedEmail": "carlos@example.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "destinationType": "FP warehouse",
+            "warehouse": {
+              "warehouseId": "690b9d8e3c2dc7018e2f5049",
+              "warehouseName": "FP Warehouse Argentina",
+              "countryCode": "AR"
+            }
+          }
+        }
+      ],
+      "additionalDetails": "Secure wipe before returning to warehouse."
+    },
+    {
+      "serviceCategory": "Destruction and Recycling",
+      "productIds": ["690b9d8e3c2dc7018e2f5054"],
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5054",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Lenovo",
+            "model": "ThinkPad X1",
+            "serialNumber": "lenovo-x1-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Argentina",
+            "countryCode": "AR"
+          }
+        }
+      ],
+      "requiresCertificate": true,
+      "comments": "End of life equipment. Provide WEEE compliance certificate."
     }
   ]
 }

@@ -478,6 +478,117 @@ const buildServiceBlocks = (
         });
       }
     }
+    // Destruction and Recycling Service
+    else if (service.serviceCategory === 'Destruction and Recycling') {
+      // Total quantity of assets
+      const totalAssets = (service.products || []).length;
+
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Total quantity of assets:* ${totalAssets}`,
+        },
+      });
+
+      // Detalles de cada producto a destruir
+      if (service.products && service.products.length > 0) {
+        service.products.forEach((product: any, productIndex: number) => {
+          blocks.push({
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Product ${productIndex + 1}:* ${product.productSnapshot?.category || 'Unknown'}`,
+            },
+          });
+
+          // Brand + Model + Name
+          const brandModelName: string[] = [];
+          if (product.productSnapshot?.brand)
+            brandModelName.push(product.productSnapshot.brand);
+          if (product.productSnapshot?.model)
+            brandModelName.push(product.productSnapshot.model);
+          if (product.productSnapshot?.name)
+            brandModelName.push(product.productSnapshot.name);
+
+          if (brandModelName.length > 0) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+              },
+            });
+          }
+
+          // Serial Number
+          if (product.productSnapshot?.serialNumber) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Serial Number:* ${product.productSnapshot.serialNumber}`,
+              },
+            });
+          }
+
+          // Location + Country
+          if (
+            product.productSnapshot?.location ||
+            product.productSnapshot?.countryCode
+          ) {
+            let locationText = '';
+            if (
+              product.productSnapshot?.location &&
+              product.productSnapshot?.countryCode
+            ) {
+              const countryName = convertCountryCodeToName(
+                product.productSnapshot.countryCode,
+              );
+              locationText = `${product.productSnapshot.location} + ${countryName}`;
+            } else if (product.productSnapshot?.location) {
+              locationText = product.productSnapshot.location;
+            } else if (product.productSnapshot?.countryCode) {
+              locationText = convertCountryCodeToName(
+                product.productSnapshot.countryCode,
+              );
+            }
+
+            if (locationText) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Location:* ${locationText}`,
+                },
+              });
+            }
+          }
+        });
+      }
+
+      // Certificate requirement
+      if (service.requiresCertificate !== undefined) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Requires Certificate:* ${service.requiresCertificate ? 'Yes' : 'No'}`,
+          },
+        });
+      }
+
+      // Comments
+      if (service.comments) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Comments:* ${service.comments}`,
+          },
+        });
+      }
+    }
 
     blocks.push({
       type: 'divider',

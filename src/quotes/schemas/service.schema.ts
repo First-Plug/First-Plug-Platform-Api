@@ -199,3 +199,37 @@ export class DataWipeServiceSchema {
   @Prop({ type: String })
   additionalDetails?: string; // Detalles adicionales (opcional)
 }
+
+/**
+ * Subdocumento para un producto en Destruction and Recycling Service
+ */
+@Schema({ _id: false })
+export class DestructionProductSchema {
+  @Prop({ type: Types.ObjectId })
+  productId?: Types.ObjectId; // ID del producto
+
+  @Prop({ type: ProductSnapshotSchema })
+  productSnapshot?: ProductSnapshotSchema; // Snapshot del producto
+}
+
+/**
+ * Subdocumento para Destruction and Recycling Service
+ * Permite solicitar destrucción y reciclaje de múltiples productos
+ */
+@Schema({ _id: false })
+export class DestructionAndRecyclingServiceSchema {
+  @Prop({ type: String, enum: ['Destruction and Recycling'], required: true })
+  serviceCategory: 'Destruction and Recycling';
+
+  @Prop({ type: [Types.ObjectId] })
+  productIds?: Types.ObjectId[]; // IDs de los productos a destruir (referencia)
+
+  @Prop({ type: [DestructionProductSchema], required: true })
+  products: DestructionProductSchema[]; // Array de productos a destruir con snapshots
+
+  @Prop({ type: Boolean, default: false })
+  requiresCertificate?: boolean; // ¿Se requiere certificado de destrucción?
+
+  @Prop({ type: String })
+  comments?: string; // Comentarios adicionales (opcional)
+}

@@ -108,10 +108,31 @@ export interface DataWipeService {
 }
 
 /**
+ * Producto en Destruction and Recycling Service
+ */
+export interface DestructionProduct {
+  productId?: string; // ID del producto
+  productSnapshot?: ProductSnapshot; // Snapshot del producto
+}
+
+/**
+ * Destruction and Recycling Service
+ * Permite solicitar destrucción y reciclaje de múltiples productos
+ */
+export interface DestructionAndRecyclingService {
+  serviceCategory: 'Destruction and Recycling';
+  productIds?: string[]; // IDs de los productos a destruir (referencia)
+  products: DestructionProduct[]; // Array de productos a destruir con snapshots
+  requiresCertificate?: boolean; // ¿Se requiere certificado de destrucción?
+  comments?: string; // Comentarios adicionales (opcional)
+}
+
+/**
  * Tipos para discriminated union
  * Soporta múltiples categorías de servicios
  */
 export type ServiceData =
   | ITSupportService
   | EnrollmentService
-  | DataWipeService;
+  | DataWipeService
+  | DestructionAndRecyclingService;

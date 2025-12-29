@@ -4,6 +4,8 @@ import { softDeletePlugin } from 'soft-delete-plugin-mongoose';
 import {
   ITSupportServiceSchema,
   EnrollmentServiceSchema,
+  DataWipeServiceSchema,
+  DestructionAndRecyclingServiceSchema,
 } from './service.schema';
 
 export type QuoteDocument = Quote & Document & SchemaTimestampsConfig;
@@ -265,7 +267,12 @@ export class Quote {
     type: [
       {
         type: Object,
-        enum: [ITSupportServiceSchema, EnrollmentServiceSchema],
+        enum: [
+          ITSupportServiceSchema,
+          EnrollmentServiceSchema,
+          DataWipeServiceSchema,
+          DestructionAndRecyclingServiceSchema,
+        ],
       },
     ],
     required: true,

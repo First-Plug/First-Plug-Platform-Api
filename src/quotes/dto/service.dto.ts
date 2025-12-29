@@ -108,12 +108,36 @@ export class DataWipeServiceResponseDto {
 }
 
 /**
+ * DTO para respuesta de Destruction and Recycling Service
+ */
+export class DestructionAndRecyclingServiceResponseDto {
+  serviceCategory: 'Destruction and Recycling';
+  productIds?: string[]; // IDs de los productos a destruir (referencia)
+  products: Array<{
+    productId?: string;
+    productSnapshot?: {
+      category?: string;
+      name?: string;
+      brand?: string;
+      model?: string;
+      serialNumber?: string;
+      location?: string;
+      assignedTo?: string;
+      countryCode?: string;
+    };
+  }>;
+  requiresCertificate?: boolean; // ¿Se requiere certificado de destrucción?
+  comments?: string; // Comentarios adicionales
+}
+
+/**
  * Union de todos los Service Response DTOs
  */
 export type ServiceResponseDto =
   | ITSupportServiceResponseDto
   | EnrollmentServiceResponseDto
-  | DataWipeServiceResponseDto;
+  | DataWipeServiceResponseDto
+  | DestructionAndRecyclingServiceResponseDto;
 
 /**
  * DTO para agregar servicio a quote
