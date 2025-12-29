@@ -233,3 +233,61 @@ export class DestructionAndRecyclingServiceSchema {
   @Prop({ type: String })
   comments?: string; // Comentarios adicionales (opcional)
 }
+
+/**
+ * Subdocumento para información de Buyback de un producto
+ */
+@Schema({ _id: false })
+export class BuybackProductDetailsSchema {
+  @Prop({ type: String })
+  generalFunctionality?: string; // Descripción del funcionamiento general (opcional)
+
+  @Prop({ type: Number })
+  batteryCycles?: number; // Ciclos de batería (opcional)
+
+  @Prop({ type: String })
+  aestheticDetails?: string; // Detalles estéticos (opcional, text area)
+
+  @Prop({ type: Boolean })
+  hasCharger?: boolean; // ¿Tiene cargador? (opcional)
+
+  @Prop({ type: Boolean })
+  chargerWorks?: boolean; // ¿Funciona el cargador? (opcional)
+
+  @Prop({ type: String })
+  additionalComments?: string; // Otros comentarios (opcional)
+}
+
+/**
+ * Subdocumento para un producto en Buyback Service
+ */
+@Schema({ _id: false })
+export class BuybackProductSchema {
+  @Prop({ type: Types.ObjectId })
+  productId?: Types.ObjectId; // ID del producto
+
+  @Prop({ type: ProductSnapshotSchema })
+  productSnapshot?: ProductSnapshotSchema; // Snapshot del producto
+
+  @Prop({ type: BuybackProductDetailsSchema })
+  buybackDetails?: BuybackProductDetailsSchema; // Detalles específicos del buyback
+}
+
+/**
+ * Subdocumento para Buyback Service
+ * Permite solicitar cotización de compra de productos usados
+ */
+@Schema({ _id: false })
+export class BuybackServiceSchema {
+  @Prop({ type: String, enum: ['Buyback'], required: true })
+  serviceCategory: 'Buyback';
+
+  @Prop({ type: [Types.ObjectId] })
+  productIds?: Types.ObjectId[]; // IDs de los productos a comprar (referencia)
+
+  @Prop({ type: [BuybackProductSchema], required: true })
+  products: BuybackProductSchema[]; // Array de productos con detalles de buyback
+
+  @Prop({ type: String })
+  additionalInfo?: string; // Información adicional (opcional)
+}

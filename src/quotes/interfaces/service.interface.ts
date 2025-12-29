@@ -128,6 +128,38 @@ export interface DestructionAndRecyclingService {
 }
 
 /**
+ * Detalles de Buyback para un producto
+ */
+export interface BuybackProductDetails {
+  generalFunctionality?: string; // Descripción del funcionamiento general (opcional)
+  batteryCycles?: number; // Ciclos de batería (opcional)
+  aestheticDetails?: string; // Detalles estéticos (opcional, text area)
+  hasCharger?: boolean; // ¿Tiene cargador? (opcional)
+  chargerWorks?: boolean; // ¿Funciona el cargador? (opcional)
+  additionalComments?: string; // Otros comentarios (opcional)
+}
+
+/**
+ * Producto en Buyback Service
+ */
+export interface BuybackProduct {
+  productId?: string; // ID del producto
+  productSnapshot?: ProductSnapshot; // Snapshot del producto
+  buybackDetails?: BuybackProductDetails; // Detalles específicos del buyback
+}
+
+/**
+ * Buyback Service
+ * Permite solicitar cotización de compra de productos usados
+ */
+export interface BuybackService {
+  serviceCategory: 'Buyback';
+  productIds?: string[]; // IDs de los productos a comprar (referencia)
+  products: BuybackProduct[]; // Array de productos con detalles de buyback
+  additionalInfo?: string; // Información adicional (opcional)
+}
+
+/**
  * Tipos para discriminated union
  * Soporta múltiples categorías de servicios
  */
@@ -135,4 +167,5 @@ export type ServiceData =
   | ITSupportService
   | EnrollmentService
   | DataWipeService
-  | DestructionAndRecyclingService;
+  | DestructionAndRecyclingService
+  | BuybackService;

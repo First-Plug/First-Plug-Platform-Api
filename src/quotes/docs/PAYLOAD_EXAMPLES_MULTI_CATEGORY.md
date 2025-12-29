@@ -649,6 +649,29 @@ Incluye identificación completa del producto (importante para history y Slack):
   - Si requiere certificado (Yes/No)
   - Comentarios si existen
 
+### Buyback Service
+
+- **Requeridos**: `serviceCategory`, `products` (array min 1)
+- **Opcionales**: `additionalInfo`, y dentro de cada producto: `buybackDetails` con todos sus campos opcionales
+- Soporta múltiples productos (Computer o Other únicamente)
+- Cada producto debe tener su `productSnapshot` con datos completos
+- `buybackDetails` contiene información específica del buyback:
+  - `generalFunctionality`: Descripción del funcionamiento general (opcional)
+  - `batteryCycles`: Número de ciclos de batería (opcional)
+  - `aestheticDetails`: Detalles estéticos (opcional, text area)
+  - `hasCharger`: Boolean si tiene cargador (opcional)
+  - `chargerWorks`: Boolean si funciona el cargador (opcional)
+  - `additionalComments`: Otros comentarios (opcional)
+- En Slack se muestra:
+  - Total de assets a comprar
+  - Para cada producto:
+    - Categoría, Serial Number, Location
+    - Para Computer: Brand + Model + Name, OS, Processor, RAM, Storage, Screen size
+    - Para Other: Brand + Model + Name
+    - Product Condition, Additional info
+    - Detalles de buyback (funcionamiento, ciclos, estética, cargador, comentarios)
+  - Additional info si existe
+
 ### Otros
 
 - **issueStartDate** y **desirableDate**: Formato **YYYY-MM-DD** (ej: "2025-12-14") - Se guarda así en BD y se devuelve en GET así. En Slack se muestra como dd/mm/yyyy
@@ -1098,6 +1121,282 @@ Incluye identificación completa del producto (importante para history y Slack):
       ],
       "requiresCertificate": true,
       "comments": "End of life equipment. Provide WEEE compliance certificate."
+    }
+  ]
+}
+```
+
+## Example 22: Buyback Service - Single Computer
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Buyback",
+     arra
+      aca
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5055",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Dell",
+            "model": "OptiPlex 7090",
+            "serialNumber": "dell-optiplex-buyback-001",
+            "location": "Employee",
+            "assignedTo": "John Smith",
+            "countryCode": "AR",
+            "os": "Windows",
+            "processor": "Intel Core i7",
+            "ram": "16GB",
+            "storage": "512GB SSD",
+            "screenSize": "24\"",
+            "productCondition": "Good",
+            "additionalInfo": "Fully functional, minor cosmetic scratches"
+          },
+          "buybackDetails": {
+            "generalFunctionality": "Funciona perfectamente, sin problemas de hardware",
+            "batteryCycles": 450,
+            "aestheticDetails": "Pequeños arañazos en la carcasa, pantalla en perfecto estado",
+            "hasCharger": true,
+            "chargerWorks": true,
+            "additionalComments": "Equipo bien mantenido, listo para usar"
+          }
+        }
+      ],
+      "additionalInfo": "Interesado en comprar este equipo para refurbish"
+    }
+  ]
+}
+```
+
+## Example 23: Buyback Service - Multiple Products (Computer + Other)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Buyback",
+      "productIds": ["690b9d8e3c2dc7018e2f5056", "690b9d8e3c2dc7018e2f5057"],
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5056",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Apple",
+            "model": "MacBook Pro 14\"",
+            "serialNumber": "macbook-pro-buyback-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Argentina",
+            "countryCode": "AR",
+            "os": "macOS",
+            "processor": "Apple M1 Pro",
+            "ram": "16GB",
+            "storage": "512GB SSD",
+            "screenSize": "14\"",
+            "productCondition": "Excellent",
+            "additionalInfo": "Minimal use, like new condition"
+          },
+          "buybackDetails": {
+            "generalFunctionality": "Excelente funcionamiento, sin problemas",
+            "batteryCycles": 120,
+            "aestheticDetails": "Sin daños visibles, pantalla perfecta",
+            "hasCharger": true,
+            "chargerWorks": true,
+            "additionalComments": "Equipo premium en excelente estado"
+          }
+        },
+        {
+          "productId": "690b9d8e3c2dc7018e2f5057",
+          "productSnapshot": {
+            "category": "Other",
+            "name": "Monitor",
+            "brand": "LG",
+            "model": "27UP550",
+            "serialNumber": "lg-monitor-buyback-001",
+            "location": "Employee",
+            "assignedTo": "Maria Garcia",
+            "countryCode": "AR",
+            "productCondition": "Good",
+            "additionalInfo": "4K monitor, fully functional"
+          },
+          "buybackDetails": {
+            "generalFunctionality": "Funciona correctamente, sin problemas de display",
+            "aestheticDetails": "Algunos arañazos menores en el stand",
+            "hasCharger": true,
+            "chargerWorks": true,
+            "additionalComments": "Monitor de buena calidad, ideal para refurbish"
+          }
+        }
+      ],
+      "additionalInfo": "Lote de equipos para compra por refurbish"
+    }
+  ]
+}
+```
+
+## Example 24: Complete Quote - Products + All Service Types (Including Buyback)
+
+```json
+{
+  "products": [
+    {
+      "category": "Monitor",
+      "quantity": 2,
+      "brand": ["Dell"],
+      "model": ["U2720Q"],
+      "screenSize": ["27\""],
+      "screenTechnology": ["IPS"],
+      "otherSpecifications": "USB-C connectivity, 4K resolution",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25",
+      "comments": "Para la oficina principal"
+    }
+  ],
+  "services": [
+    {
+      "serviceCategory": "Enrollment",
+      "productIds": ["690b9d8e3c2dc7018e2f5036", "690b9d8e3c2dc7018e2f5037"],
+      "enrolledDevices": [
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "MacBook Pro",
+          "serialNumber": "5dys87g1s27",
+          "location": "FP warehouse",
+          "assignedTo": "Sede FirstPlug P",
+          "countryCode": "AR"
+        },
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "iMac",
+          "serialNumber": "imac-serial-2025",
+          "location": "Our office",
+          "assignedTo": "NuevoConShipments",
+          "countryCode": "FR"
+        }
+      ],
+      "additionalDetails": "Enroll 2 Mac devices for MDM management."
+    },
+    {
+      "serviceCategory": "IT Support",
+      "productId": "690b9d8e3c2dc7018e2f5038",
+      "productSnapshot": {
+        "category": "Computer",
+        "name": "Computer",
+        "brand": "Asus",
+        "model": "IdeaPad Serie S",
+        "serialNumber": "grupo-6-asus",
+        "location": "FP warehouse",
+        "assignedTo": "Default Warehouse",
+        "countryCode": "SG"
+      },
+      "issues": [
+        "Device not connecting to network",
+        "Slow performance",
+        "Battery not charging"
+      ],
+      "description": "Asus IdeaPad experiencing connectivity issues and performance degradation.",
+      "issueStartDate": "2025-12-10",
+      "impactLevel": "high"
+    },
+    {
+      "serviceCategory": "Data Wipe",
+      "productIds": ["690b9d8e3c2dc7018e2f5047"],
+      "assets": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5047",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "HP",
+            "model": "EliteBook 840",
+            "serialNumber": "hp-elite-001",
+            "location": "Employee",
+            "assignedTo": "Carlos Lopez",
+            "countryCode": "AR"
+          },
+          "desirableDate": "2025-12-26",
+          "currentLocation": "Employee",
+          "currentMember": {
+            "memberId": "690b9d8e3c2dc7018e2f5048",
+            "assignedMember": "Carlos Lopez",
+            "assignedEmail": "carlos@example.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "destinationType": "FP warehouse",
+            "warehouse": {
+              "warehouseId": "690b9d8e3c2dc7018e2f5049",
+              "warehouseName": "FP Warehouse Argentina",
+              "countryCode": "AR"
+            }
+          }
+        }
+      ],
+      "additionalDetails": "Secure wipe before returning to warehouse."
+    },
+    {
+      "serviceCategory": "Destruction and Recycling",
+      "productIds": ["690b9d8e3c2dc7018e2f5054"],
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5054",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Lenovo",
+            "model": "ThinkPad X1",
+            "serialNumber": "lenovo-x1-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Argentina",
+            "countryCode": "AR"
+          }
+        }
+      ],
+      "requiresCertificate": true,
+      "comments": "End of life equipment. Provide WEEE compliance certificate."
+    },
+    {
+      "serviceCategory": "Buyback",
+      "productIds": ["690b9d8e3c2dc7018e2f5058"],
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5058",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Dell",
+            "model": "OptiPlex 7090",
+            "serialNumber": "dell-optiplex-buyback-001",
+            "location": "Employee",
+            "assignedTo": "John Smith",
+            "countryCode": "AR",
+            "os": "Windows",
+            "processor": "Intel Core i7",
+            "ram": "16GB",
+            "storage": "512GB SSD",
+            "screenSize": "24\"",
+            "productCondition": "Good",
+            "additionalInfo": "Fully functional, minor cosmetic scratches"
+          },
+          "buybackDetails": {
+            "generalFunctionality": "Funciona perfectamente, sin problemas de hardware",
+            "batteryCycles": 450,
+            "aestheticDetails": "Pequeños arañazos en la carcasa, pantalla en perfecto estado",
+            "hasCharger": true,
+            "chargerWorks": true,
+            "additionalComments": "Equipo bien mantenido, listo para usar"
+          }
+        }
+      ],
+      "additionalInfo": "Interesado en comprar este equipo para refurbish"
     }
   ]
 }

@@ -131,13 +131,44 @@ export class DestructionAndRecyclingServiceResponseDto {
 }
 
 /**
+ * DTO para respuesta de Buyback Service
+ */
+export class BuybackServiceResponseDto {
+  serviceCategory: 'Buyback';
+  productIds?: string[]; // IDs de los productos a comprar (referencia)
+  products: Array<{
+    productId?: string;
+    productSnapshot?: {
+      category?: string;
+      name?: string;
+      brand?: string;
+      model?: string;
+      serialNumber?: string;
+      location?: string;
+      assignedTo?: string;
+      countryCode?: string;
+    };
+    buybackDetails?: {
+      generalFunctionality?: string;
+      batteryCycles?: number;
+      aestheticDetails?: string;
+      hasCharger?: boolean;
+      chargerWorks?: boolean;
+      additionalComments?: string;
+    };
+  }>;
+  additionalInfo?: string; // Información adicional
+}
+
+/**
  * Union de todos los Service Response DTOs
  */
 export type ServiceResponseDto =
   | ITSupportServiceResponseDto
   | EnrollmentServiceResponseDto
   | DataWipeServiceResponseDto
-  | DestructionAndRecyclingServiceResponseDto;
+  | DestructionAndRecyclingServiceResponseDto
+  | BuybackServiceResponseDto;
 
 /**
  * DTO para agregar servicio a quote

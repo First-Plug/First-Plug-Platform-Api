@@ -589,6 +589,284 @@ const buildServiceBlocks = (
         });
       }
     }
+    // Buyback Service
+    else if (service.serviceCategory === 'Buyback') {
+      // Total quantity of assets
+      const totalAssets = (service.products || []).length;
+
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Total quantity of assets:* ${totalAssets}`,
+        },
+      });
+
+      // Detalles de cada producto a comprar
+      if (service.products && service.products.length > 0) {
+        service.products.forEach((product: any, productIndex: number) => {
+          blocks.push({
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Product ${productIndex + 1}:* ${product.productSnapshot?.category || 'Unknown'}`,
+            },
+          });
+
+          // Serial Number
+          if (product.productSnapshot?.serialNumber) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Serial Number:* ${product.productSnapshot.serialNumber}`,
+              },
+            });
+          }
+
+          // Location + Country
+          if (
+            product.productSnapshot?.location ||
+            product.productSnapshot?.countryCode
+          ) {
+            let locationText = '';
+            if (
+              product.productSnapshot?.location &&
+              product.productSnapshot?.countryCode
+            ) {
+              const countryName = convertCountryCodeToName(
+                product.productSnapshot.countryCode,
+              );
+              locationText = `${product.productSnapshot.location} + ${countryName}`;
+            } else if (product.productSnapshot?.location) {
+              locationText = product.productSnapshot.location;
+            } else if (product.productSnapshot?.countryCode) {
+              locationText = convertCountryCodeToName(
+                product.productSnapshot.countryCode,
+              );
+            }
+
+            if (locationText) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Location:* ${locationText}`,
+                },
+              });
+            }
+          }
+
+          // Brand + Model + Name (solo para Computer)
+          if (product.productSnapshot?.category === 'Computer') {
+            const brandModelName: string[] = [];
+            if (product.productSnapshot?.brand)
+              brandModelName.push(product.productSnapshot.brand);
+            if (product.productSnapshot?.model)
+              brandModelName.push(product.productSnapshot.model);
+            if (product.productSnapshot?.name)
+              brandModelName.push(product.productSnapshot.name);
+
+            if (brandModelName.length > 0) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+                },
+              });
+            }
+
+            // OS (solo para Computer)
+            if (product.productSnapshot?.os) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*OS:* ${product.productSnapshot.os}`,
+                },
+              });
+            }
+
+            // Processor (solo para Computer)
+            if (product.productSnapshot?.processor) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Processor:* ${product.productSnapshot.processor}`,
+                },
+              });
+            }
+
+            // RAM (solo para Computer)
+            if (product.productSnapshot?.ram) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*RAM:* ${product.productSnapshot.ram}`,
+                },
+              });
+            }
+
+            // Storage (solo para Computer)
+            if (product.productSnapshot?.storage) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Storage:* ${product.productSnapshot.storage}`,
+                },
+              });
+            }
+
+            // Screen size (solo para Computer)
+            if (product.productSnapshot?.screenSize) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Screen size:* ${product.productSnapshot.screenSize}`,
+                },
+              });
+            }
+          } else {
+            // Para Other: Brand + Model + Name
+            const brandModelName: string[] = [];
+            if (product.productSnapshot?.brand)
+              brandModelName.push(product.productSnapshot.brand);
+            if (product.productSnapshot?.model)
+              brandModelName.push(product.productSnapshot.model);
+            if (product.productSnapshot?.name)
+              brandModelName.push(product.productSnapshot.name);
+
+            if (brandModelName.length > 0) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+                },
+              });
+            }
+          }
+
+          // Product Condition
+          if (product.productSnapshot?.productCondition) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Product Condition:* ${product.productSnapshot.productCondition}`,
+              },
+            });
+          }
+
+          // Additional info
+          if (product.productSnapshot?.additionalInfo) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Additional info:* ${product.productSnapshot.additionalInfo}`,
+              },
+            });
+          }
+
+          // Buyback Details
+          if (product.buybackDetails) {
+            const details = product.buybackDetails;
+
+            // Funcionamiento general
+            if (details.generalFunctionality) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Funcionamiento general:* ${details.generalFunctionality}`,
+                },
+              });
+            }
+
+            // Ciclos de batería
+            if (
+              details.batteryCycles !== undefined &&
+              details.batteryCycles !== null
+            ) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Ciclos de batería:* ${details.batteryCycles}`,
+                },
+              });
+            }
+
+            // Detalles estéticos
+            if (details.aestheticDetails) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Detalles estéticos:* ${details.aestheticDetails}`,
+                },
+              });
+            }
+
+            // Tiene cargador
+            if (
+              details.hasCharger !== undefined &&
+              details.hasCharger !== null
+            ) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Tiene cargador:* ${details.hasCharger ? 'Yes' : 'No'}`,
+                },
+              });
+            }
+
+            // Cargador funciona
+            if (
+              details.chargerWorks !== undefined &&
+              details.chargerWorks !== null
+            ) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Cargador funciona:* ${details.chargerWorks ? 'Yes' : 'No'}`,
+                },
+              });
+            }
+
+            // Otros comentarios
+            if (details.additionalComments) {
+              blocks.push({
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Otros comentarios:* ${details.additionalComments}`,
+                },
+              });
+            }
+          }
+        });
+      }
+
+      // Additional info
+      if (service.additionalInfo) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Additional info:* ${service.additionalInfo}`,
+          },
+        });
+      }
+    }
 
     blocks.push({
       type: 'divider',

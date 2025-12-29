@@ -597,6 +597,65 @@ export class QuotesCoordinatorService {
 
       return baseFields;
     }
+    // Buyback Service
+    else if (service.serviceCategory === 'Buyback') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        productCount: service.products?.length || 0,
+        ...(service.productIds && { productIds: service.productIds }),
+        ...(service.additionalInfo && {
+          additionalInfo: service.additionalInfo,
+        }),
+      };
+
+      // Agregar detalles de productos
+      if (service.products && service.products.length > 0) {
+        baseFields['products'] = service.products.map((product: any) => {
+          const productData: Record<string, any> = {};
+
+          // Agregar snapshot del producto
+          if (product.productSnapshot) {
+            productData['productSnapshot'] = this.formatProductSnapshot(
+              product.productSnapshot,
+            );
+          }
+
+          // Agregar productId si existe
+          if (product.productId) {
+            productData['productId'] = product.productId;
+          }
+
+          // Agregar detalles de buyback si existen
+          if (product.buybackDetails) {
+            productData['buybackDetails'] = {
+              ...(product.buybackDetails.generalFunctionality && {
+                generalFunctionality:
+                  product.buybackDetails.generalFunctionality,
+              }),
+              ...(product.buybackDetails.batteryCycles !== undefined && {
+                batteryCycles: product.buybackDetails.batteryCycles,
+              }),
+              ...(product.buybackDetails.aestheticDetails && {
+                aestheticDetails: product.buybackDetails.aestheticDetails,
+              }),
+              ...(product.buybackDetails.hasCharger !== undefined && {
+                hasCharger: product.buybackDetails.hasCharger,
+              }),
+              ...(product.buybackDetails.chargerWorks !== undefined && {
+                chargerWorks: product.buybackDetails.chargerWorks,
+              }),
+              ...(product.buybackDetails.additionalComments && {
+                additionalComments: product.buybackDetails.additionalComments,
+              }),
+            };
+          }
+
+          return productData;
+        });
+      }
+
+      return baseFields;
+    }
 
     // Fallback para servicios desconocidos
     return {

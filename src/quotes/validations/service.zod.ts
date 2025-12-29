@@ -194,14 +194,66 @@ export type DestructionAndRecyclingService = z.infer<
 >;
 
 /**
+ * Validación para detalles de Buyback
+ */
+const BuybackProductDetailsSchema = z.object({
+  generalFunctionality: z
+    .string()
+    .max(500, 'General functionality no puede exceder 500 caracteres')
+    .optional(),
+  batteryCycles: z
+    .number()
+    .int('Battery cycles debe ser un número entero')
+    .min(0, 'Battery cycles no puede ser negativo')
+    .optional(),
+  aestheticDetails: z
+    .string()
+    .max(1000, 'Aesthetic details no puede exceder 1000 caracteres')
+    .optional(),
+  hasCharger: z.boolean().optional(),
+  chargerWorks: z.boolean().optional(),
+  additionalComments: z
+    .string()
+    .max(1000, 'Additional comments no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+/**
+ * Validación para producto en Buyback Service
+ */
+const BuybackProductSchema = z.object({
+  productId: z.string().optional(),
+  productSnapshot: ProductSnapshotSchema.optional(),
+  buybackDetails: BuybackProductDetailsSchema.optional(),
+});
+
+/**
+ * Validación para Buyback Service
+ */
+const BuybackServiceSchema = z.object({
+  serviceCategory: z.literal('Buyback'),
+  productIds: z.array(z.string()).optional(),
+  products: z
+    .array(BuybackProductSchema)
+    .min(1, 'Al menos un producto es requerido para buyback'),
+  additionalInfo: z
+    .string()
+    .max(1000, 'Additional info no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+export type BuybackService = z.infer<typeof BuybackServiceSchema>;
+
+/**
  * Union de todos los servicios
- * Soporta IT Support, Enrollment, Data Wipe y Destruction and Recycling
+ * Soporta IT Support, Enrollment, Data Wipe, Destruction and Recycling y Buyback
  */
 export const ServiceUnion = z.union([
   ITSupportServiceSchema,
   EnrollmentServiceSchema,
   DataWipeServiceSchema,
   DestructionAndRecyclingServiceSchema,
+  BuybackServiceSchema,
 ]);
 
 /**
