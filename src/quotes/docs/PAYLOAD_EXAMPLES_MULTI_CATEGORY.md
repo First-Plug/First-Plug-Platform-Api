@@ -1149,7 +1149,7 @@ Incluye identificación completa del producto (importante para history y Slack):
           }
         }
       ],
-      "additionalInfo": "Interesado en comprar este equipo para refurbish"
+      "additionalInfo": "Equipos disponibles para venta a FirstPlug para refurbish"
     }
   ]
 }
@@ -1375,7 +1375,7 @@ Incluye identificación completa del producto (importante para history y Slack):
           }
         }
       ],
-      "additionalInfo": "Interesado en comprar este equipo para refurbish"
+      "additionalInfo": "Equipos disponibles para venta a FirstPlug para refurbish"
     }
   ]
 }

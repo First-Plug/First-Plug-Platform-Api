@@ -624,7 +624,7 @@ const buildServiceBlocks = (
             });
           }
 
-          // Location + Country
+          // Location + Country + Name (Employee/Office/Warehouse)
           if (
             product.productSnapshot?.location ||
             product.productSnapshot?.countryCode
@@ -644,6 +644,11 @@ const buildServiceBlocks = (
               locationText = convertCountryCodeToName(
                 product.productSnapshot.countryCode,
               );
+            }
+
+            // Add assignedTo name if available
+            if (product.productSnapshot?.assignedTo) {
+              locationText += ` (${product.productSnapshot.assignedTo})`;
             }
 
             if (locationText) {
