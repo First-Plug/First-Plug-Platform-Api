@@ -466,7 +466,6 @@ export class QuotesCoordinatorService {
       const baseFields = {
         serviceCategory: service.serviceCategory,
         deviceCount: service.enrolledDevices?.length || 0,
-        ...(service.productIds && { productIds: service.productIds }),
         ...(service.additionalDetails && {
           additionalDetails: service.additionalDetails,
         }),
@@ -486,7 +485,6 @@ export class QuotesCoordinatorService {
       const baseFields = {
         serviceCategory: service.serviceCategory,
         assetCount: service.assets?.length || 0,
-        ...(service.productIds && { productIds: service.productIds }),
         ...(service.additionalDetails && {
           additionalDetails: service.additionalDetails,
         }),
@@ -567,7 +565,6 @@ export class QuotesCoordinatorService {
       const baseFields = {
         serviceCategory: service.serviceCategory,
         productCount: service.products?.length || 0,
-        ...(service.productIds && { productIds: service.productIds }),
         ...(service.requiresCertificate !== undefined && {
           requiresCertificate: service.requiresCertificate,
         }),
@@ -602,7 +599,6 @@ export class QuotesCoordinatorService {
       const baseFields = {
         serviceCategory: service.serviceCategory,
         productCount: service.products?.length || 0,
-        ...(service.productIds && { productIds: service.productIds }),
         ...(service.additionalInfo && {
           additionalInfo: service.additionalInfo,
         }),

@@ -74,9 +74,6 @@ export class EnrollmentServiceSchema {
   @Prop({ type: String, enum: ['Enrollment'], required: true })
   serviceCategory: 'Enrollment';
 
-  @Prop({ type: [Types.ObjectId] })
-  productIds?: Types.ObjectId[]; // IDs de los productos a enrollar (referencia)
-
   @Prop({ type: [ProductSnapshotSchema], required: true })
   enrolledDevices: ProductSnapshotSchema[]; // Array de dispositivos a enrollar con snapshots
 
@@ -190,9 +187,6 @@ export class DataWipeServiceSchema {
   @Prop({ type: String, enum: ['Data Wipe'], required: true })
   serviceCategory: 'Data Wipe';
 
-  @Prop({ type: [Types.ObjectId] })
-  productIds?: Types.ObjectId[]; // IDs de los productos a hacer wipe (referencia)
-
   @Prop({ type: [DataWipeAssetSchema], required: true })
   assets: DataWipeAssetSchema[]; // Array de assets a hacer wipe
 
@@ -220,9 +214,6 @@ export class DestructionProductSchema {
 export class DestructionAndRecyclingServiceSchema {
   @Prop({ type: String, enum: ['Destruction and Recycling'], required: true })
   serviceCategory: 'Destruction and Recycling';
-
-  @Prop({ type: [Types.ObjectId] })
-  productIds?: Types.ObjectId[]; // IDs de los productos a destruir (referencia)
 
   @Prop({ type: [DestructionProductSchema], required: true })
   products: DestructionProductSchema[]; // Array de productos a destruir con snapshots
@@ -281,9 +272,6 @@ export class BuybackProductSchema {
 export class BuybackServiceSchema {
   @Prop({ type: String, enum: ['Buyback'], required: true })
   serviceCategory: 'Buyback';
-
-  @Prop({ type: [Types.ObjectId] })
-  productIds?: Types.ObjectId[]; // IDs de los productos a comprar (referencia)
 
   @Prop({ type: [BuybackProductSchema], required: true })
   products: BuybackProductSchema[]; // Array de productos con detalles de buyback

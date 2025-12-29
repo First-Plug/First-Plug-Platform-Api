@@ -358,7 +358,6 @@
   "services": [
     {
       "serviceCategory": "Enrollment",
-      "productIds": ["690b9d8e3c2dc7018e2f5036", "690b9d8e3c2dc7018e2f5037"],
       "enrolledDevices": [
         {
           "category": "Computer",
@@ -390,7 +389,6 @@
 **Nota:** El servicio de Enrollment permite:
 
 - Enrollar múltiples dispositivos en una sola solicitud
-- Guardar IDs de los productos como referencia (`productIds`)
 - Capturar snapshots de cada dispositivo (brand, model, serial, location, etc.)
 - Agregar detalles adicionales opcionales
 - Contar automáticamente dispositivos por tipo (Mac vs Windows)
@@ -417,7 +415,6 @@
   "services": [
     {
       "serviceCategory": "Enrollment",
-      "productIds": ["690b9d8e3c2dc7018e2f5036", "690b9d8e3c2dc7018e2f5037"],
       "enrolledDevices": [
         {
           "category": "Computer",
@@ -694,7 +691,6 @@ Incluye identificación completa del producto (importante para history y Slack):
   "services": [
     {
       "serviceCategory": "Data Wipe",
-      "productIds": ["690b9d8e3c2dc7018e2f5039"],
       "assets": [
         {
           "productId": "690b9d8e3c2dc7018e2f5039",
@@ -739,7 +735,6 @@ Incluye identificación completa del producto (importante para history y Slack):
   "services": [
     {
       "serviceCategory": "Data Wipe",
-      "productIds": ["690b9d8e3c2dc7018e2f5042", "690b9d8e3c2dc7018e2f5043"],
       "assets": [
         {
           "productId": "690b9d8e3c2dc7018e2f5042",
@@ -913,7 +908,6 @@ Incluye identificación completa del producto (importante para history y Slack):
   "services": [
     {
       "serviceCategory": "Destruction and Recycling",
-      "productIds": ["690b9d8e3c2dc7018e2f5050"],
       "products": [
         {
           "productId": "690b9d8e3c2dc7018e2f5050",
@@ -943,11 +937,6 @@ Incluye identificación completa del producto (importante para history y Slack):
   "services": [
     {
       "serviceCategory": "Destruction and Recycling",
-      "productIds": [
-        "690b9d8e3c2dc7018e2f5051",
-        "690b9d8e3c2dc7018e2f5052",
-        "690b9d8e3c2dc7018e2f5053"
-      ],
       "products": [
         {
           "productId": "690b9d8e3c2dc7018e2f5051",
@@ -1018,7 +1007,6 @@ Incluye identificación completa del producto (importante para history y Slack):
   "services": [
     {
       "serviceCategory": "Enrollment",
-      "productIds": ["690b9d8e3c2dc7018e2f5036", "690b9d8e3c2dc7018e2f5037"],
       "enrolledDevices": [
         {
           "category": "Computer",
@@ -1067,7 +1055,6 @@ Incluye identificación completa del producto (importante para history y Slack):
     },
     {
       "serviceCategory": "Data Wipe",
-      "productIds": ["690b9d8e3c2dc7018e2f5047"],
       "assets": [
         {
           "productId": "690b9d8e3c2dc7018e2f5047",
@@ -1103,7 +1090,6 @@ Incluye identificación completa del producto (importante para history y Slack):
     },
     {
       "serviceCategory": "Destruction and Recycling",
-      "productIds": ["690b9d8e3c2dc7018e2f5054"],
       "products": [
         {
           "productId": "690b9d8e3c2dc7018e2f5054",
@@ -1133,8 +1119,6 @@ Incluye identificación completa del producto (importante para history y Slack):
   "services": [
     {
       "serviceCategory": "Buyback",
-     arra
-      aca
       "products": [
         {
           "productId": "690b9d8e3c2dc7018e2f5055",
@@ -1178,7 +1162,6 @@ Incluye identificación completa del producto (importante para history y Slack):
   "services": [
     {
       "serviceCategory": "Buyback",
-      "productIds": ["690b9d8e3c2dc7018e2f5056", "690b9d8e3c2dc7018e2f5057"],
       "products": [
         {
           "productId": "690b9d8e3c2dc7018e2f5056",
@@ -1259,7 +1242,6 @@ Incluye identificación completa del producto (importante para history y Slack):
   "services": [
     {
       "serviceCategory": "Enrollment",
-      "productIds": ["690b9d8e3c2dc7018e2f5036", "690b9d8e3c2dc7018e2f5037"],
       "enrolledDevices": [
         {
           "category": "Computer",
@@ -1308,7 +1290,6 @@ Incluye identificación completa del producto (importante para history y Slack):
     },
     {
       "serviceCategory": "Data Wipe",
-      "productIds": ["690b9d8e3c2dc7018e2f5047"],
       "assets": [
         {
           "productId": "690b9d8e3c2dc7018e2f5047",
@@ -1344,7 +1325,6 @@ Incluye identificación completa del producto (importante para history y Slack):
     },
     {
       "serviceCategory": "Destruction and Recycling",
-      "productIds": ["690b9d8e3c2dc7018e2f5054"],
       "products": [
         {
           "productId": "690b9d8e3c2dc7018e2f5054",
@@ -1365,7 +1345,6 @@ Incluye identificación completa del producto (importante para history y Slack):
     },
     {
       "serviceCategory": "Buyback",
-      "productIds": ["690b9d8e3c2dc7018e2f5058"],
       "products": [
         {
           "productId": "690b9d8e3c2dc7018e2f5058",

@@ -39,7 +39,6 @@ export interface ITSupportService extends BaseServiceItem {
  */
 export interface EnrollmentService {
   serviceCategory: 'Enrollment';
-  productIds?: string[]; // IDs de los productos a enrollar (referencia)
   enrolledDevices: ProductSnapshot[]; // Array de dispositivos a enrollar con snapshots
   additionalDetails?: string; // Detalles adicionales (opcional)
 }
@@ -102,7 +101,6 @@ export interface DataWipeAsset {
  */
 export interface DataWipeService {
   serviceCategory: 'Data Wipe';
-  productIds?: string[]; // IDs de los productos a hacer wipe (referencia)
   assets: DataWipeAsset[]; // Array de assets a hacer wipe
   additionalDetails?: string; // Detalles adicionales (opcional)
 }
@@ -121,7 +119,6 @@ export interface DestructionProduct {
  */
 export interface DestructionAndRecyclingService {
   serviceCategory: 'Destruction and Recycling';
-  productIds?: string[]; // IDs de los productos a destruir (referencia)
   products: DestructionProduct[]; // Array de productos a destruir con snapshots
   requiresCertificate?: boolean; // ¿Se requiere certificado de destrucción?
   comments?: string; // Comentarios adicionales (opcional)
@@ -154,7 +151,6 @@ export interface BuybackProduct {
  */
 export interface BuybackService {
   serviceCategory: 'Buyback';
-  productIds?: string[]; // IDs de los productos a comprar (referencia)
   products: BuybackProduct[]; // Array de productos con detalles de buyback
   additionalInfo?: string; // Información adicional (opcional)
 }

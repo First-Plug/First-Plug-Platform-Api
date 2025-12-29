@@ -34,7 +34,6 @@ export class ITSupportServiceResponseDto {
  */
 export class EnrollmentServiceResponseDto {
   serviceCategory: 'Enrollment';
-  productIds?: string[]; // IDs de los productos a enrollar (referencia)
   enrolledDevices: Array<{
     category?: string;
     name?: string;
@@ -53,7 +52,6 @@ export class EnrollmentServiceResponseDto {
  */
 export class DataWipeServiceResponseDto {
   serviceCategory: 'Data Wipe';
-  productIds?: string[]; // IDs de los productos a hacer wipe (referencia)
   assets: Array<{
     productId?: string;
     productSnapshot?: {
@@ -112,7 +110,6 @@ export class DataWipeServiceResponseDto {
  */
 export class DestructionAndRecyclingServiceResponseDto {
   serviceCategory: 'Destruction and Recycling';
-  productIds?: string[]; // IDs de los productos a destruir (referencia)
   products: Array<{
     productId?: string;
     productSnapshot?: {
@@ -135,7 +132,6 @@ export class DestructionAndRecyclingServiceResponseDto {
  */
 export class BuybackServiceResponseDto {
   serviceCategory: 'Buyback';
-  productIds?: string[]; // IDs de los productos a comprar (referencia)
   products: Array<{
     productId?: string;
     productSnapshot?: {

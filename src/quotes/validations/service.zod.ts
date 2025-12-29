@@ -61,10 +61,6 @@ export type ITSupportService = z.infer<typeof ITSupportServiceSchema>;
  */
 export const EnrollmentServiceSchema = z.object({
   serviceCategory: z.literal('Enrollment'),
-  productIds: z
-    .array(z.string())
-    .optional()
-    .describe('IDs de los productos a enrollar (referencia)'),
   enrolledDevices: z
     .array(ProductSnapshotSchema)
     .min(1, 'Al menos un dispositivo es requerido para enrollar'),
@@ -143,10 +139,6 @@ const DataWipeAssetSchema = z.object({
  */
 export const DataWipeServiceSchema = z.object({
   serviceCategory: z.literal('Data Wipe'),
-  productIds: z
-    .array(z.string())
-    .optional()
-    .describe('IDs de los productos a hacer wipe (referencia)'),
   assets: z
     .array(DataWipeAssetSchema)
     .min(1, 'Al menos un asset es requerido para data wipe'),
@@ -172,10 +164,6 @@ const DestructionProductSchema = z.object({
  */
 export const DestructionAndRecyclingServiceSchema = z.object({
   serviceCategory: z.literal('Destruction and Recycling'),
-  productIds: z
-    .array(z.string())
-    .optional()
-    .describe('IDs de los productos a destruir (referencia)'),
   products: z
     .array(DestructionProductSchema)
     .min(1, 'Al menos un producto es requerido para destrucción'),
@@ -232,7 +220,6 @@ const BuybackProductSchema = z.object({
  */
 const BuybackServiceSchema = z.object({
   serviceCategory: z.literal('Buyback'),
-  productIds: z.array(z.string()).optional(),
   products: z
     .array(BuybackProductSchema)
     .min(1, 'Al menos un producto es requerido para buyback'),
