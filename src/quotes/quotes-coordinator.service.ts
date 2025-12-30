@@ -104,7 +104,7 @@ export class QuotesCoordinatorService {
     quote: Quote,
   ): Promise<Quote> {
     // 1. Cambiar status a Cancelled
-    const cancelledQuote = await this.quotesService.cancel(id, tenantName);
+    const cancelledQuote = await this.quotesService.cancel(id);
 
     // 2. Notificar a Slack (no-blocking)
     this.notifyQuoteCancelledToSlack(cancelledQuote).catch((error) => {

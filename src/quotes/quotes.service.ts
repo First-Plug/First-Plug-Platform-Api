@@ -1,7 +1,7 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Types } from 'mongoose';
+import { Injectable, Logger, NotFoundException, Inject } from '@nestjs/common';
+import { Types, Model } from 'mongoose';
 import { TenantConnectionService } from '../infra/db/tenant-connection.service';
-import { Quote, QuoteDocument, QuoteSchema } from './schemas/quote.schema';
+import { Quote, QuoteDocument } from './schemas/quote.schema';
 import { ShipmentMetadataSchema } from '../shipments/schema/shipment-metadata.schema';
 import { CreateQuoteDto, UpdateQuoteDto } from './dto';
 
@@ -15,6 +15,7 @@ export class QuotesService {
   private readonly logger = new Logger(QuotesService.name);
 
   constructor(
+    @Inject('QUOTE_MODEL') private quoteRepository: Model<QuoteDocument>,
     private readonly tenantConnectionService: TenantConnectionService,
   ) {}
 
@@ -32,7 +33,6 @@ export class QuotesService {
   ): Promise<Quote> {
     const connection =
       await this.tenantConnectionService.getTenantConnection(tenantName);
-    const QuoteModel = connection.model<QuoteDocument>('Quote', QuoteSchema);
 
     // Generar requestId único
     const requestId = await this.generateRequestId(connection, tenantName);
@@ -52,7 +52,7 @@ export class QuotesService {
       requestType = 'product';
     }
 
-    const quote = new QuoteModel({
+    const quote = new this.quoteRepository({
       requestId,
       tenantId,
       tenantName,
@@ -74,14 +74,11 @@ export class QuotesService {
    * Obtener todas las quotes del usuario (sin paginación - legacy)
    */
   async findAll(tenantName: string, userEmail: string): Promise<Quote[]> {
-    const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const QuoteModel = connection.model<QuoteDocument>('Quote', QuoteSchema);
-
-    return QuoteModel.find({
-      userEmail,
-      isDeleted: false,
-    })
+    return this.quoteRepository
+      .find({
+        userEmail,
+        isDeleted: false,
+      })
       .sort({ createdAt: -1 })
       .lean()
       .exec();
@@ -104,10 +101,6 @@ export class QuotesService {
     totalCount: number;
     totalPages: number;
   }> {
-    const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const QuoteModel = connection.model<QuoteDocument>('Quote', QuoteSchema);
-
     const skip = (page - 1) * size;
 
     // Construir filtro de fecha
@@ -131,13 +124,14 @@ export class QuotesService {
     };
 
     const [data, totalCount] = await Promise.all([
-      QuoteModel.find(query)
+      this.quoteRepository
+        .find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(size)
         .lean()
         .exec(),
-      QuoteModel.countDocuments(query).exec(),
+      this.quoteRepository.countDocuments(query).exec(),
     ]);
 
     return {
@@ -155,15 +149,12 @@ export class QuotesService {
     tenantName: string,
     userEmail: string,
   ): Promise<Quote> {
-    const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const QuoteModel = connection.model<QuoteDocument>('Quote', QuoteSchema);
-
-    const quote = await QuoteModel.findOne({
-      _id: new Types.ObjectId(id),
-      userEmail,
-      isDeleted: false,
-    })
+    const quote = await this.quoteRepository
+      .findOne({
+        _id: new Types.ObjectId(id),
+        userEmail,
+        isDeleted: false,
+      })
       .lean()
       .exec();
 
@@ -183,19 +174,16 @@ export class QuotesService {
     tenantName: string,
     userEmail: string,
   ): Promise<Quote> {
-    const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const QuoteModel = connection.model<QuoteDocument>('Quote', QuoteSchema);
-
-    const quote = await QuoteModel.findOneAndUpdate(
-      {
-        _id: new Types.ObjectId(id),
-        userEmail,
-        isDeleted: false,
-      },
-      updateQuoteDto,
-      { new: true },
-    )
+    const quote = await this.quoteRepository
+      .findOneAndUpdate(
+        {
+          _id: new Types.ObjectId(id),
+          userEmail,
+          isDeleted: false,
+        },
+        updateQuoteDto,
+        { new: true },
+      )
       .lean()
       .exec();
 
@@ -214,11 +202,7 @@ export class QuotesService {
     tenantName: string,
     userEmail: string,
   ): Promise<void> {
-    const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const QuoteModel = connection.model<QuoteDocument>('Quote', QuoteSchema);
-
-    const result = await QuoteModel.updateOne(
+    const result = await this.quoteRepository.updateOne(
       {
         _id: new Types.ObjectId(id),
         userEmail,
@@ -235,16 +219,13 @@ export class QuotesService {
    * Cancelar una quote (cambiar status a 'Cancelled')
    * La quote sigue siendo visible, solo cambia su status
    */
-  async cancel(id: string, tenantName: string): Promise<Quote> {
-    const connection =
-      await this.tenantConnectionService.getTenantConnection(tenantName);
-    const QuoteModel = connection.model<QuoteDocument>('Quote', QuoteSchema);
-
-    const quote = await QuoteModel.findByIdAndUpdate(
-      new Types.ObjectId(id),
-      { status: 'Cancelled' },
-      { new: true },
-    )
+  async cancel(id: string): Promise<Quote> {
+    const quote = await this.quoteRepository
+      .findByIdAndUpdate(
+        new Types.ObjectId(id),
+        { status: 'Cancelled' },
+        { new: true },
+      )
       .lean()
       .exec();
 
