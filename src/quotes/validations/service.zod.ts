@@ -232,8 +232,42 @@ const BuybackServiceSchema = z.object({
 export type BuybackService = z.infer<typeof BuybackServiceSchema>;
 
 /**
+ * Validación para producto en Donate Service
+ */
+const DonateProductSchema = z.object({
+  productId: z.string().optional(),
+  productSnapshot: ProductSnapshotSchema.optional(),
+  needsDataWipe: z
+    .boolean()
+    .describe('¿Necesita data wipe? (solo si category es Computer o Other)')
+    .optional(),
+  needsCleaning: z.boolean().describe('¿Necesita limpieza?').optional(),
+  comments: z
+    .string()
+    .max(1000, 'Comments no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+/**
+ * Validación para Donate Service
+ * Permite solicitar donación de múltiples productos
+ */
+export const DonateServiceSchema = z.object({
+  serviceCategory: z.literal('Donate'),
+  products: z
+    .array(DonateProductSchema)
+    .min(1, 'Al menos un producto es requerido para donación'),
+  additionalDetails: z
+    .string()
+    .max(1000, 'Additional details no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+export type DonateService = z.infer<typeof DonateServiceSchema>;
+
+/**
  * Union de todos los servicios
- * Soporta IT Support, Enrollment, Data Wipe, Destruction and Recycling y Buyback
+ * Soporta IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback y Donate
  */
 export const ServiceUnion = z.union([
   ITSupportServiceSchema,
@@ -241,6 +275,7 @@ export const ServiceUnion = z.union([
   DataWipeServiceSchema,
   DestructionAndRecyclingServiceSchema,
   BuybackServiceSchema,
+  DonateServiceSchema,
 ]);
 
 /**

@@ -157,6 +157,30 @@ export class BuybackServiceResponseDto {
 }
 
 /**
+ * DTO para respuesta de Donate Service
+ */
+export class DonateServiceResponseDto {
+  serviceCategory: 'Donate';
+  products: Array<{
+    productId?: string;
+    productSnapshot?: {
+      category?: string;
+      name?: string;
+      brand?: string;
+      model?: string;
+      serialNumber?: string;
+      location?: string;
+      assignedTo?: string;
+      countryCode?: string;
+    };
+    needsDataWipe?: boolean; // ¿Necesita data wipe? (solo si category es Computer o Other)
+    needsCleaning?: boolean; // ¿Necesita limpieza?
+    comments?: string; // Comentarios adicionales
+  }>;
+  additionalDetails?: string; // Detalles adicionales
+}
+
+/**
  * Union de todos los Service Response DTOs
  */
 export type ServiceResponseDto =
@@ -164,7 +188,8 @@ export type ServiceResponseDto =
   | EnrollmentServiceResponseDto
   | DataWipeServiceResponseDto
   | DestructionAndRecyclingServiceResponseDto
-  | BuybackServiceResponseDto;
+  | BuybackServiceResponseDto
+  | DonateServiceResponseDto;
 
 /**
  * DTO para agregar servicio a quote

@@ -652,6 +652,59 @@ export class QuotesCoordinatorService {
 
       return baseFields;
     }
+    // Donate Service
+    else if (service.serviceCategory === 'Donate') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        productCount: service.products?.length || 0,
+        ...(service.additionalDetails && {
+          additionalDetails: service.additionalDetails,
+        }),
+      };
+
+      // Agregar detalles de productos a donar
+      if (service.products && service.products.length > 0) {
+        baseFields['products'] = service.products.map((product: any) => {
+          const productData: Record<string, any> = {};
+
+          // Agregar snapshot del producto
+          if (product.productSnapshot) {
+            productData['productSnapshot'] = this.formatProductSnapshot(
+              product.productSnapshot,
+            );
+          }
+
+          // Agregar productId si existe
+          if (product.productId) {
+            productData['productId'] = product.productId;
+          }
+
+          // Agregar needsDataWipe si existe (solo si category es Computer o Other)
+          if (
+            product.productSnapshot?.category === 'Computer' ||
+            product.productSnapshot?.category === 'Other'
+          ) {
+            if (product.needsDataWipe !== undefined) {
+              productData['needsDataWipe'] = product.needsDataWipe;
+            }
+          }
+
+          // Agregar needsCleaning si existe
+          if (product.needsCleaning !== undefined) {
+            productData['needsCleaning'] = product.needsCleaning;
+          }
+
+          // Agregar comentarios si existen
+          if (product.comments) {
+            productData['comments'] = product.comments;
+          }
+
+          return productData;
+        });
+      }
+
+      return baseFields;
+    }
 
     // Fallback para servicios desconocidos
     return {

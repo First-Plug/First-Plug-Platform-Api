@@ -1380,3 +1380,159 @@ Incluye identificación completa del producto (importante para history y Slack):
   ]
 }
 ```
+
+## Example 25: Donate Service - Single Computer
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Donate",
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5059",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Dell",
+            "model": "Latitude 5520",
+            "serialNumber": "dell-latitude-donate-001",
+            "location": "Employee",
+            "assignedTo": "John Doe",
+            "countryCode": "AR"
+          },
+          "needsDataWipe": true,
+          "needsCleaning": true,
+          "comments": "Fully functional, ready for donation after data wipe and cleaning"
+        }
+      ],
+      "additionalDetails": "Computer in good condition, suitable for donation to educational institution"
+    }
+  ]
+}
+```
+
+## Example 26: Donate Service - Multiple Products (Computer + Other)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Donate",
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5060",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Asus",
+            "model": "VivoBook 15",
+            "serialNumber": "asus-vivobook-donate-001",
+            "location": "Our office",
+            "assignedTo": "Buenos Aires Office",
+            "countryCode": "AR"
+          },
+          "needsDataWipe": true,
+          "needsCleaning": true,
+          "comments": "Laptop with minor cosmetic damage, fully functional"
+        },
+        {
+          "productId": "690b9d8e3c2dc7018e2f5061",
+          "productSnapshot": {
+            "category": "Monitor",
+            "name": "Monitor",
+            "brand": "LG",
+            "model": "27UP550",
+            "serialNumber": "lg-monitor-donate-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Argentina",
+            "countryCode": "AR"
+          },
+          "needsDataWipe": false,
+          "needsCleaning": true,
+          "comments": "4K monitor in excellent condition"
+        },
+        {
+          "productId": "690b9d8e3c2dc7018e2f5062",
+          "productSnapshot": {
+            "category": "Other",
+            "name": "External Hard Drive",
+            "brand": "Seagate",
+            "model": "Backup Plus",
+            "serialNumber": "seagate-backup-donate-001",
+            "location": "Employee",
+            "assignedTo": "Maria Garcia",
+            "countryCode": "AR"
+          },
+          "needsDataWipe": true,
+          "needsCleaning": false,
+          "comments": "Storage device, needs secure data wipe before donation"
+        }
+      ],
+      "additionalDetails": "Batch of equipment for donation to non-profit organization. All items should be cleaned and data wiped as needed."
+    }
+  ]
+}
+```
+
+## Example 27: Complete Quote - Products + Donate Service
+
+```json
+{
+  "products": [
+    {
+      "category": "Monitor",
+      "quantity": 2,
+      "brand": ["Dell"],
+      "model": ["U2720Q"],
+      "screenSize": ["27\""],
+      "screenTechnology": ["IPS"],
+      "otherSpecifications": "USB-C connectivity, 4K resolution",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25",
+      "comments": "Para la oficina principal"
+    }
+  ],
+  "services": [
+    {
+      "serviceCategory": "Donate",
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5063",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "HP",
+            "model": "EliteBook 840",
+            "serialNumber": "hp-elite-donate-001",
+            "location": "Employee",
+            "assignedTo": "Carlos Lopez",
+            "countryCode": "AR"
+          },
+          "needsDataWipe": true,
+          "needsCleaning": true,
+          "comments": "Laptop in good working condition, ready for donation"
+        },
+        {
+          "productId": "690b9d8e3c2dc7018e2f5064",
+          "productSnapshot": {
+            "category": "Audio",
+            "name": "Speaker",
+            "brand": "Bose",
+            "model": "SoundLink Revolve",
+            "serialNumber": "bose-soundlink-donate-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Singapore",
+            "countryCode": "SG"
+          },
+          "needsDataWipe": false,
+          "needsCleaning": true,
+          "comments": "Bluetooth speaker in excellent condition"
+        }
+      ],
+      "additionalDetails": "Equipment donation for community center. Please ensure all items are cleaned and ready for use."
+    }
+  ]
+}
+```

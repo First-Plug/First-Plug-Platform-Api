@@ -279,3 +279,40 @@ export class BuybackServiceSchema {
   @Prop({ type: String })
   additionalInfo?: string; // Información adicional (opcional)
 }
+
+/**
+ * Subdocumento para un producto en Donate Service
+ */
+@Schema({ _id: false })
+export class DonateProductSchema {
+  @Prop({ type: Types.ObjectId })
+  productId?: Types.ObjectId; // ID del producto
+
+  @Prop({ type: ProductSnapshotSchema })
+  productSnapshot?: ProductSnapshotSchema; // Snapshot del producto
+
+  @Prop({ type: Boolean })
+  needsDataWipe?: boolean; // ¿Necesita data wipe? (solo si category es Computer o Other)
+
+  @Prop({ type: Boolean })
+  needsCleaning?: boolean; // ¿Necesita limpieza?
+
+  @Prop({ type: String })
+  comments?: string; // Comentarios adicionales (opcional)
+}
+
+/**
+ * Subdocumento para Donate Service
+ * Permite solicitar donación de múltiples productos
+ */
+@Schema({ _id: false })
+export class DonateServiceSchema {
+  @Prop({ type: String, enum: ['Donate'], required: true })
+  serviceCategory: 'Donate';
+
+  @Prop({ type: [DonateProductSchema], required: true })
+  products: DonateProductSchema[]; // Array de productos a donar con detalles
+
+  @Prop({ type: String })
+  additionalDetails?: string; // Detalles adicionales (opcional)
+}
