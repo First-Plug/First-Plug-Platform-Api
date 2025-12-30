@@ -231,10 +231,10 @@ export class Quote {
   @Prop({
     type: String,
     required: true,
-    enum: ['Requested'],
+    enum: ['Requested', 'Cancelled'],
     default: 'Requested',
   })
-  status: 'Requested';
+  status: 'Requested' | 'Cancelled';
 
   @Prop({
     type: [

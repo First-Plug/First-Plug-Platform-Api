@@ -3,7 +3,6 @@ import {
   Post,
   Get,
   Patch,
-  Delete,
   Body,
   Param,
   UseGuards,
@@ -183,21 +182,36 @@ export class QuotesController {
   }
 
   /**
-   * DELETE /quotes/:id
-   * Cancelar una quote (soft delete)
+   * PATCH /quotes/:id/cancel
+   * Cancelar una quote (cambiar status a 'Cancelled')
    * ✅ Valida formato de ID
+   * Retorna la quote actualizada con status 'Cancelled'
    */
-  @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@Param('id') id: string, @Req() req: any): Promise<void> {
+  @Patch(':id/cancel')
+  async cancel(
+    @Param('id') id: string,
+    @Req() req: any,
+  ): Promise<QuoteResponseDto> {
     this.validateObjectId(id);
     const { tenantName, email: userEmail } = req.user;
 
-    await this.quotesCoordinator.cancelQuoteWithCoordination(
+    // Obtener quote antes de cancelar (para history y Slack)
+    const quote = await this.quotesCoordinator.quotesService.findById(
       id,
       tenantName,
       userEmail,
     );
+
+    // Cambiar status a Cancelled y desencadenar Slack + History
+    const cancelledQuote =
+      await this.quotesCoordinator.cancelQuoteWithCoordination(
+        id,
+        tenantName,
+        userEmail,
+        quote,
+      );
+
+    return this.mapToResponseDto(cancelledQuote);
   }
 
   /**
@@ -269,7 +283,7 @@ export class QuotesController {
       userName: quote.userName,
       userEmail: quote.userEmail,
       requestType: quote.requestType,
-      status: quote.isDeleted ? 'Cancelled' : 'Requested',
+      status: quote.status || 'Requested', // Usar status del quote
       productCount: (quote.products || []).length,
       serviceCount: (quote.services || []).length,
       totalQuantity,

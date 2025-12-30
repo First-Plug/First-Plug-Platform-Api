@@ -232,6 +232,30 @@ export class QuotesService {
   }
 
   /**
+   * Cancelar una quote (cambiar status a 'Cancelled')
+   * La quote sigue siendo visible, solo cambia su status
+   */
+  async cancel(id: string, tenantName: string): Promise<Quote> {
+    const connection =
+      await this.tenantConnectionService.getTenantConnection(tenantName);
+    const QuoteModel = connection.model<QuoteDocument>('Quote', QuoteSchema);
+
+    const quote = await QuoteModel.findByIdAndUpdate(
+      new Types.ObjectId(id),
+      { status: 'Cancelled' },
+      { new: true },
+    )
+      .lean()
+      .exec();
+
+    if (!quote) {
+      throw new NotFoundException(`Quote ${id} not found`);
+    }
+
+    return quote;
+  }
+
+  /**
    * Generar requestId único: QR-{tenantName}-{autoIncrement}
    * ✅ Usa colección shipmentmetadata (reutiliza patrón existente)
    * ✅ Garantiza unicidad incluso con deletes

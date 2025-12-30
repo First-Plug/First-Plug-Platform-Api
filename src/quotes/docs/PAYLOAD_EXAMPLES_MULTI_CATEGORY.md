@@ -249,7 +249,7 @@
 }
 ```
 
-## 11. Quote con IT Support Service (Solo Servicio) - Computer en SG Warehouse
+## 11. Quote con IT Support Service (Solo Servicio) - Computer Asus en SG Warehouse
 
 ```json
 {
@@ -258,13 +258,17 @@
       "serviceCategory": "IT Support",
       "productId": "690b9d8e3c2dc7018e2f5036",
       "productSnapshot": {
+        "category": "Computer",
+        "name": "Computer",
+        "brand": "Asus",
+        "model": "IdeaPad Serie S",
         "serialNumber": "grupo 6",
         "location": "FP warehouse",
-        "assignedTo": "warehouse",
+        "assignedTo": "Default Warehouse",
         "countryCode": "SG"
       },
       "issues": ["Device not connecting to network", "Slow performance"],
-      "description": "Computer device experiencing connectivity issues and performance degradation. Needs diagnostic and repair.",
+      "description": "Asus IdeaPad Serie S experiencing connectivity issues and performance degradation. Needs diagnostic and repair.",
       "issueStartDate": "2025-12-15",
       "impactLevel": "high"
     }
@@ -272,7 +276,7 @@
 }
 ```
 
-## 12. Quote con IT Support Service para Member (Solo Servicio) - Audio para Alfredo Rolon
+## 12. Quote con IT Support Service para Member (Solo Servicio) - Audio Sony para Alfredo Rolon
 
 ```json
 {
@@ -281,13 +285,17 @@
       "serviceCategory": "IT Support",
       "productId": "690a4b12672c966f9351fc4f",
       "productSnapshot": {
+        "category": "Audio",
+        "name": "Audio name",
+        "brand": "Sony",
+        "model": "Zone Vibe 125",
         "serialNumber": "serialserial1",
         "location": "Employee",
         "assignedTo": "Alfredo Rolon",
         "countryCode": "PY"
       },
       "issues": ["Audio not working", "Microphone not responding"],
-      "description": "Audio device assigned to Alfredo Rolon is experiencing hardware issues. Needs immediate attention and repair.",
+      "description": "Sony Zone Vibe 125 assigned to Alfredo Rolon is experiencing hardware issues. Needs immediate attention and repair.",
       "issueStartDate": "2025-12-14",
       "impactLevel": "high"
     }
@@ -304,13 +312,13 @@
       "category": "Computer",
       "quantity": 1,
       "os": "Windows",
-      "brand": ["Dell"],
-      "model": ["XPS 13"],
-      "processor": ["Intel i7"],
+      "brand": ["Asus"],
+      "model": ["IdeaPad Serie S"],
+      "processor": ["AMD Ryzen 7"],
       "ram": ["16GB"],
       "storage": ["512GB SSD"],
-      "screenSize": ["13.3\""],
-      "otherSpecifications": "Touchscreen",
+      "screenSize": ["15.6\""],
+      "otherSpecifications": "FHD Display",
       "extendedWarranty": true,
       "extendedWarrantyYears": 2,
       "deviceEnrollment": true,
@@ -325,13 +333,17 @@
       "serviceCategory": "IT Support",
       "productId": "690a4b12672c966f9351fc4f",
       "productSnapshot": {
+        "category": "Audio",
+        "name": "Audio",
+        "brand": "Sony",
+        "model": "Zone Vibe 125",
         "serialNumber": "serialserial1",
         "location": "Employee",
         "assignedTo": "Alfredo Rolon",
         "countryCode": "PY"
       },
       "issues": ["Audio not working"],
-      "description": "Audio device assigned to Alfredo Rolon needs IT support for audio connectivity issues.",
+      "description": "Sony Zone Vibe 125 assigned to Alfredo Rolon needs IT support for audio connectivity issues.",
       "issueStartDate": "2025-12-15",
       "impactLevel": "medium"
     }
@@ -339,7 +351,9 @@
 }
 ```
 
-## Endpoint
+## Endpoints
+
+### Crear Quote
 
 ```
 POST /api/quotes
@@ -349,13 +363,119 @@ Authorization: Bearer {token}
 {payload}
 ```
 
+### Cancelar Quote
+
+```
+PATCH /api/quotes/:id/cancel
+Content-Type: application/json
+Authorization: Bearer {token}
+```
+
+**Respuesta:**
+
+```json
+{
+  "id": "67a1b2c3d4e5f6g7h8i9j0k1",
+  "tenantName": "firstplug",
+  "userName": "John Doe",
+  "userEmail": "john@example.com",
+  "requestType": "mixed",
+  "status": "Cancelled",
+  "products": [...],
+  "services": [...],
+  "createdAt": "2025-12-23T10:30:00Z",
+  "updatedAt": "2025-12-23T11:45:00Z"
+}
+```
+
+**Nota:** No requiere payload en el body. Solo cambia el status de "Requested" a "Cancelled" y desencadena:
+
+- Mensaje a Slack informando la cancelación (con icono ❌ y título "Cancelación del pedido de cotización n°: ...")
+- History record con oldData (status: Requested) y newData (status: Cancelled)
+
+**Mensaje de Slack para Cancelación:**
+
+```
+❌ Cancelación del pedido de cotización n°: QR-mechi_test-000030
+
+Type: Cancelled
+Tenant: mechi_test
+Request Type: mixed
+Products: 2
+Services: 1
+userName: John Doe
+usermail: john@example.com
+
+[Detalles de productos y servicios...]
+```
+
+**History Record para Cancelación (GET /history):**
+
+```json
+{
+  "_id": "67a1b2c3d4e5f6g7h8i9j0k2",
+  "actionType": "cancel",
+  "userId": "john@example.com",
+  "itemType": "quotes",
+  "changes": {
+    "oldData": {
+      "requestId": "QR-mechi_test-000030",
+      "tenantName": "mechi_test",
+      "userEmail": "john@example.com",
+      "userName": "John Doe",
+      "requestType": "mixed",
+      "status": "Requested",
+      "productCount": 2,
+      "totalQuantity": 3,
+      "products": [...],
+      "serviceCount": 1,
+      "services": [...]
+    },
+    "newData": {
+      "requestId": "QR-mechi_test-000030",
+      "tenantName": "mechi_test",
+      "userEmail": "john@example.com",
+      "userName": "John Doe",
+      "requestType": "mixed",
+      "status": "Cancelled",
+      "productCount": 2,
+      "totalQuantity": 3,
+      "products": [...],
+      "serviceCount": 1,
+      "services": [...]
+    }
+  },
+  "createdAt": "2025-12-23T11:45:00Z",
+  "updatedAt": "2025-12-23T11:45:00Z"
+}
+```
+
+**Nota para el Frontend:**
+
+- Usar `actionType === 'cancel'` para identificar cancelaciones
+- Comparar `oldData.status` (Requested) vs `newData.status` (Cancelled)
+- Mostrar icono ❌ o color rojo para cancelaciones
+
 ## Notas
 
 - **Productos**: `quantity` y `country` son **requeridos**
 - **Servicios**: `serviceCategory`, `issues` (array min 1), `description`, `impactLevel` son **requeridos**
-- **Snapshot**: Incluye `serialNumber`, `location`, `assignedTo`, `countryCode` del producto
+- **issueStartDate**: Formato **YYYY-MM-DD** (ej: "2025-12-14") - Se guarda así en BD y se devuelve en GET así. En Slack se muestra como dd/mm/yyyy
+- **Snapshot**: Incluye identificación completa del producto
+  - `category`: Categoría del producto (Computer, Audio, Monitor, etc.) - **IMPORTANTE para el detail**
+  - `name`: Nombre del producto (ej: "Audio", "Computer")
+  - `brand`: Marca (ej: "Sony", "Asus")
+  - `model`: Modelo (ej: "Zone Vibe 125", "IdeaPad Serie S")
+  - `serialNumber`: Serial del dispositivo (ej: "serialserial1", "grupo 6")
+  - `location`: Dónde está (Employee, FP warehouse, Our office)
+  - `assignedTo`: A quién está asignado (nombre del member, office, o warehouse)
+  - `countryCode`: Código ISO del país (ej: "PY", "SG")
 - **requestType** se calcula automáticamente:
   - Solo productos → `"product"`
   - Solo servicios → `"service"`
   - Ambos → `"mixed"`
 - Puedes mezclar múltiples categorías de productos con múltiples servicios en un mismo quote
+- Los datos del snapshot se guardan en la quote y en el activity record para:
+  - Auditoría completa
+  - Personalización del detail (category + brand + model + serial)
+  - Historial de cambios

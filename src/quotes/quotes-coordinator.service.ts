@@ -83,23 +83,51 @@ export class QuotesCoordinatorService {
   }
 
   /**
+   * Notificar cancelación de quote a Slack
+   * Usa actionType 'Cancelled' para indicar que la quote fue cancelada
+   */
+  private async notifyQuoteCancelledToSlack(quote: Quote): Promise<void> {
+    const message = CreateQuoteMessageToSlack(quote, 'Cancelled');
+    await this.slackService.sendQuoteMessage(message);
+  }
+
+  /**
    * Cancelar quote con coordinación
+   * 1. Cambiar status a 'Cancelled'
+   * 2. Notificar a Slack (no-blocking)
+   * 3. Registrar en History (no-blocking)
    */
   async cancelQuoteWithCoordination(
     id: string,
     tenantName: string,
     userEmail: string,
-  ): Promise<void> {
-    // Soft delete
-    await this.quotesService.delete(id, tenantName, userEmail);
+    quote: Quote,
+  ): Promise<Quote> {
+    // 1. Cambiar status a Cancelled
+    const cancelledQuote = await this.quotesService.cancel(id, tenantName);
 
-    // Registrar en History (no-blocking)
-    this.recordQuoteCancellationInHistory(id, userEmail).catch((error) => {
+    // 2. Notificar a Slack (no-blocking)
+    this.notifyQuoteCancelledToSlack(cancelledQuote).catch((error) => {
+      this.logger.error(
+        `Error notifying Slack for quote cancellation ${id}:`,
+        error,
+      );
+    });
+
+    // 3. Registrar en History (no-blocking)
+    this.recordQuoteCancellationInHistory(
+      quote,
+      cancelledQuote,
+      userEmail,
+      tenantName,
+    ).catch((error) => {
       this.logger.error(
         `Error recording quote cancellation in history ${id}:`,
         error,
       );
     });
+
+    return cancelledQuote;
   }
 
   /**
@@ -165,23 +193,93 @@ export class QuotesCoordinatorService {
 
   /**
    * Registrar cancelación de quote en History
+   * oldData: Quote con status 'Requested'
+   * newData: Quote con status 'Cancelled'
    */
   private async recordQuoteCancellationInHistory(
-    quoteId: string,
-    userEmail: string,
+    oldQuote: Quote,
+    newQuote: Quote,
+    userId: string,
+    tenantName: string,
   ): Promise<void> {
     try {
-      await this.historyService.create({
+      // Obtener la conexión del tenant
+      const connection =
+        await this.tenantConnectionService.getTenantConnection(tenantName);
+      const HistoryModel = connection.model('History', HistorySchema);
+
+      // Formatear oldData (quote con status 'Requested')
+      const oldData: any = {
+        requestId: oldQuote.requestId,
+        tenantName: oldQuote.tenantName,
+        userEmail: oldQuote.userEmail,
+        userName: oldQuote.userName,
+        requestType: oldQuote.requestType,
+        status: 'Requested',
+      };
+
+      // Agregar productos si existen
+      if (oldQuote.products && oldQuote.products.length > 0) {
+        oldData.productCount = oldQuote.products.length;
+        oldData.totalQuantity = oldQuote.products.reduce(
+          (sum, p) => sum + p.quantity,
+          0,
+        );
+        oldData.products = oldQuote.products.map((p) =>
+          this.formatProductForHistory(p),
+        );
+      }
+
+      // Agregar servicios si existen
+      if (oldQuote.services && oldQuote.services.length > 0) {
+        oldData.serviceCount = oldQuote.services.length;
+        oldData.services = oldQuote.services.map((s) =>
+          this.formatServiceForHistory(s),
+        );
+      }
+
+      // Formatear newData (quote con status 'Cancelled')
+      const newData: any = {
+        requestId: newQuote.requestId,
+        tenantName: newQuote.tenantName,
+        userEmail: newQuote.userEmail,
+        userName: newQuote.userName,
+        requestType: newQuote.requestType,
+        status: 'Cancelled',
+      };
+
+      // Agregar productos si existen
+      if (newQuote.products && newQuote.products.length > 0) {
+        newData.productCount = newQuote.products.length;
+        newData.totalQuantity = newQuote.products.reduce(
+          (sum, p) => sum + p.quantity,
+          0,
+        );
+        newData.products = newQuote.products.map((p) =>
+          this.formatProductForHistory(p),
+        );
+      }
+
+      // Agregar servicios si existen
+      if (newQuote.services && newQuote.services.length > 0) {
+        newData.serviceCount = newQuote.services.length;
+        newData.services = newQuote.services.map((s) =>
+          this.formatServiceForHistory(s),
+        );
+      }
+
+      const historyData = {
         actionType: 'cancel',
-        userId: userEmail,
-        itemType: 'quotes' as any, // quotes no está en el enum, pero lo permitimos
+        userId: userId,
+        itemType: 'quotes',
         changes: {
-          oldData: {
-            quoteId,
-          },
-          newData: null,
+          oldData,
+          newData,
         },
-      });
+      };
+
+      // Usar el modelo del tenant en lugar del servicio global
+      await HistoryModel.create(historyData);
     } catch (error) {
       this.logger.error(
         'Failed to record quote cancellation in history:',
@@ -313,6 +411,18 @@ export class QuotesCoordinatorService {
     // Agregar snapshot del producto si existe
     if (service.productSnapshot) {
       baseFields['productSnapshot'] = {
+        ...(service.productSnapshot.category && {
+          category: service.productSnapshot.category,
+        }),
+        ...(service.productSnapshot.name && {
+          name: service.productSnapshot.name,
+        }),
+        ...(service.productSnapshot.brand && {
+          brand: service.productSnapshot.brand,
+        }),
+        ...(service.productSnapshot.model && {
+          model: service.productSnapshot.model,
+        }),
         ...(service.productSnapshot.serialNumber && {
           serialNumber: service.productSnapshot.serialNumber,
         }),

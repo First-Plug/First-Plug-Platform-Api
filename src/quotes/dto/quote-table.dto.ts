@@ -9,7 +9,7 @@ export class QuoteTableDto {
   userEmail: string;
   productCount: number; // Cantidad de productos en la quote
   totalQuantity: number; // Suma de quantities de todos los productos
-  quoteStatus: 'Requested'; // Estado de la cotización
+  quoteStatus: 'Requested' | 'Cancelled'; // Estado de la cotización
   isActive: boolean; // Basado en isDeleted (true = activa, false = cancelada)
   createdAt: Date;
   updatedAt: Date;

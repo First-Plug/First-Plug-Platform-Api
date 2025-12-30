@@ -4,6 +4,10 @@ import { z } from 'zod';
  * Validación para ProductSnapshot
  */
 const ProductSnapshotSchema = z.object({
+  category: z.string().optional(),
+  name: z.string().optional(),
+  brand: z.string().optional(),
+  model: z.string().optional(),
   serialNumber: z.string().optional(),
   location: z.string().optional(),
   assignedTo: z.string().optional(),

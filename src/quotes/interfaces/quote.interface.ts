@@ -116,7 +116,7 @@ export interface Quote {
   userEmail: string; // Del token
   userName?: string; // Del token
   requestType: 'product' | 'service' | 'mixed'; // product, service, o mixed
-  status: 'Requested'; // Estado de la cotización (auto-seteado en creación)
+  status: 'Requested' | 'Cancelled'; // Estado de la cotización
   products: any[]; // Array de productos (múltiples categorías)
   services: ServiceData[]; // Array de servicios
   isDeleted: boolean;
@@ -145,7 +145,7 @@ export type ProductData =
 export const REQUEST_TYPES = ['Comprar productos'] as const;
 export type RequestType = (typeof REQUEST_TYPES)[number];
 
-export const QUOTE_STATUSES = ['Requested'] as const;
+export const QUOTE_STATUSES = ['Requested', 'Cancelled'] as const;
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
 
 export const PRODUCT_CATEGORIES = [
