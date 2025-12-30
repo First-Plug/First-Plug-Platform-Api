@@ -1,7 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, SchemaTimestampsConfig, Types } from 'mongoose';
 import { softDeletePlugin } from 'soft-delete-plugin-mongoose';
-import { ITSupportServiceSchema } from './service.schema';
+import {
+  ITSupportServiceSchema,
+  EnrollmentServiceSchema,
+  DataWipeServiceSchema,
+  DestructionAndRecyclingServiceSchema,
+  BuybackServiceSchema,
+} from './service.schema';
 
 export type QuoteDocument = Quote & Document & SchemaTimestampsConfig;
 
@@ -262,7 +268,13 @@ export class Quote {
     type: [
       {
         type: Object,
-        enum: [ITSupportServiceSchema],
+        enum: [
+          ITSupportServiceSchema,
+          EnrollmentServiceSchema,
+          DataWipeServiceSchema,
+          DestructionAndRecyclingServiceSchema,
+          BuybackServiceSchema,
+        ],
       },
     ],
     required: true,
