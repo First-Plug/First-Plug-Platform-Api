@@ -7,6 +7,9 @@ import {
   DataWipeServiceSchema,
   DestructionAndRecyclingServiceSchema,
   BuybackServiceSchema,
+  DonateServiceSchema,
+  CleaningServiceSchema,
+  StorageServiceSchema,
 } from './service.schema';
 
 export type QuoteDocument = Quote & Document & SchemaTimestampsConfig;
@@ -274,6 +277,9 @@ export class Quote {
           DataWipeServiceSchema,
           DestructionAndRecyclingServiceSchema,
           BuybackServiceSchema,
+          DonateServiceSchema,
+          CleaningServiceSchema,
+          StorageServiceSchema,
         ],
       },
     ],
