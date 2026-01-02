@@ -985,7 +985,7 @@ Incluye identificación completa del producto (importante para history y Slack):
 }
 ```
 
-## Example 21: Complete Quote - Products + All Service Types
+## Example 21: Complete Quote - Products + All Service Types (Real Data)
 
 ```json
 {
@@ -1013,43 +1013,41 @@ Incluye identificación completa del producto (importante para history y Slack):
           "name": "",
           "brand": "Apple",
           "model": "MacBook Pro",
-          "serialNumber": "5dys87g1s27",
-          "location": "FP warehouse",
-          "assignedTo": "Sede FirstPlug P",
+          "serialNumber": "5dys87g1s29",
+          "location": "Employee",
+          "assignedTo": "Dolores Pascual",
+          "assignedEmail": "dolorespascual@work.com",
           "countryCode": "AR"
         },
         {
           "category": "Computer",
           "name": "",
           "brand": "Apple",
-          "model": "iMac",
-          "serialNumber": "imac-serial-2025",
-          "location": "Our office",
-          "assignedTo": "NuevoConShipments",
-          "countryCode": "FR"
+          "model": "MacBook Pro",
+          "serialNumber": "5dys87g1s26",
+          "location": "Employee",
+          "assignedTo": "Amador Garcia",
+          "assignedEmail": "amadorgarcia@work.com",
+          "countryCode": "ES"
         }
       ],
-      "additionalDetails": "Enroll 2 Mac devices for MDM management."
+      "additionalDetails": "Enroll 2 MacBook Pro devices for MDM management. Employees in Argentina and Spain."
     },
     {
       "serviceCategory": "IT Support",
-      "productId": "690b9d8e3c2dc7018e2f5038",
+      "productId": "686beb939c7a0951bbec43c4",
       "productSnapshot": {
         "category": "Computer",
-        "name": "Computer",
-        "brand": "Asus",
-        "model": "IdeaPad Serie S",
-        "serialNumber": "grupo-6-asus",
-        "location": "FP warehouse",
-        "assignedTo": "Default Warehouse",
-        "countryCode": "SG"
+        "name": "",
+        "brand": "Lenovo",
+        "model": "ThinkPad Serie Z",
+        "serialNumber": "5dys87g1s112",
+        "location": "Our office",
+        "assignedTo": "Oficina Principal",
+        "countryCode": "GT"
       },
-      "issues": [
-        "Device not connecting to network",
-        "Slow performance",
-        "Battery not charging"
-      ],
-      "description": "Asus IdeaPad experiencing connectivity issues and performance degradation.",
+      "issues": ["Device not connecting to network", "Slow performance"],
+      "description": "Lenovo ThinkPad experiencing connectivity issues and performance degradation. Device in transit to Guatemala office.",
       "issueStartDate": "2025-12-10",
       "impactLevel": "high"
     },
@@ -1057,31 +1055,30 @@ Incluye identificación completa del producto (importante para history y Slack):
       "serviceCategory": "Data Wipe",
       "assets": [
         {
-          "productId": "690b9d8e3c2dc7018e2f5047",
+          "productId": "686beb939c7a0951bbec43c4",
           "productSnapshot": {
             "category": "Computer",
-            "name": "Computer",
-            "brand": "HP",
-            "model": "EliteBook 840",
-            "serialNumber": "hp-elite-001",
-            "location": "Employee",
-            "assignedTo": "Carlos Lopez",
-            "countryCode": "AR"
+            "name": "",
+            "brand": "Lenovo",
+            "model": "ThinkPad Serie Z",
+            "serialNumber": "5dys87g1s112",
+            "location": "Our office",
+            "assignedTo": "Oficina Principal",
+            "countryCode": "GT"
           },
           "desirableDate": "2025-12-26",
-          "currentLocation": "Employee",
-          "currentMember": {
-            "memberId": "690b9d8e3c2dc7018e2f5048",
-            "assignedMember": "Carlos Lopez",
-            "assignedEmail": "carlos@example.com",
-            "countryCode": "AR"
+          "currentLocation": "Our office",
+          "currentOffice": {
+            "officeId": "687e7e601d43bf08d8f26046",
+            "officeName": "Oficina Principal",
+            "countryCode": "GT"
           },
           "destination": {
             "destinationType": "FP warehouse",
             "warehouse": {
-              "warehouseId": "690b9d8e3c2dc7018e2f5049",
-              "warehouseName": "FP Warehouse Argentina",
-              "countryCode": "AR"
+              "warehouseId": "687e7e601d43bf08d8f26047",
+              "warehouseName": "FP Warehouse Guatemala",
+              "countryCode": "GT"
             }
           }
         }
@@ -1532,6 +1529,86 @@ Incluye identificación completa del producto (importante para history y Slack):
         }
       ],
       "additionalDetails": "Equipment donation for community center. Please ensure all items are cleaned and ready for use."
+    }
+  ]
+}
+```
+
+## Example 28: Cleaning Service - Single Computer (Real Data)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Cleaning",
+      "products": [
+        {
+          "productId": "686beb6f9c7a0951bbec40e9",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "",
+            "brand": "Apple",
+            "model": "MacBook Pro",
+            "serialNumber": "5dys87g1s29",
+            "location": "Employee",
+            "assignedTo": "Dolores Pascual",
+            "assignedEmail": "dolorespascual@work.com",
+            "countryCode": "AR"
+          },
+          "desiredDate": "2025-12-28",
+          "cleaningType": "Deep",
+          "additionalComments": "Full deep cleaning including keyboard and internal dust removal"
+        }
+      ],
+      "additionalDetails": "Computer requires deep cleaning before returning to service"
+    }
+  ]
+}
+```
+
+## Example 29: Cleaning Service - Multiple Products (Real Data)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Cleaning",
+      "products": [
+        {
+          "productId": "686beb6f9c7a0951bbec40e6",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "",
+            "brand": "Apple",
+            "model": "MacBook Pro",
+            "serialNumber": "5dys87g1s26",
+            "location": "Employee",
+            "assignedTo": "Amador Garcia",
+            "assignedEmail": "amadorgarcia@work.com",
+            "countryCode": "ES"
+          },
+          "desiredDate": "2025-12-26",
+          "cleaningType": "Superficial",
+          "additionalComments": "Light cleaning of exterior surfaces and screen"
+        },
+        {
+          "productId": "686beb939c7a0951bbec43c4",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "",
+            "brand": "Lenovo",
+            "model": "ThinkPad Serie Z",
+            "serialNumber": "5dys87g1s112",
+            "location": "Our office",
+            "assignedTo": "Oficina Principal",
+            "countryCode": "GT"
+          },
+          "desiredDate": "2025-12-27",
+          "cleaningType": "Superficial",
+          "additionalComments": "Clean exterior casing and keyboard"
+        }
+      ],
+      "additionalDetails": "Batch cleaning for equipment returning to service. Superficial cleaning sufficient for these items."
     }
   ]
 }

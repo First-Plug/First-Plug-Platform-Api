@@ -705,6 +705,54 @@ export class QuotesCoordinatorService {
 
       return baseFields;
     }
+    // Cleaning Service
+    else if (service.serviceCategory === 'Cleaning') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        productCount: service.products?.length || 0,
+        ...(service.additionalDetails && {
+          additionalDetails: service.additionalDetails,
+        }),
+      };
+
+      // Agregar detalles de productos a limpiar
+      if (service.products && service.products.length > 0) {
+        baseFields['products'] = service.products.map((product: any) => {
+          const productData: Record<string, any> = {};
+
+          // Agregar snapshot del producto
+          if (product.productSnapshot) {
+            productData['productSnapshot'] = this.formatProductSnapshot(
+              product.productSnapshot,
+            );
+          }
+
+          // Agregar productId si existe
+          if (product.productId) {
+            productData['productId'] = product.productId;
+          }
+
+          // Agregar fecha deseada si existe
+          if (product.desiredDate) {
+            productData['desiredDate'] = product.desiredDate;
+          }
+
+          // Agregar tipo de limpieza si existe
+          if (product.cleaningType) {
+            productData['cleaningType'] = product.cleaningType;
+          }
+
+          // Agregar comentarios adicionales si existen
+          if (product.additionalComments) {
+            productData['additionalComments'] = product.additionalComments;
+          }
+
+          return productData;
+        });
+      }
+
+      return baseFields;
+    }
 
     // Fallback para servicios desconocidos
     return {

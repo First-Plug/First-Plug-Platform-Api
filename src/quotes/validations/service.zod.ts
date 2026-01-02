@@ -266,8 +266,53 @@ export const DonateServiceSchema = z.object({
 export type DonateService = z.infer<typeof DonateServiceSchema>;
 
 /**
+ * Validación para producto en Cleaning Service
+ */
+const CleaningProductSchema = z.object({
+  productId: z.string().optional(),
+  productSnapshot: ProductSnapshotSchema.optional(),
+  desiredDate: z
+    .string()
+    .refine(
+      (val) => {
+        // Validar formato YYYY-MM-DD
+        return /^\d{4}-\d{2}-\d{2}$/.test(val);
+      },
+      {
+        message: 'Desired date debe estar en formato YYYY-MM-DD',
+      },
+    )
+    .optional(),
+  cleaningType: z
+    .enum(['Superficial', 'Deep'])
+    .describe('Tipo de limpieza: Superficial o Deep')
+    .optional(),
+  additionalComments: z
+    .string()
+    .max(1000, 'Additional comments no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+/**
+ * Validación para Cleaning Service
+ * Permite solicitar limpieza de múltiples productos (Computer o Other)
+ */
+export const CleaningServiceSchema = z.object({
+  serviceCategory: z.literal('Cleaning'),
+  products: z
+    .array(CleaningProductSchema)
+    .min(1, 'Al menos un producto es requerido para limpieza'),
+  additionalDetails: z
+    .string()
+    .max(1000, 'Additional details no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+export type CleaningService = z.infer<typeof CleaningServiceSchema>;
+
+/**
  * Union de todos los servicios
- * Soporta IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback y Donate
+ * Soporta IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback, Donate y Cleaning
  */
 export const ServiceUnion = z.union([
   ITSupportServiceSchema,
@@ -276,6 +321,7 @@ export const ServiceUnion = z.union([
   DestructionAndRecyclingServiceSchema,
   BuybackServiceSchema,
   DonateServiceSchema,
+  CleaningServiceSchema,
 ]);
 
 /**

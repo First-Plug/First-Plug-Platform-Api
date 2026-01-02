@@ -28,6 +28,9 @@ export class ProductSnapshotSchema {
   @Prop({ type: String })
   assignedTo?: string; // member name, office name, or warehouse name
 
+  @Prop({ type: String })
+  assignedEmail?: string; // Email del miembro asignado (si aplica)
+
   @Prop({ type: String, maxlength: 2 })
   countryCode?: string; // ISO country code (AR, BR, US, etc.)
 }
@@ -312,6 +315,43 @@ export class DonateServiceSchema {
 
   @Prop({ type: [DonateProductSchema], required: true })
   products: DonateProductSchema[]; // Array de productos a donar con detalles
+
+  @Prop({ type: String })
+  additionalDetails?: string; // Detalles adicionales (opcional)
+}
+
+/**
+ * Subdocumento para un producto en Cleaning Service
+ */
+@Schema({ _id: false })
+export class CleaningProductSchema {
+  @Prop({ type: Types.ObjectId })
+  productId?: Types.ObjectId; // ID del producto
+
+  @Prop({ type: ProductSnapshotSchema })
+  productSnapshot?: ProductSnapshotSchema; // Snapshot del producto
+
+  @Prop({ type: String })
+  desiredDate?: string; // YYYY-MM-DD format - Fecha deseada para la limpieza (opcional)
+
+  @Prop({ type: String, enum: ['Superficial', 'Deep'] })
+  cleaningType?: string; // Tipo de limpieza: Superficial o Deep
+
+  @Prop({ type: String })
+  additionalComments?: string; // Comentarios adicionales (opcional)
+}
+
+/**
+ * Subdocumento para Cleaning Service
+ * Permite solicitar limpieza de múltiples productos (Computer o Other)
+ */
+@Schema({ _id: false })
+export class CleaningServiceSchema {
+  @Prop({ type: String, enum: ['Cleaning'], required: true })
+  serviceCategory: 'Cleaning';
+
+  @Prop({ type: [CleaningProductSchema], required: true })
+  products: CleaningProductSchema[]; // Array de productos a limpiar con detalles
 
   @Prop({ type: String })
   additionalDetails?: string; // Detalles adicionales (opcional)

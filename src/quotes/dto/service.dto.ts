@@ -181,6 +181,30 @@ export class DonateServiceResponseDto {
 }
 
 /**
+ * DTO para respuesta de Cleaning Service
+ */
+export class CleaningServiceResponseDto {
+  serviceCategory: 'Cleaning';
+  products: Array<{
+    productId?: string;
+    productSnapshot?: {
+      category?: string;
+      name?: string;
+      brand?: string;
+      model?: string;
+      serialNumber?: string;
+      location?: string;
+      assignedTo?: string;
+      countryCode?: string;
+    };
+    desiredDate?: string; // YYYY-MM-DD format
+    cleaningType?: 'Superficial' | 'Deep'; // Tipo de limpieza
+    additionalComments?: string; // Comentarios adicionales
+  }>;
+  additionalDetails?: string; // Detalles adicionales
+}
+
+/**
  * Union de todos los Service Response DTOs
  */
 export type ServiceResponseDto =
@@ -189,7 +213,8 @@ export type ServiceResponseDto =
   | DataWipeServiceResponseDto
   | DestructionAndRecyclingServiceResponseDto
   | BuybackServiceResponseDto
-  | DonateServiceResponseDto;
+  | DonateServiceResponseDto
+  | CleaningServiceResponseDto;
 
 /**
  * DTO para agregar servicio a quote
