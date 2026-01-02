@@ -753,6 +753,60 @@ export class QuotesCoordinatorService {
 
       return baseFields;
     }
+    // Storage Service
+    else if (service.serviceCategory === 'Storage') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        productCount: service.products?.length || 0,
+        ...(service.additionalDetails && {
+          additionalDetails: service.additionalDetails,
+        }),
+      };
+
+      // Agregar detalles de productos a almacenar
+      if (service.products && service.products.length > 0) {
+        baseFields['products'] = service.products.map((product: any) => {
+          const productData: Record<string, any> = {};
+
+          // Agregar snapshot del producto
+          if (product.productSnapshot) {
+            productData['productSnapshot'] = this.formatProductSnapshot(
+              product.productSnapshot,
+            );
+          }
+
+          // Agregar productId si existe
+          if (product.productId) {
+            productData['productId'] = product.productId;
+          }
+
+          // Agregar tamaño aproximado si existe
+          if (product.approximateSize) {
+            productData['approximateSize'] = product.approximateSize;
+          }
+
+          // Agregar peso aproximado si existe
+          if (product.approximateWeight) {
+            productData['approximateWeight'] = product.approximateWeight;
+          }
+
+          // Agregar días de guardado aproximado si existe
+          if (product.approximateStorageDays !== undefined) {
+            productData['approximateStorageDays'] =
+              product.approximateStorageDays;
+          }
+
+          // Agregar comentarios adicionales si existen
+          if (product.additionalComments) {
+            productData['additionalComments'] = product.additionalComments;
+          }
+
+          return productData;
+        });
+      }
+
+      return baseFields;
+    }
 
     // Fallback para servicios desconocidos
     return {

@@ -356,3 +356,43 @@ export class CleaningServiceSchema {
   @Prop({ type: String })
   additionalDetails?: string; // Detalles adicionales (opcional)
 }
+
+/**
+ * Producto en Storage Service
+ */
+@Schema({ _id: false })
+export class StorageProductSchema {
+  @Prop({ type: Types.ObjectId })
+  productId?: Types.ObjectId; // ID del producto
+
+  @Prop({ type: ProductSnapshotSchema })
+  productSnapshot?: ProductSnapshotSchema; // Snapshot del producto
+
+  @Prop({ type: String })
+  approximateSize?: string; // Tamaño aproximado (opcional) - ej: "50x30x20 cm"
+
+  @Prop({ type: String })
+  approximateWeight?: string; // Peso aproximado (opcional) - ej: "5 kg"
+
+  @Prop({ type: Number })
+  approximateStorageDays?: number; // Días de guardado aproximado (opcional)
+
+  @Prop({ type: String })
+  additionalComments?: string; // Comentarios adicionales (opcional)
+}
+
+/**
+ * Subdocumento para Storage Service
+ * Permite solicitar almacenamiento de múltiples productos en warehouse
+ */
+@Schema({ _id: false })
+export class StorageServiceSchema {
+  @Prop({ type: String, enum: ['Storage'], required: true })
+  serviceCategory: 'Storage';
+
+  @Prop({ type: [StorageProductSchema], required: true })
+  products: StorageProductSchema[]; // Array de productos a almacenar con detalles
+
+  @Prop({ type: String })
+  additionalDetails?: string; // Detalles adicionales (opcional)
+}

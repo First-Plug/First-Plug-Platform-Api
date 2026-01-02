@@ -205,6 +205,32 @@ export class CleaningServiceResponseDto {
 }
 
 /**
+ * DTO para respuesta de Storage Service
+ */
+export class StorageServiceResponseDto {
+  serviceCategory: 'Storage';
+  products: Array<{
+    productId?: string;
+    productSnapshot?: {
+      category?: string;
+      name?: string;
+      brand?: string;
+      model?: string;
+      serialNumber?: string;
+      location?: string;
+      assignedTo?: string;
+      assignedEmail?: string;
+      countryCode?: string;
+    };
+    approximateSize?: string; // Tamaño aproximado
+    approximateWeight?: string; // Peso aproximado
+    approximateStorageDays?: number; // Días de guardado aproximado
+    additionalComments?: string; // Comentarios adicionales
+  }>;
+  additionalDetails?: string; // Detalles adicionales
+}
+
+/**
  * Union de todos los Service Response DTOs
  */
 export type ServiceResponseDto =
@@ -214,7 +240,8 @@ export type ServiceResponseDto =
   | DestructionAndRecyclingServiceResponseDto
   | BuybackServiceResponseDto
   | DonateServiceResponseDto
-  | CleaningServiceResponseDto;
+  | CleaningServiceResponseDto
+  | StorageServiceResponseDto;
 
 /**
  * DTO para agregar servicio a quote

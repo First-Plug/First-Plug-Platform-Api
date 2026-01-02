@@ -199,6 +199,28 @@ export interface CleaningService {
 }
 
 /**
+ * Producto en Storage Service
+ */
+export interface StorageProduct {
+  productId?: string; // ID del producto
+  productSnapshot?: ProductSnapshot; // Snapshot del producto
+  approximateSize?: string; // Tamaño aproximado (opcional) - ej: "50x30x20 cm"
+  approximateWeight?: string; // Peso aproximado (opcional) - ej: "5 kg"
+  approximateStorageDays?: number; // Días de guardado aproximado (opcional)
+  additionalComments?: string; // Comentarios adicionales (opcional)
+}
+
+/**
+ * Storage Service
+ * Permite solicitar almacenamiento de múltiples productos en warehouse
+ */
+export interface StorageService {
+  serviceCategory: 'Storage';
+  products: StorageProduct[]; // Array de productos a almacenar con detalles
+  additionalDetails?: string; // Detalles adicionales (opcional)
+}
+
+/**
  * Tipos para discriminated union
  * Soporta múltiples categorías de servicios
  */
@@ -209,4 +231,5 @@ export type ServiceData =
   | DestructionAndRecyclingService
   | BuybackService
   | DonateService
-  | CleaningService;
+  | CleaningService
+  | StorageService;

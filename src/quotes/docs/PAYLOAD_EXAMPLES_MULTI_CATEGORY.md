@@ -1613,3 +1613,86 @@ Incluye identificación completa del producto (importante para history y Slack):
   ]
 }
 ```
+
+## Example 30: Storage Service - Single Product
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Storage",
+      "products": [
+        {
+          "productId": "686beb6f9c7a0951bbec40e9",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "",
+            "brand": "Apple",
+            "model": "MacBook Pro",
+            "serialNumber": "5dys87g1s29",
+            "location": "Employee",
+            "assignedTo": "Dolores Pascual",
+            "assignedEmail": "dolorespascual@work.com",
+            "countryCode": "AR"
+          },
+          "approximateSize": "35x25x2 cm",
+          "approximateWeight": "1.6 kg",
+          "approximateStorageDays": 30,
+          "additionalComments": "Laptop in protective case, ready for storage"
+        }
+      ],
+      "additionalDetails": "Storage in Buenos Aires warehouse for 30 days"
+    }
+  ]
+}
+```
+
+## Example 31: Storage Service - Multiple Products
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Storage",
+      "products": [
+        {
+          "productId": "686beb6f9c7a0951bbec40e6",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "",
+            "brand": "Apple",
+            "model": "MacBook Pro",
+            "serialNumber": "5dys87g1s26",
+            "location": "Employee",
+            "assignedTo": "Amador Garcia",
+            "assignedEmail": "amadorgarcia@work.com",
+            "countryCode": "ES"
+          },
+          "approximateSize": "35x25x2 cm",
+          "approximateWeight": "1.6 kg",
+          "approximateStorageDays": 45,
+          "additionalComments": "Laptop in protective case"
+        },
+        {
+          "productId": "686beb939c7a0951bbec43c4",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "",
+            "brand": "Lenovo",
+            "model": "ThinkPad Serie Z",
+            "serialNumber": "5dys87g1s112",
+            "location": "Our office",
+            "assignedTo": "Oficina Principal",
+            "countryCode": "GT"
+          },
+          "approximateSize": "35x25x2 cm",
+          "approximateWeight": "1.8 kg",
+          "approximateStorageDays": 60,
+          "additionalComments": "Laptop with accessories in protective case"
+        }
+      ],
+      "additionalDetails": "Storage in Madrid warehouse for Spanish equipment and Guatemala warehouse for Central American equipment"
+    }
+  ]
+}
+```

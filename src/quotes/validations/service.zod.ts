@@ -311,8 +311,49 @@ export const CleaningServiceSchema = z.object({
 export type CleaningService = z.infer<typeof CleaningServiceSchema>;
 
 /**
+ * Storage Product Schema
+ */
+const StorageProductSchema = z.object({
+  productId: z.string().optional(),
+  productSnapshot: ProductSnapshotSchema.optional(),
+  approximateSize: z
+    .string()
+    .max(100, 'Approximate size no puede exceder 100 caracteres')
+    .optional(),
+  approximateWeight: z
+    .string()
+    .max(100, 'Approximate weight no puede exceder 100 caracteres')
+    .optional(),
+  approximateStorageDays: z
+    .number()
+    .int('Storage days debe ser un número entero')
+    .positive('Storage days debe ser un número positivo')
+    .optional(),
+  additionalComments: z
+    .string()
+    .max(1000, 'Additional comments no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+/**
+ * Storage Service Schema
+ */
+export const StorageServiceSchema = z.object({
+  serviceCategory: z.literal('Storage'),
+  products: z
+    .array(StorageProductSchema)
+    .min(1, 'Al menos un producto es requerido para almacenamiento'),
+  additionalDetails: z
+    .string()
+    .max(1000, 'Additional details no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+export type StorageService = z.infer<typeof StorageServiceSchema>;
+
+/**
  * Union de todos los servicios
- * Soporta IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback, Donate y Cleaning
+ * Soporta IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback, Donate, Cleaning y Storage
  */
 export const ServiceUnion = z.union([
   ITSupportServiceSchema,
@@ -322,6 +363,7 @@ export const ServiceUnion = z.union([
   BuybackServiceSchema,
   DonateServiceSchema,
   CleaningServiceSchema,
+  StorageServiceSchema,
 ]);
 
 /**
