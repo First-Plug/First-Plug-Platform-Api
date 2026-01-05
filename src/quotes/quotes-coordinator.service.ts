@@ -885,6 +885,71 @@ export class QuotesCoordinatorService {
 
       return baseFields;
     }
+    // Logistics Service
+    else if (service.serviceCategory === 'Logistics') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        productCount: service.products?.length || 0,
+        ...(service.desirablePickupDate && {
+          desirablePickupDate: service.desirablePickupDate,
+        }),
+        ...(service.additionalDetails && {
+          additionalDetails: service.additionalDetails,
+        }),
+      };
+
+      // Agregar detalles de productos a enviar
+      if (service.products && service.products.length > 0) {
+        baseFields['products'] = service.products.map((product: any) => {
+          const productData: Record<string, any> = {};
+
+          // Agregar snapshot del producto
+          if (product.productSnapshot) {
+            productData['productSnapshot'] = this.formatProductSnapshot(
+              product.productSnapshot,
+            );
+          }
+
+          // Agregar productId si existe
+          if (product.productId) {
+            productData['productId'] = product.productId;
+          }
+
+          // Agregar destino del producto
+          if (product.destination) {
+            productData['destination'] = {
+              type: product.destination.type,
+              ...(product.destination.memberId && {
+                memberId: product.destination.memberId,
+              }),
+              ...(product.destination.assignedMember && {
+                assignedMember: product.destination.assignedMember,
+              }),
+              ...(product.destination.assignedEmail && {
+                assignedEmail: product.destination.assignedEmail,
+              }),
+              ...(product.destination.officeId && {
+                officeId: product.destination.officeId,
+              }),
+              ...(product.destination.officeName && {
+                officeName: product.destination.officeName,
+              }),
+              ...(product.destination.warehouseId && {
+                warehouseId: product.destination.warehouseId,
+              }),
+              ...(product.destination.warehouseName && {
+                warehouseName: product.destination.warehouseName,
+              }),
+              countryCode: product.destination.countryCode,
+            };
+          }
+
+          return productData;
+        });
+      }
+
+      return baseFields;
+    }
 
     // Fallback para servicios desconocidos
     return {

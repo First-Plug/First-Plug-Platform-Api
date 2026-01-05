@@ -1,0 +1,50 @@
+{
+  "services": [
+    {
+      "serviceCategory": "Logistics",
+      "desirablePickupDate": "2025-01-20",
+      "additionalDetails": "Envío urgente. Producto frágil, requiere embalaje especial.",
+      "products": [
+        {
+          "productId": "686beb939c7a0951bbec4461",
+          "productSnapshot": {
+            "category": "Monitor",
+            "brand": "LG",
+            "model": "Smart Monitor",
+            "serialNumber": "LG-SM-2024-001",
+            "location": "Employee",
+            "assignedTo": "Juan Pérez",
+            "assignedEmail": "juanperez@work.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "type": "Office",
+            "officeName": "Oficina Principal",
+            "countryCode": "UY"
+          }
+        },
+        {
+          "productId": "686beb939c7a0951bbec43da",
+          "productSnapshot": {
+            "category": "Other",
+            "brand": "Apple",
+            "model": "iPhone 15 Pro",
+            "serialNumber": "IPHONE-15-PRO-001",
+            "location": "Employee",
+            "assignedTo": "María García",
+            "assignedEmail": "mariagarcia@work.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "type": "Member",
+            "memberId": "687e7e601d43bf08d8f26045",
+            "assignedMember": "Carlos López",
+            "assignedEmail": "carloslopez@work.com",
+            "countryCode": "ES"
+          }
+        }
+      ]
+    }
+  ]
+}
+

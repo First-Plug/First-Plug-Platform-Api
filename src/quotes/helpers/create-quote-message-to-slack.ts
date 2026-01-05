@@ -1308,6 +1308,127 @@ const buildServiceBlocks = (
         });
       }
     }
+    // Logistics Service
+    else if (service.serviceCategory === 'Logistics') {
+      // Total quantity of products
+      const totalProducts = (service.products || []).length;
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Total quantity of products:* ${totalProducts}`,
+        },
+      });
+
+      // Desirable Pickup Date
+      if (service.desirablePickupDate) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Desirable Pickup Date:* ${service.desirablePickupDate}`,
+          },
+        });
+      }
+
+      // Detalles de cada producto a enviar
+      if (service.products && service.products.length > 0) {
+        service.products.forEach((product: any, productIndex: number) => {
+          const productSpecs: string[] = [];
+
+          productSpecs.push(`*Product ${productIndex + 1}:*`);
+
+          // Product snapshot
+          if (product.productSnapshot) {
+            const snapshot = product.productSnapshot;
+
+            if (snapshot.category) {
+              productSpecs.push(`*Category:* ${snapshot.category}`);
+            }
+
+            if (snapshot.brand || snapshot.model) {
+              const brandModel = [snapshot.brand, snapshot.model]
+                .filter(Boolean)
+                .join(' ');
+              if (brandModel) {
+                productSpecs.push(`*Brand + Model:* ${brandModel}`);
+              }
+            }
+
+            if (snapshot.serialNumber) {
+              productSpecs.push(`*Serial Number:* ${snapshot.serialNumber}`);
+            }
+
+            if (snapshot.location || snapshot.countryCode) {
+              let locationText = '';
+              if (
+                snapshot.location &&
+                snapshot.assignedTo &&
+                snapshot.countryCode
+              ) {
+                locationText = `${snapshot.location} + ${snapshot.assignedTo} + ${convertCountryCodeToName(snapshot.countryCode)}`;
+              } else if (snapshot.location && snapshot.countryCode) {
+                locationText = `${snapshot.location} + ${convertCountryCodeToName(snapshot.countryCode)}`;
+              } else if (snapshot.location) {
+                locationText = snapshot.location;
+              }
+
+              if (locationText) {
+                productSpecs.push(`*Current Location:* ${locationText}`);
+              }
+            }
+          }
+
+          // Destination
+          if (product.destination) {
+            const destination = product.destination;
+            let destinationText = '';
+
+            if (destination.type === 'Member') {
+              const countryName = convertCountryCodeToName(
+                destination.countryCode || '',
+              );
+              destinationText = `${destination.assignedMember || 'Unknown'} (${destination.assignedEmail || 'N/A'}) - ${countryName}`;
+            } else if (destination.type === 'Office') {
+              const countryName = convertCountryCodeToName(
+                destination.countryCode || '',
+              );
+              destinationText = `${destination.officeName || 'Unknown'} - ${countryName}`;
+            } else if (destination.type === 'Warehouse') {
+              const countryName = convertCountryCodeToName(
+                destination.countryCode || '',
+              );
+              destinationText = `${destination.warehouseName || 'Unknown'} - ${countryName}`;
+            }
+
+            if (destinationText) {
+              productSpecs.push(`*Destination:* ${destinationText}`);
+            }
+          }
+
+          if (productSpecs.length > 0) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: productSpecs.join('\n'),
+              },
+            });
+          }
+        });
+      }
+
+      // Additional details
+      if (service.additionalDetails) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Additional details:* ${service.additionalDetails}`,
+          },
+        });
+      }
+    }
 
     blocks.push({
       type: 'divider',

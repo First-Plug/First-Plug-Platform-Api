@@ -273,6 +273,39 @@ export class OffboardingServiceResponseDto {
 }
 
 /**
+ * Logistics Service Response DTO
+ */
+export class LogisticsServiceResponseDto {
+  serviceCategory: 'Logistics';
+  products: {
+    productId?: string;
+    productSnapshot?: {
+      category?: string;
+      brand?: string;
+      model?: string;
+      serialNumber?: string;
+      location?: string;
+      assignedTo?: string;
+      assignedEmail?: string;
+      countryCode?: string;
+    };
+    destination: {
+      type: 'Member' | 'Office' | 'Warehouse';
+      memberId?: string;
+      assignedMember?: string;
+      assignedEmail?: string;
+      officeId?: string;
+      officeName?: string;
+      warehouseId?: string;
+      warehouseName?: string;
+      countryCode: string;
+    };
+  }[];
+  desirablePickupDate?: string; // Fecha deseable para el pickup (YYYY-MM-DD)
+  additionalDetails?: string;
+}
+
+/**
  * Union de todos los Service Response DTOs
  */
 export type ServiceResponseDto =
@@ -284,7 +317,8 @@ export type ServiceResponseDto =
   | DonateServiceResponseDto
   | CleaningServiceResponseDto
   | StorageServiceResponseDto
-  | OffboardingServiceResponseDto;
+  | OffboardingServiceResponseDto
+  | LogisticsServiceResponseDto;
 
 /**
  * DTO para agregar servicio a quote

@@ -302,6 +302,41 @@ export interface OffboardingService {
 }
 
 /**
+ * Destino en Logistics Service (igual que Offboarding)
+ */
+export interface LogisticsDestination {
+  type: 'Member' | 'Office' | 'Warehouse';
+  memberId?: string; // Para Member
+  assignedMember?: string; // Nombre del miembro
+  assignedEmail?: string; // Email del miembro
+  officeId?: string; // Para Office
+  officeName?: string; // Nombre de la oficina
+  warehouseId?: string; // Para Warehouse
+  warehouseName?: string; // Nombre del warehouse
+  countryCode: string; // Código de país (máximo 2 caracteres)
+}
+
+/**
+ * Producto en Logistics Service
+ */
+export interface LogisticsProduct {
+  productId?: Types.ObjectId; // ID del producto
+  productSnapshot?: ProductSnapshot; // Snapshot del producto
+  destination: LogisticsDestination; // Destino del producto
+}
+
+/**
+ * Logistics Service
+ * Cotización de envío de productos desde su ubicación actual a un destino
+ */
+export interface LogisticsService {
+  serviceCategory: 'Logistics';
+  products: LogisticsProduct[]; // Array de productos a enviar (mínimo 1)
+  desirablePickupDate?: string; // Fecha deseable para el pickup (YYYY-MM-DD)
+  additionalDetails?: string; // Comentarios adicionales (opcional)
+}
+
+/**
  * Tipos para discriminated union
  * Soporta múltiples categorías de servicios
  */
@@ -314,4 +349,5 @@ export type ServiceData =
   | DonateService
   | CleaningService
   | StorageService
-  | OffboardingService;
+  | OffboardingService
+  | LogisticsService;

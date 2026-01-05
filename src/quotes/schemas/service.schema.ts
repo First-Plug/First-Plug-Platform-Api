@@ -501,3 +501,73 @@ export class OffboardingServiceSchema {
   @Prop({ type: String, maxlength: 1000 })
   additionalDetails?: string; // Detalles adicionales (opcional)
 }
+
+/**
+ * Destino en Logistics Service
+ */
+@Schema({ _id: false })
+export class LogisticsDestinationSchema {
+  @Prop({
+    type: String,
+    enum: ['Member', 'Office', 'Warehouse'],
+    required: true,
+  })
+  type: 'Member' | 'Office' | 'Warehouse';
+
+  @Prop({ type: String })
+  memberId?: string; // Para Member
+
+  @Prop({ type: String })
+  assignedMember?: string; // Nombre del miembro
+
+  @Prop({ type: String })
+  assignedEmail?: string; // Email del miembro
+
+  @Prop({ type: String })
+  officeId?: string; // Para Office
+
+  @Prop({ type: String })
+  officeName?: string; // Nombre de la oficina
+
+  @Prop({ type: String })
+  warehouseId?: string; // Para Warehouse
+
+  @Prop({ type: String })
+  warehouseName?: string; // Nombre del warehouse
+
+  @Prop({ type: String, required: true, maxlength: 2 })
+  countryCode: string; // Código de país
+}
+
+/**
+ * Producto en Logistics Service
+ */
+@Schema({ _id: false })
+export class LogisticsProductSchema {
+  @Prop({ type: String })
+  productId?: string; // ID del producto
+
+  @Prop({ type: Object })
+  productSnapshot?: any; // Snapshot del producto
+
+  @Prop({ type: LogisticsDestinationSchema, required: true })
+  destination: LogisticsDestinationSchema; // Destino del producto
+}
+
+/**
+ * Logistics Service Schema
+ */
+@Schema({ discriminatorKey: 'serviceCategory' })
+export class LogisticsServiceSchema {
+  @Prop({ type: String, enum: ['Logistics'], required: true })
+  serviceCategory: 'Logistics';
+
+  @Prop({ type: [LogisticsProductSchema], required: true, minlength: 1 })
+  products: LogisticsProductSchema[]; // Array de productos a enviar (mínimo 1)
+
+  @Prop({ type: String })
+  desirablePickupDate?: string; // Fecha deseable para el pickup (YYYY-MM-DD)
+
+  @Prop({ type: String, maxlength: 1000 })
+  additionalDetails?: string; // Comentarios adicionales (opcional)
+}

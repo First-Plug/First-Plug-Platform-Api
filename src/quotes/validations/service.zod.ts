@@ -431,8 +431,58 @@ export const OffboardingServiceSchema = z.object({
 export type OffboardingService = z.infer<typeof OffboardingServiceSchema>;
 
 /**
+ * Destino en Logistics Service
+ */
+const LogisticsDestinationSchema = z.object({
+  type: z.enum(['Member', 'Office', 'Warehouse']),
+  memberId: z.string().optional(),
+  assignedMember: z.string().optional(),
+  assignedEmail: z.string().email().optional(),
+  officeId: z.string().optional(),
+  officeName: z.string().optional(),
+  warehouseId: z.string().optional(),
+  warehouseName: z.string().optional(),
+  countryCode: z
+    .string()
+    .max(2, 'Country code debe ser máximo 2 caracteres')
+    .min(1, 'Country code es requerido'),
+});
+
+/**
+ * Producto en Logistics Service
+ */
+const LogisticsProductSchema = z.object({
+  productId: z.string().optional(),
+  productSnapshot: z.any().optional(),
+  destination: LogisticsDestinationSchema,
+});
+
+/**
+ * Logistics Service Schema
+ */
+export const LogisticsServiceSchema = z.object({
+  serviceCategory: z.literal('Logistics'),
+  products: z
+    .array(LogisticsProductSchema)
+    .min(1, 'Al menos un producto es requerido para logistics'),
+  desirablePickupDate: z
+    .string()
+    .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val), {
+      message: 'Desirable pickup date debe estar en formato YYYY-MM-DD',
+    })
+    .optional()
+    .describe('Fecha deseable para el pickup (YYYY-MM-DD)'),
+  additionalDetails: z
+    .string()
+    .max(1000, 'Additional details no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+export type LogisticsService = z.infer<typeof LogisticsServiceSchema>;
+
+/**
  * Union de todos los servicios
- * Soporta IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback, Donate, Cleaning, Storage y Offboarding
+ * Soporta IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback, Donate, Cleaning, Storage, Offboarding y Logistics
  */
 export const ServiceUnion = z.union([
   ITSupportServiceSchema,
@@ -444,6 +494,7 @@ export const ServiceUnion = z.union([
   CleaningServiceSchema,
   StorageServiceSchema,
   OffboardingServiceSchema,
+  LogisticsServiceSchema,
 ]);
 
 /**
