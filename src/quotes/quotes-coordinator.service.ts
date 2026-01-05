@@ -652,6 +652,304 @@ export class QuotesCoordinatorService {
 
       return baseFields;
     }
+    // Donate Service
+    else if (service.serviceCategory === 'Donate') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        productCount: service.products?.length || 0,
+        ...(service.additionalDetails && {
+          additionalDetails: service.additionalDetails,
+        }),
+      };
+
+      // Agregar detalles de productos a donar
+      if (service.products && service.products.length > 0) {
+        baseFields['products'] = service.products.map((product: any) => {
+          const productData: Record<string, any> = {};
+
+          // Agregar snapshot del producto
+          if (product.productSnapshot) {
+            productData['productSnapshot'] = this.formatProductSnapshot(
+              product.productSnapshot,
+            );
+          }
+
+          // Agregar productId si existe
+          if (product.productId) {
+            productData['productId'] = product.productId;
+          }
+
+          // Agregar needsDataWipe si existe (solo si category es Computer o Other)
+          if (
+            product.productSnapshot?.category === 'Computer' ||
+            product.productSnapshot?.category === 'Other'
+          ) {
+            if (product.needsDataWipe !== undefined) {
+              productData['needsDataWipe'] = product.needsDataWipe;
+            }
+          }
+
+          // Agregar needsCleaning si existe
+          if (product.needsCleaning !== undefined) {
+            productData['needsCleaning'] = product.needsCleaning;
+          }
+
+          // Agregar comentarios si existen
+          if (product.comments) {
+            productData['comments'] = product.comments;
+          }
+
+          return productData;
+        });
+      }
+
+      return baseFields;
+    }
+    // Cleaning Service
+    else if (service.serviceCategory === 'Cleaning') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        productCount: service.products?.length || 0,
+        ...(service.additionalDetails && {
+          additionalDetails: service.additionalDetails,
+        }),
+      };
+
+      // Agregar detalles de productos a limpiar
+      if (service.products && service.products.length > 0) {
+        baseFields['products'] = service.products.map((product: any) => {
+          const productData: Record<string, any> = {};
+
+          // Agregar snapshot del producto
+          if (product.productSnapshot) {
+            productData['productSnapshot'] = this.formatProductSnapshot(
+              product.productSnapshot,
+            );
+          }
+
+          // Agregar productId si existe
+          if (product.productId) {
+            productData['productId'] = product.productId;
+          }
+
+          // Agregar fecha deseada si existe
+          if (product.desiredDate) {
+            productData['desiredDate'] = product.desiredDate;
+          }
+
+          // Agregar tipo de limpieza si existe
+          if (product.cleaningType) {
+            productData['cleaningType'] = product.cleaningType;
+          }
+
+          // Agregar comentarios adicionales si existen
+          if (product.additionalComments) {
+            productData['additionalComments'] = product.additionalComments;
+          }
+
+          return productData;
+        });
+      }
+
+      return baseFields;
+    }
+    // Storage Service
+    else if (service.serviceCategory === 'Storage') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        productCount: service.products?.length || 0,
+        ...(service.additionalDetails && {
+          additionalDetails: service.additionalDetails,
+        }),
+      };
+
+      // Agregar detalles de productos a almacenar
+      if (service.products && service.products.length > 0) {
+        baseFields['products'] = service.products.map((product: any) => {
+          const productData: Record<string, any> = {};
+
+          // Agregar snapshot del producto
+          if (product.productSnapshot) {
+            productData['productSnapshot'] = this.formatProductSnapshot(
+              product.productSnapshot,
+            );
+          }
+
+          // Agregar productId si existe
+          if (product.productId) {
+            productData['productId'] = product.productId;
+          }
+
+          // Agregar tamaño aproximado si existe
+          if (product.approximateSize) {
+            productData['approximateSize'] = product.approximateSize;
+          }
+
+          // Agregar peso aproximado si existe
+          if (product.approximateWeight) {
+            productData['approximateWeight'] = product.approximateWeight;
+          }
+
+          // Agregar días de guardado aproximado si existe
+          if (product.approximateStorageDays !== undefined) {
+            productData['approximateStorageDays'] =
+              product.approximateStorageDays;
+          }
+
+          // Agregar comentarios adicionales si existen
+          if (product.additionalComments) {
+            productData['additionalComments'] = product.additionalComments;
+          }
+
+          return productData;
+        });
+      }
+
+      return baseFields;
+    }
+    // Offboarding Service
+    else if (service.serviceCategory === 'Offboarding') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        isSensitiveSituation: service.isSensitiveSituation,
+        employeeKnows: service.employeeKnows,
+        productCount: service.products?.length || 0,
+        ...(service.desirablePickupDate && {
+          desirablePickupDate: service.desirablePickupDate,
+        }),
+        ...(service.additionalDetails && {
+          additionalDetails: service.additionalDetails,
+        }),
+      };
+
+      // Agregar información del miembro origen
+      if (service.originMember) {
+        baseFields['originMember'] = {
+          memberId: service.originMember.memberId,
+          firstName: service.originMember.firstName,
+          lastName: service.originMember.lastName,
+          email: service.originMember.email,
+          countryCode: service.originMember.countryCode,
+        };
+      }
+
+      // Agregar detalles de productos a offboardear
+      if (service.products && service.products.length > 0) {
+        baseFields['products'] = service.products.map((product: any) => {
+          const productData: Record<string, any> = {};
+
+          // Agregar snapshot del producto
+          if (product.productSnapshot) {
+            productData['productSnapshot'] = this.formatProductSnapshot(
+              product.productSnapshot,
+            );
+          }
+
+          // Agregar productId si existe
+          if (product.productId) {
+            productData['productId'] = product.productId;
+          }
+
+          // Agregar destino del producto
+          if (product.destination) {
+            productData['destination'] = {
+              type: product.destination.type,
+              ...(product.destination.memberId && {
+                memberId: product.destination.memberId,
+              }),
+              ...(product.destination.assignedMember && {
+                assignedMember: product.destination.assignedMember,
+              }),
+              ...(product.destination.assignedEmail && {
+                assignedEmail: product.destination.assignedEmail,
+              }),
+              ...(product.destination.officeId && {
+                officeId: product.destination.officeId,
+              }),
+              ...(product.destination.officeName && {
+                officeName: product.destination.officeName,
+              }),
+              ...(product.destination.warehouseId && {
+                warehouseId: product.destination.warehouseId,
+              }),
+              ...(product.destination.warehouseName && {
+                warehouseName: product.destination.warehouseName,
+              }),
+              countryCode: product.destination.countryCode,
+            };
+          }
+
+          return productData;
+        });
+      }
+
+      return baseFields;
+    }
+    // Logistics Service
+    else if (service.serviceCategory === 'Logistics') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        productCount: service.products?.length || 0,
+        ...(service.desirablePickupDate && {
+          desirablePickupDate: service.desirablePickupDate,
+        }),
+        ...(service.additionalDetails && {
+          additionalDetails: service.additionalDetails,
+        }),
+      };
+
+      // Agregar detalles de productos a enviar
+      if (service.products && service.products.length > 0) {
+        baseFields['products'] = service.products.map((product: any) => {
+          const productData: Record<string, any> = {};
+
+          // Agregar snapshot del producto
+          if (product.productSnapshot) {
+            productData['productSnapshot'] = this.formatProductSnapshot(
+              product.productSnapshot,
+            );
+          }
+
+          // Agregar productId si existe
+          if (product.productId) {
+            productData['productId'] = product.productId;
+          }
+
+          // Agregar destino del producto
+          if (product.destination) {
+            productData['destination'] = {
+              type: product.destination.type,
+              ...(product.destination.memberId && {
+                memberId: product.destination.memberId,
+              }),
+              ...(product.destination.assignedMember && {
+                assignedMember: product.destination.assignedMember,
+              }),
+              ...(product.destination.assignedEmail && {
+                assignedEmail: product.destination.assignedEmail,
+              }),
+              ...(product.destination.officeId && {
+                officeId: product.destination.officeId,
+              }),
+              ...(product.destination.officeName && {
+                officeName: product.destination.officeName,
+              }),
+              ...(product.destination.warehouseId && {
+                warehouseId: product.destination.warehouseId,
+              }),
+              ...(product.destination.warehouseName && {
+                warehouseName: product.destination.warehouseName,
+              }),
+              countryCode: product.destination.countryCode,
+            };
+          }
+
+          return productData;
+        });
+      }
+
+      return baseFields;
+    }
 
     // Fallback para servicios desconocidos
     return {

@@ -157,6 +157,155 @@ export class BuybackServiceResponseDto {
 }
 
 /**
+ * DTO para respuesta de Donate Service
+ */
+export class DonateServiceResponseDto {
+  serviceCategory: 'Donate';
+  products: Array<{
+    productId?: string;
+    productSnapshot?: {
+      category?: string;
+      name?: string;
+      brand?: string;
+      model?: string;
+      serialNumber?: string;
+      location?: string;
+      assignedTo?: string;
+      countryCode?: string;
+    };
+    needsDataWipe?: boolean; // ¿Necesita data wipe? (solo si category es Computer o Other)
+    needsCleaning?: boolean; // ¿Necesita limpieza?
+    comments?: string; // Comentarios adicionales
+  }>;
+  additionalDetails?: string; // Detalles adicionales
+}
+
+/**
+ * DTO para respuesta de Cleaning Service
+ */
+export class CleaningServiceResponseDto {
+  serviceCategory: 'Cleaning';
+  products: Array<{
+    productId?: string;
+    productSnapshot?: {
+      category?: string;
+      name?: string;
+      brand?: string;
+      model?: string;
+      serialNumber?: string;
+      location?: string;
+      assignedTo?: string;
+      countryCode?: string;
+    };
+    desiredDate?: string; // YYYY-MM-DD format
+    cleaningType?: 'Superficial' | 'Deep'; // Tipo de limpieza
+    additionalComments?: string; // Comentarios adicionales
+  }>;
+  additionalDetails?: string; // Detalles adicionales
+}
+
+/**
+ * DTO para respuesta de Storage Service
+ */
+export class StorageServiceResponseDto {
+  serviceCategory: 'Storage';
+  products: Array<{
+    productId?: string;
+    productSnapshot?: {
+      category?: string;
+      name?: string;
+      brand?: string;
+      model?: string;
+      serialNumber?: string;
+      location?: string;
+      assignedTo?: string;
+      assignedEmail?: string;
+      countryCode?: string;
+    };
+    approximateSize?: string; // Tamaño aproximado
+    approximateWeight?: string; // Peso aproximado
+    approximateStorageDays?: number; // Días de guardado aproximado
+    additionalComments?: string; // Comentarios adicionales
+  }>;
+  additionalDetails?: string; // Detalles adicionales
+}
+
+/**
+ * DTO para respuesta de Offboarding Service
+ */
+export class OffboardingServiceResponseDto {
+  serviceCategory: 'Offboarding';
+  originMember: {
+    memberId: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    countryCode: string;
+  };
+  isSensitiveSituation: boolean;
+  employeeKnows: boolean;
+  products: Array<{
+    productId?: string;
+    productSnapshot?: {
+      category?: string;
+      name?: string;
+      brand?: string;
+      model?: string;
+      serialNumber?: string;
+      location?: string;
+      assignedTo?: string;
+      countryCode?: string;
+    };
+    destination: {
+      type: 'Member' | 'Office' | 'Warehouse';
+      memberId?: string;
+      assignedMember?: string;
+      assignedEmail?: string;
+      officeId?: string;
+      officeName?: string;
+      warehouseId?: string;
+      warehouseName?: string;
+      countryCode: string;
+    };
+  }>;
+  desirablePickupDate?: string; // Fecha deseable para el pickup de todos los productos (YYYY-MM-DD)
+  additionalDetails?: string;
+}
+
+/**
+ * Logistics Service Response DTO
+ */
+export class LogisticsServiceResponseDto {
+  serviceCategory: 'Logistics';
+  products: {
+    productId?: string;
+    productSnapshot?: {
+      category?: string;
+      brand?: string;
+      model?: string;
+      serialNumber?: string;
+      location?: string;
+      assignedTo?: string;
+      assignedEmail?: string;
+      countryCode?: string;
+    };
+    destination: {
+      type: 'Member' | 'Office' | 'Warehouse';
+      memberId?: string;
+      assignedMember?: string;
+      assignedEmail?: string;
+      officeId?: string;
+      officeName?: string;
+      warehouseId?: string;
+      warehouseName?: string;
+      countryCode: string;
+    };
+  }[];
+  desirablePickupDate?: string; // Fecha deseable para el pickup (YYYY-MM-DD)
+  additionalDetails?: string;
+}
+
+/**
  * Union de todos los Service Response DTOs
  */
 export type ServiceResponseDto =
@@ -164,7 +313,12 @@ export type ServiceResponseDto =
   | EnrollmentServiceResponseDto
   | DataWipeServiceResponseDto
   | DestructionAndRecyclingServiceResponseDto
-  | BuybackServiceResponseDto;
+  | BuybackServiceResponseDto
+  | DonateServiceResponseDto
+  | CleaningServiceResponseDto
+  | StorageServiceResponseDto
+  | OffboardingServiceResponseDto
+  | LogisticsServiceResponseDto;
 
 /**
  * DTO para agregar servicio a quote

@@ -148,53 +148,87 @@ const buildServiceBlocks = (
 
     // IT Support Service
     if (service.serviceCategory === 'IT Support') {
+      const specs: string[] = [];
+
       // Información del producto
       if (service.productSnapshot) {
-        blocks.push(...buildProductSnapshotBlock(service.productSnapshot));
+        if (service.productSnapshot.category) {
+          specs.push(`*Category:* ${service.productSnapshot.category}`);
+        }
+
+        const brandModelName: string[] = [];
+        if (service.productSnapshot.brand)
+          brandModelName.push(service.productSnapshot.brand);
+        if (service.productSnapshot.model)
+          brandModelName.push(service.productSnapshot.model);
+        if (service.productSnapshot.name)
+          brandModelName.push(service.productSnapshot.name);
+
+        if (brandModelName.length > 0) {
+          specs.push(`*Brand + Model + Name:* ${brandModelName.join(' + ')}`);
+        }
+
+        if (service.productSnapshot.serialNumber) {
+          specs.push(
+            `*Serial Number:* ${service.productSnapshot.serialNumber}`,
+          );
+        }
+
+        if (
+          service.productSnapshot.location ||
+          service.productSnapshot.countryCode
+        ) {
+          let locationText = '';
+          if (
+            service.productSnapshot.location &&
+            service.productSnapshot.countryCode
+          ) {
+            const countryName = convertCountryCodeToName(
+              service.productSnapshot.countryCode,
+            );
+            locationText = `${service.productSnapshot.location} + ${countryName}`;
+          } else if (service.productSnapshot.location) {
+            locationText = service.productSnapshot.location;
+          } else if (service.productSnapshot.countryCode) {
+            locationText = convertCountryCodeToName(
+              service.productSnapshot.countryCode,
+            );
+          }
+
+          if (locationText) {
+            specs.push(`*Location:* ${locationText}`);
+          }
+        }
       }
 
       // Issues
       if (service.issues && service.issues.length > 0) {
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*Issues:* ${service.issues.join(', ')}`,
-          },
-        });
+        specs.push(`*Issues:* ${service.issues.join(', ')}`);
       }
 
       // Description
       if (service.description) {
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*Description:* ${service.description}`,
-          },
-        });
+        specs.push(`*Description:* ${service.description}`);
       }
 
       // Issue start date
       if (service.issueStartDate) {
         const [year, month, day] = service.issueStartDate.split('-');
         const formattedDate = `${day}/${month}/${year}`;
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*Started:* ${formattedDate}`,
-          },
-        });
+        specs.push(`*Started:* ${formattedDate}`);
       }
 
       // Impact level
       if (service.impactLevel) {
+        specs.push(`*Impact Level:* ${service.impactLevel}`);
+      }
+
+      if (specs.length > 0) {
         blocks.push({
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Impact Level:* ${service.impactLevel}`,
+            text: specs.join('\n'),
           },
         });
       }
@@ -220,40 +254,32 @@ const buildServiceBlocks = (
           !device.brand.toLowerCase().includes('apple'),
       ).length;
 
-      // Total quantity of computers
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Total quantity of computers:* ${totalComputers}`,
-        },
-      });
+      // Summary block
+      const summarySpecs: string[] = [];
+      summarySpecs.push(`*Total quantity of computers:* ${totalComputers}`);
 
-      // Resumen de dispositivos por tipo
       const deviceSummary: string[] = [];
       if (macCount > 0) deviceSummary.push(`${macCount} Mac`);
       if (windowsCount > 0) deviceSummary.push(`${windowsCount} Windows`);
 
       if (deviceSummary.length > 0) {
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*Device Types:* ${deviceSummary.join(', ')}`,
-          },
-        });
+        summarySpecs.push(`*Device Types:* ${deviceSummary.join(', ')}`);
       }
+
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: summarySpecs.join('\n'),
+        },
+      });
 
       // Detalles de cada dispositivo
       if (service.enrolledDevices && service.enrolledDevices.length > 0) {
         service.enrolledDevices.forEach((device: any, deviceIndex: number) => {
-          blocks.push({
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `*Computer ${deviceIndex + 1}:*`,
-            },
-          });
+          const deviceSpecs: string[] = [];
+
+          deviceSpecs.push(`*Computer ${deviceIndex + 1}:*`);
 
           // Brand + Model + Name
           const brandModelName: string[] = [];
@@ -262,24 +288,14 @@ const buildServiceBlocks = (
           if (device.name) brandModelName.push(device.name);
 
           if (brandModelName.length > 0) {
-            blocks.push({
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
-              },
-            });
+            deviceSpecs.push(
+              `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+            );
           }
 
           // Serial Number
           if (device.serialNumber) {
-            blocks.push({
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*Serial Number:* ${device.serialNumber}`,
-              },
-            });
+            deviceSpecs.push(`*Serial Number:* ${device.serialNumber}`);
           }
 
           // Location + Country
@@ -295,14 +311,18 @@ const buildServiceBlocks = (
             }
 
             if (locationText) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Location:* ${locationText}`,
-                },
-              });
+              deviceSpecs.push(`*Location:* ${locationText}`);
             }
+          }
+
+          if (deviceSpecs.length > 0) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: deviceSpecs.join('\n'),
+              },
+            });
           }
         });
       }
@@ -323,7 +343,6 @@ const buildServiceBlocks = (
       // Contar total de assets
       const totalAssets = (service.assets || []).length;
 
-      // Total quantity of assets
       blocks.push({
         type: 'section',
         text: {
@@ -335,36 +354,24 @@ const buildServiceBlocks = (
       // Detalles de cada asset
       if (service.assets && service.assets.length > 0) {
         service.assets.forEach((asset: any, assetIndex: number) => {
-          blocks.push({
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `*Product ${assetIndex + 1}: ${asset.productSnapshot?.category || 'Unknown'}*`,
-            },
-          });
+          const assetSpecs: string[] = [];
+
+          assetSpecs.push(
+            `*Product ${assetIndex + 1}: ${asset.productSnapshot?.category || 'Unknown'}*`,
+          );
 
           // Requested date
           if (asset.desirableDate) {
             const [year, month, day] = asset.desirableDate.split('-');
             const formattedDate = `${day}/${month}/${year}`;
-            blocks.push({
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*Requested date:* ${formattedDate}`,
-              },
-            });
+            assetSpecs.push(`*Requested date:* ${formattedDate}`);
           }
 
           // Serial Number
           if (asset.productSnapshot?.serialNumber) {
-            blocks.push({
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*Serial Number:* ${asset.productSnapshot.serialNumber}`,
-              },
-            });
+            assetSpecs.push(
+              `*Serial Number:* ${asset.productSnapshot.serialNumber}`,
+            );
           }
 
           // Brand + Model + Name
@@ -377,13 +384,9 @@ const buildServiceBlocks = (
             brandModelName.push(asset.productSnapshot.name);
 
           if (brandModelName.length > 0) {
-            blocks.push({
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
-              },
-            });
+            assetSpecs.push(
+              `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+            );
           }
 
           // Current Location
@@ -414,13 +417,7 @@ const buildServiceBlocks = (
             }
 
             if (locationText) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Location:* ${locationText}`,
-                },
-              });
+              assetSpecs.push(`*Location:* ${locationText}`);
             }
           }
 
@@ -455,14 +452,18 @@ const buildServiceBlocks = (
             }
 
             if (destinationText) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Destination:* ${destinationText}`,
-                },
-              });
+              assetSpecs.push(`*Destination:* ${destinationText}`);
             }
+          }
+
+          if (assetSpecs.length > 0) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: assetSpecs.join('\n'),
+              },
+            });
           }
         });
       }
@@ -494,13 +495,11 @@ const buildServiceBlocks = (
       // Detalles de cada producto a destruir
       if (service.products && service.products.length > 0) {
         service.products.forEach((product: any, productIndex: number) => {
-          blocks.push({
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `*Product ${productIndex + 1}:* ${product.productSnapshot?.category || 'Unknown'}`,
-            },
-          });
+          const productSpecs: string[] = [];
+
+          productSpecs.push(
+            `*Product ${productIndex + 1}:* ${product.productSnapshot?.category || 'Unknown'}`,
+          );
 
           // Brand + Model + Name
           const brandModelName: string[] = [];
@@ -512,24 +511,16 @@ const buildServiceBlocks = (
             brandModelName.push(product.productSnapshot.name);
 
           if (brandModelName.length > 0) {
-            blocks.push({
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
-              },
-            });
+            productSpecs.push(
+              `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+            );
           }
 
           // Serial Number
           if (product.productSnapshot?.serialNumber) {
-            blocks.push({
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*Serial Number:* ${product.productSnapshot.serialNumber}`,
-              },
-            });
+            productSpecs.push(
+              `*Serial Number:* ${product.productSnapshot.serialNumber}`,
+            );
           }
 
           // Location + Country
@@ -555,36 +546,40 @@ const buildServiceBlocks = (
             }
 
             if (locationText) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Location:* ${locationText}`,
-                },
-              });
+              productSpecs.push(`*Location:* ${locationText}`);
             }
+          }
+
+          if (productSpecs.length > 0) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: productSpecs.join('\n'),
+              },
+            });
           }
         });
       }
 
-      // Certificate requirement
+      // Certificate requirement and Comments
+      const certSpecs: string[] = [];
       if (service.requiresCertificate !== undefined) {
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*Requires Certificate:* ${service.requiresCertificate ? 'Yes' : 'No'}`,
-          },
-        });
+        certSpecs.push(
+          `*Requires Certificate:* ${service.requiresCertificate ? 'Yes' : 'No'}`,
+        );
       }
 
-      // Comments
       if (service.comments) {
+        certSpecs.push(`*Comments:* ${service.comments}`);
+      }
+
+      if (certSpecs.length > 0) {
         blocks.push({
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Comments:* ${service.comments}`,
+            text: certSpecs.join('\n'),
           },
         });
       }
@@ -605,23 +600,17 @@ const buildServiceBlocks = (
       // Detalles de cada producto a comprar
       if (service.products && service.products.length > 0) {
         service.products.forEach((product: any, productIndex: number) => {
-          blocks.push({
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `*Product ${productIndex + 1}:* ${product.productSnapshot?.category || 'Unknown'}`,
-            },
-          });
+          const productSpecs: string[] = [];
+
+          productSpecs.push(
+            `*Product ${productIndex + 1}:* ${product.productSnapshot?.category || 'Unknown'}`,
+          );
 
           // Serial Number
           if (product.productSnapshot?.serialNumber) {
-            blocks.push({
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*Serial Number:* ${product.productSnapshot.serialNumber}`,
-              },
-            });
+            productSpecs.push(
+              `*Serial Number:* ${product.productSnapshot.serialNumber}`,
+            );
           }
 
           // Location + Country + Name (Employee/Office/Warehouse)
@@ -652,13 +641,7 @@ const buildServiceBlocks = (
             }
 
             if (locationText) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Location:* ${locationText}`,
-                },
-              });
+              productSpecs.push(`*Location:* ${locationText}`);
             }
           }
 
@@ -673,68 +656,40 @@ const buildServiceBlocks = (
               brandModelName.push(product.productSnapshot.name);
 
             if (brandModelName.length > 0) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
-                },
-              });
+              productSpecs.push(
+                `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+              );
             }
 
             // OS (solo para Computer)
             if (product.productSnapshot?.os) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*OS:* ${product.productSnapshot.os}`,
-                },
-              });
+              productSpecs.push(`*OS:* ${product.productSnapshot.os}`);
             }
 
             // Processor (solo para Computer)
             if (product.productSnapshot?.processor) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Processor:* ${product.productSnapshot.processor}`,
-                },
-              });
+              productSpecs.push(
+                `*Processor:* ${product.productSnapshot.processor}`,
+              );
             }
 
             // RAM (solo para Computer)
             if (product.productSnapshot?.ram) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*RAM:* ${product.productSnapshot.ram}`,
-                },
-              });
+              productSpecs.push(`*RAM:* ${product.productSnapshot.ram}`);
             }
 
             // Storage (solo para Computer)
             if (product.productSnapshot?.storage) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Storage:* ${product.productSnapshot.storage}`,
-                },
-              });
+              productSpecs.push(
+                `*Storage:* ${product.productSnapshot.storage}`,
+              );
             }
 
             // Screen size (solo para Computer)
             if (product.productSnapshot?.screenSize) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Screen size:* ${product.productSnapshot.screenSize}`,
-                },
-              });
+              productSpecs.push(
+                `*Screen size:* ${product.productSnapshot.screenSize}`,
+              );
             }
           } else {
             // Para Other: Brand + Model + Name
@@ -747,36 +702,24 @@ const buildServiceBlocks = (
               brandModelName.push(product.productSnapshot.name);
 
             if (brandModelName.length > 0) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
-                },
-              });
+              productSpecs.push(
+                `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+              );
             }
           }
 
           // Product Condition
           if (product.productSnapshot?.productCondition) {
-            blocks.push({
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*Product Condition:* ${product.productSnapshot.productCondition}`,
-              },
-            });
+            productSpecs.push(
+              `*Product Condition:* ${product.productSnapshot.productCondition}`,
+            );
           }
 
           // Additional info
           if (product.productSnapshot?.additionalInfo) {
-            blocks.push({
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*Additional info:* ${product.productSnapshot.additionalInfo}`,
-              },
-            });
+            productSpecs.push(
+              `*Additional info:* ${product.productSnapshot.additionalInfo}`,
+            );
           }
 
           // Buyback Details
@@ -785,13 +728,9 @@ const buildServiceBlocks = (
 
             // Funcionamiento general
             if (details.generalFunctionality) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Funcionamiento general:* ${details.generalFunctionality}`,
-                },
-              });
+              productSpecs.push(
+                `*Funcionamiento general:* ${details.generalFunctionality}`,
+              );
             }
 
             // Ciclos de batería
@@ -799,24 +738,16 @@ const buildServiceBlocks = (
               details.batteryCycles !== undefined &&
               details.batteryCycles !== null
             ) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Ciclos de batería:* ${details.batteryCycles}`,
-                },
-              });
+              productSpecs.push(
+                `*Ciclos de batería:* ${details.batteryCycles}`,
+              );
             }
 
             // Detalles estéticos
             if (details.aestheticDetails) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Detalles estéticos:* ${details.aestheticDetails}`,
-                },
-              });
+              productSpecs.push(
+                `*Detalles estéticos:* ${details.aestheticDetails}`,
+              );
             }
 
             // Tiene cargador
@@ -824,13 +755,9 @@ const buildServiceBlocks = (
               details.hasCharger !== undefined &&
               details.hasCharger !== null
             ) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Tiene cargador:* ${details.hasCharger ? 'Yes' : 'No'}`,
-                },
-              });
+              productSpecs.push(
+                `*Tiene cargador:* ${details.hasCharger ? 'Yes' : 'No'}`,
+              );
             }
 
             // Cargador funciona
@@ -838,25 +765,27 @@ const buildServiceBlocks = (
               details.chargerWorks !== undefined &&
               details.chargerWorks !== null
             ) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Cargador funciona:* ${details.chargerWorks ? 'Yes' : 'No'}`,
-                },
-              });
+              productSpecs.push(
+                `*Cargador funciona:* ${details.chargerWorks ? 'Yes' : 'No'}`,
+              );
             }
 
             // Otros comentarios
             if (details.additionalComments) {
-              blocks.push({
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `*Otros comentarios:* ${details.additionalComments}`,
-                },
-              });
+              productSpecs.push(
+                `*Otros comentarios:* ${details.additionalComments}`,
+              );
             }
+          }
+
+          if (productSpecs.length > 0) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: productSpecs.join('\n'),
+              },
+            });
           }
         });
       }
@@ -868,6 +797,634 @@ const buildServiceBlocks = (
           text: {
             type: 'mrkdwn',
             text: `*Additional info:* ${service.additionalInfo}`,
+          },
+        });
+      }
+    }
+    // Donate Service
+    else if (service.serviceCategory === 'Donate') {
+      // Total quantity of assets
+      const totalAssets = (service.products || []).length;
+
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Total quantity of assets:* ${totalAssets}`,
+        },
+      });
+
+      // Detalles de cada producto a donar
+      if (service.products && service.products.length > 0) {
+        service.products.forEach((product: any, productIndex: number) => {
+          const specs: string[] = [];
+
+          // Product header
+          specs.push(
+            `*Product ${productIndex + 1}:* ${product.productSnapshot?.category || 'Unknown'}`,
+          );
+
+          // Brand + Model + Name
+          const brandModelName: string[] = [];
+          if (product.productSnapshot?.brand)
+            brandModelName.push(product.productSnapshot.brand);
+          if (product.productSnapshot?.model)
+            brandModelName.push(product.productSnapshot.model);
+          if (product.productSnapshot?.name)
+            brandModelName.push(product.productSnapshot.name);
+
+          if (brandModelName.length > 0) {
+            specs.push(`*Brand + Model + Name:* ${brandModelName.join(' + ')}`);
+          }
+
+          // Serial Number
+          if (product.productSnapshot?.serialNumber) {
+            specs.push(
+              `*Serial Number:* ${product.productSnapshot.serialNumber}`,
+            );
+          }
+
+          // Location + Country
+          if (
+            product.productSnapshot?.location ||
+            product.productSnapshot?.countryCode
+          ) {
+            let locationText = '';
+            if (
+              product.productSnapshot?.location &&
+              product.productSnapshot?.countryCode
+            ) {
+              const countryName = convertCountryCodeToName(
+                product.productSnapshot.countryCode,
+              );
+              locationText = `${product.productSnapshot.location} + ${countryName}`;
+            } else if (product.productSnapshot?.location) {
+              locationText = product.productSnapshot.location;
+            } else if (product.productSnapshot?.countryCode) {
+              locationText = convertCountryCodeToName(
+                product.productSnapshot.countryCode,
+              );
+            }
+
+            if (locationText) {
+              specs.push(`*Location:* ${locationText}`);
+            }
+          }
+
+          // Needs Data Wipe (solo si category es Computer o Other)
+          if (
+            product.productSnapshot?.category === 'Computer' ||
+            product.productSnapshot?.category === 'Other'
+          ) {
+            if (product.needsDataWipe !== undefined) {
+              specs.push(
+                `*Needs Data Wipe:* ${product.needsDataWipe ? 'Yes' : 'No'}`,
+              );
+            }
+          }
+
+          // Needs Cleaning
+          if (product.needsCleaning !== undefined) {
+            specs.push(
+              `*Needs Cleaning:* ${product.needsCleaning ? 'Yes' : 'No'}`,
+            );
+          }
+
+          // Comments
+          if (product.comments) {
+            specs.push(`*Comments:* ${product.comments}`);
+          }
+
+          // Agregar todos los specs en un solo bloque
+          if (specs.length > 0) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: specs.join('\n'),
+              },
+            });
+          }
+        });
+      }
+
+      // Additional details
+      if (service.additionalDetails) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Additional details:* ${service.additionalDetails}`,
+          },
+        });
+      }
+    }
+    // Cleaning Service
+    else if (service.serviceCategory === 'Cleaning') {
+      // Total quantity of assets
+      const totalAssets = (service.products || []).length;
+
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Total quantity of assets:* ${totalAssets}`,
+        },
+      });
+
+      // Detalles de cada producto a limpiar
+      if (service.products && service.products.length > 0) {
+        service.products.forEach((product: any, productIndex: number) => {
+          const productSpecs: string[] = [];
+
+          productSpecs.push(
+            `*Product ${productIndex + 1}:* ${product.productSnapshot?.category || 'Unknown'}`,
+          );
+
+          // Serial Number
+          if (product.productSnapshot?.serialNumber) {
+            productSpecs.push(
+              `*Serial Number:* ${product.productSnapshot.serialNumber}`,
+            );
+          }
+
+          // Brand + Model + Name
+          const brandModelName: string[] = [];
+          if (product.productSnapshot?.brand)
+            brandModelName.push(product.productSnapshot.brand);
+          if (product.productSnapshot?.model)
+            brandModelName.push(product.productSnapshot.model);
+          if (product.productSnapshot?.name)
+            brandModelName.push(product.productSnapshot.name);
+
+          if (brandModelName.length > 0) {
+            productSpecs.push(
+              `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+            );
+          }
+
+          // Location + Country
+          if (
+            product.productSnapshot?.location ||
+            product.productSnapshot?.countryCode
+          ) {
+            let locationText = '';
+            if (
+              product.productSnapshot?.location &&
+              product.productSnapshot?.countryCode
+            ) {
+              const countryName = convertCountryCodeToName(
+                product.productSnapshot.countryCode,
+              );
+              locationText = `${product.productSnapshot.location} + ${countryName}`;
+            } else if (product.productSnapshot?.location) {
+              locationText = product.productSnapshot.location;
+            } else if (product.productSnapshot?.countryCode) {
+              locationText = convertCountryCodeToName(
+                product.productSnapshot.countryCode,
+              );
+            }
+
+            if (locationText) {
+              productSpecs.push(`*Location:* ${locationText}`);
+            }
+          }
+
+          // Desired date
+          if (product.desiredDate) {
+            const [year, month, day] = product.desiredDate.split('-');
+            const formattedDate = `${day}/${month}/${year}`;
+            productSpecs.push(`*Desired date:* ${formattedDate}`);
+          }
+
+          // Cleaning type
+          if (product.cleaningType) {
+            productSpecs.push(`*Cleaning type:* ${product.cleaningType}`);
+          }
+
+          // Additional comments
+          if (product.additionalComments) {
+            productSpecs.push(
+              `*Additional comments:* ${product.additionalComments}`,
+            );
+          }
+
+          if (productSpecs.length > 0) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: productSpecs.join('\n'),
+              },
+            });
+          }
+        });
+      }
+
+      // Additional details
+      if (service.additionalDetails) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Additional details:* ${service.additionalDetails}`,
+          },
+        });
+      }
+    }
+    // Storage Service
+    else if (service.serviceCategory === 'Storage') {
+      // Total quantity of assets
+      const totalAssets = (service.products || []).length;
+
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Total quantity of assets:* ${totalAssets}`,
+        },
+      });
+
+      // Detalles de cada producto a almacenar
+      if (service.products && service.products.length > 0) {
+        service.products.forEach((product: any, productIndex: number) => {
+          const productSpecs: string[] = [];
+
+          productSpecs.push(
+            `*Product ${productIndex + 1}:* ${product.productSnapshot?.category || 'Unknown'}`,
+          );
+
+          // Serial Number
+          if (product.productSnapshot?.serialNumber) {
+            productSpecs.push(
+              `*Serial Number:* ${product.productSnapshot.serialNumber}`,
+            );
+          }
+
+          // Brand + Model + Name
+          const brandModelName: string[] = [];
+          if (product.productSnapshot?.brand)
+            brandModelName.push(product.productSnapshot.brand);
+          if (product.productSnapshot?.model)
+            brandModelName.push(product.productSnapshot.model);
+          if (product.productSnapshot?.name)
+            brandModelName.push(product.productSnapshot.name);
+
+          if (brandModelName.length > 0) {
+            productSpecs.push(
+              `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+            );
+          }
+
+          // Location + Country
+          if (
+            product.productSnapshot?.location ||
+            product.productSnapshot?.countryCode
+          ) {
+            let locationText = '';
+            if (
+              product.productSnapshot?.location &&
+              product.productSnapshot?.countryCode
+            ) {
+              const countryName = convertCountryCodeToName(
+                product.productSnapshot.countryCode,
+              );
+              locationText = `${product.productSnapshot.location} + ${countryName}`;
+            } else if (product.productSnapshot?.location) {
+              locationText = product.productSnapshot.location;
+            } else if (product.productSnapshot?.countryCode) {
+              locationText = convertCountryCodeToName(
+                product.productSnapshot.countryCode,
+              );
+            }
+
+            if (locationText) {
+              productSpecs.push(`*Location:* ${locationText}`);
+            }
+          }
+
+          // Approximate size
+          if (product.approximateSize) {
+            productSpecs.push(`*Approximate size:* ${product.approximateSize}`);
+          }
+
+          // Approximate weight
+          if (product.approximateWeight) {
+            productSpecs.push(
+              `*Approximate weight:* ${product.approximateWeight}`,
+            );
+          }
+
+          // Approximate storage days
+          if (product.approximateStorageDays) {
+            productSpecs.push(
+              `*Approximate storage days:* ${product.approximateStorageDays}`,
+            );
+          }
+
+          // Additional comments
+          if (product.additionalComments) {
+            productSpecs.push(
+              `*Additional comments:* ${product.additionalComments}`,
+            );
+          }
+
+          if (productSpecs.length > 0) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: productSpecs.join('\n'),
+              },
+            });
+          }
+        });
+      }
+
+      // Additional details
+      if (service.additionalDetails) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Additional details:* ${service.additionalDetails}`,
+          },
+        });
+      }
+    }
+    // Offboarding Service
+    else if (service.serviceCategory === 'Offboarding') {
+      // Origin Member
+      if (service.originMember) {
+        const originMember = service.originMember;
+        const countryName = convertCountryCodeToName(
+          originMember.countryCode || '',
+        );
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Origin Member:* ${originMember.firstName} ${originMember.lastName} (${originMember.email}) - ${countryName}`,
+          },
+        });
+      }
+
+      // Sensitive Situation
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Is Sensitive Situation:* ${service.isSensitiveSituation ? 'Yes' : 'No'}`,
+        },
+      });
+
+      // Employee Knows
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Employee Knows:* ${service.employeeKnows ? 'Yes' : 'No'}`,
+        },
+      });
+
+      // Desirable Pickup Date
+      if (service.desirablePickupDate) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Desirable Pickup Date:* ${service.desirablePickupDate}`,
+          },
+        });
+      }
+
+      // Total quantity of products
+      const totalProducts = (service.products || []).length;
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Total quantity of products:* ${totalProducts}`,
+        },
+      });
+
+      // Detalles de cada producto a offboardear
+      if (service.products && service.products.length > 0) {
+        service.products.forEach((product: any, productIndex: number) => {
+          const productSpecs: string[] = [];
+
+          productSpecs.push(`*Product ${productIndex + 1}:*`);
+
+          // Product Snapshot
+          if (product.productSnapshot) {
+            const snapshot = product.productSnapshot;
+
+            if (snapshot.category) {
+              productSpecs.push(`*Category:* ${snapshot.category}`);
+            }
+
+            const brandModelName: string[] = [];
+            if (snapshot.brand) brandModelName.push(snapshot.brand);
+            if (snapshot.model) brandModelName.push(snapshot.model);
+            if (snapshot.name) brandModelName.push(snapshot.name);
+
+            if (brandModelName.length > 0) {
+              productSpecs.push(
+                `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
+              );
+            }
+
+            if (snapshot.serialNumber) {
+              productSpecs.push(`*Serial Number:* ${snapshot.serialNumber}`);
+            }
+
+            if (snapshot.location || snapshot.countryCode) {
+              let locationText = '';
+              if (
+                snapshot.location &&
+                snapshot.assignedTo &&
+                snapshot.countryCode
+              ) {
+                locationText = `${snapshot.location} + ${snapshot.assignedTo} + ${convertCountryCodeToName(snapshot.countryCode)}`;
+              } else if (snapshot.location && snapshot.countryCode) {
+                locationText = `${snapshot.location} + ${convertCountryCodeToName(snapshot.countryCode)}`;
+              } else if (snapshot.location) {
+                locationText = snapshot.location;
+              }
+
+              if (locationText) {
+                productSpecs.push(`*Current Location:* ${locationText}`);
+              }
+            }
+          }
+
+          // Destination
+          if (product.destination) {
+            const destination = product.destination;
+            let destinationText = '';
+
+            if (destination.type === 'Member') {
+              const countryName = convertCountryCodeToName(
+                destination.countryCode || '',
+              );
+              destinationText = `Member: ${destination.assignedMember} (${destination.assignedEmail}) - ${countryName}`;
+            } else if (destination.type === 'Office') {
+              const countryName = convertCountryCodeToName(
+                destination.countryCode || '',
+              );
+              destinationText = `Office: ${destination.officeName} - ${countryName}`;
+            } else if (destination.type === 'Warehouse') {
+              const countryName = convertCountryCodeToName(
+                destination.countryCode || '',
+              );
+              destinationText = `Warehouse: ${destination.warehouseName} - ${countryName}`;
+            }
+
+            if (destinationText) {
+              productSpecs.push(`*Destination:* ${destinationText}`);
+            }
+          }
+
+          if (productSpecs.length > 0) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: productSpecs.join('\n'),
+              },
+            });
+          }
+        });
+      }
+
+      // Additional details
+      if (service.additionalDetails) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Additional details:* ${service.additionalDetails}`,
+          },
+        });
+      }
+    }
+    // Logistics Service
+    else if (service.serviceCategory === 'Logistics') {
+      // Total quantity of products
+      const totalProducts = (service.products || []).length;
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Total quantity of products:* ${totalProducts}`,
+        },
+      });
+
+      // Desirable Pickup Date
+      if (service.desirablePickupDate) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Desirable Pickup Date:* ${service.desirablePickupDate}`,
+          },
+        });
+      }
+
+      // Detalles de cada producto a enviar
+      if (service.products && service.products.length > 0) {
+        service.products.forEach((product: any, productIndex: number) => {
+          const productSpecs: string[] = [];
+
+          productSpecs.push(`*Product ${productIndex + 1}:*`);
+
+          // Product snapshot
+          if (product.productSnapshot) {
+            const snapshot = product.productSnapshot;
+
+            if (snapshot.category) {
+              productSpecs.push(`*Category:* ${snapshot.category}`);
+            }
+
+            if (snapshot.brand || snapshot.model) {
+              const brandModel = [snapshot.brand, snapshot.model]
+                .filter(Boolean)
+                .join(' ');
+              if (brandModel) {
+                productSpecs.push(`*Brand + Model:* ${brandModel}`);
+              }
+            }
+
+            if (snapshot.serialNumber) {
+              productSpecs.push(`*Serial Number:* ${snapshot.serialNumber}`);
+            }
+
+            if (snapshot.location || snapshot.countryCode) {
+              let locationText = '';
+              if (
+                snapshot.location &&
+                snapshot.assignedTo &&
+                snapshot.countryCode
+              ) {
+                locationText = `${snapshot.location} + ${snapshot.assignedTo} + ${convertCountryCodeToName(snapshot.countryCode)}`;
+              } else if (snapshot.location && snapshot.countryCode) {
+                locationText = `${snapshot.location} + ${convertCountryCodeToName(snapshot.countryCode)}`;
+              } else if (snapshot.location) {
+                locationText = snapshot.location;
+              }
+
+              if (locationText) {
+                productSpecs.push(`*Current Location:* ${locationText}`);
+              }
+            }
+          }
+
+          // Destination
+          if (product.destination) {
+            const destination = product.destination;
+            let destinationText = '';
+
+            if (destination.type === 'Member') {
+              const countryName = convertCountryCodeToName(
+                destination.countryCode || '',
+              );
+              destinationText = `${destination.assignedMember || 'Unknown'} (${destination.assignedEmail || 'N/A'}) - ${countryName}`;
+            } else if (destination.type === 'Office') {
+              const countryName = convertCountryCodeToName(
+                destination.countryCode || '',
+              );
+              destinationText = `${destination.officeName || 'Unknown'} - ${countryName}`;
+            } else if (destination.type === 'Warehouse') {
+              const countryName = convertCountryCodeToName(
+                destination.countryCode || '',
+              );
+              destinationText = `${destination.warehouseName || 'Unknown'} - ${countryName}`;
+            }
+
+            if (destinationText) {
+              productSpecs.push(`*Destination:* ${destinationText}`);
+            }
+          }
+
+          if (productSpecs.length > 0) {
+            blocks.push({
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: productSpecs.join('\n'),
+              },
+            });
+          }
+        });
+      }
+
+      // Additional details
+      if (service.additionalDetails) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Additional details:* ${service.additionalDetails}`,
           },
         });
       }

@@ -232,8 +232,257 @@ const BuybackServiceSchema = z.object({
 export type BuybackService = z.infer<typeof BuybackServiceSchema>;
 
 /**
+ * Validación para producto en Donate Service
+ */
+const DonateProductSchema = z.object({
+  productId: z.string().optional(),
+  productSnapshot: ProductSnapshotSchema.optional(),
+  needsDataWipe: z
+    .boolean()
+    .describe('¿Necesita data wipe? (solo si category es Computer o Other)')
+    .optional(),
+  needsCleaning: z.boolean().describe('¿Necesita limpieza?').optional(),
+  comments: z
+    .string()
+    .max(1000, 'Comments no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+/**
+ * Validación para Donate Service
+ * Permite solicitar donación de múltiples productos
+ */
+export const DonateServiceSchema = z.object({
+  serviceCategory: z.literal('Donate'),
+  products: z
+    .array(DonateProductSchema)
+    .min(1, 'Al menos un producto es requerido para donación'),
+  additionalDetails: z
+    .string()
+    .max(1000, 'Additional details no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+export type DonateService = z.infer<typeof DonateServiceSchema>;
+
+/**
+ * Validación para producto en Cleaning Service
+ */
+const CleaningProductSchema = z.object({
+  productId: z.string().optional(),
+  productSnapshot: ProductSnapshotSchema.optional(),
+  desiredDate: z
+    .string()
+    .refine(
+      (val) => {
+        // Validar formato YYYY-MM-DD
+        return /^\d{4}-\d{2}-\d{2}$/.test(val);
+      },
+      {
+        message: 'Desired date debe estar en formato YYYY-MM-DD',
+      },
+    )
+    .optional(),
+  cleaningType: z
+    .enum(['Superficial', 'Deep'])
+    .describe('Tipo de limpieza: Superficial o Deep')
+    .optional(),
+  additionalComments: z
+    .string()
+    .max(1000, 'Additional comments no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+/**
+ * Validación para Cleaning Service
+ * Permite solicitar limpieza de múltiples productos (Computer o Other)
+ */
+export const CleaningServiceSchema = z.object({
+  serviceCategory: z.literal('Cleaning'),
+  products: z
+    .array(CleaningProductSchema)
+    .min(1, 'Al menos un producto es requerido para limpieza'),
+  additionalDetails: z
+    .string()
+    .max(1000, 'Additional details no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+export type CleaningService = z.infer<typeof CleaningServiceSchema>;
+
+/**
+ * Storage Product Schema
+ */
+const StorageProductSchema = z.object({
+  productId: z.string().optional(),
+  productSnapshot: ProductSnapshotSchema.optional(),
+  approximateSize: z
+    .string()
+    .max(100, 'Approximate size no puede exceder 100 caracteres')
+    .optional(),
+  approximateWeight: z
+    .string()
+    .max(100, 'Approximate weight no puede exceder 100 caracteres')
+    .optional(),
+  approximateStorageDays: z
+    .number()
+    .int('Storage days debe ser un número entero')
+    .positive('Storage days debe ser un número positivo')
+    .optional(),
+  additionalComments: z
+    .string()
+    .max(1000, 'Additional comments no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+/**
+ * Storage Service Schema
+ */
+export const StorageServiceSchema = z.object({
+  serviceCategory: z.literal('Storage'),
+  products: z
+    .array(StorageProductSchema)
+    .min(1, 'Al menos un producto es requerido para almacenamiento'),
+  additionalDetails: z
+    .string()
+    .max(1000, 'Additional details no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+export type StorageService = z.infer<typeof StorageServiceSchema>;
+
+/**
+ * Validación para Miembro origen en Offboarding Service
+ */
+const OffboardingOriginMemberSchema = z.object({
+  memberId: z.string().min(1, 'Member ID es requerido'),
+  firstName: z.string().min(1, 'First name es requerido'),
+  lastName: z.string().min(1, 'Last name es requerido'),
+  email: z.string().email('Email inválido'),
+  countryCode: z.string().max(2, 'Country code debe ser un código ISO válido'),
+});
+
+/**
+ * Validación para Destino en Offboarding Service (discriminated union)
+ */
+const OffboardingDestinationSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('Member'),
+    memberId: z.string().min(1, 'Member ID es requerido'),
+    assignedMember: z.string().min(1, 'Member name es requerido'),
+    assignedEmail: z.string().email('Email inválido'),
+    countryCode: z
+      .string()
+      .max(2, 'Country code debe ser un código ISO válido'),
+  }),
+  z.object({
+    type: z.literal('Office'),
+    officeId: z.string().min(1, 'Office ID es requerido'),
+    officeName: z.string().min(1, 'Office name es requerido'),
+    countryCode: z
+      .string()
+      .max(2, 'Country code debe ser un código ISO válido'),
+  }),
+  z.object({
+    type: z.literal('Warehouse'),
+    warehouseId: z.string().min(1, 'Warehouse ID es requerido'),
+    warehouseName: z.string().min(1, 'Warehouse name es requerido'),
+    countryCode: z
+      .string()
+      .max(2, 'Country code debe ser un código ISO válido'),
+  }),
+]);
+
+/**
+ * Validación para Producto en Offboarding Service
+ */
+const OffboardingProductSchema = z.object({
+  productId: z.string().optional(),
+  productSnapshot: ProductSnapshotSchema.optional(),
+  destination: OffboardingDestinationSchema,
+});
+
+/**
+ * Validación para Offboarding Service
+ */
+export const OffboardingServiceSchema = z.object({
+  serviceCategory: z.literal('Offboarding'),
+  originMember: OffboardingOriginMemberSchema,
+  isSensitiveSituation: z.boolean(),
+  employeeKnows: z.boolean(),
+  products: z
+    .array(OffboardingProductSchema)
+    .min(1, 'Al menos un producto es requerido para offboarding'),
+  desirablePickupDate: z
+    .string()
+    .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val), {
+      message: 'Desirable pickup date debe estar en formato YYYY-MM-DD',
+    })
+    .optional()
+    .describe(
+      'Fecha deseable para el pickup de todos los productos (YYYY-MM-DD)',
+    ),
+  additionalDetails: z
+    .string()
+    .max(1000, 'Additional details no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+export type OffboardingService = z.infer<typeof OffboardingServiceSchema>;
+
+/**
+ * Destino en Logistics Service
+ */
+const LogisticsDestinationSchema = z.object({
+  type: z.enum(['Member', 'Office', 'Warehouse']),
+  memberId: z.string().optional(),
+  assignedMember: z.string().optional(),
+  assignedEmail: z.string().email().optional(),
+  officeId: z.string().optional(),
+  officeName: z.string().optional(),
+  warehouseId: z.string().optional(),
+  warehouseName: z.string().optional(),
+  countryCode: z
+    .string()
+    .max(2, 'Country code debe ser máximo 2 caracteres')
+    .min(1, 'Country code es requerido'),
+});
+
+/**
+ * Producto en Logistics Service
+ */
+const LogisticsProductSchema = z.object({
+  productId: z.string().optional(),
+  productSnapshot: z.any().optional(),
+  destination: LogisticsDestinationSchema,
+});
+
+/**
+ * Logistics Service Schema
+ */
+export const LogisticsServiceSchema = z.object({
+  serviceCategory: z.literal('Logistics'),
+  products: z
+    .array(LogisticsProductSchema)
+    .min(1, 'Al menos un producto es requerido para logistics'),
+  desirablePickupDate: z
+    .string()
+    .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val), {
+      message: 'Desirable pickup date debe estar en formato YYYY-MM-DD',
+    })
+    .optional()
+    .describe('Fecha deseable para el pickup (YYYY-MM-DD)'),
+  additionalDetails: z
+    .string()
+    .max(1000, 'Additional details no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+export type LogisticsService = z.infer<typeof LogisticsServiceSchema>;
+
+/**
  * Union de todos los servicios
- * Soporta IT Support, Enrollment, Data Wipe, Destruction and Recycling y Buyback
+ * Soporta IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback, Donate, Cleaning, Storage, Offboarding y Logistics
  */
 export const ServiceUnion = z.union([
   ITSupportServiceSchema,
@@ -241,6 +490,11 @@ export const ServiceUnion = z.union([
   DataWipeServiceSchema,
   DestructionAndRecyclingServiceSchema,
   BuybackServiceSchema,
+  DonateServiceSchema,
+  CleaningServiceSchema,
+  StorageServiceSchema,
+  OffboardingServiceSchema,
+  LogisticsServiceSchema,
 ]);
 
 /**

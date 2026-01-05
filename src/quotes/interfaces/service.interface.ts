@@ -11,6 +11,7 @@ export interface ProductSnapshot {
   serialNumber?: string;
   location?: string; // Employee, FP warehouse, Our office
   assignedTo?: string; // member name, office name, or warehouse name
+  assignedEmail?: string; // Email del miembro asignado (si aplica)
   countryCode?: string; // ISO country code (AR, BR, US, etc.)
 }
 
@@ -156,6 +157,186 @@ export interface BuybackService {
 }
 
 /**
+ * Producto en Donate Service
+ */
+export interface DonateProduct {
+  productId?: string; // ID del producto
+  productSnapshot?: ProductSnapshot; // Snapshot del producto
+  needsDataWipe?: boolean; // ¿Necesita data wipe? (solo si category es Computer o Other)
+  needsCleaning?: boolean; // ¿Necesita limpieza?
+  comments?: string; // Comentarios adicionales (opcional)
+}
+
+/**
+ * Donate Service
+ * Permite solicitar donación de múltiples productos
+ */
+export interface DonateService {
+  serviceCategory: 'Donate';
+  products: DonateProduct[]; // Array de productos a donar con detalles
+  additionalDetails?: string; // Detalles adicionales (opcional)
+}
+
+/**
+ * Producto en Cleaning Service
+ */
+export interface CleaningProduct {
+  productId?: string; // ID del producto
+  productSnapshot?: ProductSnapshot; // Snapshot del producto
+  desiredDate?: string; // YYYY-MM-DD format - Fecha deseada para la limpieza (opcional)
+  cleaningType?: 'Superficial' | 'Deep'; // Tipo de limpieza: Superficial o Deep
+  additionalComments?: string; // Comentarios adicionales (opcional)
+}
+
+/**
+ * Cleaning Service
+ * Permite solicitar limpieza de múltiples productos (Computer o Other)
+ */
+export interface CleaningService {
+  serviceCategory: 'Cleaning';
+  products: CleaningProduct[]; // Array de productos a limpiar con detalles
+  additionalDetails?: string; // Detalles adicionales (opcional)
+}
+
+/**
+ * Producto en Storage Service
+ */
+export interface StorageProduct {
+  productId?: string; // ID del producto
+  productSnapshot?: ProductSnapshot; // Snapshot del producto
+  approximateSize?: string; // Tamaño aproximado (opcional) - ej: "50x30x20 cm"
+  approximateWeight?: string; // Peso aproximado (opcional) - ej: "5 kg"
+  approximateStorageDays?: number; // Días de guardado aproximado (opcional)
+  additionalComments?: string; // Comentarios adicionales (opcional)
+}
+
+/**
+ * Storage Service
+ * Permite solicitar almacenamiento de múltiples productos en warehouse
+ */
+export interface StorageService {
+  serviceCategory: 'Storage';
+  products: StorageProduct[]; // Array de productos a almacenar con detalles
+  additionalDetails?: string; // Detalles adicionales (opcional)
+}
+
+/**
+ * Miembro origen en Offboarding Service
+ */
+export interface OffboardingOriginMember {
+  memberId: Types.ObjectId; // ID del miembro a offboardear
+  firstName: string; // Nombre del miembro
+  lastName: string; // Apellido del miembro
+  email: string; // Email del miembro
+  countryCode: string; // ISO country code (AR, BR, US, etc.)
+}
+
+/**
+ * Destino en Offboarding Service (discriminated union: Member/Office/Warehouse)
+ */
+export interface OffboardingDestinationBase {
+  type: 'Member' | 'Office' | 'Warehouse'; // Tipo de destino
+  countryCode: string; // ISO country code
+}
+
+/**
+ * Destino Member en Offboarding Service
+ */
+export interface OffboardingDestinationMember
+  extends OffboardingDestinationBase {
+  type: 'Member';
+  memberId: Types.ObjectId; // ID del miembro destino
+  assignedMember: string; // Nombre del miembro destino
+  assignedEmail: string; // Email del miembro destino
+}
+
+/**
+ * Destino Office en Offboarding Service
+ */
+export interface OffboardingDestinationOffice
+  extends OffboardingDestinationBase {
+  type: 'Office';
+  officeId: Types.ObjectId; // ID de la oficina destino
+  officeName: string; // Nombre de la oficina destino
+}
+
+/**
+ * Destino Warehouse en Offboarding Service
+ */
+export interface OffboardingDestinationWarehouse
+  extends OffboardingDestinationBase {
+  type: 'Warehouse';
+  warehouseId: Types.ObjectId; // ID del warehouse destino
+  warehouseName: string; // Nombre del warehouse destino
+}
+
+/**
+ * Union de todos los tipos de destino en Offboarding
+ */
+export type OffboardingDestination =
+  | OffboardingDestinationMember
+  | OffboardingDestinationOffice
+  | OffboardingDestinationWarehouse;
+
+/**
+ * Producto en Offboarding Service
+ */
+export interface OffboardingProduct {
+  productId?: Types.ObjectId; // ID del producto
+  productSnapshot?: ProductSnapshot; // Snapshot del producto
+  destination: OffboardingDestination; // Destino del producto
+}
+
+/**
+ * Offboarding Service
+ * Permite offboardear múltiples productos de un miembro a diferentes destinos
+ */
+export interface OffboardingService {
+  serviceCategory: 'Offboarding';
+  originMember: OffboardingOriginMember; // Miembro a offboardear
+  isSensitiveSituation: boolean; // ¿Es una situación sensible?
+  employeeKnows: boolean; // ¿El empleado sabe que se va?
+  products: OffboardingProduct[]; // Array de productos a offboardear (mínimo 1)
+  desirablePickupDate?: string; // Fecha deseable para el pickup de todos los productos (YYYY-MM-DD)
+  additionalDetails?: string; // Detalles adicionales (opcional)
+}
+
+/**
+ * Destino en Logistics Service (igual que Offboarding)
+ */
+export interface LogisticsDestination {
+  type: 'Member' | 'Office' | 'Warehouse';
+  memberId?: string; // Para Member
+  assignedMember?: string; // Nombre del miembro
+  assignedEmail?: string; // Email del miembro
+  officeId?: string; // Para Office
+  officeName?: string; // Nombre de la oficina
+  warehouseId?: string; // Para Warehouse
+  warehouseName?: string; // Nombre del warehouse
+  countryCode: string; // Código de país (máximo 2 caracteres)
+}
+
+/**
+ * Producto en Logistics Service
+ */
+export interface LogisticsProduct {
+  productId?: Types.ObjectId; // ID del producto
+  productSnapshot?: ProductSnapshot; // Snapshot del producto
+  destination: LogisticsDestination; // Destino del producto
+}
+
+/**
+ * Logistics Service
+ * Cotización de envío de productos desde su ubicación actual a un destino
+ */
+export interface LogisticsService {
+  serviceCategory: 'Logistics';
+  products: LogisticsProduct[]; // Array de productos a enviar (mínimo 1)
+  desirablePickupDate?: string; // Fecha deseable para el pickup (YYYY-MM-DD)
+  additionalDetails?: string; // Comentarios adicionales (opcional)
+}
+
+/**
  * Tipos para discriminated union
  * Soporta múltiples categorías de servicios
  */
@@ -164,4 +345,9 @@ export type ServiceData =
   | EnrollmentService
   | DataWipeService
   | DestructionAndRecyclingService
-  | BuybackService;
+  | BuybackService
+  | DonateService
+  | CleaningService
+  | StorageService
+  | OffboardingService
+  | LogisticsService;
