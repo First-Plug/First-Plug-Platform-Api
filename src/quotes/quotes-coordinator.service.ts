@@ -807,6 +807,84 @@ export class QuotesCoordinatorService {
 
       return baseFields;
     }
+    // Offboarding Service
+    else if (service.serviceCategory === 'Offboarding') {
+      const baseFields = {
+        serviceCategory: service.serviceCategory,
+        isSensitiveSituation: service.isSensitiveSituation,
+        employeeKnows: service.employeeKnows,
+        productCount: service.products?.length || 0,
+        ...(service.desirablePickupDate && {
+          desirablePickupDate: service.desirablePickupDate,
+        }),
+        ...(service.additionalDetails && {
+          additionalDetails: service.additionalDetails,
+        }),
+      };
+
+      // Agregar información del miembro origen
+      if (service.originMember) {
+        baseFields['originMember'] = {
+          memberId: service.originMember.memberId,
+          firstName: service.originMember.firstName,
+          lastName: service.originMember.lastName,
+          email: service.originMember.email,
+          countryCode: service.originMember.countryCode,
+        };
+      }
+
+      // Agregar detalles de productos a offboardear
+      if (service.products && service.products.length > 0) {
+        baseFields['products'] = service.products.map((product: any) => {
+          const productData: Record<string, any> = {};
+
+          // Agregar snapshot del producto
+          if (product.productSnapshot) {
+            productData['productSnapshot'] = this.formatProductSnapshot(
+              product.productSnapshot,
+            );
+          }
+
+          // Agregar productId si existe
+          if (product.productId) {
+            productData['productId'] = product.productId;
+          }
+
+          // Agregar destino del producto
+          if (product.destination) {
+            productData['destination'] = {
+              type: product.destination.type,
+              ...(product.destination.memberId && {
+                memberId: product.destination.memberId,
+              }),
+              ...(product.destination.assignedMember && {
+                assignedMember: product.destination.assignedMember,
+              }),
+              ...(product.destination.assignedEmail && {
+                assignedEmail: product.destination.assignedEmail,
+              }),
+              ...(product.destination.officeId && {
+                officeId: product.destination.officeId,
+              }),
+              ...(product.destination.officeName && {
+                officeName: product.destination.officeName,
+              }),
+              ...(product.destination.warehouseId && {
+                warehouseId: product.destination.warehouseId,
+              }),
+              ...(product.destination.warehouseName && {
+                warehouseName: product.destination.warehouseName,
+              }),
+              countryCode: product.destination.countryCode,
+            };
+          }
+
+          return productData;
+        });
+      }
+
+      return baseFields;
+    }
 
     // Fallback para servicios desconocidos
     return {

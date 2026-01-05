@@ -1,0 +1,78 @@
+{
+  "services": [
+    {
+      "serviceCategory": "Offboarding",
+      "originMember": {
+        "memberId": "686beb6f9c7a0951bbec40df",
+        "firstName": "Almudena",
+        "lastName": "Cerezo",
+        "email": "almudenacerezo@work.com",
+        "countryCode": "UY"
+      },
+      "isSensitiveSituation": false,
+      "employeeKnows": true,
+      "desirablePickupDate": "2025-01-15",
+      "products": [
+        {
+          "productId": "686beb939c7a0951bbec4461",
+          "productSnapshot": {
+            "category": "Monitor",
+            "brand": "LG",
+            "model": "Smart Monitor",
+            "serialNumber": "LG-SM-2024-001",
+            "location": "Employee",
+            "assignedTo": "Almudena Cerezo",
+            "assignedEmail": "almudenacerezo@work.com",
+            "countryCode": "UY"
+          },
+          "destination": {
+            "type": "Member",
+            "memberId": "686beb6f9c7a0951bbec40de",
+            "assignedMember": "Evelio Farias",
+            "assignedEmail": "eveliofarias@work.com",
+            "countryCode": "ES"
+          }
+        },
+        {
+          "productId": "686beb939c7a0951bbec43da",
+          "productSnapshot": {
+            "category": "Other",
+            "brand": "Apple",
+            "model": "iPhone 15 Pro",
+            "serialNumber": "IPHONE-15-PRO-001",
+            "location": "Employee",
+            "assignedTo": "Almudena Cerezo",
+            "assignedEmail": "almudenacerezo@work.com",
+            "countryCode": "UY"
+          },
+          "destination": {
+            "type": "Office",
+            "officeId": "687e7e601d43bf08d8f26046",
+            "officeName": "Oficina Principal",
+            "countryCode": "GT"
+          }
+        },
+        {
+          "productId": "686beb939c7a0951bbec4483",
+          "productSnapshot": {
+            "category": "Peripherals",
+            "brand": "Logitech",
+            "model": "M240 Mouse Bluetooth",
+            "serialNumber": "LOG-MOUSE-2022-001",
+            "location": "Employee",
+            "assignedTo": "Almudena Cerezo",
+            "assignedEmail": "almudenacerezo@work.com",
+            "countryCode": "UY"
+          },
+          "destination": {
+            "type": "Warehouse",
+            "warehouseId": "warehouse-uy-001",
+            "warehouseName": "Uruguay Central Warehouse",
+            "countryCode": "UY"
+          }
+        }
+      ],
+      "additionalDetails": "Almudena Cerezo está siendo offboardeada. Monitor reasignado a Evelio Farias en Madrid. iPhone enviado a Oficina Principal en Guatemala. Mouse enviado a warehouse en Uruguay. Backpack (no recuperable) descartado."
+    }
+  ]
+}

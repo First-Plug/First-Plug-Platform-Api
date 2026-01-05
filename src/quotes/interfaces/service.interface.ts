@@ -221,6 +221,87 @@ export interface StorageService {
 }
 
 /**
+ * Miembro origen en Offboarding Service
+ */
+export interface OffboardingOriginMember {
+  memberId: Types.ObjectId; // ID del miembro a offboardear
+  firstName: string; // Nombre del miembro
+  lastName: string; // Apellido del miembro
+  email: string; // Email del miembro
+  countryCode: string; // ISO country code (AR, BR, US, etc.)
+}
+
+/**
+ * Destino en Offboarding Service (discriminated union: Member/Office/Warehouse)
+ */
+export interface OffboardingDestinationBase {
+  type: 'Member' | 'Office' | 'Warehouse'; // Tipo de destino
+  countryCode: string; // ISO country code
+}
+
+/**
+ * Destino Member en Offboarding Service
+ */
+export interface OffboardingDestinationMember
+  extends OffboardingDestinationBase {
+  type: 'Member';
+  memberId: Types.ObjectId; // ID del miembro destino
+  assignedMember: string; // Nombre del miembro destino
+  assignedEmail: string; // Email del miembro destino
+}
+
+/**
+ * Destino Office en Offboarding Service
+ */
+export interface OffboardingDestinationOffice
+  extends OffboardingDestinationBase {
+  type: 'Office';
+  officeId: Types.ObjectId; // ID de la oficina destino
+  officeName: string; // Nombre de la oficina destino
+}
+
+/**
+ * Destino Warehouse en Offboarding Service
+ */
+export interface OffboardingDestinationWarehouse
+  extends OffboardingDestinationBase {
+  type: 'Warehouse';
+  warehouseId: Types.ObjectId; // ID del warehouse destino
+  warehouseName: string; // Nombre del warehouse destino
+}
+
+/**
+ * Union de todos los tipos de destino en Offboarding
+ */
+export type OffboardingDestination =
+  | OffboardingDestinationMember
+  | OffboardingDestinationOffice
+  | OffboardingDestinationWarehouse;
+
+/**
+ * Producto en Offboarding Service
+ */
+export interface OffboardingProduct {
+  productId?: Types.ObjectId; // ID del producto
+  productSnapshot?: ProductSnapshot; // Snapshot del producto
+  destination: OffboardingDestination; // Destino del producto
+}
+
+/**
+ * Offboarding Service
+ * Permite offboardear múltiples productos de un miembro a diferentes destinos
+ */
+export interface OffboardingService {
+  serviceCategory: 'Offboarding';
+  originMember: OffboardingOriginMember; // Miembro a offboardear
+  isSensitiveSituation: boolean; // ¿Es una situación sensible?
+  employeeKnows: boolean; // ¿El empleado sabe que se va?
+  products: OffboardingProduct[]; // Array de productos a offboardear (mínimo 1)
+  desirablePickupDate?: string; // Fecha deseable para el pickup de todos los productos (YYYY-MM-DD)
+  additionalDetails?: string; // Detalles adicionales (opcional)
+}
+
+/**
  * Tipos para discriminated union
  * Soporta múltiples categorías de servicios
  */
@@ -232,4 +313,5 @@ export type ServiceData =
   | BuybackService
   | DonateService
   | CleaningService
-  | StorageService;
+  | StorageService
+  | OffboardingService;

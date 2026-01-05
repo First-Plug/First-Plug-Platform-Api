@@ -1696,3 +1696,191 @@ Incluye identificación completa del producto (importante para history y Slack):
   ]
 }
 ```
+
+## Example 32: Offboarding Service - Simple (1 Product to Member)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Offboarding",
+      "originMember": {
+        "memberId": "507f1f77bcf86cd799439011",
+        "firstName": "John",
+        "lastName": "Doe",
+        "email": "john.doe@company.com",
+        "countryCode": "US"
+      },
+      "isSensitiveSituation": false,
+      "employeeKnows": true,
+      "products": [
+        {
+          "productId": "507f1f77bcf86cd799439012",
+          "productSnapshot": {
+            "category": "Computer",
+            "brand": "Apple",
+            "model": "MacBook Pro",
+            "serialNumber": "ABC123456",
+            "location": "Employee",
+            "assignedTo": "John Doe",
+            "assignedEmail": "john.doe@company.com",
+            "countryCode": "US"
+          },
+          "destination": {
+            "type": "Member",
+            "memberId": "507f1f77bcf86cd799439013",
+            "assignedMember": "Jane Smith",
+            "assignedEmail": "jane.smith@company.com",
+            "countryCode": "US"
+          }
+        }
+      ],
+      "additionalDetails": "Equipment in good condition, ready for reassignment"
+    }
+  ]
+}
+```
+
+## Example 33: Offboarding Service - Multiple Products to Different Destinations
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Offboarding",
+      "originMember": {
+        "memberId": "507f1f77bcf86cd799439011",
+        "firstName": "John",
+        "lastName": "Doe",
+        "email": "john.doe@company.com",
+        "countryCode": "US"
+      },
+      "isSensitiveSituation": true,
+      "employeeKnows": false,
+      "products": [
+        {
+          "productId": "507f1f77bcf86cd799439012",
+          "productSnapshot": {
+            "category": "Computer",
+            "brand": "Apple",
+            "model": "MacBook Pro",
+            "serialNumber": "ABC123456",
+            "location": "Employee",
+            "assignedTo": "John Doe",
+            "assignedEmail": "john.doe@company.com",
+            "countryCode": "US"
+          },
+          "destination": {
+            "type": "Member",
+            "memberId": "507f1f77bcf86cd799439013",
+            "assignedMember": "Jane Smith",
+            "assignedEmail": "jane.smith@company.com",
+            "countryCode": "US"
+          }
+        },
+        {
+          "productId": "507f1f77bcf86cd799439014",
+          "productSnapshot": {
+            "category": "Monitor",
+            "brand": "Dell",
+            "model": "U2720Q",
+            "serialNumber": "DEF789012",
+            "location": "Employee",
+            "assignedTo": "John Doe",
+            "assignedEmail": "john.doe@company.com",
+            "countryCode": "US"
+          },
+          "destination": {
+            "type": "Office",
+            "officeId": "507f1f77bcf86cd799439015",
+            "officeName": "New York Office",
+            "countryCode": "US"
+          }
+        },
+        {
+          "productId": "507f1f77bcf86cd799439016",
+          "productSnapshot": {
+            "category": "Audio",
+            "brand": "Bose",
+            "model": "QuietComfort 45",
+            "serialNumber": "GHI345678",
+            "location": "Employee",
+            "assignedTo": "John Doe",
+            "assignedEmail": "john.doe@company.com",
+            "countryCode": "US"
+          },
+          "destination": {
+            "type": "Warehouse",
+            "warehouseId": "507f1f77bcf86cd799439017",
+            "warehouseName": "US Central Warehouse",
+            "countryCode": "US"
+          }
+        }
+      ],
+      "additionalDetails": "Sensitive situation - employee was terminated. Equipment needs to be recovered immediately. Some items may need data wipe before reassignment."
+    }
+  ]
+}
+```
+
+## Example 34: Offboarding Service - International (Multiple Countries)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Offboarding",
+      "originMember": {
+        "memberId": "507f1f77bcf86cd799439011",
+        "firstName": "Maria",
+        "lastName": "Garcia",
+        "email": "maria.garcia@company.com",
+        "countryCode": "AR"
+      },
+      "isSensitiveSituation": false,
+      "employeeKnows": true,
+      "products": [
+        {
+          "productId": "507f1f77bcf86cd799439012",
+          "productSnapshot": {
+            "category": "Computer",
+            "brand": "Lenovo",
+            "model": "ThinkPad X1",
+            "serialNumber": "LNV987654",
+            "location": "Employee",
+            "assignedTo": "Maria Garcia",
+            "assignedEmail": "maria.garcia@company.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "type": "Member",
+            "memberId": "507f1f77bcf86cd799439018",
+            "assignedMember": "Carlos Lopez",
+            "assignedEmail": "carlos.lopez@company.com",
+            "countryCode": "AR"
+          }
+        },
+        {
+          "productId": "507f1f77bcf86cd799439019",
+          "productSnapshot": {
+            "category": "Monitor",
+            "brand": "LG",
+            "model": "27UP550",
+            "serialNumber": "LG456789",
+            "location": "Our office",
+            "assignedTo": "Buenos Aires Office",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "type": "Warehouse",
+            "warehouseId": "507f1f77bcf86cd799439020",
+            "warehouseName": "Argentina Warehouse",
+            "countryCode": "AR"
+          }
+        }
+      ],
+      "additionalDetails": "Employee transferred to another country. Equipment to be reassigned or stored in Argentina warehouse."
+    }
+  ]
+}
+```

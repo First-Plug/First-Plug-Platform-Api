@@ -352,8 +352,87 @@ export const StorageServiceSchema = z.object({
 export type StorageService = z.infer<typeof StorageServiceSchema>;
 
 /**
+ * Validación para Miembro origen en Offboarding Service
+ */
+const OffboardingOriginMemberSchema = z.object({
+  memberId: z.string().min(1, 'Member ID es requerido'),
+  firstName: z.string().min(1, 'First name es requerido'),
+  lastName: z.string().min(1, 'Last name es requerido'),
+  email: z.string().email('Email inválido'),
+  countryCode: z.string().max(2, 'Country code debe ser un código ISO válido'),
+});
+
+/**
+ * Validación para Destino en Offboarding Service (discriminated union)
+ */
+const OffboardingDestinationSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('Member'),
+    memberId: z.string().min(1, 'Member ID es requerido'),
+    assignedMember: z.string().min(1, 'Member name es requerido'),
+    assignedEmail: z.string().email('Email inválido'),
+    countryCode: z
+      .string()
+      .max(2, 'Country code debe ser un código ISO válido'),
+  }),
+  z.object({
+    type: z.literal('Office'),
+    officeId: z.string().min(1, 'Office ID es requerido'),
+    officeName: z.string().min(1, 'Office name es requerido'),
+    countryCode: z
+      .string()
+      .max(2, 'Country code debe ser un código ISO válido'),
+  }),
+  z.object({
+    type: z.literal('Warehouse'),
+    warehouseId: z.string().min(1, 'Warehouse ID es requerido'),
+    warehouseName: z.string().min(1, 'Warehouse name es requerido'),
+    countryCode: z
+      .string()
+      .max(2, 'Country code debe ser un código ISO válido'),
+  }),
+]);
+
+/**
+ * Validación para Producto en Offboarding Service
+ */
+const OffboardingProductSchema = z.object({
+  productId: z.string().optional(),
+  productSnapshot: ProductSnapshotSchema.optional(),
+  destination: OffboardingDestinationSchema,
+});
+
+/**
+ * Validación para Offboarding Service
+ */
+export const OffboardingServiceSchema = z.object({
+  serviceCategory: z.literal('Offboarding'),
+  originMember: OffboardingOriginMemberSchema,
+  isSensitiveSituation: z.boolean(),
+  employeeKnows: z.boolean(),
+  products: z
+    .array(OffboardingProductSchema)
+    .min(1, 'Al menos un producto es requerido para offboarding'),
+  desirablePickupDate: z
+    .string()
+    .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val), {
+      message: 'Desirable pickup date debe estar en formato YYYY-MM-DD',
+    })
+    .optional()
+    .describe(
+      'Fecha deseable para el pickup de todos los productos (YYYY-MM-DD)',
+    ),
+  additionalDetails: z
+    .string()
+    .max(1000, 'Additional details no puede exceder 1000 caracteres')
+    .optional(),
+});
+
+export type OffboardingService = z.infer<typeof OffboardingServiceSchema>;
+
+/**
  * Union de todos los servicios
- * Soporta IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback, Donate, Cleaning y Storage
+ * Soporta IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback, Donate, Cleaning, Storage y Offboarding
  */
 export const ServiceUnion = z.union([
   ITSupportServiceSchema,
@@ -364,6 +443,7 @@ export const ServiceUnion = z.union([
   DonateServiceSchema,
   CleaningServiceSchema,
   StorageServiceSchema,
+  OffboardingServiceSchema,
 ]);
 
 /**

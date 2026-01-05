@@ -10,6 +10,7 @@ import {
   DonateServiceSchema,
   CleaningServiceSchema,
   StorageServiceSchema,
+  OffboardingServiceSchema,
 } from './service.schema';
 
 export type QuoteDocument = Quote & Document & SchemaTimestampsConfig;
@@ -280,6 +281,7 @@ export class Quote {
           DonateServiceSchema,
           CleaningServiceSchema,
           StorageServiceSchema,
+          OffboardingServiceSchema,
         ],
       },
     ],

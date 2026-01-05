@@ -231,6 +231,48 @@ export class StorageServiceResponseDto {
 }
 
 /**
+ * DTO para respuesta de Offboarding Service
+ */
+export class OffboardingServiceResponseDto {
+  serviceCategory: 'Offboarding';
+  originMember: {
+    memberId: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    countryCode: string;
+  };
+  isSensitiveSituation: boolean;
+  employeeKnows: boolean;
+  products: Array<{
+    productId?: string;
+    productSnapshot?: {
+      category?: string;
+      name?: string;
+      brand?: string;
+      model?: string;
+      serialNumber?: string;
+      location?: string;
+      assignedTo?: string;
+      countryCode?: string;
+    };
+    destination: {
+      type: 'Member' | 'Office' | 'Warehouse';
+      memberId?: string;
+      assignedMember?: string;
+      assignedEmail?: string;
+      officeId?: string;
+      officeName?: string;
+      warehouseId?: string;
+      warehouseName?: string;
+      countryCode: string;
+    };
+  }>;
+  desirablePickupDate?: string; // Fecha deseable para el pickup de todos los productos (YYYY-MM-DD)
+  additionalDetails?: string;
+}
+
+/**
  * Union de todos los Service Response DTOs
  */
 export type ServiceResponseDto =
@@ -241,7 +283,8 @@ export type ServiceResponseDto =
   | BuybackServiceResponseDto
   | DonateServiceResponseDto
   | CleaningServiceResponseDto
-  | StorageServiceResponseDto;
+  | StorageServiceResponseDto
+  | OffboardingServiceResponseDto;
 
 /**
  * DTO para agregar servicio a quote

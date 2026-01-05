@@ -396,3 +396,108 @@ export class StorageServiceSchema {
   @Prop({ type: String })
   additionalDetails?: string; // Detalles adicionales (opcional)
 }
+
+/**
+ * Miembro origen en Offboarding Service
+ */
+@Schema({ _id: false })
+export class OffboardingOriginMemberSchema {
+  @Prop({ type: Types.ObjectId, required: true })
+  memberId: Types.ObjectId; // ID del miembro a offboardear
+
+  @Prop({ type: String, required: true })
+  firstName: string; // Nombre del miembro
+
+  @Prop({ type: String, required: true })
+  lastName: string; // Apellido del miembro
+
+  @Prop({ type: String, required: true })
+  email: string; // Email del miembro
+
+  @Prop({ type: String, required: true, maxlength: 2 })
+  countryCode: string; // ISO country code (AR, BR, US, etc.)
+}
+
+/**
+ * Destino en Offboarding Service (discriminated union: Member/Office/Warehouse)
+ */
+@Schema({ _id: false })
+export class OffboardingDestinationSchema {
+  @Prop({
+    type: String,
+    enum: ['Member', 'Office', 'Warehouse'],
+    required: true,
+  })
+  type: 'Member' | 'Office' | 'Warehouse'; // Tipo de destino
+
+  // Campos para destino Member
+  @Prop({ type: Types.ObjectId })
+  memberId?: Types.ObjectId; // ID del miembro destino
+
+  @Prop({ type: String })
+  assignedMember?: string; // Nombre del miembro destino
+
+  @Prop({ type: String })
+  assignedEmail?: string; // Email del miembro destino
+
+  // Campos para destino Office
+  @Prop({ type: Types.ObjectId })
+  officeId?: Types.ObjectId; // ID de la oficina destino
+
+  @Prop({ type: String })
+  officeName?: string; // Nombre de la oficina destino
+
+  // Campos para destino Warehouse
+  @Prop({ type: Types.ObjectId })
+  warehouseId?: Types.ObjectId; // ID del warehouse destino
+
+  @Prop({ type: String })
+  warehouseName?: string; // Nombre del warehouse destino
+
+  // Campo común para todos los tipos
+  @Prop({ type: String, required: true, maxlength: 2 })
+  countryCode: string; // ISO country code
+}
+
+/**
+ * Producto en Offboarding Service
+ */
+@Schema({ _id: false })
+export class OffboardingProductSchema {
+  @Prop({ type: Types.ObjectId })
+  productId?: Types.ObjectId; // ID del producto
+
+  @Prop({ type: ProductSnapshotSchema })
+  productSnapshot?: ProductSnapshotSchema; // Snapshot del producto
+
+  @Prop({ type: OffboardingDestinationSchema, required: true })
+  destination: OffboardingDestinationSchema; // Destino del producto
+}
+
+/**
+ * Subdocumento para Offboarding Service
+ * Permite offboardear múltiples productos de un miembro a diferentes destinos
+ */
+@Schema({ _id: false })
+export class OffboardingServiceSchema {
+  @Prop({ type: String, enum: ['Offboarding'], required: true })
+  serviceCategory: 'Offboarding';
+
+  @Prop({ type: OffboardingOriginMemberSchema, required: true })
+  originMember: OffboardingOriginMemberSchema; // Miembro a offboardear
+
+  @Prop({ type: Boolean, required: true })
+  isSensitiveSituation: boolean; // ¿Es una situación sensible?
+
+  @Prop({ type: Boolean, required: true })
+  employeeKnows: boolean; // ¿El empleado sabe que se va?
+
+  @Prop({ type: [OffboardingProductSchema], required: true, minlength: 1 })
+  products: OffboardingProductSchema[]; // Array de productos a offboardear (mínimo 1)
+
+  @Prop({ type: String })
+  desirablePickupDate?: string; // Fecha deseable para el pickup de todos los productos (YYYY-MM-DD)
+
+  @Prop({ type: String, maxlength: 1000 })
+  additionalDetails?: string; // Detalles adicionales (opcional)
+}
