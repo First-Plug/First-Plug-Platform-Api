@@ -2,22 +2,23 @@
 
 ## ⚡ RESUMEN EJECUTIVO
 
-| Aspecto | Decisión |
-|---------|----------|
-| Objetivo | Permitir adjuntar imágenes a IT Support dentro de Quotes |
-| Scope Release 2 | Solo imágenes (no video) |
-| Storage MVP | Cloudinary |
-| Costo esperado | $0 dentro del free tier (créditos mensuales) |
-| Tiempo implementación | 7–10 días |
-| Plan de salida | S3-compatible (R2 / S3 / B2) |
-| Impacto arquitectura | Mínimo: extender ITSupportServiceSchema + agregar upload/cleanup |
-| Enfoque técnico | Desacoplado con StorageProvider (Cloudinary hoy, S3 mañana) |
+| Aspecto               | Decisión                                                         |
+| --------------------- | ---------------------------------------------------------------- |
+| Objetivo              | Permitir adjuntar imágenes a IT Support dentro de Quotes         |
+| Scope Release 2       | Solo imágenes (no video)                                         |
+| Storage MVP           | Cloudinary                                                       |
+| Costo esperado        | $0 dentro del free tier (créditos mensuales)                     |
+| Tiempo implementación | 7–10 días                                                        |
+| Plan de salida        | S3-compatible (R2 / S3 / B2)                                     |
+| Impacto arquitectura  | Mínimo: extender ITSupportServiceSchema + agregar upload/cleanup |
+| Enfoque técnico       | Desacoplado con StorageProvider (Cloudinary hoy, S3 mañana)      |
 
 ---
 
 ## 🏗️ CONTEXTO REAL DEL PROYECTO
 
 Arquitectura existente:
+
 - Quote es el agregado raíz
 - Quote.services[] usa subdocumentos discriminados por serviceCategory
 - ITSupportServiceSchema extiende BaseServiceSchema
@@ -45,6 +46,7 @@ Arquitectura existente:
 ## ❓ ¿Por qué NO video en Release 2?
 
 Video:
+
 - consume mucho más bandwidth
 - rompe cualquier free tier rápido
 - complica UX (upload largo, progreso, fallos)
@@ -60,6 +62,7 @@ Video:
 ### Opción A — Cloudinary (MVP)
 
 **Pros**
+
 - CDN incluido
 - compresión/formatos automáticos
 - URLs fáciles para Slack
@@ -67,6 +70,7 @@ Video:
 - free tier suficiente si controlamos límites
 
 **Contras**
+
 - Free tier basado en créditos mensuales (pool: storage + bandwidth + transforms)
 - Preview Slack depende de que las URLs sean accesibles (no garantizado)
 - Retención requiere cron propio (no asumir "auto-delete mágico")
@@ -80,11 +84,13 @@ Video:
 Incluye: AWS S3, Cloudflare R2, Backblaze B2 (S3 API)
 
 **Pros**
+
 - Lifecycle rules (borrado automático sin cron si querés)
 - muy escalable
 - costos predecibles a gran escala
 
 **Contras**
+
 - más setup (IAM, CORS, signed URLs)
 - Slack preview puede ser más delicado (URLs firmadas)
 - más tiempo de implementación
@@ -106,6 +112,7 @@ No se "piensa chico": se implementa simple, pero se diseña para crecer.
 No. Para eliminar un archivo en Cloudinary, necesitás guardar publicId.
 
 **Guardamos**:
+
 - publicId (clave de borrado)
 - secureUrl (para Slack / UI)
 - mimeType, bytes, timestamps
@@ -169,18 +176,21 @@ export class ITSupportServiceSchema extends BaseServiceSchema {
 ## 🔌 DISEÑO DESACOPLADO (StorageProvider)
 
 **Interfaz mínima**:
+
 - uploadImage({ tenantId, quoteId, file }) -> AttachmentSchema
 - deleteAsset({ publicId })
 
 **Implementación**:
+
 - CloudinaryStorageProvider (Release 2)
 - S3StorageProvider (plan de salida)
 
 ---
 
-## 🎯 ENDPOINTS (MVP)
+## 🎯 ENDPOINTS (MVP - IMPLEMENTADOS)
 
 ### Subir imagen
+
 ```
 POST /quotes/:quoteId/services/it-support/attachments
 multipart/form-data { file }
@@ -189,25 +199,79 @@ Validaciones:
 - allowlist MIME (image/jpeg, image/png, image/webp)
 - file.size <= 5MB
 - attachments.length < 4
+
+Respuesta:
+{
+  "provider": "cloudinary",
+  "publicId": "quotes/123/img1",
+  "secureUrl": "https://res.cloudinary.com/...",
+  "mimeType": "image/jpeg",
+  "bytes": 245000,
+  "originalName": "damage.jpg",
+  "createdAt": "2026-01-07T10:00:00Z",
+  "expiresAt": "2026-02-06T10:00:00Z"
+}
 ```
 
-### Borrar imagen (opcional)
+### Obtener attachments (para preview)
+
+```
+GET /quotes/:quoteId/services/it-support/attachments
+
+Respuesta:
+[
+  {
+    "provider": "cloudinary",
+    "publicId": "quotes/123/img1",
+    "secureUrl": "https://res.cloudinary.com/...",
+    "mimeType": "image/jpeg",
+    "bytes": 245000,
+    "createdAt": "2026-01-07T10:00:00Z",
+    "expiresAt": "2026-02-06T10:00:00Z"
+  }
+]
+```
+
+### Borrar imagen
+
 ```
 DELETE /quotes/:quoteId/services/it-support/attachments/:publicId
+
+Respuesta: 204 No Content
 ```
 
 ---
 
 ## 🗑️ RETENCIÓN Y LIMPIEZA
 
-**MVP**: expiresAt = createdAt + 30 días
+**DECISIÓN FINAL**: Limpieza al cambiar status (NO Cron)
 
-**Cron diario**:
-1. buscar attachments vencidos
-2. storageProvider.deleteAsset(publicId)
-3. pull del array attachments
+**Contexto**:
 
-**Multitenant**: cron global recorriendo DBs (recomendado)
+- Quote es un pedido de presupuesto (status = `requested`)
+- Las imágenes solo sirven mientras la quote está activa
+- Una vez que la quote es `cancelled`, las imágenes no tienen valor
+- Quote siempre permanece como registro histórico
+
+**Implementación**:
+
+1. Cuando user cancela quote → `cancelQuoteWithCoordination()` se ejecuta
+2. Llama a `AttachmentsCoordinatorService.cleanupAttachmentsOnCancel(quoteId)`
+3. Para cada attachment:
+   - Borrar imagen de Cloudinary (usando publicId)
+   - Vaciar array de attachments en Quote
+4. Quote permanece en BD como registro histórico
+5. Limpieza inmediata, sin delay, sin cron
+
+**Ventajas**:
+
+- ✅ Limpieza inmediata (sin esperar 24h)
+- ✅ Sin cron job que mantener
+- ✅ Lógica clara (status = acción)
+- ✅ Integrado en flujo existente
+- ✅ Costo optimizado (menos imágenes en Cloudinary)
+
+**Nota**: Cuando se implemente Presupuesto Formal (otra sección), se decidirá si guardar o borrar attachments cuando status = `accepted`
 
 ---
 
@@ -226,6 +290,7 @@ DELETE /quotes/:quoteId/services/it-support/attachments/:publicId
 Asumimos free tier ≈ 25 créditos mensuales.
 
 **Consumo por quote** (2 imágenes, optimizadas):
+
 - Storage: 0.012 créditos
 - Transforms: 0.002 créditos
 - Bandwidth: 0.004 créditos
@@ -239,13 +304,26 @@ Con margen porque no todas serán IT Support ni tendrán 2 imágenes.
 
 ---
 
-## 🛣️ ROADMAP (7–10 DÍAS)
+## 🛣️ ROADMAP (IMPLEMENTACIÓN COMPLETADA)
 
-- Día 1: schemas + config + StorageProvider (Cloudinary impl)
-- Días 2–4: upload endpoint + persistencia en Quote (IT Support)
-- Días 5–6: Slack payload + delete endpoint
-- Días 7–8: cron cleanup + tests
-- Días 9–10: QA + deploy
+### ✅ Completado
+
+- ✅ AttachmentSchema (subdocumento)
+- ✅ ITSupportServiceSchema extendido con attachments array
+- ✅ AttachmentsService (CRUD raíz)
+- ✅ AttachmentsCoordinatorService (coordinación Storage + Attachments)
+- ✅ AttachmentsController (POST upload, GET preview, DELETE remove)
+- ✅ Validaciones (MIME, tamaño, cantidad)
+- ✅ Limpieza al cambiar status (cancelQuoteWithCoordination)
+- ✅ Documentación en .augment-config.md
+- ✅ Documentación en RELEASE2_ANALYSIS.md
+
+### 📋 Próximos pasos
+
+- [ ] Tests unitarios (AttachmentsService, AttachmentsCoordinatorService)
+- [ ] Tests de integración (endpoints)
+- [ ] Integración Slack (enviar imágenes en notificaciones)
+- [ ] Presupuesto Formal (decidir qué hacer con attachments cuando status = accepted)
 
 ---
 
@@ -254,6 +332,7 @@ Con margen porque no todas serán IT Support ni tendrán 2 imágenes.
 Si: entra video, muchos tenants, free tier queda chico, Cloudinary cambia costos
 
 **Migrar a S3-compatible**:
+
 - mismo AttachmentSchema (o mínimo cambio)
 - provider: 's3'
 - publicId → objectKey
@@ -264,10 +343,90 @@ Si: entra video, muchos tenants, free tier queda chico, Cloudinary cambia costos
 
 ---
 
+## 🏗️ ARQUITECTURA IMPLEMENTADA
+
+### Servicios
+
+**AttachmentsService** (Raíz - CRUD)
+
+- `addAttachment(quoteId, attachmentData)` - agregar a Quote
+- `removeAttachment(quoteId, publicId)` - remover de Quote
+- `getAttachments(quoteId)` - obtener para preview
+- Solo inyecta: `@Inject('QUOTE_MODEL')`
+
+**AttachmentsCoordinatorService** (Transversal - Coordinación)
+
+- `uploadAndPersist(quoteId, file)` - validar → subir → persistir
+- `cleanupAttachmentsOnCancel(quoteId)` - borrar de Cloudinary + vaciar Quote
+- Inyecta: `StorageService` + `AttachmentsService`
+
+**AttachmentsController** (HTTP)
+
+- `POST /quotes/:quoteId/services/it-support/attachments` - subir
+- `GET /quotes/:quoteId/services/it-support/attachments` - preview
+- `DELETE /quotes/:quoteId/services/it-support/attachments/:publicId` - borrar
+
+### Estructura de Datos
+
+Attachments son **subdocumentos** dentro de Quote:
+
+```
+Quote
+├── services: [
+│   {
+│       serviceCategory: "IT Support",
+│       attachments: [
+│           {
+│               provider: "cloudinary",
+│               publicId: "quotes/123/img1",
+│               secureUrl: "https://res.cloudinary.com/...",
+│               mimeType: "image/jpeg",
+│               bytes: 245000,
+│               createdAt: Date,
+│               expiresAt: Date
+│           }
+│       ]
+│   }
+│]
+```
+
+**Importante**:
+
+- ✅ Attachments se guardan DENTRO de Quote (no colección aparte)
+- ✅ Se guarda METADATA (no la imagen)
+- ✅ La imagen está en Cloudinary
+- ✅ Quote permanece como registro histórico (solo se vacía attachments array)
+
+### Flujo de Limpieza
+
+```
+User cancela quote
+  ↓
+cancelQuoteWithCoordination() se ejecuta
+  ↓
+cleanupAttachmentsOnCancel() (no-blocking)
+  ├─ Obtener todos los attachments
+  ├─ Para cada uno:
+  │  ├─ Borrar de Cloudinary (usando publicId)
+  │  └─ Remover de Quote (vaciar array)
+  └─ Log de éxito
+  ↓
+Cambiar status a Cancelled
+  ↓
+Notificar Slack
+  ↓
+Registrar History
+  ↓
+Quote permanece en BD como registro histórico
+```
+
+---
+
 ## ✅ CONCLUSIÓN FINAL
 
 - Plan realista y contextualizado a tu arquitectura (Quotes + services discriminados + multitenant)
 - Cloudinary es la mejor opción para Release 2 (MVP)
-- límites definidos evitan sorpresas
-- storage desacoplado garantiza que el diseño no te encierra
-
+- Límites definidos evitan sorpresas
+- Storage desacoplado garantiza que el diseño no te encierra
+- Limpieza al cambiar status es más eficiente que cron
+- Quote siempre permanece como historial (solo se limpian imágenes)

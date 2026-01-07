@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { QuotesService } from './quotes.service';
 import { SlackService } from '../slack/slack.service';
 import { HistoryService } from '../history/history.service';
+import { AttachmentsCoordinatorService } from './attachments-coordinator.service';
 import { CreateQuoteDto } from './dto';
 import { Quote } from './interfaces/quote.interface';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
@@ -25,6 +26,7 @@ export class QuotesCoordinatorService {
     private readonly slackService: SlackService,
     private readonly historyService: HistoryService,
     private readonly tenantConnectionService: TenantConnectionService,
+    private readonly attachmentsCoordinator: AttachmentsCoordinatorService,
   ) {}
 
   /**
@@ -93,9 +95,12 @@ export class QuotesCoordinatorService {
 
   /**
    * Cancelar quote con coordinación
-   * 1. Cambiar status a 'Cancelled'
-   * 2. Notificar a Slack (no-blocking)
-   * 3. Registrar en History (no-blocking)
+   * 1. Limpiar attachments (borrar imágenes de Cloudinary, vaciar array en Quote)
+   * 2. Cambiar status a 'Cancelled'
+   * 3. Notificar a Slack (no-blocking)
+   * 4. Registrar en History (no-blocking)
+   *
+   * Nota: Quote permanece como registro histórico, solo se limpian las imágenes
    */
   async cancelQuoteWithCoordination(
     id: string,
@@ -103,10 +108,20 @@ export class QuotesCoordinatorService {
     userEmail: string,
     quote: Quote,
   ): Promise<Quote> {
-    // 1. Cambiar status a Cancelled
+    // 1. Limpiar attachments (imágenes ya no sirven después de cancelar)
+    this.attachmentsCoordinator
+      .cleanupAttachmentsOnCancel(id)
+      .catch((error) => {
+        this.logger.error(
+          `Error cleaning up attachments for quote cancellation ${id}:`,
+          error,
+        );
+      });
+
+    // 2. Cambiar status a Cancelled
     const cancelledQuote = await this.quotesService.cancel(id);
 
-    // 2. Notificar a Slack (no-blocking)
+    // 3. Notificar a Slack (no-blocking)
     this.notifyQuoteCancelledToSlack(cancelledQuote).catch((error) => {
       this.logger.error(
         `Error notifying Slack for quote cancellation ${id}:`,
@@ -114,7 +129,7 @@ export class QuotesCoordinatorService {
       );
     });
 
-    // 3. Registrar en History (no-blocking)
+    // 4. Registrar en History (no-blocking)
     this.recordQuoteCancellationInHistory(
       quote,
       cancelledQuote,

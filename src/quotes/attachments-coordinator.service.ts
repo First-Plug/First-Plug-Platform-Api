@@ -26,10 +26,7 @@ export class AttachmentsCoordinatorService {
    * Flujo completo: validar → subir → persistir
    * Opción A: Upload temporal (para preview antes de submit)
    */
-  async uploadAndPersist(
-    quoteId: string,
-    file: any,
-  ): Promise<any> {
+  async uploadAndPersist(quoteId: string, file: any): Promise<any> {
     try {
       // 1. Validar archivo
       this.validateFile(file);
@@ -64,9 +61,7 @@ export class AttachmentsCoordinatorService {
 
       return attachment;
     } catch (error) {
-      this.logger.error(
-        `Error in uploadAndPersist: ${error.message}`,
-      );
+      this.logger.error(`Error in uploadAndPersist: ${error.message}`);
       throw error;
     }
   }
@@ -85,6 +80,64 @@ export class AttachmentsCoordinatorService {
       this.logger.log(`Attachment deleted: ${publicId}`);
     } catch (error) {
       this.logger.error(`Error deleting attachment: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Limpiar attachments cuando quote es cancelada
+   *
+   * Qué hace:
+   * 1. Obtiene todos los attachments de la quote
+   * 2. Borra las imágenes de Cloudinary
+   * 3. Vacía el array de attachments en Quote
+   *
+   * Qué NO hace:
+   * - NO borra la quote (permanece como registro histórico)
+   * - NO cambia el status (eso lo hace cancelQuoteWithCoordination)
+   *
+   * @param quoteId - ID de la quote
+   */
+  async cleanupAttachmentsOnCancel(quoteId: string): Promise<void> {
+    try {
+      // 1. Obtener todos los attachments
+      const attachments = await this.attachmentsService.getAttachments(quoteId);
+
+      if (attachments.length === 0) {
+        this.logger.log(`No attachments to cleanup for quote ${quoteId}`);
+        return;
+      }
+
+      // 2. Borrar cada uno de Cloudinary y remover de Quote
+      for (const attachment of attachments) {
+        try {
+          // Borrar de Cloudinary
+          await this.storageService.delete(attachment.publicId);
+
+          // Remover de Quote (vacía el array)
+          await this.attachmentsService.removeAttachment(
+            quoteId,
+            attachment.publicId,
+          );
+
+          this.logger.log(
+            `Attachment cleaned up from quote ${quoteId}: ${attachment.publicId}`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `Error cleaning up attachment ${attachment.publicId}: ${error.message}`,
+          );
+          // Continuar con los siguientes, no fallar todo
+        }
+      }
+
+      this.logger.log(
+        `All attachments cleaned up for quote ${quoteId} (${attachments.length} total)`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error cleaning up attachments for quote ${quoteId}: ${error.message}`,
+      );
       throw error;
     }
   }
@@ -110,4 +163,3 @@ export class AttachmentsCoordinatorService {
     }
   }
 }
-

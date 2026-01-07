@@ -7,7 +7,6 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
-  Req,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -44,7 +43,6 @@ export class AttachmentsController {
   async uploadImage(
     @Param('quoteId') quoteId: string,
     @UploadedFile() file: any,
-    @Req() req: any,
   ): Promise<any> {
     return this.coordinator.uploadAndPersist(quoteId, file);
   }
@@ -54,9 +52,7 @@ export class AttachmentsController {
    * Obtener attachments (para preview)
    */
   @Get()
-  async getAttachments(
-    @Param('quoteId') quoteId: string,
-  ): Promise<any[]> {
+  async getAttachments(@Param('quoteId') quoteId: string): Promise<any[]> {
     return this.attachmentsService.getAttachments(quoteId);
   }
 
@@ -73,4 +69,3 @@ export class AttachmentsController {
     return this.coordinator.deleteAttachment(quoteId, publicId);
   }
 }
-
