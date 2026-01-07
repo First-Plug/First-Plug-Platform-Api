@@ -61,11 +61,44 @@ export class BaseServiceSchema {
 
 /**
  * Subdocumento para IT Support Service
+ * Incluye soporte para adjuntos (imágenes) - Release 2
  */
 @Schema({ _id: false })
 export class ITSupportServiceSchema extends BaseServiceSchema {
   @Prop({ type: String, enum: ['IT Support'], required: true })
   serviceCategory: 'IT Support';
+
+  @Prop({
+    type: [
+      {
+        provider: { type: String, enum: ['cloudinary', 's3'], required: true },
+        publicId: { type: String, required: true, index: true },
+        secureUrl: { type: String, required: true },
+        mimeType: {
+          type: String,
+          enum: ['image/jpeg', 'image/png', 'image/webp'],
+          required: true,
+        },
+        bytes: { type: Number, required: true, min: 0, max: 5242880 },
+        originalName: { type: String },
+        resourceType: { type: String },
+        createdAt: { type: Date, required: true, default: () => new Date() },
+        expiresAt: { type: Date, required: true, index: true },
+      },
+    ],
+    default: [],
+  })
+  attachments?: Array<{
+    provider: 'cloudinary' | 's3';
+    publicId: string;
+    secureUrl: string;
+    mimeType: string;
+    bytes: number;
+    originalName?: string;
+    resourceType?: string;
+    createdAt: Date;
+    expiresAt: Date;
+  }>;
 }
 
 /**
