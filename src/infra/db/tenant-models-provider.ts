@@ -9,6 +9,7 @@ import {
   ShipmentMetadata,
   ShipmentMetadataSchema,
 } from 'src/shipments/schema/shipment-metadata.schema';
+import { Quote, QuoteSchema } from 'src/quotes/schemas/quote.schema';
 
 export const tenantModels = {
   productModel: {
@@ -61,6 +62,13 @@ export const tenantModels = {
         ShipmentMetadataSchema,
         'shipmentmetadata',
       );
+    },
+    inject: ['TENANT_CONNECTION'],
+  },
+  quoteModel: {
+    provide: 'QUOTE_MODEL',
+    useFactory: async (tenantConnection: Connection) => {
+      return tenantConnection.model(Quote.name, QuoteSchema);
     },
     inject: ['TENANT_CONNECTION'],
   },

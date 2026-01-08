@@ -351,6 +351,132 @@
 }
 ```
 
+## 14. Quote con Enrollment Service (Enrollar Múltiples Dispositivos)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Enrollment",
+      "enrolledDevices": [
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "MacBook Pro",
+          "serialNumber": "5dys87g1s27",
+          "location": "FP warehouse",
+          "assignedTo": "Sede FirstPlug P",
+          "countryCode": "AR"
+        },
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "ipod",
+          "serialNumber": "ipod-serial-001",
+          "location": "Our office",
+          "assignedTo": "NuevoConShipments",
+          "countryCode": "FR"
+        }
+      ],
+      "additionalDetails": "Enroll 2 Mac devices for MDM management. Require Apple Business Manager integration."
+    }
+  ]
+}
+```
+
+**Nota:** El servicio de Enrollment permite:
+
+- Enrollar múltiples dispositivos en una sola solicitud
+- Capturar snapshots de cada dispositivo (brand, model, serial, location, etc.)
+- Agregar detalles adicionales opcionales
+- Contar automáticamente dispositivos por tipo (Mac vs Windows)
+
+## 15. Quote Completo: Productos + Enrollment + IT Support
+
+```json
+{
+  "products": [
+    {
+      "category": "Monitor",
+      "quantity": 2,
+      "brand": ["Dell"],
+      "model": ["U2720Q"],
+      "screenSize": ["27\""],
+      "screenTechnology": ["IPS"],
+      "otherSpecifications": "USB-C connectivity, 4K resolution",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25",
+      "comments": "Para la oficina principal"
+    }
+  ],
+  "services": [
+    {
+      "serviceCategory": "Enrollment",
+      "enrolledDevices": [
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "MacBook Pro",
+          "serialNumber": "5dys87g1s27",
+          "location": "FP warehouse",
+          "assignedTo": "Sede FirstPlug P",
+          "countryCode": "AR"
+        },
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "iMac",
+          "serialNumber": "imac-serial-2025",
+          "location": "Our office",
+          "assignedTo": "NuevoConShipments",
+          "countryCode": "FR"
+        }
+      ],
+      "additionalDetails": "Enroll 2 Mac devices for MDM management. Require Apple Business Manager integration and device supervision."
+    },
+    {
+      "serviceCategory": "IT Support",
+      "productId": "690b9d8e3c2dc7018e2f5038",
+      "productSnapshot": {
+        "category": "Computer",
+        "name": "Computer",
+        "brand": "Asus",
+        "model": "IdeaPad Serie S",
+        "serialNumber": "grupo-6-asus",
+        "location": "FP warehouse",
+        "assignedTo": "Default Warehouse",
+        "countryCode": "SG"
+      },
+      "issues": [
+        "Device not connecting to network",
+        "Slow performance",
+        "Battery not charging"
+      ],
+      "description": "Asus IdeaPad Serie S experiencing connectivity issues, performance degradation, and battery charging problems. Needs diagnostic and repair.",
+      "issueStartDate": "2025-12-10",
+      "impactLevel": "high"
+    }
+  ]
+}
+```
+
+**Estructura del ejemplo:**
+
+- **1 Producto**: Monitor Dell 27\" (cantidad 2)
+- **1 Enrollment Service**: 2 computadoras Mac (MacBook Pro + iMac) para enrollar en MDM
+- **1 IT Support Service**: Asus IdeaPad con problemas de conectividad y batería
+
+**En Slack se mostrará:**
+
+- Sección de productos: 2 monitores Dell
+- Sección de Enrollment: "Devices to Enroll: 2 Mac" + detalles de cada Mac
+- Sección de IT Support: Detalles del Asus con issues, descripción, fecha de inicio e impacto
+
 ## Endpoints
 
 ### Crear Quote
@@ -458,18 +584,94 @@ usermail: john@example.com
 
 ## Notas
 
-- **Productos**: `quantity` y `country` son **requeridos**
-- **Servicios**: `serviceCategory`, `issues` (array min 1), `description`, `impactLevel` son **requeridos**
-- **issueStartDate**: Formato **YYYY-MM-DD** (ej: "2025-12-14") - Se guarda así en BD y se devuelve en GET así. En Slack se muestra como dd/mm/yyyy
-- **Snapshot**: Incluye identificación completa del producto
-  - `category`: Categoría del producto (Computer, Audio, Monitor, etc.) - **IMPORTANTE para el detail**
-  - `name`: Nombre del producto (ej: "Audio", "Computer")
-  - `brand`: Marca (ej: "Sony", "Asus")
-  - `model`: Modelo (ej: "Zone Vibe 125", "IdeaPad Serie S")
-  - `serialNumber`: Serial del dispositivo (ej: "serialserial1", "grupo 6")
-  - `location`: Dónde está (Employee, FP warehouse, Our office)
-  - `assignedTo`: A quién está asignado (nombre del member, office, o warehouse)
-  - `countryCode`: Código ISO del país (ej: "PY", "SG")
+### Productos
+
+- `quantity` y `country` son **requeridos**
+
+### Servicios
+
+#### IT Support Service
+
+- **Requeridos**: `serviceCategory`, `issues` (array min 1), `description`, `impactLevel`
+- **Opcionales**: `productId`, `productSnapshot`, `issueStartDate`
+- Soporta un único producto con snapshot
+
+#### Enrollment Service
+
+- **Requeridos**: `serviceCategory`, `enrolledDevices` (array min 1)
+- **Opcionales**: `additionalDetails`
+- Soporta múltiples dispositivos en `enrolledDevices`
+- Cada dispositivo debe tener su `productSnapshot` con datos completos
+- En Slack se muestra:
+  - Conteo de dispositivos por tipo (Mac vs Windows)
+  - Detalles de cada dispositivo enrollado
+  - Detalles adicionales si existen
+
+### ProductSnapshot
+
+Incluye identificación completa del producto (importante para history y Slack):
+
+- `category`: Categoría del producto (Computer, Audio, Monitor, etc.) - **IMPORTANTE**
+- `name`: Nombre del producto (ej: "Audio", "Computer")
+- `brand`: Marca (ej: "Sony", "Asus", "Apple")
+- `model`: Modelo (ej: "Zone Vibe 125", "IdeaPad Serie S", "MacBook Pro")
+- `serialNumber`: Serial del dispositivo (ej: "serialserial1", "5dys87g1s27")
+- `location`: Dónde está (Employee, FP warehouse, Our office)
+- `assignedTo`: A quién está asignado (nombre del member, office, o warehouse)
+- `countryCode`: Código ISO del país (ej: "PY", "SG", "AR", "FR")
+
+### Data Wipe Service
+
+- **Requeridos**: `serviceCategory`, `assets` (array min 1)
+- **Opcionales**: `desirableDate`, `destination`, `additionalDetails`
+- Soporta múltiples assets (Computer o Other)
+- Cada asset debe tener su `productSnapshot` con datos completos
+- Cada asset debe tener información de `currentLocation` (dónde está actualmente)
+- Cada asset puede tener `destination` (dónde se envía después del wipe)
+- En Slack se muestra:
+  - Total de assets a hacer wipe
+  - Para cada asset: categoría, fecha deseada, serial, brand+model+name, ubicación actual, destino
+  - Detalles adicionales si existen
+
+### Destruction and Recycling Service
+
+- **Requeridos**: `serviceCategory`, `products` (array min 1)
+- **Opcionales**: `requiresCertificate`, `comments`
+- Soporta múltiples productos (Computer, Monitor, Audio, Other, etc.)
+- Cada producto debe tener su `productSnapshot` con datos completos
+- `requiresCertificate`: Boolean que indica si se requiere certificado de destrucción
+- En Slack se muestra:
+  - Total de assets a destruir
+  - Para cada producto: categoría, serial, brand+model+name, ubicación
+  - Si requiere certificado (Yes/No)
+  - Comentarios si existen
+
+### Buyback Service
+
+- **Requeridos**: `serviceCategory`, `products` (array min 1)
+- **Opcionales**: `additionalInfo`, y dentro de cada producto: `buybackDetails` con todos sus campos opcionales
+- Soporta múltiples productos (Computer o Other únicamente)
+- Cada producto debe tener su `productSnapshot` con datos completos
+- `buybackDetails` contiene información específica del buyback:
+  - `generalFunctionality`: Descripción del funcionamiento general (opcional)
+  - `batteryCycles`: Número de ciclos de batería (opcional)
+  - `aestheticDetails`: Detalles estéticos (opcional, text area)
+  - `hasCharger`: Boolean si tiene cargador (opcional)
+  - `chargerWorks`: Boolean si funciona el cargador (opcional)
+  - `additionalComments`: Otros comentarios (opcional)
+- En Slack se muestra:
+  - Total de assets a comprar
+  - Para cada producto:
+    - Categoría, Serial Number, Location
+    - Para Computer: Brand + Model + Name, OS, Processor, RAM, Storage, Screen size
+    - Para Other: Brand + Model + Name
+    - Product Condition, Additional info
+    - Detalles de buyback (funcionamiento, ciclos, estética, cargador, comentarios)
+  - Additional info si existe
+
+### Otros
+
+- **issueStartDate** y **desirableDate**: Formato **YYYY-MM-DD** (ej: "2025-12-14") - Se guarda así en BD y se devuelve en GET así. En Slack se muestra como dd/mm/yyyy
 - **requestType** se calcula automáticamente:
   - Solo productos → `"product"`
   - Solo servicios → `"service"`
@@ -479,3 +681,1206 @@ usermail: john@example.com
   - Auditoría completa
   - Personalización del detail (category + brand + model + serial)
   - Historial de cambios
+
+---
+
+## Example 16: Data Wipe Service - Single Computer
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Data Wipe",
+      "assets": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5039",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Dell",
+            "model": "Latitude 5520",
+            "serialNumber": "dell-latitude-001",
+            "location": "Employee",
+            "assignedTo": "John Doe",
+            "countryCode": "AR"
+          },
+          "desirableDate": "2025-12-28",
+          "currentLocation": "Employee",
+          "currentMember": {
+            "memberId": "690b9d8e3c2dc7018e2f5040",
+            "assignedMember": "John Doe",
+            "assignedEmail": "john@example.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "destinationType": "FP warehouse",
+            "warehouse": {
+              "warehouseId": "690b9d8e3c2dc7018e2f5041",
+              "warehouseName": "FP Warehouse Argentina",
+              "countryCode": "AR"
+            }
+          }
+        }
+      ],
+      "additionalDetails": "Secure data wipe required before returning to warehouse. Ensure all company data is completely removed."
+    }
+  ]
+}
+```
+
+## Example 17: Data Wipe Service - Multiple Assets (Computer + Other)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Data Wipe",
+      "assets": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5042",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Asus",
+            "model": "VivoBook 15",
+            "serialNumber": "asus-vivobook-001",
+            "location": "Our office",
+            "assignedTo": "Buenos Aires Office",
+            "countryCode": "AR"
+          },
+          "desirableDate": "2025-12-27",
+          "currentLocation": "Our office",
+          "currentOffice": {
+            "officeId": "690b9d8e3c2dc7018e2f5044",
+            "officeName": "Buenos Aires Office",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "destinationType": "Employee",
+            "member": {
+              "memberId": "690b9d8e3c2dc7018e2f5045",
+              "assignedMember": "Maria Garcia",
+              "assignedEmail": "maria@example.com",
+              "countryCode": "AR"
+            }
+          }
+        },
+        {
+          "productId": "690b9d8e3c2dc7018e2f5043",
+          "productSnapshot": {
+            "category": "Other",
+            "name": "External Hard Drive",
+            "brand": "Seagate",
+            "model": "Backup Plus",
+            "serialNumber": "seagate-backup-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Singapore",
+            "countryCode": "SG"
+          },
+          "desirableDate": "2025-12-30",
+          "currentLocation": "FP warehouse",
+          "currentWarehouse": {
+            "warehouseId": "690b9d8e3c2dc7018e2f5046",
+            "warehouseName": "FP Warehouse Singapore",
+            "countryCode": "SG"
+          }
+        }
+      ],
+      "additionalDetails": "Wipe both assets and prepare for disposal. Computer can be reassigned after wipe."
+    }
+  ]
+}
+```
+
+## Example 18: Complete Quote - Products + Enrollment + IT Support + Data Wipe
+
+```json
+{
+  "products": [
+    {
+      "category": "Monitor",
+      "quantity": 2,
+      "brand": ["Dell"],
+      "model": ["U2720Q"],
+      "screenSize": ["27\""],
+      "screenTechnology": ["IPS"],
+      "otherSpecifications": "USB-C connectivity, 4K resolution",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25",
+      "comments": "Para la oficina principal"
+    }
+  ],
+  "services": [
+    {
+      "serviceCategory": "Enrollment",
+      "productIds": ["690b9d8e3c2dc7018e2f5036", "690b9d8e3c2dc7018e2f5037"],
+      "enrolledDevices": [
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "MacBook Pro",
+          "serialNumber": "5dys87g1s27",
+          "location": "FP warehouse",
+          "assignedTo": "Sede FirstPlug P",
+          "countryCode": "AR"
+        },
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "iMac",
+          "serialNumber": "imac-serial-2025",
+          "location": "Our office",
+          "assignedTo": "NuevoConShipments",
+          "countryCode": "FR"
+        }
+      ],
+      "additionalDetails": "Enroll 2 Mac devices for MDM management. Require Apple Business Manager integration and device supervision."
+    },
+    {
+      "serviceCategory": "IT Support",
+      "productId": "690b9d8e3c2dc7018e2f5038",
+      "productSnapshot": {
+        "category": "Computer",
+        "name": "Computer",
+        "brand": "Asus",
+        "model": "IdeaPad Serie S",
+        "serialNumber": "grupo-6-asus",
+        "location": "FP warehouse",
+        "assignedTo": "Default Warehouse",
+        "countryCode": "SG"
+      },
+      "issues": [
+        "Device not connecting to network",
+        "Slow performance",
+        "Battery not charging"
+      ],
+      "description": "Asus IdeaPad Serie S experiencing connectivity issues, performance degradation, and battery charging problems. Needs diagnostic and repair.",
+      "issueStartDate": "2025-12-10",
+      "impactLevel": "high"
+    },
+    {
+      "serviceCategory": "Data Wipe",
+      "productIds": ["690b9d8e3c2dc7018e2f5047"],
+      "assets": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5047",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "HP",
+            "model": "EliteBook 840",
+            "serialNumber": "hp-elite-001",
+            "location": "Employee",
+            "assignedTo": "Carlos Lopez",
+            "countryCode": "AR"
+          },
+          "desirableDate": "2025-12-26",
+          "currentLocation": "Employee",
+          "currentMember": {
+            "memberId": "690b9d8e3c2dc7018e2f5048",
+            "assignedMember": "Carlos Lopez",
+            "assignedEmail": "carlos@example.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "destinationType": "FP warehouse",
+            "warehouse": {
+              "warehouseId": "690b9d8e3c2dc7018e2f5049",
+              "warehouseName": "FP Warehouse Argentina",
+              "countryCode": "AR"
+            }
+          }
+        }
+      ],
+      "additionalDetails": "Secure wipe before returning to warehouse."
+    }
+  ]
+}
+```
+
+## Example 19: Destruction and Recycling Service - Single Product
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Destruction and Recycling",
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5050",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Lenovo",
+            "model": "ThinkPad X1",
+            "serialNumber": "lenovo-x1-001",
+            "location": "Our office",
+            "assignedTo": "Buenos Aires Office",
+            "countryCode": "AR"
+          }
+        }
+      ],
+      "requiresCertificate": true,
+      "comments": "Secure destruction required. Please provide certificate of destruction."
+    }
+  ]
+}
+```
+
+## Example 20: Destruction and Recycling Service - Multiple Products
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Destruction and Recycling",
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5051",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Dell",
+            "model": "OptiPlex 7090",
+            "serialNumber": "dell-optiplex-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Argentina",
+            "countryCode": "AR"
+          }
+        },
+        {
+          "productId": "690b9d8e3c2dc7018e2f5052",
+          "productSnapshot": {
+            "category": "Monitor",
+            "name": "Monitor",
+            "brand": "LG",
+            "model": "27UP550",
+            "serialNumber": "lg-27up550-001",
+            "location": "Employee",
+            "assignedTo": "John Smith",
+            "countryCode": "AR"
+          }
+        },
+        {
+          "productId": "690b9d8e3c2dc7018e2f5053",
+          "productSnapshot": {
+            "category": "Audio",
+            "name": "Speaker",
+            "brand": "Bose",
+            "model": "SoundLink Revolve",
+            "serialNumber": "bose-soundlink-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Singapore",
+            "countryCode": "SG"
+          }
+        }
+      ],
+      "requiresCertificate": true,
+      "comments": "End of life equipment. Recycle all components. Provide WEEE compliance certificate."
+    }
+  ]
+}
+```
+
+## Example 21: Complete Quote - Products + All Service Types (Real Data)
+
+```json
+{
+  "products": [
+    {
+      "category": "Monitor",
+      "quantity": 2,
+      "brand": ["Dell"],
+      "model": ["U2720Q"],
+      "screenSize": ["27\""],
+      "screenTechnology": ["IPS"],
+      "otherSpecifications": "USB-C connectivity, 4K resolution",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25",
+      "comments": "Para la oficina principal"
+    }
+  ],
+  "services": [
+    {
+      "serviceCategory": "Enrollment",
+      "enrolledDevices": [
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "MacBook Pro",
+          "serialNumber": "5dys87g1s29",
+          "location": "Employee",
+          "assignedTo": "Dolores Pascual",
+          "assignedEmail": "dolorespascual@work.com",
+          "countryCode": "AR"
+        },
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "MacBook Pro",
+          "serialNumber": "5dys87g1s26",
+          "location": "Employee",
+          "assignedTo": "Amador Garcia",
+          "assignedEmail": "amadorgarcia@work.com",
+          "countryCode": "ES"
+        }
+      ],
+      "additionalDetails": "Enroll 2 MacBook Pro devices for MDM management. Employees in Argentina and Spain."
+    },
+    {
+      "serviceCategory": "IT Support",
+      "productId": "686beb939c7a0951bbec43c4",
+      "productSnapshot": {
+        "category": "Computer",
+        "name": "",
+        "brand": "Lenovo",
+        "model": "ThinkPad Serie Z",
+        "serialNumber": "5dys87g1s112",
+        "location": "Our office",
+        "assignedTo": "Oficina Principal",
+        "countryCode": "GT"
+      },
+      "issues": ["Device not connecting to network", "Slow performance"],
+      "description": "Lenovo ThinkPad experiencing connectivity issues and performance degradation. Device in transit to Guatemala office.",
+      "issueStartDate": "2025-12-10",
+      "impactLevel": "high"
+    },
+    {
+      "serviceCategory": "Data Wipe",
+      "assets": [
+        {
+          "productId": "686beb939c7a0951bbec43c4",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "",
+            "brand": "Lenovo",
+            "model": "ThinkPad Serie Z",
+            "serialNumber": "5dys87g1s112",
+            "location": "Our office",
+            "assignedTo": "Oficina Principal",
+            "countryCode": "GT"
+          },
+          "desirableDate": "2025-12-26",
+          "currentLocation": "Our office",
+          "currentOffice": {
+            "officeId": "687e7e601d43bf08d8f26046",
+            "officeName": "Oficina Principal",
+            "countryCode": "GT"
+          },
+          "destination": {
+            "destinationType": "FP warehouse",
+            "warehouse": {
+              "warehouseId": "687e7e601d43bf08d8f26047",
+              "warehouseName": "FP Warehouse Guatemala",
+              "countryCode": "GT"
+            }
+          }
+        }
+      ],
+      "additionalDetails": "Secure wipe before returning to warehouse."
+    },
+    {
+      "serviceCategory": "Destruction and Recycling",
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5054",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Lenovo",
+            "model": "ThinkPad X1",
+            "serialNumber": "lenovo-x1-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Argentina",
+            "countryCode": "AR"
+          }
+        }
+      ],
+      "requiresCertificate": true,
+      "comments": "End of life equipment. Provide WEEE compliance certificate."
+    }
+  ]
+}
+```
+
+## Example 22: Buyback Service - Single Computer
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Buyback",
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5055",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Dell",
+            "model": "OptiPlex 7090",
+            "serialNumber": "dell-optiplex-buyback-001",
+            "location": "Employee",
+            "assignedTo": "John Smith",
+            "countryCode": "AR",
+            "os": "Windows",
+            "processor": "Intel Core i7",
+            "ram": "16GB",
+            "storage": "512GB SSD",
+            "screenSize": "24\"",
+            "productCondition": "Good",
+            "additionalInfo": "Fully functional, minor cosmetic scratches"
+          },
+          "buybackDetails": {
+            "generalFunctionality": "Funciona perfectamente, sin problemas de hardware",
+            "batteryCycles": 450,
+            "aestheticDetails": "Pequeños arañazos en la carcasa, pantalla en perfecto estado",
+            "hasCharger": true,
+            "chargerWorks": true,
+            "additionalComments": "Equipo bien mantenido, listo para usar"
+          }
+        }
+      ],
+      "additionalInfo": "Equipos disponibles para venta a FirstPlug para refurbish"
+    }
+  ]
+}
+```
+
+## Example 23: Buyback Service - Multiple Products (Computer + Other)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Buyback",
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5056",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Apple",
+            "model": "MacBook Pro 14\"",
+            "serialNumber": "macbook-pro-buyback-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Argentina",
+            "countryCode": "AR",
+            "os": "macOS",
+            "processor": "Apple M1 Pro",
+            "ram": "16GB",
+            "storage": "512GB SSD",
+            "screenSize": "14\"",
+            "productCondition": "Excellent",
+            "additionalInfo": "Minimal use, like new condition"
+          },
+          "buybackDetails": {
+            "generalFunctionality": "Excelente funcionamiento, sin problemas",
+            "batteryCycles": 120,
+            "aestheticDetails": "Sin daños visibles, pantalla perfecta",
+            "hasCharger": true,
+            "chargerWorks": true,
+            "additionalComments": "Equipo premium en excelente estado"
+          }
+        },
+        {
+          "productId": "690b9d8e3c2dc7018e2f5057",
+          "productSnapshot": {
+            "category": "Other",
+            "name": "Monitor",
+            "brand": "LG",
+            "model": "27UP550",
+            "serialNumber": "lg-monitor-buyback-001",
+            "location": "Employee",
+            "assignedTo": "Maria Garcia",
+            "countryCode": "AR",
+            "productCondition": "Good",
+            "additionalInfo": "4K monitor, fully functional"
+          },
+          "buybackDetails": {
+            "generalFunctionality": "Funciona correctamente, sin problemas de display",
+            "aestheticDetails": "Algunos arañazos menores en el stand",
+            "hasCharger": true,
+            "chargerWorks": true,
+            "additionalComments": "Monitor de buena calidad, ideal para refurbish"
+          }
+        }
+      ],
+      "additionalInfo": "Lote de equipos para compra por refurbish"
+    }
+  ]
+}
+```
+
+## Example 24: Complete Quote - Products + All Service Types (Including Buyback)
+
+```json
+{
+  "products": [
+    {
+      "category": "Monitor",
+      "quantity": 2,
+      "brand": ["Dell"],
+      "model": ["U2720Q"],
+      "screenSize": ["27\""],
+      "screenTechnology": ["IPS"],
+      "otherSpecifications": "USB-C connectivity, 4K resolution",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25",
+      "comments": "Para la oficina principal"
+    }
+  ],
+  "services": [
+    {
+      "serviceCategory": "Enrollment",
+      "enrolledDevices": [
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "MacBook Pro",
+          "serialNumber": "5dys87g1s27",
+          "location": "FP warehouse",
+          "assignedTo": "Sede FirstPlug P",
+          "countryCode": "AR"
+        },
+        {
+          "category": "Computer",
+          "name": "",
+          "brand": "Apple",
+          "model": "iMac",
+          "serialNumber": "imac-serial-2025",
+          "location": "Our office",
+          "assignedTo": "NuevoConShipments",
+          "countryCode": "FR"
+        }
+      ],
+      "additionalDetails": "Enroll 2 Mac devices for MDM management."
+    },
+    {
+      "serviceCategory": "IT Support",
+      "productId": "690b9d8e3c2dc7018e2f5038",
+      "productSnapshot": {
+        "category": "Computer",
+        "name": "Computer",
+        "brand": "Asus",
+        "model": "IdeaPad Serie S",
+        "serialNumber": "grupo-6-asus",
+        "location": "FP warehouse",
+        "assignedTo": "Default Warehouse",
+        "countryCode": "SG"
+      },
+      "issues": [
+        "Device not connecting to network",
+        "Slow performance",
+        "Battery not charging"
+      ],
+      "description": "Asus IdeaPad experiencing connectivity issues and performance degradation.",
+      "issueStartDate": "2025-12-10",
+      "impactLevel": "high"
+    },
+    {
+      "serviceCategory": "Data Wipe",
+      "assets": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5047",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "HP",
+            "model": "EliteBook 840",
+            "serialNumber": "hp-elite-001",
+            "location": "Employee",
+            "assignedTo": "Carlos Lopez",
+            "countryCode": "AR"
+          },
+          "desirableDate": "2025-12-26",
+          "currentLocation": "Employee",
+          "currentMember": {
+            "memberId": "690b9d8e3c2dc7018e2f5048",
+            "assignedMember": "Carlos Lopez",
+            "assignedEmail": "carlos@example.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "destinationType": "FP warehouse",
+            "warehouse": {
+              "warehouseId": "690b9d8e3c2dc7018e2f5049",
+              "warehouseName": "FP Warehouse Argentina",
+              "countryCode": "AR"
+            }
+          }
+        }
+      ],
+      "additionalDetails": "Secure wipe before returning to warehouse."
+    },
+    {
+      "serviceCategory": "Destruction and Recycling",
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5054",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Lenovo",
+            "model": "ThinkPad X1",
+            "serialNumber": "lenovo-x1-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Argentina",
+            "countryCode": "AR"
+          }
+        }
+      ],
+      "requiresCertificate": true,
+      "comments": "End of life equipment. Provide WEEE compliance certificate."
+    },
+    {
+      "serviceCategory": "Buyback",
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5058",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Dell",
+            "model": "OptiPlex 7090",
+            "serialNumber": "dell-optiplex-buyback-001",
+            "location": "Employee",
+            "assignedTo": "John Smith",
+            "countryCode": "AR",
+            "os": "Windows",
+            "processor": "Intel Core i7",
+            "ram": "16GB",
+            "storage": "512GB SSD",
+            "screenSize": "24\"",
+            "productCondition": "Good",
+            "additionalInfo": "Fully functional, minor cosmetic scratches"
+          },
+          "buybackDetails": {
+            "generalFunctionality": "Funciona perfectamente, sin problemas de hardware",
+            "batteryCycles": 450,
+            "aestheticDetails": "Pequeños arañazos en la carcasa, pantalla en perfecto estado",
+            "hasCharger": true,
+            "chargerWorks": true,
+            "additionalComments": "Equipo bien mantenido, listo para usar"
+          }
+        }
+      ],
+      "additionalInfo": "Equipos disponibles para venta a FirstPlug para refurbish"
+    }
+  ]
+}
+```
+
+## Example 25: Donate Service - Single Computer
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Donate",
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5059",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Dell",
+            "model": "Latitude 5520",
+            "serialNumber": "dell-latitude-donate-001",
+            "location": "Employee",
+            "assignedTo": "John Doe",
+            "countryCode": "AR"
+          },
+          "needsDataWipe": true,
+          "needsCleaning": true,
+          "comments": "Fully functional, ready for donation after data wipe and cleaning"
+        }
+      ],
+      "additionalDetails": "Computer in good condition, suitable for donation to educational institution"
+    }
+  ]
+}
+```
+
+## Example 26: Donate Service - Multiple Products (Computer + Other)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Donate",
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5060",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "Asus",
+            "model": "VivoBook 15",
+            "serialNumber": "asus-vivobook-donate-001",
+            "location": "Our office",
+            "assignedTo": "Buenos Aires Office",
+            "countryCode": "AR"
+          },
+          "needsDataWipe": true,
+          "needsCleaning": true,
+          "comments": "Laptop with minor cosmetic damage, fully functional"
+        },
+        {
+          "productId": "690b9d8e3c2dc7018e2f5061",
+          "productSnapshot": {
+            "category": "Monitor",
+            "name": "Monitor",
+            "brand": "LG",
+            "model": "27UP550",
+            "serialNumber": "lg-monitor-donate-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Argentina",
+            "countryCode": "AR"
+          },
+          "needsDataWipe": false,
+          "needsCleaning": true,
+          "comments": "4K monitor in excellent condition"
+        },
+        {
+          "productId": "690b9d8e3c2dc7018e2f5062",
+          "productSnapshot": {
+            "category": "Other",
+            "name": "External Hard Drive",
+            "brand": "Seagate",
+            "model": "Backup Plus",
+            "serialNumber": "seagate-backup-donate-001",
+            "location": "Employee",
+            "assignedTo": "Maria Garcia",
+            "countryCode": "AR"
+          },
+          "needsDataWipe": true,
+          "needsCleaning": false,
+          "comments": "Storage device, needs secure data wipe before donation"
+        }
+      ],
+      "additionalDetails": "Batch of equipment for donation to non-profit organization. All items should be cleaned and data wiped as needed."
+    }
+  ]
+}
+```
+
+## Example 27: Complete Quote - Products + Donate Service
+
+```json
+{
+  "products": [
+    {
+      "category": "Monitor",
+      "quantity": 2,
+      "brand": ["Dell"],
+      "model": ["U2720Q"],
+      "screenSize": ["27\""],
+      "screenTechnology": ["IPS"],
+      "otherSpecifications": "USB-C connectivity, 4K resolution",
+      "country": "AR",
+      "city": "Buenos Aires",
+      "deliveryDate": "2025-12-25",
+      "comments": "Para la oficina principal"
+    }
+  ],
+  "services": [
+    {
+      "serviceCategory": "Donate",
+      "products": [
+        {
+          "productId": "690b9d8e3c2dc7018e2f5063",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "Computer",
+            "brand": "HP",
+            "model": "EliteBook 840",
+            "serialNumber": "hp-elite-donate-001",
+            "location": "Employee",
+            "assignedTo": "Carlos Lopez",
+            "countryCode": "AR"
+          },
+          "needsDataWipe": true,
+          "needsCleaning": true,
+          "comments": "Laptop in good working condition, ready for donation"
+        },
+        {
+          "productId": "690b9d8e3c2dc7018e2f5064",
+          "productSnapshot": {
+            "category": "Audio",
+            "name": "Speaker",
+            "brand": "Bose",
+            "model": "SoundLink Revolve",
+            "serialNumber": "bose-soundlink-donate-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Singapore",
+            "countryCode": "SG"
+          },
+          "needsDataWipe": false,
+          "needsCleaning": true,
+          "comments": "Bluetooth speaker in excellent condition"
+        }
+      ],
+      "additionalDetails": "Equipment donation for community center. Please ensure all items are cleaned and ready for use."
+    }
+  ]
+}
+```
+
+## Example 28: Cleaning Service - Single Computer (Real Data)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Cleaning",
+      "products": [
+        {
+          "productId": "686beb6f9c7a0951bbec40e9",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "",
+            "brand": "Apple",
+            "model": "MacBook Pro",
+            "serialNumber": "5dys87g1s29",
+            "location": "Employee",
+            "assignedTo": "Dolores Pascual",
+            "assignedEmail": "dolorespascual@work.com",
+            "countryCode": "AR"
+          },
+          "desiredDate": "2025-12-28",
+          "cleaningType": "Deep",
+          "additionalComments": "Full deep cleaning including keyboard and internal dust removal"
+        }
+      ],
+      "additionalDetails": "Computer requires deep cleaning before returning to service"
+    }
+  ]
+}
+```
+
+## Example 29: Cleaning Service - Multiple Products (Real Data)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Cleaning",
+      "products": [
+        {
+          "productId": "686beb6f9c7a0951bbec40e6",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "",
+            "brand": "Apple",
+            "model": "MacBook Pro",
+            "serialNumber": "5dys87g1s26",
+            "location": "Employee",
+            "assignedTo": "Amador Garcia",
+            "assignedEmail": "amadorgarcia@work.com",
+            "countryCode": "ES"
+          },
+          "desiredDate": "2025-12-26",
+          "cleaningType": "Superficial",
+          "additionalComments": "Light cleaning of exterior surfaces and screen"
+        },
+        {
+          "productId": "686beb939c7a0951bbec43c4",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "",
+            "brand": "Lenovo",
+            "model": "ThinkPad Serie Z",
+            "serialNumber": "5dys87g1s112",
+            "location": "Our office",
+            "assignedTo": "Oficina Principal",
+            "countryCode": "GT"
+          },
+          "desiredDate": "2025-12-27",
+          "cleaningType": "Superficial",
+          "additionalComments": "Clean exterior casing and keyboard"
+        }
+      ],
+      "additionalDetails": "Batch cleaning for equipment returning to service. Superficial cleaning sufficient for these items."
+    }
+  ]
+}
+```
+
+## Example 30: Storage Service - Single Product
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Storage",
+      "products": [
+        {
+          "productId": "686beb6f9c7a0951bbec40e9",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "",
+            "brand": "Apple",
+            "model": "MacBook Pro",
+            "serialNumber": "5dys87g1s29",
+            "location": "Employee",
+            "assignedTo": "Dolores Pascual",
+            "assignedEmail": "dolorespascual@work.com",
+            "countryCode": "AR"
+          },
+          "approximateSize": "35x25x2 cm",
+          "approximateWeight": "1.6 kg",
+          "approximateStorageDays": 30,
+          "additionalComments": "Laptop in protective case, ready for storage"
+        }
+      ],
+      "additionalDetails": "Storage in Buenos Aires warehouse for 30 days"
+    }
+  ]
+}
+```
+
+## Example 31: Storage Service - Multiple Products
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Storage",
+      "products": [
+        {
+          "productId": "686beb6f9c7a0951bbec40e6",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "",
+            "brand": "Apple",
+            "model": "MacBook Pro",
+            "serialNumber": "5dys87g1s26",
+            "location": "Employee",
+            "assignedTo": "Amador Garcia",
+            "assignedEmail": "amadorgarcia@work.com",
+            "countryCode": "ES"
+          },
+          "approximateSize": "35x25x2 cm",
+          "approximateWeight": "1.6 kg",
+          "approximateStorageDays": 45,
+          "additionalComments": "Laptop in protective case"
+        },
+        {
+          "productId": "686beb939c7a0951bbec43c4",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "",
+            "brand": "Lenovo",
+            "model": "ThinkPad Serie Z",
+            "serialNumber": "5dys87g1s112",
+            "location": "Our office",
+            "assignedTo": "Oficina Principal",
+            "countryCode": "GT"
+          },
+          "approximateSize": "35x25x2 cm",
+          "approximateWeight": "1.8 kg",
+          "approximateStorageDays": 60,
+          "additionalComments": "Laptop with accessories in protective case"
+        }
+      ],
+      "additionalDetails": "Storage in Madrid warehouse for Spanish equipment and Guatemala warehouse for Central American equipment"
+    }
+  ]
+}
+```
+
+## Example 32: Offboarding Service - Simple (1 Product to Member)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Offboarding",
+      "originMember": {
+        "memberId": "507f1f77bcf86cd799439011",
+        "firstName": "John",
+        "lastName": "Doe",
+        "email": "john.doe@company.com",
+        "countryCode": "US"
+      },
+      "isSensitiveSituation": false,
+      "employeeKnows": true,
+      "products": [
+        {
+          "productId": "507f1f77bcf86cd799439012",
+          "productSnapshot": {
+            "category": "Computer",
+            "brand": "Apple",
+            "model": "MacBook Pro",
+            "serialNumber": "ABC123456",
+            "location": "Employee",
+            "assignedTo": "John Doe",
+            "assignedEmail": "john.doe@company.com",
+            "countryCode": "US"
+          },
+          "destination": {
+            "type": "Member",
+            "memberId": "507f1f77bcf86cd799439013",
+            "assignedMember": "Jane Smith",
+            "assignedEmail": "jane.smith@company.com",
+            "countryCode": "US"
+          }
+        }
+      ],
+      "additionalDetails": "Equipment in good condition, ready for reassignment"
+    }
+  ]
+}
+```
+
+## Example 33: Offboarding Service - Multiple Products to Different Destinations
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Offboarding",
+      "originMember": {
+        "memberId": "507f1f77bcf86cd799439011",
+        "firstName": "John",
+        "lastName": "Doe",
+        "email": "john.doe@company.com",
+        "countryCode": "US"
+      },
+      "isSensitiveSituation": true,
+      "employeeKnows": false,
+      "products": [
+        {
+          "productId": "507f1f77bcf86cd799439012",
+          "productSnapshot": {
+            "category": "Computer",
+            "brand": "Apple",
+            "model": "MacBook Pro",
+            "serialNumber": "ABC123456",
+            "location": "Employee",
+            "assignedTo": "John Doe",
+            "assignedEmail": "john.doe@company.com",
+            "countryCode": "US"
+          },
+          "destination": {
+            "type": "Member",
+            "memberId": "507f1f77bcf86cd799439013",
+            "assignedMember": "Jane Smith",
+            "assignedEmail": "jane.smith@company.com",
+            "countryCode": "US"
+          }
+        },
+        {
+          "productId": "507f1f77bcf86cd799439014",
+          "productSnapshot": {
+            "category": "Monitor",
+            "brand": "Dell",
+            "model": "U2720Q",
+            "serialNumber": "DEF789012",
+            "location": "Employee",
+            "assignedTo": "John Doe",
+            "assignedEmail": "john.doe@company.com",
+            "countryCode": "US"
+          },
+          "destination": {
+            "type": "Office",
+            "officeId": "507f1f77bcf86cd799439015",
+            "officeName": "New York Office",
+            "countryCode": "US"
+          }
+        },
+        {
+          "productId": "507f1f77bcf86cd799439016",
+          "productSnapshot": {
+            "category": "Audio",
+            "brand": "Bose",
+            "model": "QuietComfort 45",
+            "serialNumber": "GHI345678",
+            "location": "Employee",
+            "assignedTo": "John Doe",
+            "assignedEmail": "john.doe@company.com",
+            "countryCode": "US"
+          },
+          "destination": {
+            "type": "Warehouse",
+            "warehouseId": "507f1f77bcf86cd799439017",
+            "warehouseName": "US Central Warehouse",
+            "countryCode": "US"
+          }
+        }
+      ],
+      "additionalDetails": "Sensitive situation - employee was terminated. Equipment needs to be recovered immediately. Some items may need data wipe before reassignment."
+    }
+  ]
+}
+```
+
+## Example 34: Offboarding Service - International (Multiple Countries)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Offboarding",
+      "originMember": {
+        "memberId": "507f1f77bcf86cd799439011",
+        "firstName": "Maria",
+        "lastName": "Garcia",
+        "email": "maria.garcia@company.com",
+        "countryCode": "AR"
+      },
+      "isSensitiveSituation": false,
+      "employeeKnows": true,
+      "products": [
+        {
+          "productId": "507f1f77bcf86cd799439012",
+          "productSnapshot": {
+            "category": "Computer",
+            "brand": "Lenovo",
+            "model": "ThinkPad X1",
+            "serialNumber": "LNV987654",
+            "location": "Employee",
+            "assignedTo": "Maria Garcia",
+            "assignedEmail": "maria.garcia@company.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "type": "Member",
+            "memberId": "507f1f77bcf86cd799439018",
+            "assignedMember": "Carlos Lopez",
+            "assignedEmail": "carlos.lopez@company.com",
+            "countryCode": "AR"
+          }
+        },
+        {
+          "productId": "507f1f77bcf86cd799439019",
+          "productSnapshot": {
+            "category": "Monitor",
+            "brand": "LG",
+            "model": "27UP550",
+            "serialNumber": "LG456789",
+            "location": "Our office",
+            "assignedTo": "Buenos Aires Office",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "type": "Warehouse",
+            "warehouseId": "507f1f77bcf86cd799439020",
+            "warehouseName": "Argentina Warehouse",
+            "countryCode": "AR"
+          }
+        }
+      ],
+      "additionalDetails": "Employee transferred to another country. Equipment to be reassigned or stored in Argentina warehouse."
+    }
+  ]
+}
+```
