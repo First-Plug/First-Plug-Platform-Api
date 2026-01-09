@@ -232,6 +232,28 @@ const buildServiceBlocks = (
           },
         });
       }
+
+      // Attachments (imágenes)
+      if (service.attachments && service.attachments.length > 0) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Attachments:* ${service.attachments.length} image(s)`,
+          },
+        });
+
+        // Mostrar cada imagen como un bloque de imagen
+        service.attachments.forEach((attachment: any) => {
+          if (attachment.secureUrl) {
+            blocks.push({
+              type: 'image',
+              image_url: attachment.secureUrl,
+              alt_text: attachment.originalName || 'Attachment image',
+            });
+          }
+        });
+      }
     }
     // Enrollment Service
     else if (service.serviceCategory === 'Enrollment') {

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
 import {
   StorageProvider,
@@ -16,13 +17,37 @@ import {
 export class CloudinaryProvider implements StorageProvider {
   private readonly logger = new Logger(CloudinaryProvider.name);
 
-  constructor() {
+  constructor(private configService: ConfigService) {
     // Configurar Cloudinary con variables de entorno
+    // Intentar primero con ConfigService, si no funciona usar process.env directamente
+    let cloudName = this.configService.get('cloudinary.cloudName');
+    let apiKey = this.configService.get('cloudinary.apiKey');
+    let apiSecret = this.configService.get('cloudinary.apiSecret');
+
+    // Fallback a process.env si ConfigService no retorna valores
+    if (!cloudName) {
+      cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    }
+    if (!apiKey) {
+      apiKey = process.env.CLOUDINARY_API_KEY;
+    }
+    if (!apiSecret) {
+      apiSecret = process.env.CLOUDINARY_API_SECRET;
+    }
+
+    this.logger.log(
+      `Cloudinary config - Cloud: ${cloudName}, Key: ${apiKey ? 'set' : 'missing'}, Secret: ${apiSecret ? 'set' : 'missing'}`,
+    );
+
     cloudinary.config({
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-      api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET,
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
     });
+
+    this.logger.log(
+      `Cloudinary configured with: ${JSON.stringify({ cloud_name: cloudName, api_key: apiKey ? '***' : 'missing', api_secret: apiSecret ? '***' : 'missing' })}`,
+    );
   }
 
   /**

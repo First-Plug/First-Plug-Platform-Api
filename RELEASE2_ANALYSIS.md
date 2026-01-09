@@ -187,58 +187,56 @@ export class ITSupportServiceSchema extends BaseServiceSchema {
 
 ---
 
-## 🎯 ENDPOINTS (MVP - IMPLEMENTADOS)
+## 🎯 ENDPOINT (MVP - IMPLEMENTADO)
 
-### Subir imagen
+### Crear Quote con Attachments
 
 ```
-POST /quotes/:quoteId/services/it-support/attachments
-multipart/form-data { file }
+POST /quotes
+Content-Type: multipart/form-data
+
+Body:
+- services: JSON string con servicios (incluyendo IT Support)
+- files: array de imágenes (máx 2 por IT Support service)
 
 Validaciones:
 - allowlist MIME (image/jpeg, image/png, image/webp)
 - file.size <= 5MB
-- attachments.length < 4
+- attachments.length <= 2 por IT Support service
 
 Respuesta:
 {
-  "provider": "cloudinary",
-  "publicId": "quotes/123/img1",
-  "secureUrl": "https://res.cloudinary.com/...",
-  "mimeType": "image/jpeg",
-  "bytes": 245000,
-  "originalName": "damage.jpg",
-  "createdAt": "2026-01-07T10:00:00Z",
-  "expiresAt": "2026-02-06T10:00:00Z"
+  "_id": "quote-123",
+  "requestId": "REQ-001",
+  "status": "Requested",
+  "services": [
+    {
+      "serviceCategory": "IT Support",
+      "issues": [...],
+      "description": "...",
+      "attachments": [
+        {
+          "provider": "cloudinary",
+          "publicId": "quotes/123/it-support/img1",
+          "secureUrl": "https://res.cloudinary.com/...",
+          "mimeType": "image/jpeg",
+          "bytes": 245000,
+          "originalName": "damage.jpg",
+          "createdAt": "2026-01-08T10:00:00Z",
+          "expiresAt": "2026-02-07T10:00:00Z"
+        }
+      ]
+    }
+  ]
 }
 ```
 
-### Obtener attachments (para preview)
+**Nota**: Los attachments se procesan en el backend:
 
-```
-GET /quotes/:quoteId/services/it-support/attachments
-
-Respuesta:
-[
-  {
-    "provider": "cloudinary",
-    "publicId": "quotes/123/img1",
-    "secureUrl": "https://res.cloudinary.com/...",
-    "mimeType": "image/jpeg",
-    "bytes": 245000,
-    "createdAt": "2026-01-07T10:00:00Z",
-    "expiresAt": "2026-02-06T10:00:00Z"
-  }
-]
-```
-
-### Borrar imagen
-
-```
-DELETE /quotes/:quoteId/services/it-support/attachments/:publicId
-
-Respuesta: 204 No Content
-```
+1. Valida archivos (MIME, tamaño, cantidad)
+2. Sube a Cloudinary
+3. Agrega metadata a servicios
+4. Guarda Quote con attachments incluidos
 
 ---
 
@@ -308,22 +306,24 @@ Con margen porque no todas serán IT Support ni tendrán 2 imágenes.
 
 ### ✅ Completado
 
-- ✅ AttachmentSchema (subdocumento)
+- ✅ AttachmentSchema (subdocumento en ITSupportServiceSchema)
 - ✅ ITSupportServiceSchema extendido con attachments array
-- ✅ AttachmentsService (CRUD raíz)
-- ✅ AttachmentsCoordinatorService (coordinación Storage + Attachments)
-- ✅ AttachmentsController (POST upload, GET preview, DELETE remove)
-- ✅ Validaciones (MIME, tamaño, cantidad)
+- ✅ POST /quotes actualizado para aceptar multipart/form-data
+- ✅ Validaciones (MIME, tamaño 5MB, cantidad máx 2)
+- ✅ Procesamiento de attachments en createQuote
+- ✅ Upload automático a Cloudinary
+- ✅ Metadata guardada en Quote
 - ✅ Limpieza al cambiar status (cancelQuoteWithCoordination)
-- ✅ Documentación en .augment-config.md
 - ✅ Documentación en RELEASE2_ANALYSIS.md
+- ✅ Documentación en TESTING_QUOTES_WITH_ATTACHMENTS.md
 
 ### 📋 Próximos pasos
 
-- [ ] Tests unitarios (AttachmentsService, AttachmentsCoordinatorService)
-- [ ] Tests de integración (endpoints)
+- [ ] Tests unitarios (processAttachmentsForServices)
+- [ ] Tests de integración (POST /quotes con multipart)
 - [ ] Integración Slack (enviar imágenes en notificaciones)
 - [ ] Presupuesto Formal (decidir qué hacer con attachments cuando status = accepted)
+- [ ] Remover AttachmentsController (ya no necesario)
 
 ---
 
@@ -347,24 +347,18 @@ Si: entra video, muchos tenants, free tier queda chico, Cloudinary cambia costos
 
 ### Servicios
 
-**AttachmentsService** (Raíz - CRUD)
+**QuotesCoordinatorService** (Transversal - Coordinación)
 
-- `addAttachment(quoteId, attachmentData)` - agregar a Quote
-- `removeAttachment(quoteId, publicId)` - remover de Quote
-- `getAttachments(quoteId)` - obtener para preview
-- Solo inyecta: `@Inject('QUOTE_MODEL')`
+- `createQuoteWithCoordination(dto, files)` - procesa attachments + crea quote
+- `processAttachmentsForServices(dto, files)` - valida y sube a Cloudinary
+- `cleanupAttachmentsOnCancel(quoteId)` - borrar de Cloudinary al cancelar
+- Inyecta: `StorageService` + `QuotesService` + `SlackService` + `HistoryService`
 
-**AttachmentsCoordinatorService** (Transversal - Coordinación)
+**QuotesController** (HTTP)
 
-- `uploadAndPersist(quoteId, file)` - validar → subir → persistir
-- `cleanupAttachmentsOnCancel(quoteId)` - borrar de Cloudinary + vaciar Quote
-- Inyecta: `StorageService` + `AttachmentsService`
-
-**AttachmentsController** (HTTP)
-
-- `POST /quotes/:quoteId/services/it-support/attachments` - subir
-- `GET /quotes/:quoteId/services/it-support/attachments` - preview
-- `DELETE /quotes/:quoteId/services/it-support/attachments/:publicId` - borrar
+- `POST /quotes` - acepta multipart/form-data con servicios + archivos
+- Usa `FilesInterceptor` para procesar archivos
+- Pasa archivos al coordinador para procesamiento
 
 ### Estructura de Datos
 
@@ -375,13 +369,16 @@ Quote
 ├── services: [
 │   {
 │       serviceCategory: "IT Support",
+│       issues: [...],
+│       description: "...",
 │       attachments: [
 │           {
 │               provider: "cloudinary",
-│               publicId: "quotes/123/img1",
+│               publicId: "quotes/123/it-support/img1",
 │               secureUrl: "https://res.cloudinary.com/...",
 │               mimeType: "image/jpeg",
 │               bytes: 245000,
+│               originalName: "damage.jpg",
 │               createdAt: Date,
 │               expiresAt: Date
 │           }
@@ -396,6 +393,9 @@ Quote
 - ✅ Se guarda METADATA (no la imagen)
 - ✅ La imagen está en Cloudinary
 - ✅ Quote permanece como registro histórico (solo se vacía attachments array)
+- ✅ Máximo 2 archivos por IT Support service
+- ✅ Máximo 5MB por archivo
+- ✅ Solo JPEG, PNG, WebP
 
 ### Flujo de Limpieza
 
@@ -405,7 +405,7 @@ User cancela quote
 cancelQuoteWithCoordination() se ejecuta
   ↓
 cleanupAttachmentsOnCancel() (no-blocking)
-  ├─ Obtener todos los attachments
+  ├─ Obtener todos los attachments de todos los servicios
   ├─ Para cada uno:
   │  ├─ Borrar de Cloudinary (usando publicId)
   │  └─ Remover de Quote (vaciar array)

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { StorageService } from './storage.service';
 import { CloudinaryProvider } from './providers/cloudinary.provider';
 
@@ -13,15 +14,15 @@ import { CloudinaryProvider } from './providers/cloudinary.provider';
  * 3. Usar: await this.storageService.upload(file, { folder: 'quotes' })
  */
 @Module({
+  imports: [ConfigModule],
   providers: [
-    StorageService,
     CloudinaryProvider,
+    StorageService,
     {
       provide: 'STORAGE_PROVIDER',
-      useClass: CloudinaryProvider,
+      useExisting: CloudinaryProvider,
     },
   ],
   exports: [StorageService],
 })
 export class StorageModule {}
-

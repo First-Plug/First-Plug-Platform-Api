@@ -1,35 +1,42 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { StorageService } from '../storage/storage.service';
 import { AttachmentsService } from './attachments.service';
+import { FileValidationService } from '../attachments/services/file-validation.service';
+import { ATTACHMENT_CONFIG } from '../attachments/config/attachment.config';
 
 /**
  * AttachmentsCoordinatorService - SERVICIO TRANSVERSAL
  * Responsabilidad: Coordinar entre StorageService y AttachmentsService
- * - Valida archivo
+ * - Valida archivo (delegado a FileValidationService)
  * - Sube a Cloudinary
  * - Persiste en Quote
  * - Maneja cleanup en caso de error
+ *
+ * Arquitectura:
+ * - Usa ATTACHMENT_CONFIG para configuración centralizada
+ * - Delega validaciones a FileValidationService
+ * - Reutilizable en otros módulos (Shipments, Orders, etc.)
  */
 @Injectable()
 export class AttachmentsCoordinatorService {
   private readonly logger = new Logger(AttachmentsCoordinatorService.name);
-  private readonly ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
-  private readonly MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-  private readonly EXPIRATION_DAYS = 30;
 
   constructor(
     private readonly storageService: StorageService,
     private readonly attachmentsService: AttachmentsService,
+    private readonly fileValidation: FileValidationService,
   ) {}
 
   /**
    * Flujo completo: validar → subir → persistir
    * Opción A: Upload temporal (para preview antes de submit)
+   *
+   * Usa configuración centralizada de ATTACHMENT_CONFIG
    */
   async uploadAndPersist(quoteId: string, file: any): Promise<any> {
     try {
-      // 1. Validar archivo
-      this.validateFile(file);
+      // 1. Validar archivo (delegado a FileValidationService)
+      this.fileValidation.validateFile(file);
 
       // 2. Subir a Cloudinary
       const uploadResult = await this.storageService.upload(file, {
@@ -48,7 +55,7 @@ export class AttachmentsCoordinatorService {
         resourceType: uploadResult.resourceType,
         createdAt: new Date(),
         expiresAt: new Date(
-          Date.now() + this.EXPIRATION_DAYS * 24 * 60 * 60 * 1000,
+          Date.now() + ATTACHMENT_CONFIG.EXPIRATION_DAYS * 24 * 60 * 60 * 1000,
         ),
       };
 
@@ -139,27 +146,6 @@ export class AttachmentsCoordinatorService {
         `Error cleaning up attachments for quote ${quoteId}: ${error.message}`,
       );
       throw error;
-    }
-  }
-
-  /**
-   * Validar archivo
-   */
-  private validateFile(file: any): void {
-    if (!file) {
-      throw new BadRequestException('No file provided');
-    }
-
-    if (!this.ALLOWED_MIMES.includes(file.mimetype)) {
-      throw new BadRequestException(
-        `Invalid file type. Allowed: ${this.ALLOWED_MIMES.join(', ')}`,
-      );
-    }
-
-    if (file.size > this.MAX_FILE_SIZE) {
-      throw new BadRequestException(
-        `File size exceeds ${this.MAX_FILE_SIZE / 1024 / 1024}MB limit`,
-      );
     }
   }
 }

@@ -11,7 +11,10 @@ import {
   HttpStatus,
   BadRequestException,
   Query,
+  UseInterceptors,
+  UploadedFiles,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { QuotesCoordinatorService } from './quotes-coordinator.service';
 import {
   CreateQuoteDto,
@@ -35,16 +38,27 @@ export class QuotesController {
 
   /**
    * POST /quotes
-   * Crear una nueva quote
-   * ✅ Valida estructura de productos con Zod
+   * Crear una nueva quote con soporte para attachments en IT Support
+   * ✅ Acepta multipart/form-data con archivos
+   * ✅ Valida estructura de productos y servicios con Zod
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(FilesInterceptor('files', 10)) // Máx 10 archivos
   async create(
-    @Body() createQuoteDto: CreateQuoteDto,
+    @Body() createQuoteDto: any,
+    @UploadedFiles() files: any[] = [],
     @Req() req: any,
   ): Promise<QuoteResponseDto> {
     try {
+      // Parsear JSON strings en form-data
+      if (typeof createQuoteDto.services === 'string') {
+        createQuoteDto.services = JSON.parse(createQuoteDto.services);
+      }
+      if (typeof createQuoteDto.products === 'string') {
+        createQuoteDto.products = JSON.parse(createQuoteDto.products);
+      }
+
       // ✅ Validar con Zod
       const validated = CreateQuoteSchema.parse(createQuoteDto);
 
@@ -61,11 +75,12 @@ export class QuotesController {
 
       const quote = await this.quotesCoordinator.createQuoteWithCoordination(
         validated,
-        new Types.ObjectId(tenantId),
+        new Types.ObjectId(tenantId as string),
         tenantName,
         userEmail,
         userName,
         userId,
+        files, // Pasar archivos al coordinador
       );
 
       return this.mapToResponseDto(quote);

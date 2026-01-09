@@ -88,7 +88,7 @@ export class ITSupportServiceSchema extends BaseServiceSchema {
     ],
     default: [],
   })
-  attachments?: Array<{
+  attachments: Array<{
     provider: 'cloudinary' | 's3';
     publicId: string;
     secureUrl: string;
@@ -98,7 +98,7 @@ export class ITSupportServiceSchema extends BaseServiceSchema {
     resourceType?: string;
     createdAt: Date;
     expiresAt: Date;
-  }>;
+  }> = [];
 }
 
 /**

@@ -38,19 +38,52 @@ export class QuotesModule {}
 import { StorageService } from 'src/storage';
 
 @Injectable()
-export class AttachmentsService {
+export class QuotesCoordinatorService {
   constructor(private storageService: StorageService) {}
 
-  async uploadImage(file: Express.Multer.File, quoteId: string) {
-    const result = await this.storageService.upload(file, {
-      folder: `quotes/${quoteId}/attachments`,
-      resourceType: 'image',
-    });
-    return result;
-  }
+  async processAttachmentsForServices(
+    createQuoteDto: CreateQuoteDto,
+    files: Express.Multer.File[],
+    tenantId: Types.ObjectId,
+  ) {
+    // Validar archivos
+    for (const file of files) {
+      if (!ALLOWED_MIMES.includes(file.mimetype)) {
+        throw new BadRequestException('Invalid file type');
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        throw new BadRequestException('File too large');
+      }
+    }
 
-  async deleteImage(publicId: string) {
-    return await this.storageService.delete(publicId);
+    // Subir a Cloudinary
+    const attachments = [];
+    for (const file of files) {
+      const uploadResult = await this.storageService.upload(file, {
+        folder: `quotes/${tenantId}/it-support`,
+        resourceType: 'image',
+      });
+
+      attachments.push({
+        provider: uploadResult.provider,
+        publicId: uploadResult.publicId,
+        secureUrl: uploadResult.secureUrl,
+        mimeType: uploadResult.mimeType,
+        bytes: uploadResult.bytes,
+        originalName: uploadResult.originalName,
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      });
+    }
+
+    // Agregar attachments a servicios IT Support
+    if (createQuoteDto.services) {
+      for (const service of createQuoteDto.services) {
+        if (service.serviceCategory === 'IT Support') {
+          (service as any).attachments = attachments;
+        }
+      }
+    }
   }
 }
 ```
@@ -62,6 +95,7 @@ export class AttachmentsService {
 Subir un archivo.
 
 **Parámetros**:
+
 - `file`: Express.Multer.File
 - `options`: UploadOptions (opcional)
   - `folder`: carpeta en el provider
@@ -70,6 +104,7 @@ Subir un archivo.
   - `transformation`: transformaciones personalizadas
 
 **Retorna**: UploadResult
+
 ```typescript
 {
   provider: 'cloudinary',
@@ -87,9 +122,11 @@ Subir un archivo.
 Borrar un archivo.
 
 **Parámetros**:
+
 - `publicId`: ID público del recurso
 
 **Retorna**: DeleteResult
+
 ```typescript
 {
   success: boolean,
@@ -102,6 +139,7 @@ Borrar un archivo.
 Obtener URL pública de un recurso.
 
 **Parámetros**:
+
 - `publicId`: ID público del recurso
 - `options`: opciones de transformación (opcional)
 
@@ -112,6 +150,7 @@ Obtener URL pública de un recurso.
 Obtener URL firmada (acceso privado con expiración).
 
 **Parámetros**:
+
 - `publicId`: ID público del recurso
 - `expiresIn`: segundos hasta expiración (default: 3600)
 
@@ -144,4 +183,3 @@ Para cambiar a S3:
 - El módulo es agnóstico: no depende de Cloudinary específicamente
 - Fácil de testear: inyectar un mock de StorageProvider
 - Escalable: agregar nuevos providers sin tocar código existente
-
