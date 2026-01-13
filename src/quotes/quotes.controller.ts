@@ -217,7 +217,10 @@ export class QuotesController {
   /**
    * Expandir quote con servicios como filas adicionales
    * Si una quote tiene servicios, crea una fila por cada servicio
-   * Ejemplo: 1 quote con 2 productos + 1 servicio = 2 filas (1 para productos, 1 para servicio)
+   * Para quotes mixed (productos + servicios):
+   *   - Primera fila: productos + todos los servicios
+   *   - Filas adicionales: cada servicio individual (con productos también)
+   * Ejemplo: 1 quote con 2 productos + 1 servicio = 2 filas
    */
   private expandQuoteWithServices(quote: any): QuoteTableWithDetailsDto[] {
     const baseRow = this.mapToTableWithDetailsDto(quote);
@@ -228,16 +231,15 @@ export class QuotesController {
     }
 
     // Si hay servicios, crear una fila por cada servicio
+    // Pero mantener los productos en todas las filas (para quotes mixed)
     return quote.services.map((service: any, index: number) => ({
       ...baseRow,
       // Marcar como fila de servicio
       _id: `${quote._id?.toString()}-service-${index}`,
       // Mostrar solo este servicio
       services: [service],
-      // Limpiar productos en filas de servicio
-      products: [],
-      productCount: 0,
-      totalQuantity: 0,
+      // ✅ MANTENER productos en filas de servicio (para quotes mixed)
+      // products: baseRow.products (ya está en ...baseRow)
       // Mantener el conteo total de servicios
       serviceCount: quote.services.length,
     }));
