@@ -272,10 +272,17 @@ export class QuotesController {
    * NO necesite hacer un GET by ID adicional
    */
   private mapToTableWithDetailsDto(quote: any): QuoteTableWithDetailsDto {
-    const totalQuantity = (quote.products || []).reduce(
+    // Calcular cantidad total de productos
+    const productQuantity = (quote.products || []).reduce(
       (sum: number, product: any) => sum + (product.quantity || 0),
       0,
     );
+
+    // Calcular cantidad total de servicios
+    const serviceQuantity = (quote.services || []).length;
+
+    // Total = productos + servicios
+    const totalQuantity = productQuantity + serviceQuantity;
 
     return {
       _id: quote._id?.toString(),
