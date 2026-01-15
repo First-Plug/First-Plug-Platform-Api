@@ -215,32 +215,14 @@ export class QuotesController {
   }
 
   /**
-   * Expandir quote con servicios como filas adicionales
-   * Si una quote tiene servicios, crea una fila por cada servicio
-   * Ejemplo: 1 quote con 2 productos + 1 servicio = 2 filas (1 para productos, 1 para servicio)
+   * Expandir quote con servicios
+   * Retorna una sola fila con todos los productos y servicios
+   * No expande por servicios individuales
    */
   private expandQuoteWithServices(quote: any): QuoteTableWithDetailsDto[] {
     const baseRow = this.mapToTableWithDetailsDto(quote);
-
-    // Si no hay servicios, retornar solo la fila base
-    if (!quote.services || quote.services.length === 0) {
-      return [baseRow];
-    }
-
-    // Si hay servicios, crear una fila por cada servicio
-    return quote.services.map((service: any, index: number) => ({
-      ...baseRow,
-      // Marcar como fila de servicio
-      _id: `${quote._id?.toString()}-service-${index}`,
-      // Mostrar solo este servicio
-      services: [service],
-      // Limpiar productos en filas de servicio
-      products: [],
-      productCount: 0,
-      totalQuantity: 0,
-      // Mantener el conteo total de servicios
-      serviceCount: quote.services.length,
-    }));
+    // Retornar una sola fila con todos los productos y servicios
+    return [baseRow];
   }
 
   /**
@@ -270,10 +252,17 @@ export class QuotesController {
    * NO necesite hacer un GET by ID adicional
    */
   private mapToTableWithDetailsDto(quote: any): QuoteTableWithDetailsDto {
-    const totalQuantity = (quote.products || []).reduce(
+    // Calcular cantidad total de productos
+    const productQuantity = (quote.products || []).reduce(
       (sum: number, product: any) => sum + (product.quantity || 0),
       0,
     );
+
+    // Calcular cantidad total de servicios
+    const serviceQuantity = (quote.services || []).length;
+
+    // Total = productos + servicios
+    const totalQuantity = productQuantity + serviceQuantity;
 
     return {
       _id: quote._id?.toString(),
