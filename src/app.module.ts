@@ -22,6 +22,7 @@ import { OfficesModule } from 'src/offices/offices.module';
 import { SuperAdminModule } from 'src/superadmin/superadmin.module';
 import { WarehousesModule } from 'src/warehouses/warehouses.module';
 import { QuotesModule } from 'src/quotes/quotes.module';
+import { EmailModule } from 'src/email/email.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { QuotesModule } from 'src/quotes/quotes.module';
     WarehousesModule,
     SuperAdminModule,
     QuotesModule,
+    EmailModule,
   ],
   controllers: [],
   providers: [],
