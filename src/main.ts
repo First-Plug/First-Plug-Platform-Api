@@ -1,3 +1,6 @@
+import * as dotenv from 'dotenv';
+dotenv.config();
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
@@ -12,6 +15,7 @@ async function bootstrap() {
   const config = app.get(ConfigService);
 
   app.use(json({ limit: '50mb' }));
+
   app.enableCors({
     origin: (origin, callback) => {
       const allowedOrigins = [config.get('server.frontendUrl')];

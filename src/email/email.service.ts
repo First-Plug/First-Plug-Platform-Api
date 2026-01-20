@@ -108,6 +108,38 @@ export class EmailService {
           `Error sending email to ${validated.to}:`,
           response.error,
         );
+
+        // En modo test, intentar enviar al email de prueba si el principal falla
+        if (this.emailConfig.isTestMode()) {
+          const testRecipient = this.emailConfig.getTestRecipient();
+          try {
+            this.logger.log(
+              `Attempting to send test email to ${testRecipient} instead...`,
+            );
+            const testResponse = await resend.emails.send({
+              from: `${config.fromName} <${config.fromEmail}>`,
+              to: testRecipient!,
+              subject: `[TEST - Original: ${validated.to}] ${validated.props.title}`,
+              html,
+              text,
+            });
+
+            if (!testResponse.error) {
+              this.logger.log(
+                `Test email sent successfully to ${testRecipient} (messageId: ${testResponse.data?.id})`,
+              );
+              return {
+                success: true,
+                messageId: testResponse.data?.id,
+                timestamp: new Date(),
+                note: `Email sent to test recipient (${testRecipient}) instead of ${validated.to}`,
+              };
+            }
+          } catch (testError) {
+            this.logger.error('Error sending test email:', testError);
+          }
+        }
+
         return {
           success: false,
           error: response.error.message,
@@ -118,13 +150,18 @@ export class EmailService {
       // Enviar copia a email de prueba si está configurado
       if (this.emailConfig.isTestMode()) {
         const testRecipient = this.emailConfig.getTestRecipient();
-        await resend.emails.send({
-          from: `${config.fromName} <${config.fromEmail}>`,
-          to: testRecipient!,
-          subject: `[TEST] ${validated.props.title}`,
-          html,
-          text,
-        });
+        try {
+          await resend.emails.send({
+            from: `${config.fromName} <${config.fromEmail}>`,
+            to: testRecipient!,
+            subject: `[TEST COPY] ${validated.props.title}`,
+            html,
+            text,
+          });
+        } catch (testError) {
+          this.logger.warn('Could not send test copy:', testError);
+          // No fallar si no se puede enviar la copia de prueba
+        }
       }
 
       // Log de éxito

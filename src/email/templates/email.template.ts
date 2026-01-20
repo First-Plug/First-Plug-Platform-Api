@@ -44,12 +44,13 @@ export class EmailTemplate {
     }
     
     .header {
-      background: linear-gradient(135deg, #4c83ee 0%, #2c5aa0 100%);
-      color: white;
+      background: white;
       padding: 40px 20px;
       text-align: center;
+      border-bottom: 1px solid #eee;
     }
-    
+
+
     .header h1 {
       font-size: 28px;
       margin-bottom: 10px;
@@ -80,18 +81,18 @@ export class EmailTemplate {
     
     .button {
       display: inline-block;
-      background-color: #22d172;
+      background: linear-gradient(135deg, #18489A 0%, #4FE8B7 100%);
       color: white;
       padding: 14px 32px;
       text-decoration: none;
       border-radius: 6px;
       font-weight: 600;
       font-size: 16px;
-      transition: background-color 0.3s ease;
+      transition: opacity 0.3s ease;
     }
-    
+
     .button:hover {
-      background-color: #1aa85a;
+      opacity: 0.85;
     }
     
     .footer {
@@ -143,10 +144,10 @@ export class EmailTemplate {
     <div class="header">
       <h1>${title}</h1>
     </div>
-    
+
     <!-- Content -->
     <div class="content">
-      <p class="greeting">Hola ${recipientName},</p>
+      <p class="greeting">Hi ${recipientName},</p>
       
       <p class="description">${description}</p>
       
@@ -163,11 +164,7 @@ export class EmailTemplate {
     
     <!-- Footer -->
     <div class="footer">
-      <p>© 2024 FirstPlug. Todos los derechos reservados.</p>
-      <p style="margin-top: 10px;">
-        <a href="https://firstplug.com" class="footer-link">Visita nuestro sitio</a> | 
-        <a href="https://firstplug.com/privacy" class="footer-link">Política de privacidad</a>
-      </p>
+      <p>© 2024 FirstPlug. All rights reserved.</p>
     </div>
   </div>
 </body>
@@ -182,16 +179,15 @@ export class EmailTemplate {
     const { title, description, buttonText, buttonUrl, recipientName } = props;
 
     let text = `${title}\n\n`;
-    text += `Hola ${recipientName},\n\n`;
+    text += `Hi ${recipientName},\n\n`;
     text += `${description}\n`;
 
     if (buttonText && buttonUrl) {
       text += `\n${buttonText}: ${buttonUrl}\n`;
     }
 
-    text += `\n\n© 2024 FirstPlug. Todos los derechos reservados.`;
+    text += `\n\n© 2024 FirstPlug. All rights reserved.`;
 
     return text;
   }
 }
-

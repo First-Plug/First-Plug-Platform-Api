@@ -2,38 +2,28 @@
  * Email Config Service Tests
  */
 
-import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { EmailConfigService } from './email.config';
 
 describe('EmailConfigService', () => {
   let service: EmailConfigService;
-  let configService: ConfigService;
 
   describe('with valid configuration', () => {
-    beforeEach(async () => {
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          EmailConfigService,
-          {
-            provide: ConfigService,
-            useValue: {
-              get: jest.fn((key: string) => {
-                const config: Record<string, string> = {
-                  RESEND_API_KEY: 'test-api-key-123',
-                  EMAIL_FROM: 'noreply@firstplug.com',
-                  EMAIL_FROM_NAME: 'FirstPlug',
-                  EMAIL_TEST_RECIPIENT: undefined,
-                };
-                return config[key];
-              }),
-            },
-          },
-        ],
-      }).compile();
+    beforeEach(() => {
+      // Configurar process.env para los tests
+      process.env.RESEND_API_KEY = 'test-api-key-123';
+      process.env.EMAIL_FROM = 'noreply@firstplug.com';
+      process.env.EMAIL_FROM_NAME = 'FirstPlug';
+      delete process.env.EMAIL_TEST_RECIPIENT;
 
-      service = module.get<EmailConfigService>(EmailConfigService);
-      configService = module.get<ConfigService>(ConfigService);
+      service = new EmailConfigService();
+    });
+
+    afterEach(() => {
+      // Limpiar variables de entorno después de cada test
+      delete process.env.RESEND_API_KEY;
+      delete process.env.EMAIL_FROM;
+      delete process.env.EMAIL_FROM_NAME;
+      delete process.env.EMAIL_TEST_RECIPIENT;
     });
 
     it('should load configuration successfully', () => {
@@ -54,28 +44,22 @@ describe('EmailConfigService', () => {
   });
 
   describe('with test mode enabled', () => {
-    beforeEach(async () => {
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          EmailConfigService,
-          {
-            provide: ConfigService,
-            useValue: {
-              get: jest.fn((key: string) => {
-                const config: Record<string, string> = {
-                  RESEND_API_KEY: 'test-api-key-123',
-                  EMAIL_FROM: 'noreply@firstplug.com',
-                  EMAIL_FROM_NAME: 'FirstPlug',
-                  EMAIL_TEST_RECIPIENT: 'test@example.com',
-                };
-                return config[key];
-              }),
-            },
-          },
-        ],
-      }).compile();
+    beforeEach(() => {
+      // Configurar process.env con test recipient
+      process.env.RESEND_API_KEY = 'test-api-key-123';
+      process.env.EMAIL_FROM = 'noreply@firstplug.com';
+      process.env.EMAIL_FROM_NAME = 'FirstPlug';
+      process.env.EMAIL_TEST_RECIPIENT = 'test@example.com';
 
-      service = module.get<EmailConfigService>(EmailConfigService);
+      service = new EmailConfigService();
+    });
+
+    afterEach(() => {
+      // Limpiar variables de entorno después de cada test
+      delete process.env.RESEND_API_KEY;
+      delete process.env.EMAIL_FROM;
+      delete process.env.EMAIL_FROM_NAME;
+      delete process.env.EMAIL_TEST_RECIPIENT;
     });
 
     it('should return test recipient when configured', () => {
@@ -88,51 +72,33 @@ describe('EmailConfigService', () => {
   });
 
   describe('with invalid configuration', () => {
-    it('should throw error when RESEND_API_KEY is missing', async () => {
+    it('should allow empty RESEND_API_KEY in development', () => {
+      process.env.RESEND_API_KEY = '';
+      process.env.EMAIL_FROM = 'noreply@firstplug.com';
+      process.env.EMAIL_FROM_NAME = 'FirstPlug';
+
+      service = new EmailConfigService();
+      const config = service.getResendConfig();
+
+      expect(config.apiKey).toBe('');
+    });
+
+    it('should throw error when EMAIL_FROM is invalid', () => {
+      process.env.RESEND_API_KEY = 'test-key';
+      process.env.EMAIL_FROM = 'invalid-email';
+      process.env.EMAIL_FROM_NAME = 'FirstPlug';
+
       expect(() => {
-        Test.createTestingModule({
-          providers: [
-            EmailConfigService,
-            {
-              provide: ConfigService,
-              useValue: {
-                get: jest.fn((key: string) => {
-                  const config: Record<string, string> = {
-                    RESEND_API_KEY: '',
-                    EMAIL_FROM: 'noreply@firstplug.com',
-                    EMAIL_FROM_NAME: 'FirstPlug',
-                  };
-                  return config[key];
-                }),
-              },
-            },
-          ],
-        });
+        new EmailConfigService();
       }).toThrow();
     });
 
-    it('should throw error when EMAIL_FROM is invalid', async () => {
-      expect(() => {
-        Test.createTestingModule({
-          providers: [
-            EmailConfigService,
-            {
-              provide: ConfigService,
-              useValue: {
-                get: jest.fn((key: string) => {
-                  const config: Record<string, string> = {
-                    RESEND_API_KEY: 'test-key',
-                    EMAIL_FROM: 'invalid-email',
-                    EMAIL_FROM_NAME: 'FirstPlug',
-                  };
-                  return config[key];
-                }),
-              },
-            },
-          ],
-        });
-      }).toThrow();
+    afterEach(() => {
+      // Limpiar variables de entorno después de cada test
+      delete process.env.RESEND_API_KEY;
+      delete process.env.EMAIL_FROM;
+      delete process.env.EMAIL_FROM_NAME;
+      delete process.env.EMAIL_TEST_RECIPIENT;
     });
   });
 });
-

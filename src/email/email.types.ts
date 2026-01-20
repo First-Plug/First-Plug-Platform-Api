@@ -46,6 +46,7 @@ export interface EmailSendResponse {
   messageId?: string;
   error?: string;
   timestamp: Date;
+  note?: string;
 }
 
 /**
@@ -56,4 +57,3 @@ export interface ResendConfig {
   fromEmail: string;
   fromName: string;
 }
-

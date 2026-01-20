@@ -2,17 +2,17 @@
  * Email Service Tests
  */
 
-import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { EmailService } from './email.service';
 import { EmailConfigService } from './email.config';
 import { EmailNotificationType } from './email.types';
 
 // Mock de Resend
+const mockSend = jest.fn();
 jest.mock('resend', () => ({
   Resend: jest.fn().mockImplementation(() => ({
     emails: {
-      send: jest.fn(),
+      send: mockSend,
     },
   })),
 }));
@@ -20,37 +20,28 @@ jest.mock('resend', () => ({
 describe('EmailService', () => {
   let service: EmailService;
   let configService: EmailConfigService;
-  let mockResend: any;
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        EmailService,
-        {
-          provide: EmailConfigService,
-          useValue: {
-            getResendConfig: jest.fn().mockReturnValue({
-              apiKey: 'test-key',
-              fromEmail: 'test@example.com',
-              fromName: 'Test',
-            }),
-            isTestMode: jest.fn().mockReturnValue(false),
-            getTestRecipient: jest.fn().mockReturnValue(undefined),
-          },
-        },
-      ],
-    }).compile();
+  beforeEach(() => {
+    // Configurar process.env para los tests
+    process.env.RESEND_API_KEY = 'test-key';
+    process.env.EMAIL_FROM = 'test@example.com';
+    process.env.EMAIL_FROM_NAME = 'Test';
+    delete process.env.EMAIL_TEST_RECIPIENT;
 
-    service = module.get<EmailService>(EmailService);
-    configService = module.get<EmailConfigService>(EmailConfigService);
+    // Crear instancias reales
+    configService = new EmailConfigService();
+    service = new EmailService(configService);
 
-    // Obtener el mock de Resend
-    const Resend = require('resend').Resend;
-    mockResend = Resend.mock.results[0].value;
+    // Limpiar mocks
+    mockSend.mockClear();
   });
 
   afterEach(() => {
     jest.clearAllMocks();
+    delete process.env.RESEND_API_KEY;
+    delete process.env.EMAIL_FROM;
+    delete process.env.EMAIL_FROM_NAME;
+    delete process.env.EMAIL_TEST_RECIPIENT;
   });
 
   describe('sendImmediate', () => {
@@ -64,25 +55,31 @@ describe('EmailService', () => {
     };
 
     it('should send email successfully', async () => {
-      mockResend.emails.send.mockResolvedValueOnce({
+      mockSend.mockResolvedValueOnce({
         data: { id: 'msg-123' },
         error: null,
       });
 
-      const result = await service.sendImmediate('john@example.com', validProps);
+      const result = await service.sendImmediate(
+        'john@example.com',
+        validProps,
+      );
 
       expect(result.success).toBe(true);
       expect(result.messageId).toBe('msg-123');
-      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      expect(mockSend).toHaveBeenCalledTimes(1);
     });
 
     it('should handle Resend API errors', async () => {
-      mockResend.emails.send.mockResolvedValueOnce({
+      mockSend.mockResolvedValueOnce({
         data: null,
         error: { message: 'API Error' },
       });
 
-      const result = await service.sendImmediate('john@example.com', validProps);
+      const result = await service.sendImmediate(
+        'john@example.com',
+        validProps,
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('API Error');
@@ -103,17 +100,19 @@ describe('EmailService', () => {
     });
 
     it('should send test copy when in test mode', async () => {
-      jest.spyOn(configService, 'isTestMode').mockReturnValue(true);
-      jest.spyOn(configService, 'getTestRecipient').mockReturnValue('test@example.com');
+      // Configurar test mode
+      process.env.EMAIL_TEST_RECIPIENT = 'test@example.com';
+      const configServiceWithTest = new EmailConfigService();
+      const serviceWithTest = new EmailService(configServiceWithTest);
 
-      mockResend.emails.send.mockResolvedValue({
+      mockSend.mockResolvedValue({
         data: { id: 'msg-123' },
         error: null,
       });
 
-      await service.sendImmediate('john@example.com', validProps);
+      await serviceWithTest.sendImmediate('john@example.com', validProps);
 
-      expect(mockResend.emails.send).toHaveBeenCalledTimes(2);
+      expect(mockSend).toHaveBeenCalledTimes(2);
     });
 
     it('should include button in email when provided', async () => {
@@ -123,17 +122,16 @@ describe('EmailService', () => {
         buttonUrl: 'https://example.com',
       };
 
-      mockResend.emails.send.mockResolvedValueOnce({
+      mockSend.mockResolvedValueOnce({
         data: { id: 'msg-123' },
         error: null,
       });
 
       await service.sendImmediate('john@example.com', propsWithButton);
 
-      const callArgs = mockResend.emails.send.mock.calls[0][0];
+      const callArgs = mockSend.mock.calls[0][0];
       expect(callArgs.html).toContain('Click here');
       expect(callArgs.html).toContain('https://example.com');
     });
   });
 });
-

@@ -1,6 +1,7 @@
 import {
   Injectable,
   BadRequestException,
+  Logger,
   //   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -13,14 +14,18 @@ import { CreateUserByProviderDto } from './dto/create-user-by-provider.dto';
 import { UpdateUserConfigDto } from './dto/update-user-config.dto';
 import * as bcrypt from 'bcrypt';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectModel(User.name)
     private readonly userModel: Model<User>,
     @InjectSlack() private readonly slack: IncomingWebhook,
     private readonly eventsGateway: EventsGateway,
+    private readonly emailService: EmailService,
   ) {}
 
   async findByEmail(email: string): Promise<User | null> {
@@ -352,6 +357,28 @@ export class UsersService {
 
     if (!updatedUser) {
       throw new BadRequestException('Failed to assign tenant');
+    }
+
+    // Enviar email de bienvenida si se asignó un tenant (no es superadmin)
+    if (role !== 'superadmin' && tenantId) {
+      try {
+        await this.emailService.sendImmediate(updatedUser.email, {
+          recipientName: updatedUser.firstName,
+          recipientEmail: updatedUser.email,
+          tenantName: tenantName || 'FirstPlug',
+          type: 'USER_ENABLED' as any,
+          title: 'Welcome to FirstPlug',
+          description: `Your account has been activated. You can now access the FirstPlug platform with your credentials.`,
+          buttonText: 'Go to Login',
+          buttonUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`,
+        });
+      } catch (error) {
+        this.logger.error(
+          `Error sending welcome email to ${updatedUser.email}:`,
+          error,
+        );
+        // No lanzar error, solo loguear - el usuario ya fue activado
+      }
     }
 
     return updatedUser;

@@ -9,6 +9,7 @@ import { User, UserSchema } from './schemas/user.schema';
 import { TenantsModule } from '../tenants/tenants.module';
 import { TenantDbModule } from '../infra/db/tenant-db.module';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { EventsGateway } from 'src/infra/event-bus/events.gateway';
       secret: process.env.JWT_SECRET || 'default-secret',
       signOptions: { expiresIn: '48h' },
     }),
+    EmailModule,
   ],
   controllers: [UsersController],
   providers: [UsersService, UserAccessService, EventsGateway],
