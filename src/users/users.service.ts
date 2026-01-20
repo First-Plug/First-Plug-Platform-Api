@@ -158,12 +158,6 @@ export class UsersService {
       throw new Error(`No se encontró el usuario con id: ${userId}`);
     }
 
-    console.log('✅ Usuario activado:', {
-      email: user.email,
-      status: user.status,
-      tenantId: user.tenantId,
-    });
-
     return user;
   }
 
@@ -173,13 +167,8 @@ export class UsersService {
   ): Promise<{ updatedCount: number }> {
     const result = await this.userModel.updateMany(
       { _id: { $in: userIds } },
-      { $set: { tenantId, status: 'active' } }, // Activar usuarios al asignar tenant
+      { $set: { tenantId, status: 'active' } },
     );
-
-    console.log('✅ Usuarios activados en lote:', {
-      updatedCount: result.modifiedCount,
-      tenantId,
-    });
 
     return { updatedCount: result.modifiedCount };
   }
@@ -449,16 +438,9 @@ export class UsersService {
       .find({
         isDeleted: false, // Solo usuarios no eliminados
       })
-      .populate('tenantId', 'name tenantName') // Incluir info del tenant
+      .populate('tenantId', 'name tenantName')
       .sort({ createdAt: -1 })
       .exec();
-
-    console.log('✅ Usuarios obtenidos:', {
-      total: users.length,
-      withTenant: users.filter((u) => u.tenantId).length,
-      withoutTenant: users.filter((u) => !u.tenantId).length,
-      superAdmins: users.filter((u) => u.role === 'superadmin').length,
-    });
 
     return users;
   }
