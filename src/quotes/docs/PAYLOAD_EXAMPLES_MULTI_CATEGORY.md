@@ -1,5 +1,22 @@
 # Payload Examples - Multi-Category Quotes
 
+## ⚠️ IMPORTANTE: IT Support con Attachments
+
+Para servicios **IT Support**, los archivos adjuntos (imágenes) se envían como **multipart/form-data**:
+
+```
+POST /quotes
+Content-Type: multipart/form-data
+
+- services: (text) JSON array con IT Support
+- products: (text) JSON array vacío o con productos
+- files: (file) Imágenes adjuntas (máx 10 archivos, 5MB cada uno)
+```
+
+**Los attachments se procesan automáticamente en el backend** y se mapean al servicio IT Support. No es necesario incluirlos en el JSON.
+
+---
+
 ## 1. Quote con Monitor
 
 ```json
@@ -917,6 +934,28 @@ Incluye identificación completa del producto (importante para history y Slack):
         "Battery not charging"
       ],
       "description": "Asus IdeaPad Serie S experiencing connectivity issues, performance degradation, and battery charging problems. Needs diagnostic and repair.",
+      "issueStartDate": "2025-12-10",
+      "impactLevel": "high"
+    },
+    {
+      "serviceCategory": "IT Support",
+      "productId": "690b9d8e3c2dc7018e2f5039",
+      "productSnapshot": {
+        "category": "Computer",
+        "name": "Computer",
+        "brand": "Lenovo",
+        "model": "ThinkPad Serie Z",
+        "serialNumber": "5dys87g1s112",
+        "location": "Our office",
+        "assignedTo": "nadiabarraza@work.com",
+        "countryCode": "GT"
+      },
+      "issues": [
+        "Device not connecting to network",
+        "Slow performance",
+        "Battery not charging"
+      ],
+      "description": "Lenovo ThinkPad experiencing connectivity issues and performance degradation.",
       "issueStartDate": "2025-12-10",
       "impactLevel": "high"
     },
