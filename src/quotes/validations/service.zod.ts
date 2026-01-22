@@ -56,7 +56,7 @@ const AttachmentSchema = z.object({
   publicId: z.string(),
   secureUrl: z.string().url(),
   mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
-  bytes: z.number().min(0).max(5242880), // 5MB
+  bytes: z.number().min(0).max(10485760), // 10MB
   originalName: z.string().optional(),
   resourceType: z.string().optional(),
   createdAt: z.date(),

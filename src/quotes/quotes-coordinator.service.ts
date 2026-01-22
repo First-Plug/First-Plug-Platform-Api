@@ -1065,7 +1065,7 @@ export class QuotesCoordinatorService {
     files: any[],
     tenantId: Types.ObjectId,
   ): Promise<void> {
-    const MAX_ATTACHMENTS_PER_SERVICE = 2;
+    const MAX_ATTACHMENTS_PER_SERVICE = 4;
 
     // Validar archivos (delegado a FileValidationService)
     this.fileValidation.validateFiles(files);

@@ -79,7 +79,7 @@ export class ITSupportServiceSchema extends BaseServiceSchema {
           enum: ['image/jpeg', 'image/png', 'image/webp'],
           required: true,
         },
-        bytes: { type: Number, required: true, min: 0, max: 5242880 },
+        bytes: { type: Number, required: true, min: 0, max: 10485760 },
         originalName: { type: String },
         resourceType: { type: String },
         createdAt: { type: Date, required: true, default: () => new Date() },

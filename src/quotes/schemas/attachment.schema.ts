@@ -4,7 +4,7 @@ import { Document } from 'mongoose';
 /**
  * AttachmentSchema - Subdocumento para adjuntos en servicios IT Support
  * Se guarda a nivel tenant (cada tenant tiene su DB)
- * 
+ *
  * Propiedades:
  * - provider: 'cloudinary' (MVP) o 's3' (plan de salida)
  * - publicId: ID único en el provider (necesario para borrar)
@@ -49,7 +49,7 @@ export class AttachmentSchema {
     type: Number,
     required: true,
     min: 0,
-    max: 5242880, // 5MB en bytes
+    max: 10485760, // 10MB en bytes
   })
   bytes: number;
 
@@ -80,9 +80,7 @@ export class AttachmentSchema {
   expiresAt: Date;
 }
 
-export const AttachmentSchemaFactory = SchemaFactory.createForClass(
-  AttachmentSchema,
-);
+export const AttachmentSchemaFactory =
+  SchemaFactory.createForClass(AttachmentSchema);
 
 export type AttachmentDocument = AttachmentSchema & Document;
-
