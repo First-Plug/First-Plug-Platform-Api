@@ -44,26 +44,46 @@ export class AttachmentsCoordinatorService {
         resourceType: 'image',
       });
 
-      // 3. Crear objeto de attachment
+      // 3. Calcular expiración (6 meses)
+      const expiresAt = new Date(
+        Date.now() + ATTACHMENT_CONFIG.EXPIRATION_DAYS * 24 * 60 * 60 * 1000,
+      );
+
+      // 4. Generar URL firmada con expiración de 6 meses (en segundos)
+      const expirationSeconds =
+        ATTACHMENT_CONFIG.EXPIRATION_DAYS * 24 * 60 * 60;
+      let signedUrl: string;
+      try {
+        signedUrl = await this.storageService.getSignedUrl(
+          uploadResult.publicId,
+          expirationSeconds,
+        );
+      } catch (signError) {
+        this.logger.warn(
+          `Failed to generate signed URL, falling back to public URL: ${signError?.message}`,
+        );
+        // Fallback a URL pública si falla la firma
+        signedUrl = uploadResult.secureUrl;
+      }
+
+      // 5. Crear objeto de attachment con URL firmada
       const attachment = {
         provider: uploadResult.provider,
         publicId: uploadResult.publicId,
-        secureUrl: uploadResult.secureUrl,
+        secureUrl: signedUrl, // URL firmada en lugar de URL pública
         mimeType: uploadResult.mimeType,
         bytes: uploadResult.bytes,
         originalName: uploadResult.originalName,
         resourceType: uploadResult.resourceType,
         createdAt: new Date(),
-        expiresAt: new Date(
-          Date.now() + ATTACHMENT_CONFIG.EXPIRATION_DAYS * 24 * 60 * 60 * 1000,
-        ),
+        expiresAt,
       };
 
-      // 4. Persistir en Quote
+      // 6. Persistir en Quote
       await this.attachmentsService.addAttachment(quoteId, attachment);
 
       this.logger.log(
-        `Attachment uploaded and persisted: ${uploadResult.publicId}`,
+        `Attachment uploaded with signed URL (expires in ${ATTACHMENT_CONFIG.EXPIRATION_DAYS} days): ${uploadResult.publicId}`,
       );
 
       return attachment;

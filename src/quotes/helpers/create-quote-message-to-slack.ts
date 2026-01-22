@@ -52,75 +52,6 @@ const formatDateToDay = (dateString: string): string => {
 };
 
 /**
- * Helper para mostrar snapshot de producto
- */
-const buildProductSnapshotBlock = (snapshot: any): any[] => {
-  const blocks: any[] = [];
-
-  // Mostrar categoría si existe
-  if (snapshot.category) {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*Category:* ${snapshot.category}`,
-      },
-    });
-  }
-
-  // Construir identificación del producto: Brand + Model + Name
-  const brandModelName: string[] = [];
-  if (snapshot.brand) brandModelName.push(snapshot.brand);
-  if (snapshot.model) brandModelName.push(snapshot.model);
-  if (snapshot.name) brandModelName.push(snapshot.name);
-
-  if (brandModelName.length > 0) {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
-      },
-    });
-  }
-
-  // Serial Number
-  if (snapshot.serialNumber) {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*Serial Number:* ${snapshot.serialNumber}`,
-      },
-    });
-  }
-
-  // Location + Country
-  if (snapshot.location || snapshot.countryCode) {
-    let locationText = '';
-    if (snapshot.location && snapshot.assignedTo && snapshot.countryCode) {
-      locationText = `${snapshot.location} + ${snapshot.assignedTo} + ${convertCountryCodeToName(snapshot.countryCode)}`;
-    } else if (snapshot.location && snapshot.countryCode) {
-      locationText = `${snapshot.location} + ${convertCountryCodeToName(snapshot.countryCode)}`;
-    } else if (snapshot.location) {
-      locationText = snapshot.location;
-    }
-
-    if (locationText) {
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Location:* ${locationText}`,
-        },
-      });
-    }
-  }
-
-  return blocks;
-};
-
-/**
  * Construye bloques de Slack para servicios
  * Soporta IT Support y Enrollment
  * @param services - Array de servicios
@@ -235,24 +166,29 @@ const buildServiceBlocks = (
 
       // Attachments (imágenes)
       if (service.attachments && service.attachments.length > 0) {
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*Attachments:* ${service.attachments.length} image(s)`,
-          },
-        });
+        const attachmentLinks = service.attachments
+          .map((att: any, idx: number) => {
+            if (att.publicId) {
+              // Construir URL pública de Cloudinary (sin firma)
+              // Usamos el publicId para generar una URL accesible públicamente
+              // Formato: https://res.cloudinary.com/{cloud_name}/image/upload/{public_id}
+              const publicUrl = `https://res.cloudinary.com/dz8rhwppl/image/upload/${att.publicId}`;
+              return `<${publicUrl}|Image ${idx + 1}>`;
+            }
+            return null;
+          })
+          .filter(Boolean)
+          .join(' | ');
 
-        // Mostrar cada imagen como un bloque de imagen
-        service.attachments.forEach((attachment: any) => {
-          if (attachment.secureUrl) {
-            blocks.push({
-              type: 'image',
-              image_url: attachment.secureUrl,
-              alt_text: attachment.originalName || 'Attachment image',
-            });
-          }
-        });
+        if (attachmentLinks) {
+          blocks.push({
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Attachments:* ${service.attachments.length} image(s)\n${attachmentLinks}`,
+            },
+          });
+        }
       }
     }
     // Enrollment Service

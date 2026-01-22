@@ -1081,7 +1081,7 @@ export class QuotesCoordinatorService {
             );
           }
 
-          // Subir archivos a Cloudinary
+          // Subir archivos a Cloudinary con URLs firmadas
           const attachments: Array<{
             provider: string;
             publicId: string;
@@ -1100,10 +1100,26 @@ export class QuotesCoordinatorService {
                 resourceType: 'image',
               });
 
+              // Generar URL firmada con expiración de 6 meses
+              const expirationSeconds =
+                ATTACHMENT_CONFIG.EXPIRATION_DAYS * 24 * 60 * 60;
+              let signedUrl: string;
+              try {
+                signedUrl = await this.storageService.getSignedUrl(
+                  uploadResult.publicId,
+                  expirationSeconds,
+                );
+              } catch (signError) {
+                this.logger.warn(
+                  `Failed to generate signed URL, falling back to public URL: ${signError.message}`,
+                );
+                signedUrl = uploadResult.secureUrl;
+              }
+
               attachments.push({
                 provider: uploadResult.provider,
                 publicId: uploadResult.publicId,
-                secureUrl: uploadResult.secureUrl,
+                secureUrl: signedUrl, // URL firmada en lugar de URL pública
                 mimeType: uploadResult.mimeType,
                 bytes: uploadResult.bytes,
                 originalName: uploadResult.originalName,

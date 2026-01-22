@@ -163,13 +163,15 @@ export class CloudinaryProvider implements StorageProvider {
         apiSecret,
       );
 
-      return cloudinary.url(publicId, {
+      const signedUrl = cloudinary.url(publicId, {
         secure: true,
         sign_url: true,
         type: 'authenticated',
         timestamp,
         signature,
       });
+
+      return signedUrl;
     } catch (error) {
       this.logger.error(`Error generating signed URL: ${error.message}`);
       throw error;

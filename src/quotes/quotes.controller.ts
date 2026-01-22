@@ -15,12 +15,9 @@ import {
   UploadedFiles,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { QuotesCoordinatorService } from './quotes-coordinator.service';
-import {
-  CreateQuoteDto,
-  UpdateQuoteDto,
-  QuoteTableWithDetailsDto,
-} from './dto';
+import { UpdateQuoteDto, QuoteTableWithDetailsDto } from './dto';
 import { QuoteResponseDto } from './dto/quote-response.dto';
 import { JwtGuard } from '../auth/guard/jwt.guard';
 import { Types } from 'mongoose';
@@ -44,7 +41,15 @@ export class QuotesController {
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @UseInterceptors(FilesInterceptor('files', 10)) // Máx 10 archivos
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB por archivo
+        files: 10, // Máx 10 archivos
+      },
+    }),
+  )
   async create(
     @Body() createQuoteDto: any,
     @UploadedFiles() files: any[] = [],

@@ -21,8 +21,8 @@ export const ATTACHMENT_CONFIG: AttachmentConfig = {
   // Tamaño máximo por archivo: 10MB
   MAX_FILE_SIZE: 10 * 1024 * 1024,
 
-  // Expiración de attachments: 30 días
-  EXPIRATION_DAYS: 30,
+  // Expiración de attachments: 180 días (6 meses)
+  EXPIRATION_DAYS: 180,
 
   // Máximo de archivos por request
   MAX_FILES_PER_REQUEST: 10,
