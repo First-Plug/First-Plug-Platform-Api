@@ -1,12 +1,13 @@
-import * as dotenv from 'dotenv';
-dotenv.config();
-
+import { config } from 'dotenv';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { ZodValidationPipe } from '@anatine/zod-nestjs';
 import { json, raw, urlencoded } from 'express';
+
+// Cargar variables de entorno desde .env
+config();
 
 const URL_PREVIEW = 'https://first-plug-testing';
 

@@ -1999,6 +1999,13 @@ clone@^1.0.2:
   resolved "https://registry.npmjs.org/clone/-/clone-1.0.4.tgz"
   integrity sha512-JQHZ2QMW6l3aH/j6xCqQThY/9OH4D/9ls34cgkUBiEeocRTU04tHfKPBsUK1PqZCUQM7GiA0IIXJSuXHI64Kbg==
 
+cloudinary@^2.8.0:
+  version "2.9.0"
+  resolved "https://registry.npmjs.org/cloudinary/-/cloudinary-2.9.0.tgz"
+  integrity sha512-F3iKMOy4y0zy0bi5JBp94SC7HY7i/ImfTPSUV07iJmRzH1Iz8WavFfOlJTR1zvYM/xKGoiGZ3my/zy64In0IQQ==
+  dependencies:
+    lodash "^4.17.21"
+
 co@^4.6.0:
   version "4.6.0"
   resolved "https://registry.npmjs.org/co/-/co-4.6.0.tgz"

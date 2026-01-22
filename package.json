@@ -79,6 +79,7 @@
     "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "cloudinary": "^2.8.0",
     "json2csv": "^6.0.0-alpha.2",
     "mongoose": "^8.3.4",
     "mongoose-delete": "^1.0.2",
