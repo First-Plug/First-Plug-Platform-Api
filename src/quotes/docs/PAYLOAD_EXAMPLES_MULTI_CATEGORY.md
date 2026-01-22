@@ -1197,7 +1197,7 @@ Incluye identificación completa del producto (importante para history y Slack):
           },
           "buybackDetails": {
             "generalFunctionality": "Funciona perfectamente, sin problemas de hardware",
-            "batteryCycles": 450,
+            "batteryCycles": "450",
             "aestheticDetails": "Pequeños arañazos en la carcasa, pantalla en perfecto estado",
             "hasCharger": true,
             "chargerWorks": true,
@@ -1240,7 +1240,7 @@ Incluye identificación completa del producto (importante para history y Slack):
           },
           "buybackDetails": {
             "generalFunctionality": "Excelente funcionamiento, sin problemas",
-            "batteryCycles": 120,
+            "batteryCycles": "120",
             "aestheticDetails": "Sin daños visibles, pantalla perfecta",
             "hasCharger": true,
             "chargerWorks": true,
@@ -1423,7 +1423,7 @@ Incluye identificación completa del producto (importante para history y Slack):
           },
           "buybackDetails": {
             "generalFunctionality": "Funciona perfectamente, sin problemas de hardware",
-            "batteryCycles": 450,
+            "batteryCycles": "450",
             "aestheticDetails": "Pequeños arañazos en la carcasa, pantalla en perfecto estado",
             "hasCharger": true,
             "chargerWorks": true,

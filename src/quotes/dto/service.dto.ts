@@ -146,7 +146,7 @@ export class BuybackServiceResponseDto {
     };
     buybackDetails?: {
       generalFunctionality?: string;
-      batteryCycles?: number;
+      batteryCycles?: string;
       aestheticDetails?: string;
       hasCharger?: boolean;
       chargerWorks?: boolean;
