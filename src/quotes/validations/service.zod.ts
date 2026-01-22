@@ -209,9 +209,8 @@ const BuybackProductDetailsSchema = z.object({
     .max(500, 'General functionality no puede exceder 500 caracteres')
     .optional(),
   batteryCycles: z
-    .number()
-    .int('Battery cycles debe ser un número entero')
-    .min(0, 'Battery cycles no puede ser negativo')
+    .string()
+    .max(100, 'Battery cycles no puede exceder 100 caracteres')
     .optional(),
   aestheticDetails: z
     .string()

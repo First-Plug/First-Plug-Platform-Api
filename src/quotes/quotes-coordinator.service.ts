@@ -12,6 +12,7 @@ import { Quote } from './interfaces/quote.interface';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { HistorySchema } from 'src/history/schemas/history.schema';
 import { CreateQuoteMessageToSlack } from './helpers/create-quote-message-to-slack';
+import { WarehousesService } from '../warehouses/warehouses.service';
 
 /**
  * QuotesCoordinatorService - Servicio Transversal
@@ -32,11 +33,70 @@ export class QuotesCoordinatorService {
     private readonly attachmentsCoordinator: AttachmentsCoordinatorService,
     private readonly storageService: StorageService,
     private readonly fileValidation: FileValidationService,
+    private readonly warehousesService: WarehousesService,
   ) {}
+
+  /**
+   * Procesar Data Wipe Service
+   * Si el destino es FP warehouse y solo tiene countryCode,
+   * busca automáticamente el warehouse activo de ese país y completa los datos
+   */
+  private async processDataWipeService(service: any): Promise<void> {
+    if (service.serviceCategory !== 'Data Wipe' || !service.assets) {
+      return;
+    }
+
+    for (const asset of service.assets) {
+      if (
+        asset.destination &&
+        asset.destination.destinationType === 'FP warehouse' &&
+        asset.destination.warehouse
+      ) {
+        const countryCode = asset.destination.warehouse.countryCode;
+
+        // Si solo tiene countryCode, buscar el warehouse activo del país
+        if (
+          countryCode &&
+          !asset.destination.warehouse.warehouseId &&
+          !asset.destination.warehouse.warehouseName
+        ) {
+          try {
+            const warehouseData =
+              await this.warehousesService.findByCountryCode(countryCode);
+
+            if (warehouseData) {
+              // Buscar warehouse activo
+              const activeWarehouse = warehouseData.warehouses.find(
+                (w: any) => w.isActive && !w.isDeleted,
+              );
+
+              if (activeWarehouse) {
+                // Completar datos del warehouse
+                asset.destination.warehouse.warehouseId =
+                  activeWarehouse._id.toString();
+                asset.destination.warehouse.warehouseName =
+                  activeWarehouse.name || 'FP warehouse';
+              } else {
+                this.logger.warn(
+                  `No active warehouse found for country code ${countryCode}`,
+                );
+              }
+            }
+          } catch (error) {
+            this.logger.error(
+              `Error processing Data Wipe warehouse for country ${countryCode}:`,
+              error,
+            );
+          }
+        }
+      }
+    }
+  }
 
   /**
    * Crear quote con coordinación de servicios
    * 1. Procesar attachments (si hay archivos)
+   * 1. Procesar servicios (ej: Data Wipe con warehouse)
    * 2. Crear quote en BD
    * 3. Notificar a Slack (no-blocking)
    * 4. Registrar en History
@@ -55,7 +115,14 @@ export class QuotesCoordinatorService {
       await this.processAttachmentsForServices(createQuoteDto, files, tenantId);
     }
 
-    // 2. Crear quote
+    // 2. Procesar servicios (ej: Data Wipe con warehouse)
+    if (createQuoteDto.services && createQuoteDto.services.length > 0) {
+      for (const service of createQuoteDto.services) {
+        await this.processDataWipeService(service);
+      }
+    }
+
+    // 3. Crear quote
     const quote = await this.quotesService.create(
       createQuoteDto,
       tenantId,
@@ -64,7 +131,7 @@ export class QuotesCoordinatorService {
       userName,
     );
 
-    // 3. Notificar a Slack (no-blocking)
+    // 4. Notificar a Slack (no-blocking)
     this.notifyQuoteCreatedToSlack(quote).catch((error) => {
       this.logger.error(
         `Error notifying Slack for quote ${quote.requestId}:`,
@@ -72,7 +139,7 @@ export class QuotesCoordinatorService {
       );
     });
 
-    // 4. Registrar en History (no-blocking)
+    // 5. Registrar en History (no-blocking)
     this.recordQuoteCreationInHistory(
       quote,
       userId || userEmail,
@@ -94,6 +161,7 @@ export class QuotesCoordinatorService {
   private async notifyQuoteCreatedToSlack(quote: Quote): Promise<void> {
     const message = CreateQuoteMessageToSlack(quote, 'New');
     await this.slackService.sendQuoteMessage(message);
+    return;
   }
 
   /**
@@ -103,6 +171,7 @@ export class QuotesCoordinatorService {
   private async notifyQuoteCancelledToSlack(quote: Quote): Promise<void> {
     const message = CreateQuoteMessageToSlack(quote, 'Cancelled');
     await this.slackService.sendQuoteMessage(message);
+    return;
   }
 
   /**

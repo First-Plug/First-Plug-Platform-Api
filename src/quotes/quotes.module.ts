@@ -14,6 +14,7 @@ import { TenantConnectionService } from '../infra/db/tenant-connection.service';
 import { TenantsModule } from '../tenants/tenants.module';
 import { tenantModels } from '../infra/db/tenant-models-provider';
 import { TenantsMiddleware } from '../common/middlewares/tenants.middleware';
+import { WarehousesModule } from '../warehouses/warehouses.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { TenantsMiddleware } from '../common/middlewares/tenants.middleware';
     TenantsModule,
     StorageModule,
     AttachmentsModule,
+    WarehousesModule,
   ],
   providers: [
     QuotesService,
