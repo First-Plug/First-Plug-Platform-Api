@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { IncomingWebhook } from '@slack/webhook';
 import { countryCodes } from 'src/shipments/helpers/countryCodes';
+import { splitSlackMessageIfNeeded } from 'src/quotes/helpers/create-quote-message-to-slack';
 
 @Injectable()
 export class SlackService {
@@ -49,6 +50,7 @@ export class SlackService {
   /**
    * Enviar mensaje de quote a Slack
    * Usa el webhook específico para quotes
+   * Divide el mensaje si excede el límite de bloques de Slack (50)
    */
   async sendQuoteMessage(message: any): Promise<void> {
     try {
@@ -58,22 +60,36 @@ export class SlackService {
         return;
       }
 
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(message),
-      });
+      // Dividir mensaje si es necesario
+      const messages = splitSlackMessageIfNeeded(message);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        this.logger.error(
-          `Failed to send Slack quote message: ${response.statusText} - ${errorText}`,
-        );
-        throw new Error(
-          `Failed to send Slack quote message: ${response.statusText}`,
-        );
+      // Enviar cada mensaje
+      for (let i = 0; i < messages.length; i++) {
+        const currentMessage = messages[i];
+        const messageJson = JSON.stringify(currentMessage);
+
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: messageJson,
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          this.logger.error(
+            `Failed to send Slack quote message (${i + 1}/${messages.length}): ${response.statusText} - ${errorText}`,
+          );
+          throw new Error(
+            `Failed to send Slack quote message: ${response.statusText}`,
+          );
+        }
+
+        // Pequeño delay entre mensajes para evitar rate limiting
+        if (i < messages.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
       }
     } catch (error) {
       this.logger.error('Error sending Slack quote message:', error);

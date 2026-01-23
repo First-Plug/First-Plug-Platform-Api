@@ -1641,3 +1641,50 @@ export const CreateQuoteMessageToSlack = (
 
   return message;
 };
+
+/**
+ * Divide un mensaje de Slack en múltiples mensajes si excede el límite de bloques
+ * Slack permite máximo 50 bloques por mensaje
+ * @param message - Mensaje original
+ * @param maxBlocksPerMessage - Máximo de bloques permitidos por mensaje (default: 50)
+ * @returns Array de mensajes divididos
+ */
+export const splitSlackMessageIfNeeded = (
+  message: any,
+  maxBlocksPerMessage: number = 50,
+): any[] => {
+  const totalBlocks = message.blocks?.length || 0;
+
+  if (totalBlocks <= maxBlocksPerMessage) {
+    return [message];
+  }
+
+  // Necesita dividirse
+  const messages: any[] = [];
+  const headerBlock = message.blocks[0]; // Header
+  const summaryBlock = message.blocks[1]; // Summary fields
+  const dividerBlock = message.blocks[2]; // Divider
+
+  // Bloques de contenido (productos y servicios)
+  const contentBlocks = message.blocks.slice(3);
+
+  // Calcular cuántos bloques podemos poner en cada mensaje
+  // Reservamos 3 bloques para header, summary y divider
+  const blocksPerMessage = maxBlocksPerMessage - 3;
+
+  // Dividir bloques de contenido
+  for (let i = 0; i < contentBlocks.length; i += blocksPerMessage) {
+    const chunk = contentBlocks.slice(i, i + blocksPerMessage);
+    const messageNumber = Math.floor(i / blocksPerMessage) + 1;
+    const totalMessages = Math.ceil(contentBlocks.length / blocksPerMessage);
+
+    const splitMessage = {
+      text: `${message.text} (Part ${messageNumber}/${totalMessages})`,
+      blocks: [headerBlock, summaryBlock, dividerBlock, ...chunk],
+    };
+
+    messages.push(splitMessage);
+  }
+
+  return messages;
+};
