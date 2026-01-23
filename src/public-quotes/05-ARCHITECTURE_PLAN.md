@@ -14,7 +14,7 @@ Feature para crear quotes públicas (sin autenticación) desde una URL pública.
 | **Numeración**    | QR-{tenantName}-{autoIncrement}        | PQR-{timestamp}-{random}                                              |
 | **Datos extras**  | Email, nombre, empresa, país, teléfono | ✅ Todos requeridos                                                   |
 | **Destino**       | Slack + BD tenant                      | ✅ Slack + BD superior (firstPlug.quotes / main.quotes)               |
-| **Acceso**        | Usuarios del tenant                    | ✅ Solo SuperAdmin                                                    |
+| **Acceso**        | Usuarios del tenant                    | ✅ Solo SuperAdmin en otra fase                                       |
 
 ---
 
@@ -67,7 +67,7 @@ src/public-quotes/
 - ✅ Manejar errores de Slack (no-blocking)
 - ✅ Reutilizar SlackService existente
 
-#### **SuperAdmin Service (Nuevo)**
+#### **SuperAdmin Service (Nuevo)** - esto es para otra fase
 
 - ✅ Listar todas las public quotes
 - ✅ Obtener detalle de una quote
@@ -107,7 +107,7 @@ Ejemplo: `PQR-1705123456789-A7K2`
 
 **Ventajas**:
 
-- ✅ Único sin BD
+- ✅ Único garantizado
 - ✅ Timestamp para ordenamiento
 - ✅ Random para evitar predicción
 - ✅ Corto y legible
@@ -136,7 +136,7 @@ Ejemplo: `PQR-1705123456789-A7K2`
 
 - ✅ Usar `sendQuoteMessage()` existente
 - ✅ Crear nuevo método `sendPublicQuoteMessage()` si es necesario
-- ✅ Usar webhook `SLACK_WEBHOOK_URL_QUOTES`
+- ✅ Usar webhook configurar un nuevo canal de slack para quotes publicas
 
 ### Validaciones
 
@@ -152,7 +152,7 @@ Ejemplo: `PQR-1705123456789-A7K2`
 3. **Persistencia en BD Superior**: Datos se guardan en `firstPlug.quotes` (NO en tenant DBs)
 4. **Slack es crítico**: Si Slack falla, la quote se guarda igual (persistencia en BD es lo importante)
 5. **Datos de cliente**: Nunca exponer información de otros clientes
-6. **SuperAdmin Access**: Solo SuperAdmin puede ver/gestionar public quotes
+6. **SuperAdmin Access**: Solo SuperAdmin puede ver/gestionar public quotes - FUTURAS FASES - No en Fase 1
 7. **Índices en BD**: Crear índices en `createdAt`, `email`, `country`, `requestType` para búsquedas rápidas
 
 ---

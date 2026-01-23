@@ -145,11 +145,14 @@ async createPublicQuote() { ... }
 
 ## 5. Integración Slack
 
+canal producción: quotes-public
+canal desarrollo: test-quotes-public
+
 ### Payload
 
 ```json
 {
-  "channel": "quotes",
+  "channel": "quotes-public",
   "blocks": [
     {
       "type": "section",
@@ -258,7 +261,7 @@ db.quotes.createIndex({ status: 1 }); // Para filtrado por estado
 db.quotes.createIndex({ createdAt: -1, status: 1 }); // Compuesto
 ```
 
-### Acceso SuperAdmin
+### Acceso SuperAdmin - FUTURAS FASES - No en Fase 1
 
 ```typescript
 // SuperAdmin endpoints

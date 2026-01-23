@@ -15,7 +15,7 @@
 | **requestType**           | ✅ Sí                             | ✅ Sí ('product'\|'service'\|'mixed')                       |
 | **Servicios Disponibles** | Todos (incluye Offboarding)       | 10 servicios (incluye Offboarding y Logistics)              |
 | **Destino**               | ✅ BD tenant + Slack              | ✅ BD superior + Slack (firstPlug.quotes / main.quotes)     |
-| **Acceso**                | Usuarios del tenant               | ✅ Solo SuperAdmin                                          |
+| **Acceso**                | Usuarios del tenant               | ✅ Solo SuperAdmin - en otra fase de desarrollo             |
 | **Módulo**                | `QuotesModule`                    | `PublicQuotesModule`                                        |
 | **Servicio Raíz**         | `QuotesService`                   | `PublicQuotesService`                                       |
 | **Coordinador**           | `QuotesCoordinatorService`        | `PublicQuotesCoordinatorService`                            |
@@ -55,7 +55,7 @@
    ├─ PublicQuotesService.saveToBDSuperior() → Guarda en BD superior (firstPlug.quotes / main.quotes)
    └─ SlackService.sendQuoteMessage() → Notifica (no-blocking)
 7. Retorna confirmación con número PQR
-8. SuperAdmin puede ver en /super-admin/public-quotes
+8. SuperAdmin puede ver en /super-admin/public-quotes - FUTURAS FASES - No en Fase 1
 ```
 
 ---

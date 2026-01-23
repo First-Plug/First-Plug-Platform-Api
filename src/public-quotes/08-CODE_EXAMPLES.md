@@ -581,7 +581,7 @@ export class PublicQuotesCoordinatorService {
 
 ---
 
-## 10. SuperAdmin Endpoints
+## 10. SuperAdmin Endpoints - FUTURAS FASES - No en Fase 1
 
 ### SuperAdmin Controller
 
@@ -628,7 +628,7 @@ export class PublicQuotesSuperAdminController {
 }
 ```
 
-### SuperAdmin Service
+### SuperAdmin Service - FUTURAS FASES - No en Fase 1
 
 ```typescript
 @Injectable()
