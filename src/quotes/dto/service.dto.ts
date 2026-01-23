@@ -27,6 +27,17 @@ export class ITSupportServiceResponseDto {
   description: string;
   issueStartDate?: string;
   impactLevel: 'low' | 'medium' | 'high';
+  attachments?: Array<{
+    provider: 'cloudinary' | 's3';
+    publicId: string;
+    secureUrl: string;
+    mimeType: string;
+    bytes: number;
+    originalName?: string;
+    resourceType?: string;
+    createdAt: Date;
+    expiresAt: Date;
+  }>;
 }
 
 /**
@@ -146,7 +157,7 @@ export class BuybackServiceResponseDto {
     };
     buybackDetails?: {
       generalFunctionality?: string;
-      batteryCycles?: number;
+      batteryCycles?: string;
       aestheticDetails?: string;
       hasCharger?: boolean;
       chargerWorks?: boolean;
@@ -338,5 +349,16 @@ export class AddServiceToQuoteDto {
     description: string;
     issueStartDate?: string;
     impactLevel: 'low' | 'medium' | 'high';
+    attachments?: Array<{
+      provider: 'cloudinary' | 's3';
+      publicId: string;
+      secureUrl: string;
+      mimeType: string;
+      bytes: number;
+      originalName?: string;
+      resourceType?: string;
+      createdAt: Date;
+      expiresAt: Date;
+    }>;
   };
 }

@@ -47,10 +47,29 @@ const BaseServiceSchema = z.object({
 });
 
 /**
+ * Attachment Schema para IT Support
+ * Los attachments se procesan en el backend (multipart)
+ * Este schema es para validación de metadatos después del upload
+ */
+const AttachmentSchema = z.object({
+  provider: z.enum(['cloudinary', 's3']),
+  publicId: z.string(),
+  secureUrl: z.string().url(),
+  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+  bytes: z.number().min(0).max(10485760), // 10MB
+  originalName: z.string().optional(),
+  resourceType: z.string().optional(),
+  createdAt: z.date(),
+  expiresAt: z.date(),
+});
+
+/**
  * IT Support Service Schema
+ * Attachments son opcionales en el DTO (se procesan en multipart)
  */
 export const ITSupportServiceSchema = BaseServiceSchema.extend({
   serviceCategory: z.literal('IT Support'),
+  attachments: z.array(AttachmentSchema).optional().default([]),
 });
 
 export type ITSupportService = z.infer<typeof ITSupportServiceSchema>;
@@ -190,9 +209,8 @@ const BuybackProductDetailsSchema = z.object({
     .max(500, 'General functionality no puede exceder 500 caracteres')
     .optional(),
   batteryCycles: z
-    .number()
-    .int('Battery cycles debe ser un número entero')
-    .min(0, 'Battery cycles no puede ser negativo')
+    .string()
+    .max(100, 'Battery cycles no puede exceder 100 caracteres')
     .optional(),
   aestheticDetails: z
     .string()

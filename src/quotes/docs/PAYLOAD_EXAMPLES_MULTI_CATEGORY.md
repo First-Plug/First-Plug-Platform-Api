@@ -1,5 +1,22 @@
 # Payload Examples - Multi-Category Quotes
 
+## ⚠️ IMPORTANTE: IT Support con Attachments
+
+Para servicios **IT Support**, los archivos adjuntos (imágenes) se envían como **multipart/form-data**:
+
+```
+POST /quotes
+Content-Type: multipart/form-data
+
+- services: (text) JSON array con IT Support
+- products: (text) JSON array vacío o con productos
+- files: (file) Imágenes adjuntas (máx 10 archivos, 5MB cada uno)
+```
+
+**Los attachments se procesan automáticamente en el backend** y se mapean al servicio IT Support. No es necesario incluirlos en el JSON.
+
+---
+
 ## 1. Quote con Monitor
 
 ```json
@@ -728,6 +745,65 @@ Incluye identificación completa del producto (importante para history y Slack):
 }
 ```
 
+## Example 16b: Data Wipe Service - Computer to FP Warehouse (Auto-lookup)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Data Wipe",
+      "assets": [
+        {
+          "productId": "686beb939c7a0951bbec43c4",
+          "productSnapshot": {
+            "category": "Computer",
+            "name": "",
+            "brand": "Lenovo",
+            "model": "ThinkPad Serie Z",
+            "serialNumber": "5dys87g1s112",
+            "location": "Our office",
+            "assignedTo": "Oficina Principal",
+            "countryCode": "GT"
+          },
+          "desirableDate": "2025-12-28",
+          "currentLocation": "Our office",
+          "currentOffice": {
+            "officeId": "687e7e601d43bf08d8f26046",
+            "officeName": "Oficina Principal",
+            "countryCode": "GT"
+          },
+          "destination": {
+            "destinationType": "FP warehouse",
+            "warehouse": {
+              "countryCode": "GT"
+            }
+          }
+        }
+      ],
+      "additionalDetails": "Secure data wipe required. Return to FP Warehouse Guatemala after wipe."
+    }
+  ]
+}
+```
+
+**Nota sobre FP Warehouse (Auto-lookup):**
+
+- Cuando el destino es "FP warehouse", el frontend **solo envía el `countryCode`**
+- El backend **automáticamente busca el warehouse activo** del país correspondiente
+- Completa `warehouseId` y `warehouseName` antes de guardar
+- Esto evita que el frontend necesite acceso a todos los datos de warehouses (que maneja el superadmin)
+- **Resultado guardado en BD:**
+  ```json
+  "destination": {
+    "destinationType": "FP warehouse",
+    "warehouse": {
+      "warehouseId": "68c466eb2a12cf5c56301a2e",
+      "warehouseName": "Sede FirstPlug Guatemala",
+      "countryCode": "GT"
+    }
+  }
+  ```
+
 ## Example 17: Data Wipe Service - Multiple Assets (Computer + Other)
 
 ```json
@@ -858,6 +934,28 @@ Incluye identificación completa del producto (importante para history y Slack):
         "Battery not charging"
       ],
       "description": "Asus IdeaPad Serie S experiencing connectivity issues, performance degradation, and battery charging problems. Needs diagnostic and repair.",
+      "issueStartDate": "2025-12-10",
+      "impactLevel": "high"
+    },
+    {
+      "serviceCategory": "IT Support",
+      "productId": "690b9d8e3c2dc7018e2f5039",
+      "productSnapshot": {
+        "category": "Computer",
+        "name": "Computer",
+        "brand": "Lenovo",
+        "model": "ThinkPad Serie Z",
+        "serialNumber": "5dys87g1s112",
+        "location": "Our office",
+        "assignedTo": "nadiabarraza@work.com",
+        "countryCode": "GT"
+      },
+      "issues": [
+        "Device not connecting to network",
+        "Slow performance",
+        "Battery not charging"
+      ],
+      "description": "Lenovo ThinkPad experiencing connectivity issues and performance degradation.",
       "issueStartDate": "2025-12-10",
       "impactLevel": "high"
     },
@@ -1138,7 +1236,7 @@ Incluye identificación completa del producto (importante para history y Slack):
           },
           "buybackDetails": {
             "generalFunctionality": "Funciona perfectamente, sin problemas de hardware",
-            "batteryCycles": 450,
+            "batteryCycles": "450",
             "aestheticDetails": "Pequeños arañazos en la carcasa, pantalla en perfecto estado",
             "hasCharger": true,
             "chargerWorks": true,
@@ -1181,7 +1279,7 @@ Incluye identificación completa del producto (importante para history y Slack):
           },
           "buybackDetails": {
             "generalFunctionality": "Excelente funcionamiento, sin problemas",
-            "batteryCycles": 120,
+            "batteryCycles": "120",
             "aestheticDetails": "Sin daños visibles, pantalla perfecta",
             "hasCharger": true,
             "chargerWorks": true,
@@ -1364,7 +1462,7 @@ Incluye identificación completa del producto (importante para history y Slack):
           },
           "buybackDetails": {
             "generalFunctionality": "Funciona perfectamente, sin problemas de hardware",
-            "batteryCycles": 450,
+            "batteryCycles": "450",
             "aestheticDetails": "Pequeños arañazos en la carcasa, pantalla en perfecto estado",
             "hasCharger": true,
             "chargerWorks": true,

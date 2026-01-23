@@ -1,13 +1,18 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { QuotesService } from './quotes.service';
 import { SlackService } from '../slack/slack.service';
 import { HistoryService } from '../history/history.service';
+import { AttachmentsCoordinatorService } from './attachments-coordinator.service';
+import { StorageService } from '../storage/storage.service';
+import { FileValidationService } from '../attachments/services/file-validation.service';
+import { ATTACHMENT_CONFIG } from '../attachments/config/attachment.config';
 import { CreateQuoteDto } from './dto';
 import { Quote } from './interfaces/quote.interface';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
 import { HistorySchema } from 'src/history/schemas/history.schema';
 import { CreateQuoteMessageToSlack } from './helpers/create-quote-message-to-slack';
+import { WarehousesService } from '../warehouses/warehouses.service';
 
 /**
  * QuotesCoordinatorService - Servicio Transversal
@@ -25,13 +30,76 @@ export class QuotesCoordinatorService {
     private readonly slackService: SlackService,
     private readonly historyService: HistoryService,
     private readonly tenantConnectionService: TenantConnectionService,
+    private readonly attachmentsCoordinator: AttachmentsCoordinatorService,
+    private readonly storageService: StorageService,
+    private readonly fileValidation: FileValidationService,
+    private readonly warehousesService: WarehousesService,
   ) {}
 
   /**
+   * Procesar Data Wipe Service
+   * Si el destino es FP warehouse y solo tiene countryCode,
+   * busca automáticamente el warehouse activo de ese país y completa los datos
+   */
+  private async processDataWipeService(service: any): Promise<void> {
+    if (service.serviceCategory !== 'Data Wipe' || !service.assets) {
+      return;
+    }
+
+    for (const asset of service.assets) {
+      if (
+        asset.destination &&
+        asset.destination.destinationType === 'FP warehouse' &&
+        asset.destination.warehouse
+      ) {
+        const countryCode = asset.destination.warehouse.countryCode;
+
+        // Si solo tiene countryCode, buscar el warehouse activo del país
+        if (
+          countryCode &&
+          !asset.destination.warehouse.warehouseId &&
+          !asset.destination.warehouse.warehouseName
+        ) {
+          try {
+            const warehouseData =
+              await this.warehousesService.findByCountryCode(countryCode);
+
+            if (warehouseData) {
+              // Buscar warehouse activo
+              const activeWarehouse = warehouseData.warehouses.find(
+                (w: any) => w.isActive && !w.isDeleted,
+              );
+
+              if (activeWarehouse) {
+                // Completar datos del warehouse
+                asset.destination.warehouse.warehouseId =
+                  activeWarehouse._id.toString();
+                asset.destination.warehouse.warehouseName =
+                  activeWarehouse.name || 'FP warehouse';
+              } else {
+                this.logger.warn(
+                  `No active warehouse found for country code ${countryCode}`,
+                );
+              }
+            }
+          } catch (error) {
+            this.logger.error(
+              `Error processing Data Wipe warehouse for country ${countryCode}:`,
+              error,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Crear quote con coordinación de servicios
-   * 1. Crear quote en BD
-   * 2. Notificar a Slack (no-blocking)
-   * 3. Registrar en History
+   * 1. Procesar attachments (si hay archivos)
+   * 1. Procesar servicios (ej: Data Wipe con warehouse)
+   * 2. Crear quote en BD
+   * 3. Notificar a Slack (no-blocking)
+   * 4. Registrar en History
    */
   async createQuoteWithCoordination(
     createQuoteDto: CreateQuoteDto,
@@ -40,8 +108,21 @@ export class QuotesCoordinatorService {
     userEmail: string,
     userName?: string,
     userId?: string,
+    files: any[] = [],
   ): Promise<Quote> {
-    // 1. Crear quote
+    // 1. Procesar attachments si hay archivos
+    if (files && files.length > 0) {
+      await this.processAttachmentsForServices(createQuoteDto, files, tenantId);
+    }
+
+    // 2. Procesar servicios (ej: Data Wipe con warehouse)
+    if (createQuoteDto.services && createQuoteDto.services.length > 0) {
+      for (const service of createQuoteDto.services) {
+        await this.processDataWipeService(service);
+      }
+    }
+
+    // 3. Crear quote
     const quote = await this.quotesService.create(
       createQuoteDto,
       tenantId,
@@ -50,7 +131,7 @@ export class QuotesCoordinatorService {
       userName,
     );
 
-    // 2. Notificar a Slack (no-blocking)
+    // 4. Notificar a Slack (no-blocking)
     this.notifyQuoteCreatedToSlack(quote).catch((error) => {
       this.logger.error(
         `Error notifying Slack for quote ${quote.requestId}:`,
@@ -58,7 +139,7 @@ export class QuotesCoordinatorService {
       );
     });
 
-    // 3. Registrar en History (no-blocking)
+    // 5. Registrar en History (no-blocking)
     this.recordQuoteCreationInHistory(
       quote,
       userId || userEmail,
@@ -80,6 +161,7 @@ export class QuotesCoordinatorService {
   private async notifyQuoteCreatedToSlack(quote: Quote): Promise<void> {
     const message = CreateQuoteMessageToSlack(quote, 'New');
     await this.slackService.sendQuoteMessage(message);
+    return;
   }
 
   /**
@@ -89,13 +171,17 @@ export class QuotesCoordinatorService {
   private async notifyQuoteCancelledToSlack(quote: Quote): Promise<void> {
     const message = CreateQuoteMessageToSlack(quote, 'Cancelled');
     await this.slackService.sendQuoteMessage(message);
+    return;
   }
 
   /**
    * Cancelar quote con coordinación
-   * 1. Cambiar status a 'Cancelled'
-   * 2. Notificar a Slack (no-blocking)
-   * 3. Registrar en History (no-blocking)
+   * 1. Limpiar attachments (borrar imágenes de Cloudinary, vaciar array en Quote)
+   * 2. Cambiar status a 'Cancelled'
+   * 3. Notificar a Slack (no-blocking)
+   * 4. Registrar en History (no-blocking)
+   *
+   * Nota: Quote permanece como registro histórico, solo se limpian las imágenes
    */
   async cancelQuoteWithCoordination(
     id: string,
@@ -103,10 +189,20 @@ export class QuotesCoordinatorService {
     userEmail: string,
     quote: Quote,
   ): Promise<Quote> {
-    // 1. Cambiar status a Cancelled
+    // 1. Limpiar attachments (imágenes ya no sirven después de cancelar)
+    this.attachmentsCoordinator
+      .cleanupAttachmentsOnCancel(id)
+      .catch((error) => {
+        this.logger.error(
+          `Error cleaning up attachments for quote cancellation ${id}:`,
+          error,
+        );
+      });
+
+    // 2. Cambiar status a Cancelled
     const cancelledQuote = await this.quotesService.cancel(id);
 
-    // 2. Notificar a Slack (no-blocking)
+    // 3. Notificar a Slack (no-blocking)
     this.notifyQuoteCancelledToSlack(cancelledQuote).catch((error) => {
       this.logger.error(
         `Error notifying Slack for quote cancellation ${id}:`,
@@ -114,7 +210,7 @@ export class QuotesCoordinatorService {
       );
     });
 
-    // 3. Registrar en History (no-blocking)
+    // 4. Registrar en History (no-blocking)
     this.recordQuoteCancellationInHistory(
       quote,
       cancelledQuote,
@@ -955,5 +1051,99 @@ export class QuotesCoordinatorService {
     return {
       serviceCategory: service.serviceCategory,
     };
+  }
+
+  /**
+   * Procesar attachments para servicios IT Support
+   * Valida archivos, sube a Cloudinary y agrega metadata a los servicios
+   *
+   * Usa configuración centralizada de ATTACHMENT_CONFIG
+   * Delega validaciones a FileValidationService
+   */
+  private async processAttachmentsForServices(
+    createQuoteDto: CreateQuoteDto,
+    files: any[],
+    tenantId: Types.ObjectId,
+  ): Promise<void> {
+    const MAX_ATTACHMENTS_PER_SERVICE = 4;
+
+    // Validar archivos (delegado a FileValidationService)
+    this.fileValidation.validateFiles(files);
+
+    // Procesar archivos y agregarlos a servicios IT Support
+    if (createQuoteDto.services && createQuoteDto.services.length > 0) {
+      for (const service of createQuoteDto.services) {
+        if (service.serviceCategory === 'IT Support') {
+          // Validar cantidad de attachments
+          if (files.length > MAX_ATTACHMENTS_PER_SERVICE) {
+            throw new BadRequestException(
+              `Maximum ${MAX_ATTACHMENTS_PER_SERVICE} attachments allowed per IT Support service`,
+            );
+          }
+
+          // Subir archivos a Cloudinary con URLs firmadas
+          const attachments: Array<{
+            provider: string;
+            publicId: string;
+            secureUrl: string;
+            mimeType: string;
+            bytes: number;
+            originalName?: string;
+            resourceType?: string;
+            createdAt: Date;
+            expiresAt: Date;
+          }> = [];
+          for (const file of files) {
+            try {
+              const uploadResult = await this.storageService.upload(file, {
+                folder: `quotes/${tenantId}/it-support`,
+                resourceType: 'image',
+              });
+
+              // Generar URL firmada con expiración de 6 meses
+              const expirationSeconds =
+                ATTACHMENT_CONFIG.EXPIRATION_DAYS * 24 * 60 * 60;
+              let signedUrl: string;
+              try {
+                signedUrl = await this.storageService.getSignedUrl(
+                  uploadResult.publicId,
+                  expirationSeconds,
+                );
+              } catch (signError) {
+                this.logger.warn(
+                  `Failed to generate signed URL, falling back to public URL: ${signError.message}`,
+                );
+                signedUrl = uploadResult.secureUrl;
+              }
+
+              attachments.push({
+                provider: uploadResult.provider,
+                publicId: uploadResult.publicId,
+                secureUrl: signedUrl, // URL firmada en lugar de URL pública
+                mimeType: uploadResult.mimeType,
+                bytes: uploadResult.bytes,
+                originalName: uploadResult.originalName,
+                resourceType: uploadResult.resourceType,
+                createdAt: new Date(),
+                expiresAt: new Date(
+                  Date.now() +
+                    ATTACHMENT_CONFIG.EXPIRATION_DAYS * 24 * 60 * 60 * 1000,
+                ),
+              });
+            } catch (error) {
+              this.logger.error(
+                `Error uploading file ${file.originalname}: ${error.message}`,
+              );
+              throw new BadRequestException(
+                `Failed to upload ${file.originalname}`,
+              );
+            }
+          }
+
+          // Agregar attachments al servicio
+          (service as any).attachments = attachments;
+        }
+      }
+    }
   }
 }

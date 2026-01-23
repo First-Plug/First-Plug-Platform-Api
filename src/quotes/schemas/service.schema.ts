@@ -8,31 +8,31 @@ import { Types } from 'mongoose';
 @Schema({ _id: false })
 export class ProductSnapshotSchema {
   @Prop({ type: String })
-  category?: string; // Categoría del producto (Computer, Monitor, Audio, etc.)
+  category?: string;
 
   @Prop({ type: String })
-  name?: string; // Nombre del producto
+  name?: string;
 
   @Prop({ type: String })
-  brand?: string; // Marca del producto
+  brand?: string;
 
   @Prop({ type: String })
-  model?: string; // Modelo del producto
+  model?: string;
 
   @Prop({ type: String })
   serialNumber?: string;
 
   @Prop({ type: String })
-  location?: string; // Employee, FP warehouse, Our office
+  location?: string;
 
   @Prop({ type: String })
-  assignedTo?: string; // member name, office name, or warehouse name
+  assignedTo?: string;
 
   @Prop({ type: String })
-  assignedEmail?: string; // Email del miembro asignado (si aplica)
+  assignedEmail?: string;
 
   @Prop({ type: String, maxlength: 2 })
-  countryCode?: string; // ISO country code (AR, BR, US, etc.)
+  countryCode?: string;
 }
 
 /**
@@ -41,19 +41,19 @@ export class ProductSnapshotSchema {
 @Schema({ _id: false, discriminatorKey: 'serviceCategory' })
 export class BaseServiceSchema {
   @Prop({ type: Types.ObjectId })
-  productId?: Types.ObjectId; // ID del producto en warehouse
+  productId?: Types.ObjectId;
 
   @Prop({ type: ProductSnapshotSchema })
   productSnapshot?: ProductSnapshotSchema;
 
   @Prop({ type: [String], required: true })
-  issues: string[]; // Array de issues seleccionados
+  issues: string[];
 
   @Prop({ type: String, required: true })
   description: string;
 
   @Prop({ type: String })
-  issueStartDate?: string; // YYYY-MM-DD format
+  issueStartDate?: string;
 
   @Prop({ type: String, enum: ['low', 'medium', 'high'], required: true })
   impactLevel: 'low' | 'medium' | 'high';
@@ -61,11 +61,44 @@ export class BaseServiceSchema {
 
 /**
  * Subdocumento para IT Support Service
+ * Incluye soporte para adjuntos (imágenes) - Release 2
  */
 @Schema({ _id: false })
 export class ITSupportServiceSchema extends BaseServiceSchema {
   @Prop({ type: String, enum: ['IT Support'], required: true })
   serviceCategory: 'IT Support';
+
+  @Prop({
+    type: [
+      {
+        provider: { type: String, enum: ['cloudinary', 's3'], required: true },
+        publicId: { type: String, required: true, index: true },
+        secureUrl: { type: String, required: true },
+        mimeType: {
+          type: String,
+          enum: ['image/jpeg', 'image/png', 'image/webp'],
+          required: true,
+        },
+        bytes: { type: Number, required: true, min: 0, max: 10485760 },
+        originalName: { type: String },
+        resourceType: { type: String },
+        createdAt: { type: Date, required: true, default: () => new Date() },
+        expiresAt: { type: Date, required: true, index: true },
+      },
+    ],
+    default: [],
+  })
+  attachments: Array<{
+    provider: 'cloudinary' | 's3';
+    publicId: string;
+    secureUrl: string;
+    mimeType: string;
+    bytes: number;
+    originalName?: string;
+    resourceType?: string;
+    createdAt: Date;
+    expiresAt: Date;
+  }> = [];
 }
 
 /**
@@ -78,10 +111,10 @@ export class EnrollmentServiceSchema {
   serviceCategory: 'Enrollment';
 
   @Prop({ type: [ProductSnapshotSchema], required: true })
-  enrolledDevices: ProductSnapshotSchema[]; // Array de dispositivos a enrollar con snapshots
+  enrolledDevices: ProductSnapshotSchema[];
 
   @Prop({ type: String })
-  additionalDetails?: string; // Detalles adicionales (opcional)
+  additionalDetails?: string;
 }
 
 /**
@@ -90,16 +123,16 @@ export class EnrollmentServiceSchema {
 @Schema({ _id: false })
 export class MemberLocationSchema {
   @Prop({ type: Types.ObjectId })
-  memberId?: Types.ObjectId; // ID del miembro
+  memberId?: Types.ObjectId;
 
   @Prop({ type: String })
-  assignedMember?: string; // Nombre del miembro (consistente con Product schema)
+  assignedMember?: string;
 
   @Prop({ type: String })
-  assignedEmail?: string; // Email del miembro (consistente con Product schema)
+  assignedEmail?: string;
 
   @Prop({ type: String, maxlength: 2 })
-  countryCode?: string; // ISO country code del miembro
+  countryCode?: string;
 }
 
 /**
@@ -108,13 +141,13 @@ export class MemberLocationSchema {
 @Schema({ _id: false })
 export class OfficeLocationSchema {
   @Prop({ type: Types.ObjectId })
-  officeId?: Types.ObjectId; // ID de la oficina
+  officeId?: Types.ObjectId;
 
   @Prop({ type: String })
-  officeName?: string; // Nombre de la oficina
+  officeName?: string;
 
   @Prop({ type: String, maxlength: 2 })
-  countryCode?: string; // ISO country code de la oficina
+  countryCode?: string;
 }
 
 /**
@@ -123,13 +156,13 @@ export class OfficeLocationSchema {
 @Schema({ _id: false })
 export class WarehouseLocationSchema {
   @Prop({ type: Types.ObjectId })
-  warehouseId?: Types.ObjectId; // ID del warehouse
+  warehouseId?: Types.ObjectId;
 
   @Prop({ type: String })
-  warehouseName?: string; // Nombre del warehouse
+  warehouseName?: string;
 
   @Prop({ type: String, maxlength: 2 })
-  countryCode?: string; // ISO country code del warehouse
+  countryCode?: string;
 }
 
 /**
@@ -139,16 +172,16 @@ export class WarehouseLocationSchema {
 @Schema({ _id: false })
 export class DataWipeDestinationSchema {
   @Prop({ type: String, enum: ['Employee', 'Our office', 'FP warehouse'] })
-  destinationType?: string; // Tipo de destino
+  destinationType?: string;
 
   @Prop({ type: MemberLocationSchema })
-  member?: MemberLocationSchema; // Datos del miembro si destinationType es 'Employee'
+  member?: MemberLocationSchema;
 
   @Prop({ type: OfficeLocationSchema })
-  office?: OfficeLocationSchema; // Datos de la oficina si destinationType es 'Our office'
+  office?: OfficeLocationSchema;
 
   @Prop({ type: WarehouseLocationSchema })
-  warehouse?: WarehouseLocationSchema; // Datos del warehouse si destinationType es 'FP warehouse'
+  warehouse?: WarehouseLocationSchema;
 }
 
 /**
@@ -157,28 +190,27 @@ export class DataWipeDestinationSchema {
 @Schema({ _id: false })
 export class DataWipeAssetSchema {
   @Prop({ type: Types.ObjectId })
-  productId?: Types.ObjectId; // ID del producto
-
+  productId?: Types.ObjectId;
   @Prop({ type: ProductSnapshotSchema })
-  productSnapshot?: ProductSnapshotSchema; // Snapshot del producto
+  productSnapshot?: ProductSnapshotSchema;
 
   @Prop({ type: String })
-  desirableDate?: string; // YYYY-MM-DD format - Fecha deseada para el wipe (opcional)
+  desirableDate?: string;
 
   @Prop({ type: String, enum: ['Employee', 'Our office', 'FP warehouse'] })
-  currentLocation?: string; // Ubicación actual del producto
+  currentLocation?: string;
 
   @Prop({ type: MemberLocationSchema })
-  currentMember?: MemberLocationSchema; // Datos del miembro si currentLocation es 'Employee'
+  currentMember?: MemberLocationSchema;
 
   @Prop({ type: OfficeLocationSchema })
-  currentOffice?: OfficeLocationSchema; // Datos de la oficina si currentLocation es 'Our office'
+  currentOffice?: OfficeLocationSchema;
 
   @Prop({ type: WarehouseLocationSchema })
-  currentWarehouse?: WarehouseLocationSchema; // Datos del warehouse si currentLocation es 'FP warehouse'
+  currentWarehouse?: WarehouseLocationSchema;
 
   @Prop({ type: DataWipeDestinationSchema })
-  destination?: DataWipeDestinationSchema; // Destino después del wipe (opcional)
+  destination?: DataWipeDestinationSchema;
 }
 
 /**
@@ -191,10 +223,10 @@ export class DataWipeServiceSchema {
   serviceCategory: 'Data Wipe';
 
   @Prop({ type: [DataWipeAssetSchema], required: true })
-  assets: DataWipeAssetSchema[]; // Array de assets a hacer wipe
+  assets: DataWipeAssetSchema[];
 
   @Prop({ type: String })
-  additionalDetails?: string; // Detalles adicionales (opcional)
+  additionalDetails?: string;
 }
 
 /**
@@ -203,10 +235,10 @@ export class DataWipeServiceSchema {
 @Schema({ _id: false })
 export class DestructionProductSchema {
   @Prop({ type: Types.ObjectId })
-  productId?: Types.ObjectId; // ID del producto
+  productId?: Types.ObjectId;
 
   @Prop({ type: ProductSnapshotSchema })
-  productSnapshot?: ProductSnapshotSchema; // Snapshot del producto
+  productSnapshot?: ProductSnapshotSchema;
 }
 
 /**
@@ -219,13 +251,13 @@ export class DestructionAndRecyclingServiceSchema {
   serviceCategory: 'Destruction and Recycling';
 
   @Prop({ type: [DestructionProductSchema], required: true })
-  products: DestructionProductSchema[]; // Array de productos a destruir con snapshots
+  products: DestructionProductSchema[];
 
   @Prop({ type: Boolean, default: false })
-  requiresCertificate?: boolean; // ¿Se requiere certificado de destrucción?
+  requiresCertificate?: boolean;
 
   @Prop({ type: String })
-  comments?: string; // Comentarios adicionales (opcional)
+  comments?: string;
 }
 
 /**
@@ -234,22 +266,22 @@ export class DestructionAndRecyclingServiceSchema {
 @Schema({ _id: false })
 export class BuybackProductDetailsSchema {
   @Prop({ type: String })
-  generalFunctionality?: string; // Descripción del funcionamiento general (opcional)
-
-  @Prop({ type: Number })
-  batteryCycles?: number; // Ciclos de batería (opcional)
+  generalFunctionality?: string;
 
   @Prop({ type: String })
-  aestheticDetails?: string; // Detalles estéticos (opcional, text area)
-
-  @Prop({ type: Boolean })
-  hasCharger?: boolean; // ¿Tiene cargador? (opcional)
-
-  @Prop({ type: Boolean })
-  chargerWorks?: boolean; // ¿Funciona el cargador? (opcional)
+  batteryCycles?: string;
 
   @Prop({ type: String })
-  additionalComments?: string; // Otros comentarios (opcional)
+  aestheticDetails?: string;
+
+  @Prop({ type: Boolean })
+  hasCharger?: boolean;
+
+  @Prop({ type: Boolean })
+  chargerWorks?: boolean;
+
+  @Prop({ type: String })
+  additionalComments?: string;
 }
 
 /**
@@ -258,13 +290,12 @@ export class BuybackProductDetailsSchema {
 @Schema({ _id: false })
 export class BuybackProductSchema {
   @Prop({ type: Types.ObjectId })
-  productId?: Types.ObjectId; // ID del producto
+  productId?: Types.ObjectId;
 
   @Prop({ type: ProductSnapshotSchema })
-  productSnapshot?: ProductSnapshotSchema; // Snapshot del producto
-
+  productSnapshot?: ProductSnapshotSchema;
   @Prop({ type: BuybackProductDetailsSchema })
-  buybackDetails?: BuybackProductDetailsSchema; // Detalles específicos del buyback
+  buybackDetails?: BuybackProductDetailsSchema;
 }
 
 /**
@@ -277,10 +308,10 @@ export class BuybackServiceSchema {
   serviceCategory: 'Buyback';
 
   @Prop({ type: [BuybackProductSchema], required: true })
-  products: BuybackProductSchema[]; // Array de productos con detalles de buyback
+  products: BuybackProductSchema[];
 
   @Prop({ type: String })
-  additionalInfo?: string; // Información adicional (opcional)
+  additionalInfo?: string;
 }
 
 /**
@@ -289,19 +320,19 @@ export class BuybackServiceSchema {
 @Schema({ _id: false })
 export class DonateProductSchema {
   @Prop({ type: Types.ObjectId })
-  productId?: Types.ObjectId; // ID del producto
+  productId?: Types.ObjectId;
 
   @Prop({ type: ProductSnapshotSchema })
-  productSnapshot?: ProductSnapshotSchema; // Snapshot del producto
+  productSnapshot?: ProductSnapshotSchema;
 
   @Prop({ type: Boolean })
-  needsDataWipe?: boolean; // ¿Necesita data wipe? (solo si category es Computer o Other)
+  needsDataWipe?: boolean;
 
   @Prop({ type: Boolean })
-  needsCleaning?: boolean; // ¿Necesita limpieza?
+  needsCleaning?: boolean;
 
   @Prop({ type: String })
-  comments?: string; // Comentarios adicionales (opcional)
+  comments?: string;
 }
 
 /**
@@ -314,10 +345,10 @@ export class DonateServiceSchema {
   serviceCategory: 'Donate';
 
   @Prop({ type: [DonateProductSchema], required: true })
-  products: DonateProductSchema[]; // Array de productos a donar con detalles
+  products: DonateProductSchema[];
 
   @Prop({ type: String })
-  additionalDetails?: string; // Detalles adicionales (opcional)
+  additionalDetails?: string;
 }
 
 /**
@@ -326,19 +357,19 @@ export class DonateServiceSchema {
 @Schema({ _id: false })
 export class CleaningProductSchema {
   @Prop({ type: Types.ObjectId })
-  productId?: Types.ObjectId; // ID del producto
+  productId?: Types.ObjectId;
 
   @Prop({ type: ProductSnapshotSchema })
-  productSnapshot?: ProductSnapshotSchema; // Snapshot del producto
+  productSnapshot?: ProductSnapshotSchema;
 
   @Prop({ type: String })
-  desiredDate?: string; // YYYY-MM-DD format - Fecha deseada para la limpieza (opcional)
+  desiredDate?: string;
 
   @Prop({ type: String, enum: ['Superficial', 'Deep'] })
-  cleaningType?: string; // Tipo de limpieza: Superficial o Deep
+  cleaningType?: string;
 
   @Prop({ type: String })
-  additionalComments?: string; // Comentarios adicionales (opcional)
+  additionalComments?: string;
 }
 
 /**
@@ -351,10 +382,10 @@ export class CleaningServiceSchema {
   serviceCategory: 'Cleaning';
 
   @Prop({ type: [CleaningProductSchema], required: true })
-  products: CleaningProductSchema[]; // Array de productos a limpiar con detalles
+  products: CleaningProductSchema[];
 
   @Prop({ type: String })
-  additionalDetails?: string; // Detalles adicionales (opcional)
+  additionalDetails?: string;
 }
 
 /**
@@ -363,22 +394,22 @@ export class CleaningServiceSchema {
 @Schema({ _id: false })
 export class StorageProductSchema {
   @Prop({ type: Types.ObjectId })
-  productId?: Types.ObjectId; // ID del producto
+  productId?: Types.ObjectId;
 
   @Prop({ type: ProductSnapshotSchema })
-  productSnapshot?: ProductSnapshotSchema; // Snapshot del producto
+  productSnapshot?: ProductSnapshotSchema;
 
   @Prop({ type: String })
-  approximateSize?: string; // Tamaño aproximado (opcional) - ej: "50x30x20 cm"
+  approximateSize?: string;
 
   @Prop({ type: String })
-  approximateWeight?: string; // Peso aproximado (opcional) - ej: "5 kg"
+  approximateWeight?: string;
 
   @Prop({ type: Number })
-  approximateStorageDays?: number; // Días de guardado aproximado (opcional)
+  approximateStorageDays?: number;
 
   @Prop({ type: String })
-  additionalComments?: string; // Comentarios adicionales (opcional)
+  additionalComments?: string;
 }
 
 /**
@@ -391,10 +422,10 @@ export class StorageServiceSchema {
   serviceCategory: 'Storage';
 
   @Prop({ type: [StorageProductSchema], required: true })
-  products: StorageProductSchema[]; // Array de productos a almacenar con detalles
+  products: StorageProductSchema[];
 
   @Prop({ type: String })
-  additionalDetails?: string; // Detalles adicionales (opcional)
+  additionalDetails?: string;
 }
 
 /**
@@ -403,19 +434,19 @@ export class StorageServiceSchema {
 @Schema({ _id: false })
 export class OffboardingOriginMemberSchema {
   @Prop({ type: Types.ObjectId, required: true })
-  memberId: Types.ObjectId; // ID del miembro a offboardear
+  memberId: Types.ObjectId;
 
   @Prop({ type: String, required: true })
-  firstName: string; // Nombre del miembro
+  firstName: string;
 
   @Prop({ type: String, required: true })
-  lastName: string; // Apellido del miembro
+  lastName: string;
 
   @Prop({ type: String, required: true })
-  email: string; // Email del miembro
+  email: string;
 
   @Prop({ type: String, required: true, maxlength: 2 })
-  countryCode: string; // ISO country code (AR, BR, US, etc.)
+  countryCode: string;
 }
 
 /**
@@ -428,35 +459,35 @@ export class OffboardingDestinationSchema {
     enum: ['Member', 'Office', 'Warehouse'],
     required: true,
   })
-  type: 'Member' | 'Office' | 'Warehouse'; // Tipo de destino
+  type: 'Member' | 'Office' | 'Warehouse';
 
   // Campos para destino Member
   @Prop({ type: Types.ObjectId })
-  memberId?: Types.ObjectId; // ID del miembro destino
+  memberId?: Types.ObjectId;
 
   @Prop({ type: String })
-  assignedMember?: string; // Nombre del miembro destino
+  assignedMember?: string;
 
   @Prop({ type: String })
-  assignedEmail?: string; // Email del miembro destino
+  assignedEmail?: string;
 
   // Campos para destino Office
   @Prop({ type: Types.ObjectId })
-  officeId?: Types.ObjectId; // ID de la oficina destino
+  officeId?: Types.ObjectId;
 
   @Prop({ type: String })
-  officeName?: string; // Nombre de la oficina destino
+  officeName?: string;
 
   // Campos para destino Warehouse
   @Prop({ type: Types.ObjectId })
-  warehouseId?: Types.ObjectId; // ID del warehouse destino
+  warehouseId?: Types.ObjectId;
 
   @Prop({ type: String })
-  warehouseName?: string; // Nombre del warehouse destino
+  warehouseName?: string;
 
   // Campo común para todos los tipos
   @Prop({ type: String, required: true, maxlength: 2 })
-  countryCode: string; // ISO country code
+  countryCode: string;
 }
 
 /**
@@ -465,13 +496,13 @@ export class OffboardingDestinationSchema {
 @Schema({ _id: false })
 export class OffboardingProductSchema {
   @Prop({ type: Types.ObjectId })
-  productId?: Types.ObjectId; // ID del producto
+  productId?: Types.ObjectId;
 
   @Prop({ type: ProductSnapshotSchema })
-  productSnapshot?: ProductSnapshotSchema; // Snapshot del producto
+  productSnapshot?: ProductSnapshotSchema;
 
   @Prop({ type: OffboardingDestinationSchema, required: true })
-  destination: OffboardingDestinationSchema; // Destino del producto
+  destination: OffboardingDestinationSchema;
 }
 
 /**
@@ -484,22 +515,22 @@ export class OffboardingServiceSchema {
   serviceCategory: 'Offboarding';
 
   @Prop({ type: OffboardingOriginMemberSchema, required: true })
-  originMember: OffboardingOriginMemberSchema; // Miembro a offboardear
+  originMember: OffboardingOriginMemberSchema;
 
   @Prop({ type: Boolean, required: true })
-  isSensitiveSituation: boolean; // ¿Es una situación sensible?
+  isSensitiveSituation: boolean;
 
   @Prop({ type: Boolean, required: true })
-  employeeKnows: boolean; // ¿El empleado sabe que se va?
+  employeeKnows: boolean;
 
   @Prop({ type: [OffboardingProductSchema], required: true, minlength: 1 })
-  products: OffboardingProductSchema[]; // Array de productos a offboardear (mínimo 1)
+  products: OffboardingProductSchema[];
 
   @Prop({ type: String })
-  desirablePickupDate?: string; // Fecha deseable para el pickup de todos los productos (YYYY-MM-DD)
+  desirablePickupDate?: string;
 
   @Prop({ type: String, maxlength: 1000 })
-  additionalDetails?: string; // Detalles adicionales (opcional)
+  additionalDetails?: string;
 }
 
 /**
@@ -515,28 +546,28 @@ export class LogisticsDestinationSchema {
   type: 'Member' | 'Office' | 'Warehouse';
 
   @Prop({ type: String })
-  memberId?: string; // Para Member
+  memberId?: string;
 
   @Prop({ type: String })
-  assignedMember?: string; // Nombre del miembro
+  assignedMember?: string;
 
   @Prop({ type: String })
-  assignedEmail?: string; // Email del miembro
+  assignedEmail?: string;
 
   @Prop({ type: String })
-  officeId?: string; // Para Office
+  officeId?: string;
 
   @Prop({ type: String })
-  officeName?: string; // Nombre de la oficina
+  officeName?: string;
 
   @Prop({ type: String })
-  warehouseId?: string; // Para Warehouse
+  warehouseId?: string;
 
   @Prop({ type: String })
-  warehouseName?: string; // Nombre del warehouse
+  warehouseName?: string;
 
   @Prop({ type: String, required: true, maxlength: 2 })
-  countryCode: string; // Código de país
+  countryCode: string;
 }
 
 /**
@@ -545,13 +576,13 @@ export class LogisticsDestinationSchema {
 @Schema({ _id: false })
 export class LogisticsProductSchema {
   @Prop({ type: String })
-  productId?: string; // ID del producto
+  productId?: string;
 
   @Prop({ type: Object })
-  productSnapshot?: any; // Snapshot del producto
+  productSnapshot?: any;
 
   @Prop({ type: LogisticsDestinationSchema, required: true })
-  destination: LogisticsDestinationSchema; // Destino del producto
+  destination: LogisticsDestinationSchema;
 }
 
 /**
@@ -563,11 +594,11 @@ export class LogisticsServiceSchema {
   serviceCategory: 'Logistics';
 
   @Prop({ type: [LogisticsProductSchema], required: true, minlength: 1 })
-  products: LogisticsProductSchema[]; // Array de productos a enviar (mínimo 1)
+  products: LogisticsProductSchema[];
 
   @Prop({ type: String })
-  desirablePickupDate?: string; // Fecha deseable para el pickup (YYYY-MM-DD)
+  desirablePickupDate?: string;
 
   @Prop({ type: String, maxlength: 1000 })
-  additionalDetails?: string; // Comentarios adicionales (opcional)
+  additionalDetails?: string;
 }
