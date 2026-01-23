@@ -52,75 +52,6 @@ const formatDateToDay = (dateString: string): string => {
 };
 
 /**
- * Helper para mostrar snapshot de producto
- */
-const buildProductSnapshotBlock = (snapshot: any): any[] => {
-  const blocks: any[] = [];
-
-  // Mostrar categoría si existe
-  if (snapshot.category) {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*Category:* ${snapshot.category}`,
-      },
-    });
-  }
-
-  // Construir identificación del producto: Brand + Model + Name
-  const brandModelName: string[] = [];
-  if (snapshot.brand) brandModelName.push(snapshot.brand);
-  if (snapshot.model) brandModelName.push(snapshot.model);
-  if (snapshot.name) brandModelName.push(snapshot.name);
-
-  if (brandModelName.length > 0) {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
-      },
-    });
-  }
-
-  // Serial Number
-  if (snapshot.serialNumber) {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*Serial Number:* ${snapshot.serialNumber}`,
-      },
-    });
-  }
-
-  // Location + Country
-  if (snapshot.location || snapshot.countryCode) {
-    let locationText = '';
-    if (snapshot.location && snapshot.assignedTo && snapshot.countryCode) {
-      locationText = `${snapshot.location} + ${snapshot.assignedTo} + ${convertCountryCodeToName(snapshot.countryCode)}`;
-    } else if (snapshot.location && snapshot.countryCode) {
-      locationText = `${snapshot.location} + ${convertCountryCodeToName(snapshot.countryCode)}`;
-    } else if (snapshot.location) {
-      locationText = snapshot.location;
-    }
-
-    if (locationText) {
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Location:* ${locationText}`,
-        },
-      });
-    }
-  }
-
-  return blocks;
-};
-
-/**
  * Construye bloques de Slack para servicios
  * Soporta IT Support y Enrollment
  * @param services - Array de servicios
@@ -231,6 +162,33 @@ const buildServiceBlocks = (
             text: specs.join('\n'),
           },
         });
+      }
+
+      // Attachments (imágenes)
+      if (service.attachments && service.attachments.length > 0) {
+        const attachmentLinks = service.attachments
+          .map((att: any, idx: number) => {
+            if (att.publicId) {
+              // Construir URL pública de Cloudinary (sin firma)
+              // Usamos el publicId para generar una URL accesible públicamente
+              // Formato: https://res.cloudinary.com/{cloud_name}/image/upload/{public_id}
+              const publicUrl = `https://res.cloudinary.com/dz8rhwppl/image/upload/${att.publicId}`;
+              return `<${publicUrl}|Image ${idx + 1}>`;
+            }
+            return null;
+          })
+          .filter(Boolean)
+          .join(' | ');
+
+        if (attachmentLinks) {
+          blocks.push({
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Attachments:* ${service.attachments.length} image(s)\n${attachmentLinks}`,
+            },
+          });
+        }
       }
     }
     // Enrollment Service
@@ -1682,4 +1640,51 @@ export const CreateQuoteMessageToSlack = (
   };
 
   return message;
+};
+
+/**
+ * Divide un mensaje de Slack en múltiples mensajes si excede el límite de bloques
+ * Slack permite máximo 50 bloques por mensaje
+ * @param message - Mensaje original
+ * @param maxBlocksPerMessage - Máximo de bloques permitidos por mensaje (default: 50)
+ * @returns Array de mensajes divididos
+ */
+export const splitSlackMessageIfNeeded = (
+  message: any,
+  maxBlocksPerMessage: number = 50,
+): any[] => {
+  const totalBlocks = message.blocks?.length || 0;
+
+  if (totalBlocks <= maxBlocksPerMessage) {
+    return [message];
+  }
+
+  // Necesita dividirse
+  const messages: any[] = [];
+  const headerBlock = message.blocks[0]; // Header
+  const summaryBlock = message.blocks[1]; // Summary fields
+  const dividerBlock = message.blocks[2]; // Divider
+
+  // Bloques de contenido (productos y servicios)
+  const contentBlocks = message.blocks.slice(3);
+
+  // Calcular cuántos bloques podemos poner en cada mensaje
+  // Reservamos 3 bloques para header, summary y divider
+  const blocksPerMessage = maxBlocksPerMessage - 3;
+
+  // Dividir bloques de contenido
+  for (let i = 0; i < contentBlocks.length; i += blocksPerMessage) {
+    const chunk = contentBlocks.slice(i, i + blocksPerMessage);
+    const messageNumber = Math.floor(i / blocksPerMessage) + 1;
+    const totalMessages = Math.ceil(contentBlocks.length / blocksPerMessage);
+
+    const splitMessage = {
+      text: `${message.text} (Part ${messageNumber}/${totalMessages})`,
+      blocks: [headerBlock, summaryBlock, dividerBlock, ...chunk],
+    };
+
+    messages.push(splitMessage);
+  }
+
+  return messages;
 };

@@ -27,6 +27,17 @@ export class ITSupportServiceResponseDto {
   description: string;
   issueStartDate?: string;
   impactLevel: 'low' | 'medium' | 'high';
+  attachments?: Array<{
+    provider: 'cloudinary' | 's3';
+    publicId: string;
+    secureUrl: string;
+    mimeType: string;
+    bytes: number;
+    originalName?: string;
+    resourceType?: string;
+    createdAt: Date;
+    expiresAt: Date;
+  }>;
 }
 
 /**
@@ -338,5 +349,16 @@ export class AddServiceToQuoteDto {
     description: string;
     issueStartDate?: string;
     impactLevel: 'low' | 'medium' | 'high';
+    attachments?: Array<{
+      provider: 'cloudinary' | 's3';
+      publicId: string;
+      secureUrl: string;
+      mimeType: string;
+      bytes: number;
+      originalName?: string;
+      resourceType?: string;
+      createdAt: Date;
+      expiresAt: Date;
+    }>;
   };
 }
