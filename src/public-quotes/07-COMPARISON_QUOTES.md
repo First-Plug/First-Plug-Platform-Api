@@ -2,25 +2,26 @@
 
 ## Tabla Comparativa
 
-| Característica            | Quotes Logueadas                  | Quotes Públicas                       |
-| ------------------------- | --------------------------------- | ------------------------------------- |
-| **URL**                   | `/api/quotes`                     | `/api/public-quotes`                  |
-| **Autenticación**         | ✅ JWT Guard                      | ❌ Sin autenticación                  |
-| **Middleware Tenant**     | ✅ TenantsMiddleware              | ❌ Sin middleware                     |
-| **Persistencia BD**       | ✅ Guardadas                      | ❌ NO se guardan                      |
-| **Tenant**                | ✅ Asociadas a tenant             | ❌ Sin tenant                         |
-| **Numeración**            | `QR-{tenantName}-{autoIncrement}` | `PQR-{timestamp}-{random}`            |
-| **Datos Requeridos**      | Email, nombre                     | Email, nombre, empresa, país          |
-| **Teléfono**              | ❌ No                             | ✅ Opcional                           |
-| **requestType**           | ✅ Sí                             | ✅ Sí ('product'\|'service'\|'mixed') |
-| **Servicios Disponibles** | Todos (incluye Offboarding)       | 8 servicios (SIN Offboarding)         |
-| **Destino**               | ✅ BD + Slack                     | ✅ Solo Slack                         |
-| **Módulo**                | `QuotesModule`                    | `PublicQuotesModule`                  |
-| **Servicio Raíz**         | `QuotesService`                   | `PublicQuotesService`                 |
-| **Coordinador**           | `QuotesCoordinatorService`        | `PublicQuotesCoordinatorService`      |
-| **Rate Limiting**         | ❌ No                             | ✅ 10 req/min                         |
-| **Validación**            | ✅ Zod                            | ✅ Zod (diferente)                    |
-| **Reutilización**         | -                                 | SlackService, interfaces              |
+| Característica            | Quotes Logueadas                  | Quotes Públicas                                             |
+| ------------------------- | --------------------------------- | ----------------------------------------------------------- |
+| **URL**                   | `/api/quotes`                     | `/api/public-quotes`                                        |
+| **Autenticación**         | ✅ JWT Guard                      | ❌ Sin autenticación                                        |
+| **Middleware Tenant**     | ✅ TenantsMiddleware              | ❌ Sin middleware                                           |
+| **Persistencia BD**       | ✅ En tenant\_\*.quotes           | ✅ En BD superior (firstPlug.quotes dev / main.quotes prod) |
+| **Tenant**                | ✅ Asociadas a tenant             | ❌ Sin tenant (nivel superior)                              |
+| **Numeración**            | `QR-{tenantName}-{autoIncrement}` | `PQR-{timestamp}-{random}`                                  |
+| **Datos Requeridos**      | Email, nombre                     | Email, nombre, empresa, país                                |
+| **Teléfono**              | ❌ No                             | ✅ Opcional                                                 |
+| **requestType**           | ✅ Sí                             | ✅ Sí ('product'\|'service'\|'mixed')                       |
+| **Servicios Disponibles** | Todos (incluye Offboarding)       | 10 servicios (incluye Offboarding y Logistics)              |
+| **Destino**               | ✅ BD tenant + Slack              | ✅ BD superior + Slack (firstPlug.quotes / main.quotes)     |
+| **Acceso**                | Usuarios del tenant               | ✅ Solo SuperAdmin                                          |
+| **Módulo**                | `QuotesModule`                    | `PublicQuotesModule`                                        |
+| **Servicio Raíz**         | `QuotesService`                   | `PublicQuotesService`                                       |
+| **Coordinador**           | `QuotesCoordinatorService`        | `PublicQuotesCoordinatorService`                            |
+| **Rate Limiting**         | ❌ No                             | ✅ 10 req/min                                               |
+| **Validación**            | ✅ Zod                            | ✅ Zod (diferente)                                          |
+| **Reutilización**         | -                                 | SlackService, interfaces                                    |
 
 ---
 
@@ -51,8 +52,10 @@
 6. PublicQuotesCoordinatorService orquesta:
    ├─ PublicQuotesService.generateNumber() → PQR
    ├─ PublicQuotesService.preparePayload() → Datos
-   └─ SlackService.sendQuoteMessage() → Notifica
+   ├─ PublicQuotesService.saveToBDSuperior() → Guarda en BD superior (firstPlug.quotes / main.quotes)
+   └─ SlackService.sendQuoteMessage() → Notifica (no-blocking)
 7. Retorna confirmación con número PQR
+8. SuperAdmin puede ver en /super-admin/public-quotes
 ```
 
 ---

@@ -2,18 +2,19 @@
 
 ## 📋 Resumen Ejecutivo
 
-Feature para crear quotes públicas (sin autenticación) desde una URL pública. Los datos se envían a Slack pero **NO se persisten en BD** en este release inicial.
+Feature para crear quotes públicas (sin autenticación) desde una URL pública. Los datos se envían a Slack **Y se persisten en la BD superior** (`firstPlug.quotes` en desarrollo o `main.quotes` en producción) para auditoría y control (verificación manual de integridad).
 
 ### Diferencias vs Quotes Logueadas
 
-| Aspecto | Quotes Logueadas | Quotes Públicas |
-|---------|------------------|-----------------|
-| **Autenticación** | ✅ JWT requerido | ❌ Sin autenticación |
-| **Persistencia** | ✅ Guardadas en BD | ❌ NO se guardan |
-| **Tenant** | ✅ Asociadas a tenant | ❌ Sin tenant |
-| **Numeración** | QR-{tenantName}-{autoIncrement} | PQR-{timestamp}-{random} |
-| **Datos extras** | Email, nombre, empresa, país, teléfono | ✅ Todos requeridos |
-| **Destino** | Slack + BD | ✅ Solo Slack |
+| Aspecto           | Quotes Logueadas                       | Quotes Públicas                                                       |
+| ----------------- | -------------------------------------- | --------------------------------------------------------------------- |
+| **Autenticación** | ✅ JWT requerido                       | ❌ Sin autenticación                                                  |
+| **Persistencia**  | ✅ Guardadas en BD tenant              | ✅ Guardadas en BD superior (firstPlug.quotes dev / main.quotes prod) |
+| **Tenant**        | ✅ Asociadas a tenant                  | ❌ Sin tenant (nivel superior)                                        |
+| **Numeración**    | QR-{tenantName}-{autoIncrement}        | PQR-{timestamp}-{random}                                              |
+| **Datos extras**  | Email, nombre, empresa, país, teléfono | ✅ Todos requeridos                                                   |
+| **Destino**       | Slack + BD tenant                      | ✅ Slack + BD superior (firstPlug.quotes / main.quotes)               |
+| **Acceso**        | Usuarios del tenant                    | ✅ Solo SuperAdmin                                                    |
 
 ---
 
@@ -22,12 +23,14 @@ Feature para crear quotes públicas (sin autenticación) desde una URL pública.
 ### 1. **Módulo Aislado (NO reutilizar QuotesModule)**
 
 **Razón**: Aunque comparten lógica, las quotes públicas tienen:
+
 - Flujo diferente (sin BD)
 - Seguridad diferente (sin autenticación)
 - Numeración diferente
 - Datos diferentes
 
 **Estructura**:
+
 ```
 src/public-quotes/
 ├── public-quotes.module.ts
@@ -49,21 +52,33 @@ src/public-quotes/
 ### 2. **Servicios por Capas**
 
 #### **Servicio Raíz: PublicQuotesService**
+
 - ✅ Generar número de quote (PQR-{timestamp}-{random})
 - ✅ Validar datos de cliente potencial
 - ✅ Preparar payload para Slack
-- ❌ NO persistir en BD
+- ✅ Persistir en BD superior (firstPlug.quotes en dev / main.quotes en prod)
 - ❌ NO acceder a tenant
 
 #### **Coordinador: PublicQuotesCoordinatorService**
+
 - ✅ Orquestar creación de quote
+- ✅ Llamar a PublicQuotesService para guardar en BD
 - ✅ Llamar a SlackService para notificación
 - ✅ Manejar errores de Slack (no-blocking)
 - ✅ Reutilizar SlackService existente
 
+#### **SuperAdmin Service (Nuevo)**
+
+- ✅ Listar todas las public quotes
+- ✅ Obtener detalle de una quote
+- ✅ Actualizar estado (received → reviewed → responded)
+- ✅ Agregar notas
+- ✅ Archivar/eliminar
+
 ### 3. **Seguridad (CRÍTICO)**
 
 #### **Protecciones Implementadas**:
+
 1. **Rate Limiting**: Máximo 10 requests/minuto por IP
 2. **Validación de Email**: Formato válido, no emails de FirstPlug
 3. **Sanitización**: Trim, validación de longitud
@@ -71,6 +86,7 @@ src/public-quotes/
 5. **No exponer datos sensibles**: Respuesta mínima
 
 #### **Datos Requeridos**:
+
 ```typescript
 {
   email: string;           // Validado
@@ -90,6 +106,7 @@ src/public-quotes/
 Ejemplo: `PQR-1705123456789-A7K2`
 
 **Ventajas**:
+
 - ✅ Único sin BD
 - ✅ Timestamp para ordenamiento
 - ✅ Random para evitar predicción
@@ -116,11 +133,13 @@ Ejemplo: `PQR-1705123456789-A7K2`
 ## 📦 Reutilización de Servicios
 
 ### SlackService
+
 - ✅ Usar `sendQuoteMessage()` existente
 - ✅ Crear nuevo método `sendPublicQuoteMessage()` si es necesario
 - ✅ Usar webhook `SLACK_WEBHOOK_URL_QUOTES`
 
 ### Validaciones
+
 - ✅ Reutilizar helpers de país (countryCodes)
 - ✅ Crear schemas Zod específicos para public quotes
 
@@ -130,9 +149,11 @@ Ejemplo: `PQR-1705123456789-A7K2`
 
 1. **Sin Middleware de Tenant**: Endpoints públicos NO usan TenantsMiddleware
 2. **Sin JWT Guard**: Endpoints públicos NO usan JwtGuard
-3. **Sin Persistencia**: Datos NO se guardan en BD
-4. **Slack es crítico**: Si Slack falla, la quote se pierde (aceptable en release inicial)
+3. **Persistencia en BD Superior**: Datos se guardan en `firstPlug.quotes` (NO en tenant DBs)
+4. **Slack es crítico**: Si Slack falla, la quote se guarda igual (persistencia en BD es lo importante)
 5. **Datos de cliente**: Nunca exponer información de otros clientes
+6. **SuperAdmin Access**: Solo SuperAdmin puede ver/gestionar public quotes
+7. **Índices en BD**: Crear índices en `createdAt`, `email`, `country`, `requestType` para búsquedas rápidas
 
 ---
 
@@ -149,5 +170,3 @@ Ejemplo: `PQR-1705123456789-A7K2`
 - [ ] Integrar con SlackService
 - [ ] Escribir tests
 - [ ] Documentar endpoints
-
-

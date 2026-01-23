@@ -26,7 +26,8 @@ interface CreatePublicQuoteRequest {
 
 - IT Support, Enrollment, Data Wipe, Destruction and Recycling
 - Buyback, Donate, Cleaning, Storage
-- **NO**: Offboarding (solo usuarios logueados)
+- Offboarding, Logistics
+- **Nota**: Todos disponibles sin productos pre-cargados
 
 ### Response DTO
 
@@ -35,6 +36,40 @@ interface PublicQuoteResponse {
   message: string;
   quoteNumber: string; // PQR-{timestamp}-{random}
   createdAt: Date;
+}
+```
+
+### Persistencia en BD Superior (Auditoría y Control)
+
+**Propósito**: Verificación manual de integridad - contar documentos en BD y compararlos con mensajes en Slack.
+
+**Fase 1**: Sin UI SuperAdmin - solo persistencia para validación manual.
+
+```typescript
+// Documento guardado en BD superior (firstPlug.quotes en dev / main.quotes en prod)
+interface PublicQuoteDocument {
+  _id: ObjectId;
+
+  // Datos del cliente
+  email: string;
+  fullName: string;
+  companyName: string;
+  country: string;
+  phone?: string;
+
+  // Solicitud
+  requestType: 'product' | 'service' | 'mixed';
+  products?: ProductData[];
+  services?: ServiceData[];
+
+  // Metadata
+  quoteNumber: string; // PQR-{timestamp}-{random}
+  status: 'received' | 'reviewed' | 'responded';
+  notes?: string; // Notas del super admin
+
+  // Timestamps
+  createdAt: Date;
+  updatedAt: Date;
 }
 ```
 
@@ -196,7 +231,48 @@ Error enviando a Slack
 
 ---
 
-## 8. Logging
+## 8. Persistencia en BD Superior (firstPlug.quotes)
+
+### Flujo de Guardado
+
+```
+1. Validar datos (Zod)
+2. Generar número PQR
+3. Guardar en firstPlug.quotes
+   ├─ Crear documento con todos los datos
+   ├─ Establecer status = 'received'
+   └─ Crear índices para búsqueda
+4. Enviar a Slack (no-blocking)
+5. Retornar confirmación
+```
+
+### Índices Recomendados
+
+```typescript
+// En firstPlug.quotes
+db.quotes.createIndex({ createdAt: -1 }); // Para ordenamiento
+db.quotes.createIndex({ email: 1 }); // Para búsqueda por email
+db.quotes.createIndex({ country: 1 }); // Para filtrado por país
+db.quotes.createIndex({ requestType: 1 }); // Para filtrado por tipo
+db.quotes.createIndex({ status: 1 }); // Para filtrado por estado
+db.quotes.createIndex({ createdAt: -1, status: 1 }); // Compuesto
+```
+
+### Acceso SuperAdmin
+
+```typescript
+// SuperAdmin endpoints
+GET    /super-admin/public-quotes              // Listar todas
+GET    /super-admin/public-quotes/:id          // Detalle
+PUT    /super-admin/public-quotes/:id          // Actualizar estado/notas
+DELETE /super-admin/public-quotes/:id          // Archivar
+
+// Requiere JWT con rol 'superadmin'
+```
+
+---
+
+## 9. Logging
 
 ### Información a Loguear
 
@@ -205,6 +281,7 @@ Error enviando a Slack
 - ✅ Timestamp
 - ✅ IP del cliente
 - ✅ Errores de validación
+- ✅ Guardado en BD (éxito/error)
 
 ### NO Loguear
 

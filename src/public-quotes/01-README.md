@@ -26,12 +26,13 @@ Permitir que clientes potenciales (sin login) soliciten presupuestos de producto
 ✅ **Datos Requeridos**: Email, nombre, empresa, país, teléfono (opcional)
 ✅ **Tipo de Solicitud**: 'product' | 'service' | 'mixed'
 ✅ **Productos**: Computer, Monitor, Audio, Peripherals, Merchandising, Phone, Furniture, Tablet, Other
-✅ **Servicios**: IT Support, Enrollment, Data Wipe, Destruction, Buyback, Donate, Cleaning, Storage (NO Offboarding)
+✅ **Servicios**: IT Support, Enrollment, Data Wipe, Destruction, Buyback, Donate, Cleaning, Storage, Offboarding, Logistics
 ✅ **Numeración Única**: `PQR-{timestamp}-{random}`
+✅ **Persistencia en BD Superior**: Guardadas en `firstPlug.quotes` (dev) o `main.quotes` (prod) - Auditoría y control
 ✅ **Envío a Slack**: Notificación automática a FirstPlug
-✅ **Sin Persistencia**: Datos NO se guardan en BD (release inicial)
 ✅ **Seguridad**: Rate limiting, validación, sanitización
 ✅ **Módulo Aislado**: Separado de quotes logueadas
+ℹ️ **Fase 1**: Sin UI SuperAdmin - solo persistencia para verificación manual de integridad
 
 ---
 
@@ -42,12 +43,21 @@ PublicQuotesController (sin autenticación)
     ↓
 PublicQuotesCoordinatorService (orquestación)
     ├─ PublicQuotesService (lógica core)
+    ├─ BD Superior.quotes (persistencia)
+    │  ├─ firstPlug.quotes (desarrollo)
+    │  └─ main.quotes (producción)
     └─ SlackService (notificación)
+
+PublicQuotesSuperAdminController (con JWT SuperAdmin)
+    ↓
+PublicQuotesSuperAdminService (gestión)
+    └─ BD Superior.quotes (lectura/escritura)
 ```
 
 ### Servicios
 
-- **PublicQuotesService** (Raíz): Generar números, preparar payloads
+- **PublicQuotesService** (Raíz): Generar números, preparar payloads, guardar en BD
+- **PublicQuotesSuperAdminService** (SuperAdmin): Listar, ver detalle, actualizar estado, agregar notas
 - **PublicQuotesCoordinatorService** (Coordinador): Orquestar flujo
 - **SlackService** (Reutilizado): Enviar notificaciones
 
@@ -89,7 +99,7 @@ Request:
 **requestType**: 'product' | 'service' | 'mixed'
 
 - **product**: Solo productos
-- **service**: Solo servicios (excepto Offboarding)
+- **service**: Solo servicios
 - **mixed**: Productos y servicios
 
 Response (201):
@@ -151,15 +161,14 @@ src/public-quotes/
 2. **Separación de responsabilidades**: Servicios raíz vs coordinadores
 3. **Reutilización**: SlackService, interfaces, validaciones
 4. **Seguridad**: Rate limiting, validación, sanitización
-5. **Simplicidad**: Sin BD, sin tenant, sin autenticación
+5. **Simplicidad**: sin tenant, sin autenticación
 6. **Observabilidad**: Logs estructurados
 
 ---
 
 ## 📝 Notas Importantes
 
-- **Sin Persistencia**: Datos NO se guardan en BD en este release
-- **Slack es crítico**: Si Slack falla, la quote se pierde (aceptable)
+- **Slack es crítico**: Si Slack falla, la quote no se pierde, se guarda a nivel superior
 - **Módulo Aislado**: Cambios futuros no afectan quotes logueadas
 - **Reutilización**: SlackService, interfaces de productos/servicios
 - **Seguridad**: Rate limiting, validación, sanitización

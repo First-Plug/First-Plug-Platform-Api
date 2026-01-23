@@ -9,6 +9,7 @@ Se ha actualizado toda la documentación para reflejar el esquema real de quotes
 ## 📊 Datos Requeridos (Actualizado)
 
 ### Campos del DTO
+
 ```
 ✅ email (validado, no @firstplug.com)
 ✅ fullName (2-100 chars, trim)
@@ -17,7 +18,7 @@ Se ha actualizado toda la documentación para reflejar el esquema real de quotes
 ❌ phone (opcional)
 ✅ requestType ('product' | 'service' | 'mixed')
 ✅ products (array, si requestType incluye 'product')
-✅ services (array, si requestType incluye 'service', SIN Offboarding)
+✅ services (array, si requestType incluye 'service', incluyendo Offboarding y Logistics)
 ```
 
 ---
@@ -25,20 +26,23 @@ Se ha actualizado toda la documentación para reflejar el esquema real de quotes
 ## 🏷️ requestType
 
 ### Valores Permitidos
+
 - **'product'**: Solo productos, services vacío
 - **'service'**: Solo servicios, products vacío
 - **'mixed'**: Productos y servicios
 
 ### Validaciones
+
 - Si requestType es 'product' o 'mixed' → products NO vacío
 - Si requestType es 'service' o 'mixed' → services NO vacío
-- NO permitir serviceCategory === 'Offboarding'
+- Permitir todos los serviceCategory: IT Support, Enrollment, Data Wipe, Destruction, Buyback, Donate, Cleaning, Storage, Offboarding, Logistics
 
 ---
 
 ## 📦 Productos Disponibles
 
 Todos los productos del esquema Quote:
+
 - Computer
 - Monitor
 - Audio
@@ -53,7 +57,8 @@ Todos los productos del esquema Quote:
 
 ## 🔧 Servicios Disponibles
 
-8 servicios (SIN Offboarding):
+10 servicios (incluyendo Offboarding y Logistics):
+
 - IT Support
 - Enrollment
 - Data Wipe
@@ -62,9 +67,14 @@ Todos los productos del esquema Quote:
 - Donate
 - Cleaning
 - Storage
+- Offboarding
+- Logistics
 
-### ❌ NO Disponible
-- **Offboarding**: Solo para usuarios logueados (requiere datos internos de tenant)
+### 📝 Nota Importante
+
+- **Offboarding**: Ahora disponible para quotes públicas (sin productos pre-cargados)
+- **Logistics**: Nuevo servicio para cotización de envíos
+- Ambos servicios se especifican en la solicitud sin datos pre-cargados
 
 ---
 
@@ -84,19 +94,20 @@ Todos los productos del esquema Quote:
 ## 🔐 Seguridad Crítica
 
 ### Validaciones Obligatorias
+
 - ✅ Email válido y no @firstplug.com
 - ✅ requestType válido ('product' | 'service' | 'mixed')
-- ✅ NO permitir Offboarding
+- ✅ Permitir todos los serviceCategory (incluyendo Offboarding y Logistics)
 - ✅ Validar que products/services no estén vacíos según requestType
 - ✅ Rate limiting: 10 req/min por IP
 - ✅ Sanitización: trim, validación de longitud
+- ✅ Validar estructura de datos para Offboarding y Logistics
 
 ---
 
 ## 📚 Referencia
 
 Ver esquema original en:
+
 - `src/quotes/schemas/quote.schema.ts` - Quote schema
 - `src/quotes/schemas/service.schema.ts` - Service schemas
-
-

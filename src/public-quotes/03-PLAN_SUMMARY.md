@@ -2,7 +2,7 @@
 
 ## 🎯 Objetivo
 
-Crear una URL pública donde clientes potenciales (sin login) puedan solicitar presupuestos de productos y servicios. Los datos se envían a Slack pero **NO se persisten en BD** en este release.
+Crear una URL pública donde clientes potenciales (sin login) puedan solicitar presupuestos de productos y servicios. Los datos se envían a Slack **Y se persisten en la BD superior** (`firstPlug.quotes` en desarrollo o `main.quotes` en producción) para auditoría y control (verificación manual de integridad).
 
 ---
 
@@ -21,14 +21,25 @@ PublicQuotesController (sin autenticación)
     ↓
 PublicQuotesCoordinatorService (orquestación)
     ├─ PublicQuotesService (raíz - lógica core)
+    ├─ BD Superior.quotes (persistencia)
+    │  ├─ firstPlug.quotes (desarrollo)
+    │  └─ main.quotes (producción)
     └─ SlackService (notificación)
+
+PublicQuotesSuperAdminController (con JWT SuperAdmin)
+    ↓
+PublicQuotesSuperAdminService (gestión)
+    └─ BD Superior.quotes (lectura/escritura)
 ```
 
-### 3. **Sin Persistencia en BD**
+### 3. **Persistencia en BD Superior**
 
-- ✅ Datos NO se guardan en base de datos
-- ✅ Solo se envían a Slack
-- ✅ Simplifica arquitectura para release inicial
+- ✅ Datos se guardan en BD superior (nivel superior)
+  - **Desarrollo**: `firstPlug.quotes`
+  - **Producción**: `main.quotes`
+- ✅ Acceso exclusivo para SuperAdmin
+- ✅ Permite auditoría, análisis y seguimiento de conversión
+- ✅ Separado de quotes logueadas (que están en tenant\_\*.quotes)
 
 ### 4. **Numeración Única**
 
@@ -46,7 +57,7 @@ PublicQuotesCoordinatorService (orquestación)
 ❌ Teléfono (opcional)
 ✅ Tipo de Solicitud: 'product' | 'service' | 'mixed'
 ✅ Productos (si aplica)
-✅ Servicios (si aplica, EXCEPTO Offboarding)
+✅ Servicios (si aplica)
 ```
 
 ### Productos Disponibles
@@ -55,9 +66,9 @@ Computer, Monitor, Audio, Peripherals, Merchandising, Phone, Furniture, Tablet, 
 
 ### Servicios Disponibles
 
-IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback, Donate, Cleaning, Storage
+IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback, Donate, Cleaning, Storage, Offboarding, Logistics
 
-**IMPORTANTE**: Offboarding NO está disponible para quotes públicas (solo usuarios logueados)
+**NOTA**: Todos los servicios están disponibles para quotes públicas, aunque sin productos pre-cargados (se especifican en la solicitud)
 
 ---
 

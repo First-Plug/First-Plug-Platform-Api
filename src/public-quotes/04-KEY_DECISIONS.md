@@ -8,7 +8,6 @@ Crear módulo separado de `QuotesModule` en lugar de reutilizar.
 
 ### Razones
 
-- **Flujos diferentes**: BD vs no-BD
 - **Seguridad diferente**: JWT vs Rate Limiting
 - **Datos diferentes**: Estructura completamente diferente
 - **Numeración diferente**: QR vs PQR
@@ -26,30 +25,54 @@ Reutilizar `QuotesModule` con flags condicionales:
 
 ---
 
-## 2. ✅ Sin Persistencia en BD
+## 2. ✅ Persistencia en BD Superior
 
 ### Decisión
 
-Datos NO se guardan en base de datos en este release inicial.
+Datos **SÍ se guardan** en la colección `quotes` de la BD superior:
+
+- **Desarrollo**: `firstPlug.quotes`
+- **Producción**: `main.quotes`
+
+Accesible solo por SuperAdmin.
 
 ### Razones
 
-- **Simplifica arquitectura**: No requiere tenant, colecciones, etc.
-- **Release inicial**: Funcionalidad mínima viable
-- **Datos temporales**: Quotes públicas son "one-time"
-- **Slack es suficiente**: FirstPlug recibe notificación
+- **Auditoría y Control**: Verificación manual de integridad (contar docs en BD vs mensajes en Slack)
+- **Validación**: Asegurar que cada quote que llega a Slack se guardó en BD
+- **Preservación de datos**: Mantener registro de todas las solicitudes públicas
+- **Escalabilidad**: Base para futuras features (búsqueda, filtrado, conversión, UI SuperAdmin)
+- **Nivel superior**: Datos globales en BD superior, no en tenant-specific DBs
+- **Fase 1**: Sin UI SuperAdmin - solo persistencia para validación manual
 
-### Futuro
+### Estructura
 
-En próximos releases se puede agregar persistencia:
+```
+MongoDB
+├── firstPlug (BD superior - SuperAdmin - DESARROLLO)
+│   ├── users
+│   ├── tenants
+│   ├── warehouses
+│   └── quotes ← NUEVA COLECCIÓN (Public Quotes)
+│
+├── main (BD superior - SuperAdmin - PRODUCCIÓN)
+│   ├── users
+│   ├── tenants
+│   ├── warehouses
+│   └── quotes ← NUEVA COLECCIÓN (Public Quotes)
+│
+└── tenant_* (BD específica de cada tenant)
+    └── quotes (Quotes logueadas de ese tenant)
+```
 
-- Crear colección global `public_quotes`
-- Agregar búsqueda/filtrado
-- Agregar seguimiento de conversión
+### Diferencia Clave
+
+- **Public Quotes**: Guardadas en BD superior (firstPlug.quotes en dev / main.quotes en prod) sin tenantId
+- **Authenticated Quotes**: Guardadas en `tenant_*.quotes` (con tenantId)
 
 ---
 
-## 3. ✅ Numeración PQR (Sin BD)
+## 3. ✅ Numeración PQR (Con BD)
 
 ### Decisión
 
@@ -59,7 +82,7 @@ Ejemplo: `PQR-1705123456789-A7K2`
 
 ### Razones
 
-- ✅ Único sin BD
+- ✅ Único garantizado
 - ✅ Timestamp para ordenamiento
 - ✅ Random para evitar predicción
 - ✅ Corto y legible
@@ -85,7 +108,7 @@ Ejemplo: `PQR-1705123456789-A7K2`
 ❌ Teléfono (opcional)
 ✅ Tipo de Solicitud: 'product' | 'service' | 'mixed'
 ✅ Productos (si aplica)
-✅ Servicios (si aplica, EXCEPTO Offboarding)
+✅ Servicios (si aplica)
 ```
 
 ### Productos Disponibles
@@ -94,9 +117,9 @@ Computer, Monitor, Audio, Peripherals, Merchandising, Phone, Furniture, Tablet, 
 
 ### Servicios Disponibles
 
-IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback, Donate, Cleaning, Storage
+IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback, Donate, Cleaning, Storage, Offboarding, Logistics
 
-**NOTA**: Offboarding NO está disponible (solo usuarios logueados)
+**NOTA**: Todos los servicios disponibles sin productos pre-cargados
 
 ### Razones
 
@@ -107,7 +130,6 @@ IT Support, Enrollment, Data Wipe, Destruction and Recycling, Buyback, Donate, C
 - **Teléfono**: Opcional, mejor contacto
 - **requestType**: Distinguir entre producto, servicio o ambos
 - **Productos/Servicios**: Mismo esquema que quotes logueadas
-- **Sin Offboarding**: Requiere datos internos de tenant (solo logueados)
 
 ---
 
@@ -160,13 +182,14 @@ Usar Zod para validación de datos.
 ### Decisión
 
 Usar `SlackService.sendQuoteMessage()` existente.
+pero enviar a otro canal de slack diferente al de las quotes logueadas
 
 ### Razones
 
 - **No duplicar código**: Ya existe
 - **Consistencia**: Mismo formato que quotes logueadas
 - **Mantenibilidad**: Cambios centralizados
-- **Webhook configurado**: `SLACK_WEBHOOK_URL_QUOTES`
+- **Webhook configurado**: tengo que crear un nuevo canal y configurarlo. Por que va a llegar a un canal quotes-public para produccion y test-quotes-public para desarrollo
 
 ### Implementación
 
@@ -246,16 +269,72 @@ Respuesta mínima, sin IDs internos.
 
 ---
 
+## 11. ✅ Acceso SuperAdmin a Public Quotes
+
+### Decisión
+
+Solo SuperAdmin puede ver/acceder a las public quotes guardadas en BD superior (firstPlug.quotes en dev / main.quotes en prod).
+En la primera fase, esto no va a suceder, vamos a ver que pasa cuando integremos odoo
+
+### Razones
+
+- **Seguridad**: Datos públicos pero no para cualquiera
+- **Control**: SuperAdmin gestiona todas las solicitudes
+- **Auditoría**: Registro centralizado de oportunidades
+- **Escalabilidad**: Base para CRM, análisis, conversión
+
+### Implementación - FUTURAS FASES - No en Fase 1
+
+```typescript
+// SuperAdmin puede:
+- GET /super-admin/public-quotes (listar todas)
+- GET /super-admin/public-quotes/:id (ver detalle)
+- PUT /super-admin/public-quotes/:id (actualizar estado)
+- DELETE /super-admin/public-quotes/:id (archivar)
+
+// Requiere:
+- JWT con rol 'superadmin'
+- Acceso a BD firstPlug
+```
+
+### Campos Adicionales en BD
+
+```typescript
+{
+  // Datos del cliente
+  email: string;
+  fullName: string;
+  companyName: string;
+  country: string;
+  phone?: string;
+
+  // Solicitud
+  requestType: 'product' | 'service' | 'mixed';
+  products?: ProductData[];
+  services?: ServiceData[];
+
+  // Metadata SuperAdmin
+  quoteNumber: string;        // PQR-{timestamp}-{random}
+  status: 'received' | 'reviewed' | 'responded'; // Para tracking
+  notes?: string;             // Notas del super admin
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+---
+
 ## 📋 Resumen de Decisiones
 
 | Decisión      | Opción            | Razón                        |
 | ------------- | ----------------- | ---------------------------- |
 | Módulo        | Aislado           | Flujos diferentes            |
-| Persistencia  | No                | Release inicial              |
+| Persistencia  | Sí (BD superior)  | Preservación de datos        |
 | Numeración    | PQR-{ts}-{random} | Único sin BD                 |
 | Rate Limit    | 10/min            | Previene abuso               |
 | Validación    | Zod               | Consistencia                 |
 | Slack         | Reutilizar        | No duplicar                  |
-| Autenticación | No                | Acceso público               |
+| Autenticación | No (público)      | Acceso público               |
 | Arquitectura  | Coordinador       | Separación responsabilidades |
-| Datos         | Mínimos           | Seguridad                    |
+| Datos         | Mínimos (público) | Seguridad                    |
+| SuperAdmin    | Acceso completo   | Gestión centralizada         |

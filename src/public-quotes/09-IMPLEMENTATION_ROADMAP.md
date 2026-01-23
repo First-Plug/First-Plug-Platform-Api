@@ -212,6 +212,174 @@ Rate limit: 10 req/min
 
 ---
 
+### Fase 11: Schema para BD Superior (1 hora)
+
+**Objetivo**: Crear schema MongoDB para public quotes en BD superior (firstPlug.quotes en dev / main.quotes en prod)
+
+**Tareas**:
+
+- [ ] Crear `src/public-quotes/schemas/public-quote.schema.ts`
+- [ ] Definir campos: email, fullName, companyName, country, phone, requestType, products, services
+- [ ] Agregar campos metadata: quoteNumber, status, notes, createdAt, updatedAt
+- [ ] Crear índices: createdAt, email, country, requestType, status
+- [ ] Crear interface TypeScript
+
+**Schema**:
+
+```typescript
+@Schema({ timestamps: true })
+export class PublicQuote {
+  _id?: Types.ObjectId;
+
+  // Cliente
+  email: string;
+  fullName: string;
+  companyName: string;
+  country: string;
+  phone?: string;
+
+  // Solicitud
+  requestType: 'product' | 'service' | 'mixed';
+  products?: ProductData[];
+  services?: ServiceData[];
+
+  // Metadata
+  quoteNumber: string;
+  status: 'received' | 'reviewed' | 'responded';
+  notes?: string;
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+---
+
+### Fase 12: Persistencia en firstPlug (2 horas)
+
+**Objetivo**: Implementar guardado en BD superior
+
+**Tareas**:
+
+- [ ] Inyectar modelo `PublicQuote` en `PublicQuotesService`
+- [ ] Implementar `saveToFirstPlug(data)` en servicio raíz
+- [ ] Manejar errores de BD (no-blocking)
+- [ ] Crear índices automáticamente
+- [ ] Loguear guardado exitoso
+
+**Método**:
+
+```typescript
+async saveToFirstPlug(data: CreatePublicQuoteDto, quoteNumber: string): Promise<PublicQuote> {
+  const publicQuote = new this.publicQuoteModel({
+    ...data,
+    quoteNumber,
+    status: 'received',
+  });
+  return await publicQuote.save();
+}
+```
+
+---
+
+### Fase 13: SuperAdmin Endpoints (FUTURAS FASES - No incluido en Fase 1)
+
+**Objetivo**: Crear endpoints para SuperAdmin (para futuras fases)
+
+**Nota**: En Fase 1, NO se implementan endpoints SuperAdmin. Solo persistencia para auditoría y control manual.
+
+**Tareas** (para futuras fases):
+
+- [ ] Crear `public-quotes-superadmin.controller.ts`
+- [ ] Crear `public-quotes-superadmin.service.ts`
+- [ ] Implementar GET /super-admin/public-quotes (listar)
+- [ ] Implementar GET /super-admin/public-quotes/:id (detalle)
+- [ ] Implementar PUT /super-admin/public-quotes/:id (actualizar estado/notas)
+- [ ] Implementar DELETE /super-admin/public-quotes/:id (archivar)
+- [ ] Agregar JWT Guard (solo superadmin)
+- [ ] Crear DTOs para respuestas
+
+**Endpoints** (para futuras fases):
+
+```
+GET    /super-admin/public-quotes?page=1&limit=20&status=received
+GET    /super-admin/public-quotes/:id
+PUT    /super-admin/public-quotes/:id { status, notes }
+DELETE /super-admin/public-quotes/:id
+```
+
+---
+
+### Fase 14: Validación Zod para Offboarding (1 hora)
+
+**Objetivo**: Crear validación Zod para Offboarding Service
+
+**Tareas**:
+
+- [ ] Crear `src/public-quotes/validations/offboarding-service.zod.ts`
+- [ ] Definir `OffboardingOriginMemberSchema`
+- [ ] Definir `OffboardingDestinationSchema` (discriminated union)
+- [ ] Definir `OffboardingProductSchema`
+- [ ] Definir `OffboardingServiceSchema` completo
+- [ ] Validar campos requeridos: originMember, isSensitiveSituation, employeeKnows, products
+- [ ] Validar formato de fecha: desirablePickupDate (YYYY-MM-DD)
+- [ ] Validar límite de caracteres: additionalDetails (max 1000)
+
+**Validaciones Clave**:
+
+- originMember: firstName, lastName, email, countryCode (todos requeridos)
+- isSensitiveSituation: boolean requerido
+- employeeKnows: boolean requerido
+- products: array mínimo 1
+- destination: type + campos según tipo (Member/Office/Warehouse)
+
+---
+
+### Fase 15: Validación Zod para Logistics (1 hora)
+
+**Objetivo**: Crear validación Zod para Logistics Service
+
+**Tareas**:
+
+- [ ] Crear `src/public-quotes/validations/logistics-service.zod.ts`
+- [ ] Definir `LogisticsDestinationSchema` (discriminated union)
+- [ ] Definir `LogisticsProductSchema`
+- [ ] Definir `LogisticsServiceSchema` completo
+- [ ] Validar campos requeridos: products, destination.type, destination.countryCode
+- [ ] Validar formato de fecha: desirablePickupDate (YYYY-MM-DD)
+- [ ] Validar límite de caracteres: additionalDetails (max 1000)
+- [ ] Permitir campos opcionales: productId, productSnapshot, memberId, officeId, warehouseId
+
+**Validaciones Clave**:
+
+- products: array mínimo 1
+- destination.type: 'Member' | 'Office' | 'Warehouse'
+- destination.countryCode: requerido
+- Campos de destino opcionales según tipo
+
+---
+
+### Fase 16: Integración en DTO Principal (1 hora)
+
+**Objetivo**: Actualizar DTO principal para incluir Offboarding y Logistics
+
+**Tareas**:
+
+- [ ] Actualizar `create-public-quote.zod.ts` para incluir ambos servicios
+- [ ] Actualizar `CreatePublicQuoteDto` para reflejar cambios
+- [ ] Actualizar validación de `requestType` y `services`
+- [ ] Crear tests de validación para ambos servicios
+- [ ] Validar que la discriminated union funciona correctamente
+- [ ] Documentar cambios en comentarios
+
+**Cambios**:
+
+- Agregar `OffboardingServiceSchema` a `ServiceUnion`
+- Agregar `LogisticsServiceSchema` a `ServiceUnion`
+- Actualizar ejemplos en comentarios
+
+---
+
 ## ⏱️ Estimación Total
 
 - **Fase 1**: 1-2 horas
@@ -224,23 +392,86 @@ Rate limit: 10 req/min
 - **Fase 8**: 30 min
 - **Fase 9**: 2-3 horas
 - **Fase 10**: 30 min
+- **Fase 11**: 1 hora (Schema BD superior)
+- **Fase 12**: 2 horas (Persistencia BD superior)
+- **Fase 13**: 2 horas (SuperAdmin Endpoints)
+- **Fase 14**: 1 hora (Validación Offboarding)
+- **Fase 15**: 1 hora (Validación Logistics)
+- **Fase 16**: 1 hora (Integración en DTO)
 
-**Total**: 9-12 horas
+**Total**: 18-21 horas
 
 ---
 
 ## ✅ Checklist Final
 
+### Estructura Base
+
 - [ ] Módulo registrado en `app.module.ts`
-- [ ] Endpoints funcionan sin autenticación
-- [ ] Rate limiting activo
-- [ ] Validación Zod funciona
+- [ ] Carpetas y archivos creados
+- [ ] Interfaces y DTOs definidos
+
+### Endpoints Públicos
+
+- [ ] Endpoints públicos funcionan sin autenticación
+- [ ] Rate limiting activo (10 req/min por IP)
+- [ ] Validación Zod funciona para todos los servicios
 - [ ] Números PQR generados correctamente
+
+### Servicios Soportados
+
+- [ ] IT Support funciona
+- [ ] Enrollment funciona
+- [ ] Data Wipe funciona
+- [ ] Destruction and Recycling funciona
+- [ ] Buyback funciona
+- [ ] Donate funciona
+- [ ] Cleaning funciona
+- [ ] Storage funciona
+- [ ] **Offboarding funciona** (originMember, isSensitiveSituation, employeeKnows)
+- [ ] **Logistics funciona** (productos con destinos)
+
+### Persistencia
+
+- [ ] Datos guardados en BD superior (firstPlug.quotes en dev / main.quotes en prod)
+- [ ] Índices creados en BD (email, country, requestType, status, createdAt)
+- [ ] Metadata guardada correctamente (quoteNumber, status, timestamps)
+
+### Notificaciones
+
 - [ ] Mensajes enviados a Slack
-- [ ] Tests pasan
+- [ ] Formato correcto de mensaje
+- [ ] No-blocking (no afecta respuesta)
+
+### Persistencia y Auditoría (Fase 1)
+
+- [ ] Datos guardados en BD superior (firstPlug.quotes / main.quotes)
+- [ ] Índices creados en BD
+- [ ] Verificación manual: contar docs en BD vs mensajes en Slack
+- [ ] Integridad validada
+
+### SuperAdmin (FUTURAS FASES - No en Fase 1)
+
+- [ ] SuperAdmin endpoints funcionan (futuras fases)
+- [ ] SuperAdmin puede ver/editar public quotes (futuras fases)
+- [ ] Filtros funcionan (status, country, requestType) (futuras fases)
+- [ ] Paginación funciona (futuras fases)
+
+### Testing
+
+- [ ] Tests pasan (públicos + superadmin)
+- [ ] Tests para Offboarding
+- [ ] Tests para Logistics
+- [ ] Tests de validación Zod
+- [ ] Tests de rate limiting
+
+### Documentación y Seguridad
+
 - [ ] Documentación completa
 - [ ] Sin errores en logs
-- [ ] Seguridad validada
+- [ ] Seguridad validada (JWT, rate limiting, validación)
+- [ ] Offboarding y Logistics documentados
+- [ ] Ejemplos de request/response incluidos
 
 ---
 
