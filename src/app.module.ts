@@ -23,6 +23,7 @@ import { SuperAdminModule } from 'src/superadmin/superadmin.module';
 import { WarehousesModule } from 'src/warehouses/warehouses.module';
 import { QuotesModule } from 'src/quotes/quotes.module';
 import { EmailModule } from 'src/email/email.module';
+import { PublicQuotesModule } from 'src/public-quotes/public-quotes.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { EmailModule } from 'src/email/email.module';
     SuperAdminModule,
     QuotesModule,
     EmailModule,
+    PublicQuotesModule,
   ],
   controllers: [],
   providers: [],
