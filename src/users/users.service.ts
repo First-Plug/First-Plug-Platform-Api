@@ -354,10 +354,10 @@ export class UsersService {
         await this.emailService.sendImmediate(updatedUser.email, {
           recipientName: updatedUser.firstName,
           recipientEmail: updatedUser.email,
-          tenantName: tenantName || 'FirstPlug',
+          tenantName: tenantName || 'First Plug',
           type: 'USER_ENABLED' as any,
-          title: 'Welcome to FirstPlug',
-          description: `Your account has been activated. You can now access the FirstPlug platform with your credentials.`,
+          title: 'Welcome to First Plug',
+          description: `Your account has been activated. You can now access the First Plug platform with your credentials.`,
           buttonText: 'Go to Login',
           buttonUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`,
         });

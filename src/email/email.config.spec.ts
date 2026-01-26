@@ -12,7 +12,7 @@ describe('EmailConfigService', () => {
       // Configurar process.env para los tests
       process.env.RESEND_API_KEY = 'test-api-key-123';
       process.env.EMAIL_FROM = 'noreply@firstplug.com';
-      process.env.EMAIL_FROM_NAME = 'FirstPlug';
+      process.env.EMAIL_FROM_NAME = 'First Plug';
       delete process.env.EMAIL_TEST_RECIPIENT;
 
       service = new EmailConfigService();
@@ -31,7 +31,7 @@ describe('EmailConfigService', () => {
 
       expect(config.apiKey).toBe('test-api-key-123');
       expect(config.fromEmail).toBe('noreply@firstplug.com');
-      expect(config.fromName).toBe('FirstPlug');
+      expect(config.fromName).toBe('First Plug');
     });
 
     it('should return undefined for test recipient when not configured', () => {
@@ -48,7 +48,7 @@ describe('EmailConfigService', () => {
       // Configurar process.env con test recipient
       process.env.RESEND_API_KEY = 'test-api-key-123';
       process.env.EMAIL_FROM = 'noreply@firstplug.com';
-      process.env.EMAIL_FROM_NAME = 'FirstPlug';
+      process.env.EMAIL_FROM_NAME = 'First Plug';
       process.env.EMAIL_TEST_RECIPIENT = 'test@example.com';
 
       service = new EmailConfigService();
@@ -75,7 +75,7 @@ describe('EmailConfigService', () => {
     it('should allow empty RESEND_API_KEY in development', () => {
       process.env.RESEND_API_KEY = '';
       process.env.EMAIL_FROM = 'noreply@firstplug.com';
-      process.env.EMAIL_FROM_NAME = 'FirstPlug';
+      process.env.EMAIL_FROM_NAME = 'First Plug';
 
       service = new EmailConfigService();
       const config = service.getResendConfig();

@@ -22,7 +22,7 @@ const EmailConfigSchema = z.object({
     .string()
     .email('EMAIL_FROM debe ser un email válido')
     .default('onboarding@resend.dev'),
-  EMAIL_FROM_NAME: z.string().default('FirstPlug'),
+  EMAIL_FROM_NAME: z.string().default('First Plug'),
   // Email de prueba para desarrollo (enviar copia de todos los emails)
   EMAIL_TEST_RECIPIENT: z.string().email().optional(),
 });

@@ -11,17 +11,19 @@ describe('EmailTemplate', () => {
     recipientEmail: 'john@example.com',
     tenantName: 'Test Tenant',
     type: EmailNotificationType.USER_ENABLED,
-    title: 'Welcome to FirstPlug',
-    description: 'You have been successfully enabled in FirstPlug',
+    title: 'Welcome to First Plug',
+    description: 'You have been successfully enabled in First Plug',
   };
 
   describe('render', () => {
     it('should render HTML template with basic content', () => {
       const html = EmailTemplate.render(baseProps);
 
-      expect(html).toContain('Welcome to FirstPlug');
+      expect(html).toContain('Welcome to First Plug');
       expect(html).toContain('John Doe');
-      expect(html).toContain('You have been successfully enabled in FirstPlug');
+      expect(html).toContain(
+        'You have been successfully enabled in First Plug',
+      );
       expect(html).toContain('<!DOCTYPE html>');
       expect(html).toContain('</html>');
     });
@@ -72,7 +74,7 @@ describe('EmailTemplate', () => {
     it('should include proper styling', () => {
       const html = EmailTemplate.render(baseProps);
 
-      expect(html).toContain('background: linear-gradient');
+      expect(html).toContain('background: #4FE8B7');
       expect(html).toContain('color: white');
       expect(html).toContain('border-radius');
     });
@@ -80,7 +82,7 @@ describe('EmailTemplate', () => {
     it('should include footer with links', () => {
       const html = EmailTemplate.render(baseProps);
 
-      expect(html).toContain('© 2024 FirstPlug');
+      expect(html).toContain('© 2026 First Plug');
       expect(html).toContain('https://firstplug.com');
       expect(html).toContain('Política de privacidad');
     });
@@ -90,9 +92,11 @@ describe('EmailTemplate', () => {
     it('should render plain text version', () => {
       const text = EmailTemplate.renderText(baseProps);
 
-      expect(text).toContain('Welcome to FirstPlug');
+      expect(text).toContain('Welcome to First Plug');
       expect(text).toContain('John Doe');
-      expect(text).toContain('You have been successfully enabled in FirstPlug');
+      expect(text).toContain(
+        'You have been successfully enabled in First Plug',
+      );
       expect(text).not.toContain('<html>');
       expect(text).not.toContain('</html>');
     });
@@ -119,8 +123,7 @@ describe('EmailTemplate', () => {
     it('should include footer', () => {
       const text = EmailTemplate.renderText(baseProps);
 
-      expect(text).toContain('© 2024 FirstPlug');
+      expect(text).toContain('© 2026 First Plug');
     });
   });
 });
-

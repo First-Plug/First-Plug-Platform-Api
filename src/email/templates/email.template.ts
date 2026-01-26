@@ -81,7 +81,7 @@ export class EmailTemplate {
     
     .button {
       display: inline-block;
-      background: linear-gradient(135deg, #18489A 0%, #4FE8B7 100%);
+      background: #4FE8B7;
       color: white;
       padding: 14px 32px;
       text-decoration: none;
@@ -164,7 +164,7 @@ export class EmailTemplate {
     
     <!-- Footer -->
     <div class="footer">
-      <p>© 2024 FirstPlug. All rights reserved.</p>
+      <p>© 2026 First Plug. All rights reserved.</p>
     </div>
   </div>
 </body>
@@ -186,7 +186,7 @@ export class EmailTemplate {
       text += `\n${buttonText}: ${buttonUrl}\n`;
     }
 
-    text += `\n\n© 2024 FirstPlug. All rights reserved.`;
+    text += `\n\n© 2026 First Plug. All rights reserved.`;
 
     return text;
   }
