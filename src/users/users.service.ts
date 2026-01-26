@@ -1,6 +1,7 @@
 import {
   Injectable,
   BadRequestException,
+  Logger,
   //   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -13,14 +14,18 @@ import { CreateUserByProviderDto } from './dto/create-user-by-provider.dto';
 import { UpdateUserConfigDto } from './dto/update-user-config.dto';
 import * as bcrypt from 'bcrypt';
 import { EventsGateway } from 'src/infra/event-bus/events.gateway';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectModel(User.name)
     private readonly userModel: Model<User>,
     @InjectSlack() private readonly slack: IncomingWebhook,
     private readonly eventsGateway: EventsGateway,
+    private readonly emailService: EmailService,
   ) {}
 
   async findByEmail(email: string): Promise<User | null> {
@@ -153,12 +158,6 @@ export class UsersService {
       throw new Error(`No se encontró el usuario con id: ${userId}`);
     }
 
-    console.log('✅ Usuario activado:', {
-      email: user.email,
-      status: user.status,
-      tenantId: user.tenantId,
-    });
-
     return user;
   }
 
@@ -168,13 +167,8 @@ export class UsersService {
   ): Promise<{ updatedCount: number }> {
     const result = await this.userModel.updateMany(
       { _id: { $in: userIds } },
-      { $set: { tenantId, status: 'active' } }, // Activar usuarios al asignar tenant
+      { $set: { tenantId, status: 'active' } },
     );
-
-    console.log('✅ Usuarios activados en lote:', {
-      updatedCount: result.modifiedCount,
-      tenantId,
-    });
 
     return { updatedCount: result.modifiedCount };
   }
@@ -354,6 +348,28 @@ export class UsersService {
       throw new BadRequestException('Failed to assign tenant');
     }
 
+    // Enviar email de bienvenida si se asignó un tenant (no es superadmin)
+    if (role !== 'superadmin' && tenantId) {
+      try {
+        await this.emailService.sendImmediate(updatedUser.email, {
+          recipientName: updatedUser.firstName,
+          recipientEmail: updatedUser.email,
+          tenantName: tenantName || 'First Plug',
+          type: 'USER_ENABLED' as any,
+          title: 'Welcome to First Plug',
+          description: `Your account has been activated. You can now access the First Plug platform with your credentials.`,
+          buttonText: 'Go to Login',
+          buttonUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`,
+        });
+      } catch (error) {
+        this.logger.error(
+          `Error sending welcome email to ${updatedUser.email}:`,
+          error,
+        );
+        // No lanzar error, solo loguear - el usuario ya fue activado
+      }
+    }
+
     return updatedUser;
   }
 
@@ -422,16 +438,9 @@ export class UsersService {
       .find({
         isDeleted: false, // Solo usuarios no eliminados
       })
-      .populate('tenantId', 'name tenantName') // Incluir info del tenant
+      .populate('tenantId', 'name tenantName')
       .sort({ createdAt: -1 })
       .exec();
-
-    console.log('✅ Usuarios obtenidos:', {
-      total: users.length,
-      withTenant: users.filter((u) => u.tenantId).length,
-      withoutTenant: users.filter((u) => !u.tenantId).length,
-      superAdmins: users.filter((u) => u.role === 'superadmin').length,
-    });
 
     return users;
   }
