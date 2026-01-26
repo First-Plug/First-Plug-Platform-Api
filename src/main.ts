@@ -16,6 +16,7 @@ async function bootstrap() {
   const config = app.get(ConfigService);
 
   app.use(json({ limit: '50mb' }));
+
   app.enableCors({
     origin: (origin, callback) => {
       const allowedOrigins = [config.get('server.frontendUrl')];
