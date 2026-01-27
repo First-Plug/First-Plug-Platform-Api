@@ -38,8 +38,8 @@ export class QuotesCoordinatorService {
 
   /**
    * Procesar Data Wipe Service
-   * Si el destino es FP warehouse y solo tiene countryCode,
-   * busca automáticamente el warehouse activo de ese país y completa los datos
+   * 1. Construye currentOffice/currentMember/currentWarehouse desde productSnapshot si faltan
+   * 2. Si el destino es FP warehouse y solo tiene countryCode, busca automáticamente el warehouse activo
    */
   private async processDataWipeService(service: any): Promise<void> {
     if (service.serviceCategory !== 'Data Wipe' || !service.assets) {
@@ -47,6 +47,32 @@ export class QuotesCoordinatorService {
     }
 
     for (const asset of service.assets) {
+      // 1. Construir ubicación actual (origen) desde productSnapshot si falta
+      if (asset.currentLocation && asset.productSnapshot) {
+        if (asset.currentLocation === 'Our office' && !asset.currentOffice) {
+          if (
+            asset.productSnapshot.assignedTo &&
+            asset.productSnapshot.countryCode
+          ) {
+            asset.currentOffice = {
+              officeName: asset.productSnapshot.assignedTo,
+              countryCode: asset.productSnapshot.countryCode,
+            };
+          }
+        } else if (
+          asset.currentLocation === 'FP warehouse' &&
+          !asset.currentWarehouse
+        ) {
+          if (asset.productSnapshot.countryCode) {
+            asset.currentWarehouse = {
+              warehouseName: asset.productSnapshot.assignedTo || 'FP warehouse',
+              countryCode: asset.productSnapshot.countryCode,
+            };
+          }
+        }
+      }
+
+      // 2. Procesar destino: Si es FP warehouse y solo tiene countryCode, buscar warehouse activo
       if (
         asset.destination &&
         asset.destination.destinationType === 'FP warehouse' &&
@@ -608,22 +634,43 @@ export class QuotesCoordinatorService {
             assetData['desirableDate'] = asset.desirableDate;
           }
 
-          // Agregar ubicación actual
+          // Agregar ubicación actual (origen)
           if (asset.currentLocation) {
             assetData['currentLocation'] = asset.currentLocation;
 
-            if (asset.currentMember) {
+            // Construir objeto de origen desde productSnapshot
+            if (asset.currentLocation === 'Employee' && asset.currentMember) {
               assetData['currentMember'] = this.formatLocation(
                 asset.currentMember,
               );
-            } else if (asset.currentOffice) {
-              assetData['currentOffice'] = this.formatLocation(
-                asset.currentOffice,
-              );
-            } else if (asset.currentWarehouse) {
-              assetData['currentWarehouse'] = this.formatLocation(
-                asset.currentWarehouse,
-              );
+            } else if (asset.currentLocation === 'Our office') {
+              // Usar currentOffice si existe, sino construir desde productSnapshot
+              if (asset.currentOffice) {
+                assetData['currentOffice'] = this.formatLocation(
+                  asset.currentOffice,
+                );
+              } else if (
+                asset.productSnapshot?.assignedTo &&
+                asset.productSnapshot?.countryCode
+              ) {
+                assetData['currentOffice'] = {
+                  officeName: asset.productSnapshot.assignedTo,
+                  countryCode: asset.productSnapshot.countryCode,
+                };
+              }
+            } else if (asset.currentLocation === 'FP warehouse') {
+              // Usar currentWarehouse si existe, sino construir desde productSnapshot
+              if (asset.currentWarehouse) {
+                assetData['currentWarehouse'] = this.formatLocation(
+                  asset.currentWarehouse,
+                );
+              } else if (asset.productSnapshot?.countryCode) {
+                assetData['currentWarehouse'] = {
+                  warehouseName:
+                    asset.productSnapshot.assignedTo || 'FP warehouse',
+                  countryCode: asset.productSnapshot.countryCode,
+                };
+              }
             }
           }
 
