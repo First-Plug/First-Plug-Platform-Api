@@ -332,19 +332,15 @@ const buildServiceBlocks = (
             );
           }
 
-          // Brand + Model + Name
-          const brandModelName: string[] = [];
+          // Brand + Model (sin name, que es la categoría)
+          const brandModel: string[] = [];
           if (asset.productSnapshot?.brand)
-            brandModelName.push(asset.productSnapshot.brand);
+            brandModel.push(asset.productSnapshot.brand);
           if (asset.productSnapshot?.model)
-            brandModelName.push(asset.productSnapshot.model);
-          if (asset.productSnapshot?.name)
-            brandModelName.push(asset.productSnapshot.name);
+            brandModel.push(asset.productSnapshot.model);
 
-          if (brandModelName.length > 0) {
-            assetSpecs.push(
-              `*Brand + Model + Name:* ${brandModelName.join(' + ')}`,
-            );
+          if (brandModel.length > 0) {
+            assetSpecs.push(`*Brand + Model:* ${brandModel.join(' + ')}`);
           }
 
           // Current Location
@@ -387,26 +383,47 @@ const buildServiceBlocks = (
               asset.destination.destinationType === 'Employee' &&
               asset.destination.member
             ) {
+              const memberName =
+                asset.destination.member.assignedMember || 'Unknown';
               const countryName = convertCountryCodeToName(
                 asset.destination.member.countryCode || '',
               );
-              destinationText = `${asset.destination.member.assignedMember || 'Unknown'} + ${countryName}`;
+              // Si el memberName ya termina con el país, no lo repitas
+              if (memberName.endsWith(countryName)) {
+                destinationText = memberName;
+              } else {
+                destinationText = `${memberName} + ${countryName}`;
+              }
             } else if (
               asset.destination.destinationType === 'Our office' &&
               asset.destination.office
             ) {
+              const officeName =
+                asset.destination.office.officeName || 'Unknown';
               const countryName = convertCountryCodeToName(
                 asset.destination.office.countryCode || '',
               );
-              destinationText = `${asset.destination.office.officeName || 'Unknown'} + ${countryName}`;
+              // Si el officeName ya termina con el país, no lo repitas
+              if (officeName.endsWith(countryName)) {
+                destinationText = officeName;
+              } else {
+                destinationText = `${officeName} + ${countryName}`;
+              }
             } else if (
               asset.destination.destinationType === 'FP warehouse' &&
               asset.destination.warehouse
             ) {
+              const warehouseName =
+                asset.destination.warehouse.warehouseName || 'FP warehouse';
               const countryName = convertCountryCodeToName(
                 asset.destination.warehouse.countryCode || '',
               );
-              destinationText = `${asset.destination.warehouse.warehouseName || 'FP warehouse'} + ${countryName}`;
+              // Si el warehouseName ya termina con el país, no lo repitas
+              if (warehouseName.endsWith(countryName)) {
+                destinationText = warehouseName;
+              } else {
+                destinationText = `${warehouseName} + ${countryName}`;
+              }
             }
 
             if (destinationText) {
