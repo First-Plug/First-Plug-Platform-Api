@@ -1735,7 +1735,7 @@ Incluye identificación completa del producto (importante para history y Slack):
           },
           "approximateSize": "35x25x2 cm",
           "approximateWeight": "1.6 kg",
-          "approximateStorageDays": 30,
+          "approximateStorageDays": "30",
           "additionalComments": "Laptop in protective case, ready for storage"
         }
       ],
@@ -1768,7 +1768,7 @@ Incluye identificación completa del producto (importante para history y Slack):
           },
           "approximateSize": "35x25x2 cm",
           "approximateWeight": "1.6 kg",
-          "approximateStorageDays": 45,
+          "approximateStorageDays": "45",
           "additionalComments": "Laptop in protective case"
         },
         {
@@ -1785,7 +1785,7 @@ Incluye identificación completa del producto (importante para history y Slack):
           },
           "approximateSize": "35x25x2 cm",
           "approximateWeight": "1.8 kg",
-          "approximateStorageDays": 60,
+          "approximateStorageDays": "60",
           "additionalComments": "Laptop with accessories in protective case"
         }
       ],

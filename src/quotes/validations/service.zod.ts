@@ -343,9 +343,8 @@ const StorageProductSchema = z.object({
     .max(100, 'Approximate weight no puede exceder 100 caracteres')
     .optional(),
   approximateStorageDays: z
-    .number()
-    .int('Storage days debe ser un número entero')
-    .positive('Storage days debe ser un número positivo')
+    .string()
+    .max(50, 'Storage days no puede exceder 50 caracteres')
     .optional(),
   additionalComments: z
     .string()
