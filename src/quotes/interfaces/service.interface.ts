@@ -206,7 +206,7 @@ export interface StorageProduct {
   productSnapshot?: ProductSnapshot; // Snapshot del producto
   approximateSize?: string; // Tamaño aproximado (opcional) - ej: "50x30x20 cm"
   approximateWeight?: string; // Peso aproximado (opcional) - ej: "5 kg"
-  approximateStorageDays?: number; // Días de guardado aproximado (opcional)
+  approximateStorageDays?: string; // Días de guardado aproximado (opcional)
   additionalComments?: string; // Comentarios adicionales (opcional)
 }
 

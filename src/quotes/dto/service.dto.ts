@@ -235,7 +235,7 @@ export class StorageServiceResponseDto {
     };
     approximateSize?: string; // Tamaño aproximado
     approximateWeight?: string; // Peso aproximado
-    approximateStorageDays?: number; // Días de guardado aproximado
+    approximateStorageDays?: string; // Días de guardado aproximado
     additionalComments?: string; // Comentarios adicionales
   }>;
   additionalDetails?: string; // Detalles adicionales

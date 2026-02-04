@@ -405,8 +405,8 @@ export class StorageProductSchema {
   @Prop({ type: String })
   approximateWeight?: string;
 
-  @Prop({ type: Number })
-  approximateStorageDays?: number;
+  @Prop({ type: String })
+  approximateStorageDays?: string;
 
   @Prop({ type: String })
   additionalComments?: string;
