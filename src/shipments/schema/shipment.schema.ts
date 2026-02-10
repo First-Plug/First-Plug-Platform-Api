@@ -332,3 +332,6 @@ export class Shipment {
 
 export const ShipmentSchema =
   SchemaFactory.createForClass(Shipment).plugin(softDeletePlugin);
+
+// Índice para listados: find({ isDeleted: false }).sort({ createdAt: -1 })
+ShipmentSchema.index({ isDeleted: 1, createdAt: -1 });

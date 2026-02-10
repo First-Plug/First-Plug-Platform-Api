@@ -6,6 +6,11 @@ import {
 import { Connection, createConnection } from 'mongoose';
 import { EnvConfiguration } from 'src/config';
 
+/** Máximo de conexiones por tenant en memoria (LRU). Evita saturar Atlas M0 (~500 conexiones). */
+const MAX_CACHED_TENANT_CONNECTIONS = 15;
+/** Tiempo en ms sin uso tras el cual se cierra una conexión tenant (3 min). */
+const TENANT_IDLE_CLOSE_MS = 3 * 60 * 1000;
+
 @Injectable()
 export class TenantConnectionService
   implements OnModuleDestroy, OnApplicationBootstrap
@@ -14,8 +19,22 @@ export class TenantConnectionService
     string,
     { connection: Connection; lastUsed: number }
   >();
-  private readonly maxIdleTime = 10 * 60 * 1000; // 10 minutos
+  private readonly maxIdleTime = TENANT_IDLE_CLOSE_MS;
   private cleanupInterval: NodeJS.Timeout;
+
+  /** Cierra la conexión menos usada recientemente para hacer hueco (LRU). */
+  private async evictLruConnection(): Promise<void> {
+    if (this.connections.size < MAX_CACHED_TENANT_CONNECTIONS) return;
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+    for (const [key, { lastUsed }] of this.connections) {
+      if (lastUsed < oldestTime) {
+        oldestTime = lastUsed;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey) await this.closeTenantConnection(oldestKey);
+  }
 
   async getTenantConnection(
     tenantName: string,
@@ -30,16 +49,18 @@ export class TenantConnectionService
       return connectionData.connection;
     }
 
+    await this.evictLruConnection();
+
     let attempt = 0;
     while (attempt < retries) {
       try {
-        // Intenta crear una nueva conexión
+        // Intenta crear una nueva conexión (pool pequeño para no saturar Atlas M0)
         const connection = createConnection(
           EnvConfiguration().database.connectionString!,
           {
             dbName: `tenant_${tenantName}`, // ← Usar prefijo tenant_
-            maxPoolSize: 10,
-            minPoolSize: 1,
+            maxPoolSize: 2,
+            minPoolSize: 0,
           },
         );
 
@@ -98,10 +119,10 @@ export class TenantConnectionService
   }
 
   onApplicationBootstrap() {
-    // Limpieza periódica de conexiones inactivas cada 5 minutos
+    // Limpieza periódica de conexiones inactivas cada 1 minuto
     this.cleanupInterval = setInterval(
       () => this.cleanupConnections(),
-      5 * 60 * 1000,
+      1 * 60 * 1000,
     );
   }
 

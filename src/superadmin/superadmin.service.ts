@@ -47,24 +47,25 @@ export class SuperAdminService {
   }
 
   /**
-   * Obtener todos los shipments de múltiples tenants (para SuperAdmin)
+   * Obtener todos los shipments de múltiples tenants (para SuperAdmin).
+   * Ejecuta las peticiones en paralelo para evitar 12–14s con muchos tenants.
    */
   async getAllShipmentsCrossTenant(tenantNames: string[]) {
-    const result: { tenantName: string; shipments: any[] }[] = [];
-
-    for (const tenantName of tenantNames) {
-      try {
-        const shipments = await this.getShipmentsByTenant(tenantName);
-        result.push({ tenantName, shipments });
-      } catch (error) {
-        console.warn(
-          `⚠️ Error obteniendo shipments de ${tenantName}:`,
-          error.message,
-        );
-      }
-    }
-
-    return result;
+    const results = await Promise.all(
+      tenantNames.map(async (tenantName) => {
+        try {
+          const shipments = await this.getShipmentsByTenant(tenantName);
+          return { tenantName, shipments };
+        } catch (error) {
+          console.warn(
+            `⚠️ Error obteniendo shipments de ${tenantName}:`,
+            error.message,
+          );
+          return { tenantName, shipments: [] as any[] };
+        }
+      }),
+    );
+    return results;
   }
 
   /**
