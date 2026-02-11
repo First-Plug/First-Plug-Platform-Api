@@ -38,7 +38,7 @@ import { EmailModule } from 'src/email/email.module';
       imports: [ConfigModule],
       useFactory: async (config) => ({
         uri: config.get('database.connectionString'),
-        maxPoolSize: 10,
+        maxPoolSize: 5,
         minPoolSize: 1,
       }),
       inject: [ConfigService],
@@ -49,7 +49,7 @@ import { EmailModule } from 'src/email/email.module';
       imports: [ConfigModule],
       useFactory: async (config) => ({
         uri: config.get('database.connectionString'), // Misma URI, no cambiar
-        maxPoolSize: 10,
+        maxPoolSize: 5,
         minPoolSize: 1,
       }),
       inject: [ConfigService],

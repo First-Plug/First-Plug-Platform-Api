@@ -117,7 +117,10 @@ export class ShipmentsService {
       await this.tenantConnectionService.getTenantConnection(tenantId);
     const ShipmentModel = this.getShipmentModel(connection);
 
-    return await ShipmentModel.find().sort({ createdAt: -1 }).exec();
+    return await ShipmentModel.find({ isDeleted: { $ne: true } })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
   }
 
   async findAllReadOnlyIfExists(tenantId: string) {
@@ -998,66 +1001,56 @@ export class ShipmentsService {
         await this.tenantConnectionService.getTenantConnection(tenantName);
       const ShipmentModel = this.getShipmentModel(connection);
 
-      const shipments = await ShipmentModel.find({ isDeleted: false }).sort({
-        createdAt: -1,
-      });
+      const shipments = await ShipmentModel.find({ isDeleted: false })
+        .sort({ createdAt: -1 })
+        .lean();
 
       console.log(
         `📦 Found ${shipments.length} shipments for tenant ${tenantName}`,
       );
 
-      // 🌍 TRANSFORM: Reemplazar "FP warehouse" con country code del warehouse
-      const transformedShipments = await Promise.all(
-        shipments.map(async (shipment) => {
-          try {
-            const shipmentObj = shipment.toObject();
-
-            // ✅ Asegurar que snapshots siempre sea un array
-            if (
-              !shipmentObj.snapshots ||
-              !Array.isArray(shipmentObj.snapshots)
-            ) {
-              shipmentObj.snapshots = [];
+      // Recolectar productIds que necesitan warehouseCountryCode (FP warehouse)
+      const productIdsToResolve = new Set<string>();
+      for (const shipment of shipments) {
+        const snapshots = (shipment as any).snapshots;
+        const products = (shipment as any).products;
+        if (Array.isArray(snapshots) && Array.isArray(products)) {
+          for (let i = 0; i < snapshots.length; i++) {
+            if (snapshots[i]?.location === 'FP warehouse' && products[i]) {
+              productIdsToResolve.add(products[i].toString());
             }
-
-            // ✅ Validar que snapshots existe y es array
-            if (shipmentObj.snapshots && Array.isArray(shipmentObj.snapshots)) {
-              for (let i = 0; i < shipmentObj.snapshots.length; i++) {
-                const snapshot = shipmentObj.snapshots[i];
-                if (snapshot && snapshot.location === 'FP warehouse') {
-                  // ✅ Validar que products existe y tiene el índice
-                  const productId = shipmentObj.products?.[i]?.toString();
-                  if (productId) {
-                    try {
-                      const countryCode = await this.getWarehouseCountryCode(
-                        productId,
-                        tenantName,
-                        connection,
-                      );
-                      if (countryCode) {
-                        // ✅ AGREGAR campo warehouseCountryCode, NO reemplazar location
-                        (snapshot as any).warehouseCountryCode = countryCode;
-                      }
-                    } catch (error) {
-                      console.error(
-                        `Error getting warehouse country code for product ${productId}:`,
-                        error,
-                      );
-                      // Continuar sin el country code
-                    }
-                  }
-                }
-              }
-            }
-
-            return shipmentObj;
-          } catch (error) {
-            console.error('Error transforming shipment:', error);
-            // Devolver el shipment original sin transformaciones
-            return shipment.toObject();
           }
-        }),
+        }
+      }
+
+      // Una sola query por lote en lugar de N (evitar N+1)
+      const productIdToCountryCode = await this.getWarehouseCountryCodesBatch(
+        [...productIdsToResolve],
+        connection,
       );
+
+      // Aplicar transformación en memoria
+      const transformedShipments = (shipments as any[]).map((shipmentObj) => {
+        if (
+          !shipmentObj.snapshots ||
+          !Array.isArray(shipmentObj.snapshots)
+        ) {
+          shipmentObj.snapshots = [];
+          return shipmentObj;
+        }
+        const products = shipmentObj.products || [];
+        for (let i = 0; i < shipmentObj.snapshots.length; i++) {
+          const snapshot = shipmentObj.snapshots[i];
+          if (snapshot?.location === 'FP warehouse' && products[i]) {
+            const productId = products[i].toString();
+            const countryCode = productIdToCountryCode.get(productId);
+            if (countryCode) {
+              snapshot.warehouseCountryCode = countryCode;
+            }
+          }
+        }
+        return shipmentObj;
+      });
 
       // ✅ Asegurar que siempre devolvemos un array válido
       const result = Array.isArray(transformedShipments)
@@ -1072,29 +1065,45 @@ export class ShipmentsService {
   }
 
   /**
-   * 🌍 Helper para obtener el country code del warehouse de un producto
+   * 🌍 Obtener country codes de warehouse para muchos productos en una sola query (evita N+1).
+   */
+  private async getWarehouseCountryCodesBatch(
+    productIds: string[],
+    connection: Connection,
+  ): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    if (productIds.length === 0) return map;
+    try {
+      const ProductModel = connection.model('Product');
+      const ids = productIds.map((id) => new Types.ObjectId(id));
+      const products = await ProductModel.find(
+        { _id: { $in: ids } },
+        { fpWarehouse: 1 },
+      )
+        .lean()
+        .exec();
+      for (const p of products) {
+        const doc = p as { _id: Types.ObjectId; fpWarehouse?: { warehouseCountryCode?: string } };
+        const code = doc.fpWarehouse?.warehouseCountryCode;
+        if (code) map.set(doc._id.toString(), code);
+      }
+      return map;
+    } catch (error) {
+      console.error('Error getting warehouse country codes batch:', error);
+      return map;
+    }
+  }
+
+  /**
+   * 🌍 Helper para obtener el country code del warehouse de un producto (uso unitario).
    */
   private async getWarehouseCountryCode(
     productId: string,
-    tenantName: string,
+    _tenantName: string,
     connection: Connection,
   ): Promise<string | null> {
-    try {
-      const ProductModel = connection.model('Product');
-      const product = await ProductModel.findById(productId);
-
-      if (product?.fpWarehouse?.warehouseCountryCode) {
-        return product.fpWarehouse.warehouseCountryCode;
-      }
-
-      return null;
-    } catch (error) {
-      console.error(
-        `Error getting warehouse country code for product ${productId}:`,
-        error,
-      );
-      return null;
-    }
+    const map = await this.getWarehouseCountryCodesBatch([productId], connection);
+    return map.get(productId) ?? null;
   }
 
   async getShipmentById(id: Types.ObjectId, tenantName: string) {
