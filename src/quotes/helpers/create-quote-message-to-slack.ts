@@ -198,31 +198,9 @@ const buildServiceBlocks = (
         (device: any) => device.category === 'Computer',
       ).length;
 
-      // Contar dispositivos por tipo (Mac vs Windows)
-      const macCount = (service.enrolledDevices || []).filter(
-        (device: any) =>
-          device.category === 'Computer' &&
-          device.brand &&
-          device.brand.toLowerCase().includes('apple'),
-      ).length;
-      const windowsCount = (service.enrolledDevices || []).filter(
-        (device: any) =>
-          device.category === 'Computer' &&
-          device.brand &&
-          !device.brand.toLowerCase().includes('apple'),
-      ).length;
-
       // Summary block
       const summarySpecs: string[] = [];
       summarySpecs.push(`*Total quantity of computers:* ${totalComputers}`);
-
-      const deviceSummary: string[] = [];
-      if (macCount > 0) deviceSummary.push(`${macCount} Mac`);
-      if (windowsCount > 0) deviceSummary.push(`${windowsCount} Windows`);
-
-      if (deviceSummary.length > 0) {
-        summarySpecs.push(`*Device Types:* ${deviceSummary.join(', ')}`);
-      }
 
       blocks.push({
         type: 'section',
