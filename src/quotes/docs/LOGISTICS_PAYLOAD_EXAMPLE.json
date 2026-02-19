@@ -2,7 +2,6 @@
   "services": [
     {
       "serviceCategory": "Logistics",
-      "desirablePickupDate": "2025-01-20",
       "additionalDetails": "Envío urgente. Producto frágil, requiere embalaje especial.",
       "products": [
         {
@@ -21,7 +20,9 @@
             "type": "Office",
             "officeName": "Oficina Principal",
             "countryCode": "UY"
-          }
+          },
+          "desirablePickupDate": "2025-01-20",
+          "desirableDeliveryDate": "2025-01-25"
         },
         {
           "productId": "686beb939c7a0951bbec43da",
@@ -41,10 +42,11 @@
             "assignedMember": "Carlos López",
             "assignedEmail": "carloslopez@work.com",
             "countryCode": "ES"
-          }
+          },
+          "desirablePickupDate": "2025-01-22",
+          "desirableDeliveryDate": "2025-01-28"
         }
       ]
     }
   ]
 }
-

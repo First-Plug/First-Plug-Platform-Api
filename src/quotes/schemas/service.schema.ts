@@ -503,6 +503,9 @@ export class OffboardingProductSchema {
 
   @Prop({ type: OffboardingDestinationSchema, required: true })
   destination: OffboardingDestinationSchema;
+
+  @Prop({ type: String })
+  desirableDeliveryDate?: string;
 }
 
 /**
@@ -583,6 +586,12 @@ export class LogisticsProductSchema {
 
   @Prop({ type: LogisticsDestinationSchema, required: true })
   destination: LogisticsDestinationSchema;
+
+  @Prop({ type: String })
+  desirablePickupDate?: string;
+
+  @Prop({ type: String })
+  desirableDeliveryDate?: string;
 }
 
 /**
@@ -595,9 +604,6 @@ export class LogisticsServiceSchema {
 
   @Prop({ type: [LogisticsProductSchema], required: true, minlength: 1 })
   products: LogisticsProductSchema[];
-
-  @Prop({ type: String })
-  desirablePickupDate?: string;
 
   @Prop({ type: String, maxlength: 1000 })
   additionalDetails?: string;

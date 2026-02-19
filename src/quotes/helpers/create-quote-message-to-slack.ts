@@ -38,17 +38,19 @@ const convertCountryCodeToName = (countryCode: string): string => {
 
 /**
  * Formatea fecha a formato DD/MM/YYYY (solo días, sin hora)
+ * ⚠️ IMPORTANTE: No usar new Date() para evitar problemas de zona horaria
+ * Las fechas vienen en formato YYYY-MM-DD y deben mostrarse como DD/MM/YYYY
  */
 const formatDateToDay = (dateString: string): string => {
   if (!dateString) return '-';
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) return '-';
 
-  return date.toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  // Validar formato YYYY-MM-DD
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(dateString)) return '-';
+
+  // Dividir y reorganizar sin usar new Date() para evitar problemas de zona horaria
+  const [year, month, day] = dateString.split('-');
+  return `${day}/${month}/${year}`;
 };
 
 /**
@@ -1146,7 +1148,7 @@ const buildServiceBlocks = (
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Desirable Pickup Date:* ${service.desirablePickupDate}`,
+            text: `*Desirable Pickup Date:* ${formatDateToDay(service.desirablePickupDate)}`,
           },
         });
       }
@@ -1238,6 +1240,13 @@ const buildServiceBlocks = (
             }
           }
 
+          // Desirable Delivery Date (a nivel de producto)
+          if (product.desirableDeliveryDate) {
+            productSpecs.push(
+              `*Desirable Delivery Date:* ${formatDateToDay(product.desirableDeliveryDate)}`,
+            );
+          }
+
           if (productSpecs.length > 0) {
             blocks.push({
               type: 'section',
@@ -1272,17 +1281,6 @@ const buildServiceBlocks = (
           text: `*Total quantity of products:* ${totalProducts}`,
         },
       });
-
-      // Desirable Pickup Date
-      if (service.desirablePickupDate) {
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*Desirable Pickup Date:* ${service.desirablePickupDate}`,
-          },
-        });
-      }
 
       // Detalles de cada producto a enviar
       if (service.products && service.products.length > 0) {
@@ -1357,6 +1355,20 @@ const buildServiceBlocks = (
             if (destinationText) {
               productSpecs.push(`*Destination:* ${destinationText}`);
             }
+          }
+
+          // Desirable Pickup Date (a nivel de producto)
+          if (product.desirablePickupDate) {
+            productSpecs.push(
+              `*Desirable Pickup Date:* ${formatDateToDay(product.desirablePickupDate)}`,
+            );
+          }
+
+          // Desirable Delivery Date (a nivel de producto)
+          if (product.desirableDeliveryDate) {
+            productSpecs.push(
+              `*Desirable Delivery Date:* ${formatDateToDay(product.desirableDeliveryDate)}`,
+            );
           }
 
           if (productSpecs.length > 0) {

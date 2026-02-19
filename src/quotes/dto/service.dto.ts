@@ -278,6 +278,7 @@ export class OffboardingServiceResponseDto {
       warehouseName?: string;
       countryCode: string;
     };
+    desirableDeliveryDate?: string; // Fecha deseable para la entrega del producto (YYYY-MM-DD)
   }>;
   desirablePickupDate?: string; // Fecha deseable para el pickup de todos los productos (YYYY-MM-DD)
   additionalDetails?: string;
@@ -311,8 +312,9 @@ export class LogisticsServiceResponseDto {
       warehouseName?: string;
       countryCode: string;
     };
+    desirablePickupDate?: string; // Fecha deseable para el pickup (YYYY-MM-DD)
+    desirableDeliveryDate?: string; // Fecha deseable para la entrega (YYYY-MM-DD)
   }[];
-  desirablePickupDate?: string; // Fecha deseable para el pickup (YYYY-MM-DD)
   additionalDetails?: string;
 }
 

@@ -1022,6 +1022,12 @@ export class QuotesCoordinatorService {
             };
           }
 
+          // Agregar fecha deseable de entrega a nivel de producto
+          if (product.desirableDeliveryDate) {
+            productData['desirableDeliveryDate'] =
+              product.desirableDeliveryDate;
+          }
+
           return productData;
         });
       }
@@ -1033,9 +1039,6 @@ export class QuotesCoordinatorService {
       const baseFields = {
         serviceCategory: service.serviceCategory,
         productCount: service.products?.length || 0,
-        ...(service.desirablePickupDate && {
-          desirablePickupDate: service.desirablePickupDate,
-        }),
         ...(service.additionalDetails && {
           additionalDetails: service.additionalDetails,
         }),
@@ -1085,6 +1088,16 @@ export class QuotesCoordinatorService {
               }),
               countryCode: product.destination.countryCode,
             };
+          }
+
+          // Agregar fechas deseables a nivel de producto
+          if (product.desirablePickupDate) {
+            productData['desirablePickupDate'] = product.desirablePickupDate;
+          }
+
+          if (product.desirableDeliveryDate) {
+            productData['desirableDeliveryDate'] =
+              product.desirableDeliveryDate;
           }
 
           return productData;

@@ -285,6 +285,7 @@ export interface OffboardingProduct {
   productId?: Types.ObjectId; // ID del producto
   productSnapshot?: ProductSnapshot; // Snapshot del producto
   destination: OffboardingDestination; // Destino del producto
+  desirableDeliveryDate?: string; // Fecha deseable para la entrega del producto (YYYY-MM-DD)
 }
 
 /**
@@ -323,6 +324,8 @@ export interface LogisticsProduct {
   productId?: Types.ObjectId; // ID del producto
   productSnapshot?: ProductSnapshot; // Snapshot del producto
   destination: LogisticsDestination; // Destino del producto
+  desirablePickupDate?: string; // Fecha deseable para el pickup (YYYY-MM-DD)
+  desirableDeliveryDate?: string; // Fecha deseable para la entrega (YYYY-MM-DD)
 }
 
 /**
@@ -332,7 +335,6 @@ export interface LogisticsProduct {
 export interface LogisticsService {
   serviceCategory: 'Logistics';
   products: LogisticsProduct[]; // Array de productos a enviar (mínimo 1)
-  desirablePickupDate?: string; // Fecha deseable para el pickup (YYYY-MM-DD)
   additionalDetails?: string; // Comentarios adicionales (opcional)
 }
 
