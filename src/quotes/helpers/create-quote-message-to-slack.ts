@@ -1273,17 +1273,6 @@ const buildServiceBlocks = (
         },
       });
 
-      // Desirable Pickup Date
-      if (service.desirablePickupDate) {
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*Desirable Pickup Date:* ${service.desirablePickupDate}`,
-          },
-        });
-      }
-
       // Detalles de cada producto a enviar
       if (service.products && service.products.length > 0) {
         service.products.forEach((product: any, productIndex: number) => {
@@ -1357,6 +1346,20 @@ const buildServiceBlocks = (
             if (destinationText) {
               productSpecs.push(`*Destination:* ${destinationText}`);
             }
+          }
+
+          // Desirable Pickup Date (a nivel de producto)
+          if (product.desirablePickupDate) {
+            productSpecs.push(
+              `*Desirable Pickup Date:* ${formatDateToDay(product.desirablePickupDate)}`,
+            );
+          }
+
+          // Desirable Delivery Date (a nivel de producto)
+          if (product.desirableDeliveryDate) {
+            productSpecs.push(
+              `*Desirable Delivery Date:* ${formatDateToDay(product.desirableDeliveryDate)}`,
+            );
           }
 
           if (productSpecs.length > 0) {

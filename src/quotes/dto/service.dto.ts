@@ -311,8 +311,9 @@ export class LogisticsServiceResponseDto {
       warehouseName?: string;
       countryCode: string;
     };
+    desirablePickupDate?: string; // Fecha deseable para el pickup (YYYY-MM-DD)
+    desirableDeliveryDate?: string; // Fecha deseable para la entrega (YYYY-MM-DD)
   }[];
-  desirablePickupDate?: string; // Fecha deseable para el pickup (YYYY-MM-DD)
   additionalDetails?: string;
 }
 

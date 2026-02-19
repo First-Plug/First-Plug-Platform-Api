@@ -472,6 +472,20 @@ const LogisticsProductSchema = z.object({
   productId: z.string().optional(),
   productSnapshot: z.any().optional(),
   destination: LogisticsDestinationSchema,
+  desirablePickupDate: z
+    .string()
+    .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val), {
+      message: 'Desirable pickup date debe estar en formato YYYY-MM-DD',
+    })
+    .optional()
+    .describe('Fecha deseable para el pickup (YYYY-MM-DD)'),
+  desirableDeliveryDate: z
+    .string()
+    .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val), {
+      message: 'Desirable delivery date debe estar en formato YYYY-MM-DD',
+    })
+    .optional()
+    .describe('Fecha deseable para la entrega (YYYY-MM-DD)'),
 });
 
 /**
@@ -482,13 +496,6 @@ export const LogisticsServiceSchema = z.object({
   products: z
     .array(LogisticsProductSchema)
     .min(1, 'Al menos un producto es requerido para logistics'),
-  desirablePickupDate: z
-    .string()
-    .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val), {
-      message: 'Desirable pickup date debe estar en formato YYYY-MM-DD',
-    })
-    .optional()
-    .describe('Fecha deseable para el pickup (YYYY-MM-DD)'),
   additionalDetails: z
     .string()
     .max(1000, 'Additional details no puede exceder 1000 caracteres')
