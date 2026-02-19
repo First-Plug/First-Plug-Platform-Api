@@ -28,6 +28,7 @@ import { Attribute, Status } from './interfaces/product.interface';
 import { MemberDocument } from 'src/members/schemas/member.schema';
 import { Response } from 'express';
 import { Parser } from 'json2csv';
+import { convertCountryCodeToName } from 'src/shipments/helpers/country-code-to-name.helper';
 import { HistoryService } from 'src/history/history.service';
 import { updateProductPrice } from './helpers/update-price.helper';
 import { TenantConnectionService } from 'src/infra/db/tenant-connection.service';
@@ -2202,64 +2203,70 @@ export class ProductsService {
       .concat(deprecatedProducts);
 
     const csvFields = [
+      { label: 'Serial Number', value: 'serialNumber' },
       { label: 'Category', value: 'category' },
-      { label: 'Recoverable', value: 'recoverable' },
-      { label: 'Name', value: 'name' },
-      { label: 'Acquisition Date', value: 'acquisitionDate' },
       { label: 'Brand', value: 'brand' },
       { label: 'Model', value: 'model' },
-      { label: 'Color', value: 'color' },
-      { label: 'Screen', value: 'screen' },
-      { label: 'Keyboard Language', value: 'keyboardLanguage' },
+      { label: 'Name', value: 'name' },
       { label: 'Processor', value: 'processor' },
       { label: 'RAM', value: 'ram' },
       { label: 'Storage', value: 'storage' },
+      { label: 'Screen', value: 'screen' },
       { label: 'GPU', value: 'gpu' },
-      { label: 'Serial Number', value: 'serialNumber' },
+      { label: 'Keyboard Language', value: 'keyboardLanguage' },
+      { label: 'Color', value: 'color' },
+      { label: 'Acquisition Date', value: 'acquisitionDate' },
+      { label: 'Price per unit', value: 'priceAmount' },
+      { label: 'Currency', value: 'currency' },
+      { label: 'Product Condition', value: 'productCondition' },
+      { label: 'Recoverable', value: 'recoverable' },
+      { label: 'Additional Info', value: 'additionalInfo' },
       { label: 'Assigned Member', value: 'assignedMember' },
       { label: 'Assigned Email', value: 'assignedEmail' },
       { label: 'Location', value: 'location' },
+      { label: 'Country', value: 'country' },
       { label: 'Status', value: 'status' },
-      { label: 'Price', value: 'price' },
-      { label: 'Product Condition', value: 'productCondition' },
-      { label: 'Additional Info', value: 'additionalInfo' },
     ];
 
-    const productsFormatted = products.map((product) => ({
+    const productsFormatted = products.map((product: any) => ({
+      serialNumber: product.serialNumber || '',
       category: product.category,
-      recoverable: product.recoverable ? 'yes' : 'no',
-      name: product.name,
-      acquisitionDate: this.formatDate(new Date(product.acquisitionDate || '')),
-      brand: this.getAttributeValue(product.attributes, 'brand'),
-      model: this.getAttributeValue(product.attributes, 'model'),
-      color: this.getAttributeValue(product.attributes, 'color'),
-      screen: this.getAttributeValue(product.attributes, 'screen'),
-      keyboardLanguage: this.getAttributeValue(
-        product.attributes,
-        'keyboardLanguage',
-      ),
-      processor: this.getAttributeValue(product.attributes, 'processor'),
-      ram: this.getAttributeValue(product.attributes, 'ram'),
-      storage: this.getAttributeValue(product.attributes, 'storage'),
-      gpu: this.getAttributeValue(product.attributes, 'gpu'),
-      serialNumber: product.serialNumber,
-      assignedMember: product.assignedMember,
-      assignedEmail: product.assignedEmail,
-      location: product.location,
-      status: product.status,
-      price: product.price
-        ? `${product.price.amount} ${product.price.currencyCode}`
+      brand: this.getAttributeValue(product.attributes, 'brand') || '',
+      model: this.getAttributeValue(product.attributes, 'model') || '',
+      name: product.name || '',
+      processor: this.getAttributeValue(product.attributes, 'processor') || '',
+      ram: this.getAttributeValue(product.attributes, 'ram') || '',
+      storage: this.getAttributeValue(product.attributes, 'storage') || '',
+      screen: this.getAttributeValue(product.attributes, 'screen') || '',
+      gpu: this.getAttributeValue(product.attributes, 'gpu') || '',
+      keyboardLanguage:
+        this.getAttributeValue(product.attributes, 'keyboardLanguage') || '',
+      color: this.getAttributeValue(product.attributes, 'color') || '',
+      acquisitionDate: product.acquisitionDate
+        ? this.formatDate(new Date(product.acquisitionDate))
         : '',
-      productCondition: product.productCondition,
-      additionalInfo: product.additionalInfo,
+      priceAmount: product.price?.amount || '',
+      currency: product.price?.currencyCode || '',
+      productCondition: product.productCondition || '',
+      recoverable: product.recoverable ? 'yes' : 'no',
+      additionalInfo: product.additionalInfo || '',
+      assignedMember: product.assignedMember || '',
+      assignedEmail: product.assignedEmail || '',
+      location: product.location || '',
+      // Convertir código de país a nombre (AR → Argentina)
+      country: convertCountryCodeToName(product.countryCode || ''),
+      status: product.status,
     }));
 
     const csvParser = new Parser({ fields: csvFields });
     const csvData = csvParser.parse(productsFormatted);
 
-    res.header('Content-Type', 'text/csv');
+    // Agregar BOM (Byte Order Mark) para que Excel reconozca UTF-8 y comas como delimitador
+    const csvWithBOM = '\uFEFF' + csvData;
+
+    res.header('Content-Type', 'text/csv; charset=utf-8');
     res.attachment('products_report.csv');
-    res.send(csvData);
+    res.send(csvWithBOM);
   }
 
   async findProductById(id: Schema.Types.ObjectId, tenantName: string) {

@@ -57,13 +57,6 @@ export class ProductsController {
       const tenantName = req.user.tenantName;
       const { userId } = req;
 
-      // 🔍 DEBUG: Ver qué datos manda el front
-      console.log('📦 [BULK CREATE] Payload recibido del front:');
-      console.log(JSON.stringify(createProductDto, null, 2));
-      console.log(
-        `📦 [BULK CREATE] Total de productos: ${createProductDto.length}`,
-      );
-
       const products = await this.productsService.bulkCreate(
         createProductDto,
         tenantName,
@@ -99,13 +92,6 @@ export class ProductsController {
     try {
       const tenantName = req.user.tenantName;
       const { userId } = req;
-
-      // 🔍 DEBUG: Ver qué datos manda el front
-      console.log('📦 [BULK CREATE CSV] Payload recibido del front:');
-      console.log(JSON.stringify(createProductDto, null, 2));
-      console.log(
-        `📦 [BULK CREATE CSV] Total de productos: ${createProductDto.length}`,
-      );
 
       const products = await this.productsService.bulkCreate(
         createProductDto as CreateProductDto[],
