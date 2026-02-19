@@ -1148,7 +1148,7 @@ const buildServiceBlocks = (
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Desirable Pickup Date:* ${service.desirablePickupDate}`,
+            text: `*Desirable Pickup Date:* ${formatDateToDay(service.desirablePickupDate)}`,
           },
         });
       }
@@ -1238,6 +1238,13 @@ const buildServiceBlocks = (
             if (destinationText) {
               productSpecs.push(`*Destination:* ${destinationText}`);
             }
+          }
+
+          // Desirable Delivery Date (a nivel de producto)
+          if (product.desirableDeliveryDate) {
+            productSpecs.push(
+              `*Desirable Delivery Date:* ${formatDateToDay(product.desirableDeliveryDate)}`,
+            );
           }
 
           if (productSpecs.length > 0) {

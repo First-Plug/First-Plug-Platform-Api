@@ -278,6 +278,7 @@ export class OffboardingServiceResponseDto {
       warehouseName?: string;
       countryCode: string;
     };
+    desirableDeliveryDate?: string; // Fecha deseable para la entrega del producto (YYYY-MM-DD)
   }>;
   desirablePickupDate?: string; // Fecha deseable para el pickup de todos los productos (YYYY-MM-DD)
   additionalDetails?: string;

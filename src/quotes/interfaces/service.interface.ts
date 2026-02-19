@@ -285,6 +285,7 @@ export interface OffboardingProduct {
   productId?: Types.ObjectId; // ID del producto
   productSnapshot?: ProductSnapshot; // Snapshot del producto
   destination: OffboardingDestination; // Destino del producto
+  desirableDeliveryDate?: string; // Fecha deseable para la entrega del producto (YYYY-MM-DD)
 }
 
 /**

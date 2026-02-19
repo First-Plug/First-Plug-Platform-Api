@@ -1982,3 +1982,333 @@ Incluye identificación completa del producto (importante para history y Slack):
   ]
 }
 ```
+
+## Example 31: Logistics Service - Multiple Products with Different Destinations
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Logistics",
+      "products": [
+        {
+          "productId": "686beb939c7a0951bbec4461",
+          "productSnapshot": {
+            "category": "Monitor",
+            "brand": "LG",
+            "model": "Smart Monitor",
+            "serialNumber": "LG-SM-2024-001",
+            "location": "Employee",
+            "assignedTo": "Almudena Cerezo",
+            "assignedEmail": "almudenacerezo@work.com",
+            "countryCode": "UY"
+          },
+          "destination": {
+            "type": "Member",
+            "memberId": "686beb6f9c7a0951bbec40de",
+            "assignedMember": "Evelio Farias",
+            "assignedEmail": "eveliofarias@work.com",
+            "countryCode": "ES"
+          },
+          "desirablePickupDate": "2025-01-20",
+          "desirableDeliveryDate": "2025-01-25"
+        },
+        {
+          "productId": "686beb939c7a0951bbec4462",
+          "productSnapshot": {
+            "category": "Other",
+            "brand": "Apple",
+            "model": "iPhone 15 Pro",
+            "serialNumber": "IPHONE-15-PRO-001",
+            "location": "Employee",
+            "assignedTo": "María García",
+            "assignedEmail": "mariagarcia@work.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "type": "Member",
+            "memberId": "686beb6f9c7a0951bbec40df",
+            "assignedMember": "Carlos López",
+            "assignedEmail": "carloslopez@work.com",
+            "countryCode": "ES"
+          },
+          "desirablePickupDate": "2025-01-21",
+          "desirableDeliveryDate": "2025-01-27"
+        },
+        {
+          "productId": "686beb939c7a0951bbec4463",
+          "productSnapshot": {
+            "category": "Computer",
+            "brand": "Dell",
+            "model": "XPS 13",
+            "serialNumber": "DELL-XPS-2024-001",
+            "location": "Our office",
+            "assignedTo": "Oficina Principal",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "type": "Warehouse",
+            "countryCode": "AR"
+          },
+          "desirablePickupDate": "2025-01-22",
+          "desirableDeliveryDate": "2025-01-28"
+        }
+      ],
+      "additionalDetails": "Envío urgente. Producto frágil, requiere embalaje especial."
+    }
+  ]
+}
+```
+
+**Notas sobre Logistics Service:**
+
+- **Fechas a nivel de producto**: `desirablePickupDate` y `desirableDeliveryDate` están en cada producto (no a nivel de servicio)
+- **Formato de fechas**: YYYY-MM-DD en el payload, se guardan así en BD, se devuelven así en GET, y se muestran como DD/MM/YYYY en Slack
+- **Warehouse auto-lookup**: Cuando el destino es "Warehouse", el frontend solo envía `countryCode`. El backend automáticamente busca el warehouse activo del país
+- **Resultado guardado en BD**: El warehouse se completa con `warehouseId` y `warehouseName`
+- **En Slack se muestra**: Cada producto con sus fechas formateadas (DD/MM/YYYY)
+- **En GET /history y /activity**: Las fechas se devuelven a nivel de producto en formato YYYY-MM-DD
+
+---
+
+## Example 32: Logistics Service - Warehouse Auto-lookup (Simplified)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Logistics",
+      "products": [
+        {
+          "productId": "686beb939c7a0951bbec4464",
+          "productSnapshot": {
+            "category": "Monitor",
+            "brand": "Dell",
+            "model": "U2720Q",
+            "serialNumber": "DELL-U2720Q-001",
+            "location": "FP warehouse",
+            "assignedTo": "FP Warehouse Guatemala",
+            "countryCode": "GT"
+          },
+          "destination": {
+            "type": "Warehouse",
+            "countryCode": "GT"
+          },
+          "desirablePickupDate": "2025-01-23",
+          "desirableDeliveryDate": "2025-01-29"
+        }
+      ],
+      "additionalDetails": "Monitor para almacén de Guatemala"
+    }
+  ]
+}
+```
+
+**Cómo funciona el Warehouse Auto-lookup:**
+
+1. **Frontend envía**: Solo `countryCode` en el objeto `destination`
+2. **Backend busca**: El warehouse activo para ese país
+3. **Backend completa**: `warehouseId` y `warehouseName` antes de guardar
+4. **BD guarda**: Objeto warehouse completo con todos los datos
+5. **GET devuelve**: Warehouse completo con `warehouseId`, `warehouseName`, `countryCode`
+
+---
+
+## Example 33: Offboarding Service - Multiple Products with Different Destinations
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Offboarding",
+      "originMember": {
+        "memberId": "686beb6f9c7a0951bbec40e0",
+        "firstName": "Juan",
+        "lastName": "Pérez",
+        "email": "juanperez@work.com",
+        "countryCode": "AR"
+      },
+      "desirablePickupDate": "2025-02-01",
+      "products": [
+        {
+          "productId": "686beb939c7a0951bbec4465",
+          "productSnapshot": {
+            "category": "Computer",
+            "brand": "Apple",
+            "model": "MacBook Pro",
+            "serialNumber": "MACBOOK-PRO-001",
+            "location": "Employee",
+            "assignedTo": "Juan Pérez",
+            "assignedEmail": "juanperez@work.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "type": "Member",
+            "memberId": "686beb6f9c7a0951bbec40e1",
+            "assignedMember": "Pedro González",
+            "assignedEmail": "pedrogonzalez@work.com",
+            "countryCode": "AR"
+          },
+          "desirableDeliveryDate": "2025-02-05"
+        },
+        {
+          "productId": "686beb939c7a0951bbec4466",
+          "productSnapshot": {
+            "category": "Monitor",
+            "brand": "LG",
+            "model": "27UP550",
+            "serialNumber": "LG-27UP550-001",
+            "location": "Employee",
+            "assignedTo": "Juan Pérez",
+            "assignedEmail": "juanperez@work.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "type": "Office",
+            "officeId": "687e7e601d43bf08d8f26046",
+            "officeName": "Oficina Principal",
+            "countryCode": "AR"
+          },
+          "desirableDeliveryDate": "2025-02-06"
+        },
+        {
+          "productId": "686beb939c7a0951bbec4467",
+          "productSnapshot": {
+            "category": "Audio",
+            "brand": "Sony",
+            "model": "Zone Vibe 125",
+            "serialNumber": "SONY-ZONE-001",
+            "location": "Employee",
+            "assignedTo": "Juan Pérez",
+            "assignedEmail": "juanperez@work.com",
+            "countryCode": "AR"
+          },
+          "destination": {
+            "type": "Warehouse",
+            "warehouseId": "68c466eb2a12cf5c56301a2e",
+            "warehouseName": "Sede FirstPlug Argentina",
+            "countryCode": "AR"
+          },
+          "desirableDeliveryDate": "2025-02-07"
+        }
+      ],
+      "isSensitiveSituation": false,
+      "employeeKnows": true,
+      "additionalDetails": "Offboarding de empleado. Equipos a ser reasignados o almacenados."
+    }
+  ]
+}
+```
+
+**Notas sobre Offboarding Service:**
+
+- **Pickup date a nivel de servicio**: `desirablePickupDate` es general para todos los productos (todos se recogen del mismo member)
+- **Delivery date a nivel de producto**: `desirableDeliveryDate` es específico para cada producto (van a diferentes destinos)
+- **Origen**: `originMember` con campos requeridos:
+  - `memberId` (ID del member que se va)
+  - `firstName` (nombre del member)
+  - `lastName` (apellido del member)
+  - `email` (email del member)
+  - `countryCode` (código ISO del país)
+- **Destinos de productos**: Cada uno con su destino (Member, Office, o Warehouse)
+  - **Member**: `memberId`, `assignedMember`, `assignedEmail`, `countryCode`
+  - **Office**: `officeId`, `officeName`, `countryCode`
+  - **Warehouse**: `warehouseId`, `warehouseName`, `countryCode` (requiere datos completos)
+- **Flags adicionales**: `isSensitiveSituation` (boolean) y `employeeKnows` (boolean) para casos especiales
+- **Formato de fechas**: YYYY-MM-DD en payload, se guardan así, se devuelven así en GET, DD/MM/YYYY en Slack
+- **En Slack se muestra**: Pickup date a nivel de servicio, cada producto con su delivery date
+- **En GET /history y /activity**: Pickup date a nivel de servicio, delivery dates a nivel de producto
+
+---
+
+## Example 34: Offboarding Service - Simple (Single Product to Warehouse)
+
+```json
+{
+  "services": [
+    {
+      "serviceCategory": "Offboarding",
+      "originMember": {
+        "memberId": "686beb6f9c7a0951bbec40e2",
+        "firstName": "María",
+        "lastName": "López",
+        "email": "marialopez@work.com",
+        "countryCode": "ES"
+      },
+      "desirablePickupDate": "2025-02-10",
+      "products": [
+        {
+          "productId": "686beb939c7a0951bbec4468",
+          "productSnapshot": {
+            "category": "Computer",
+            "brand": "Lenovo",
+            "model": "ThinkPad X1",
+            "serialNumber": "LENOVO-X1-001",
+            "location": "Employee",
+            "assignedTo": "María López",
+            "assignedEmail": "marialopez@work.com",
+            "countryCode": "ES"
+          },
+          "destination": {
+            "type": "Warehouse",
+            "warehouseId": "68c466eb2a12cf5c56301a2f",
+            "warehouseName": "Sede FirstPlug España",
+            "countryCode": "ES"
+          },
+          "desirableDeliveryDate": "2025-02-15"
+        }
+      ],
+      "isSensitiveSituation": false,
+      "employeeKnows": true,
+      "additionalDetails": "Offboarding simple. Equipo a almacén de España."
+    }
+  ]
+}
+```
+
+---
+
+## Resumen: Diferencias entre Logistics y Offboarding
+
+| Aspecto                   | Logistics                          | Offboarding                                  |
+| ------------------------- | ---------------------------------- | -------------------------------------------- |
+| **Pickup Date**           | A nivel de producto                | A nivel de servicio (general)                |
+| **Delivery Date**         | A nivel de producto                | A nivel de producto                          |
+| **Origen**                | Implícito en cada producto         | Explícito (`originMember` con datos)         |
+| **Destinos**              | Múltiples, variados                | Múltiples, variados                          |
+| **Warehouse Auto-lookup** | Sí, solo enviar `countryCode`      | No, requiere `warehouseId` y `warehouseName` |
+| **Flags Especiales**      | No                                 | `isSensitiveSituation`, `employeeKnows`      |
+| **Caso de Uso**           | Envío de equipos entre ubicaciones | Recolección de equipos de empleado que se va |
+
+---
+
+## Manejo de Fechas en el Sistema
+
+### Formato en Payload (POST)
+
+```
+"desirablePickupDate": "2025-01-20"
+"desirableDeliveryDate": "2025-01-25"
+```
+
+### Almacenamiento en BD
+
+```
+Guardado como string: "2025-01-20"
+```
+
+### Devolución en GET /quotes y GET /history
+
+```json
+"desirablePickupDate": "2025-01-20",
+"desirableDeliveryDate": "2025-01-25"
+```
+
+### Visualización en Slack
+
+```
+*Desirable Pickup Date:* 20/01/2025
+*Desirable Delivery Date:* 25/01/2025
+```
+
+**Importante**: Las fechas se convierten de YYYY-MM-DD a DD/MM/YYYY usando string splitting (sin `new Date()`) para evitar problemas de zona horaria.

@@ -417,6 +417,13 @@ const OffboardingProductSchema = z.object({
   productId: z.string().optional(),
   productSnapshot: ProductSnapshotSchema.optional(),
   destination: OffboardingDestinationSchema,
+  desirableDeliveryDate: z
+    .string()
+    .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val), {
+      message: 'Desirable delivery date debe estar en formato YYYY-MM-DD',
+    })
+    .optional()
+    .describe('Fecha deseable para la entrega del producto (YYYY-MM-DD)'),
 });
 
 /**

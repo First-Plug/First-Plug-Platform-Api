@@ -1022,6 +1022,12 @@ export class QuotesCoordinatorService {
             };
           }
 
+          // Agregar fecha deseable de entrega a nivel de producto
+          if (product.desirableDeliveryDate) {
+            productData['desirableDeliveryDate'] =
+              product.desirableDeliveryDate;
+          }
+
           return productData;
         });
       }

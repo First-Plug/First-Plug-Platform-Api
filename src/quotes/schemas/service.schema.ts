@@ -503,6 +503,9 @@ export class OffboardingProductSchema {
 
   @Prop({ type: OffboardingDestinationSchema, required: true })
   destination: OffboardingDestinationSchema;
+
+  @Prop({ type: String })
+  desirableDeliveryDate?: string;
 }
 
 /**
