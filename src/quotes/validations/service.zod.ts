@@ -473,26 +473,32 @@ const LogisticsDestinationSchema = z.object({
 });
 
 /**
+ * Valida fecha YYYY-MM-DD o "ASAP" (mayúsculas)
+ */
+const DateOrASAPSchema = z
+  .string()
+  .refine(
+    (val) => /^\d{4}-\d{2}-\d{2}$/.test(val) || val === 'ASAP',
+    {
+      message:
+        'Debe ser una fecha en formato YYYY-MM-DD o "ASAP" (mayúsculas)',
+    },
+  )
+  .optional();
+
+/**
  * Producto en Logistics Service
  */
 const LogisticsProductSchema = z.object({
   productId: z.string().optional(),
   productSnapshot: z.any().optional(),
   destination: LogisticsDestinationSchema,
-  desirablePickupDate: z
-    .string()
-    .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val), {
-      message: 'Desirable pickup date debe estar en formato YYYY-MM-DD',
-    })
-    .optional()
-    .describe('Fecha deseable para el pickup (YYYY-MM-DD)'),
-  desirableDeliveryDate: z
-    .string()
-    .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val), {
-      message: 'Desirable delivery date debe estar en formato YYYY-MM-DD',
-    })
-    .optional()
-    .describe('Fecha deseable para la entrega (YYYY-MM-DD)'),
+  desirablePickupDate: DateOrASAPSchema.describe(
+    'Fecha deseable para el pickup (YYYY-MM-DD o ASAP)',
+  ),
+  desirableDeliveryDate: DateOrASAPSchema.describe(
+    'Fecha deseable para la entrega (YYYY-MM-DD o ASAP)',
+  ),
 });
 
 /**
