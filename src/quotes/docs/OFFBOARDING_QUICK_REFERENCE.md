@@ -47,9 +47,9 @@
 
 ### desirablePickupDate
 
-- Tipo: `Date` (ISO 8601 format: "YYYY-MM-DD")
+- Tipo: `Date` (ISO 8601 format: "YYYY-MM-DD") o `"ASAP"`
 - Requerido: ❌ (Opcional)
-- Ejemplo: `"2025-01-15"`
+- Ejemplo: `"2025-01-15"` o `"ASAP"`
 - Descripción: Fecha deseable para el pickup de todos los productos
 
 ### products
