@@ -71,8 +71,19 @@ export class SlackAttachmentsHelper {
 
     const details = attachments
       .map((a) => {
-        const date = new Date(a.createdAt).toLocaleDateString();
-        return `• ${a.originalName || 'File'} (${date})`;
+        // Formatear fecha de forma segura sin problemas de zona horaria
+        let dateStr = '';
+        if (a.createdAt) {
+          const date = new Date(a.createdAt);
+          if (!isNaN(date.getTime())) {
+            dateStr = date.toLocaleDateString('es-AR', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+            });
+          }
+        }
+        return `• ${a.originalName || 'File'} (${dateStr})`;
       })
       .join('\n');
 
@@ -125,4 +136,3 @@ export class SlackAttachmentsHelper {
     return Array.isArray(attachments) && attachments.length > 0;
   }
 }
-

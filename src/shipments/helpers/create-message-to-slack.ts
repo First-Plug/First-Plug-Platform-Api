@@ -31,14 +31,14 @@ const getAddress = (
 
 const formatDate = (dateString: string) => {
   if (!dateString) return '-';
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) return 'ASAP';
 
-  return date.toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  // Validar formato YYYY-MM-DD
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(dateString)) return 'ASAP';
+
+  // Dividir y reorganizar sin usar new Date() para evitar problemas de zona horaria
+  const [year, month, day] = dateString.split('-');
+  return `${day}/${month}/${year}`;
 };
 
 type Status =
