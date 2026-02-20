@@ -41,10 +41,12 @@ const convertCountryCodeToName = (countryCode: string): string => {
  * Acepta también "ASAP" como valor especial (Logistics)
  * ⚠️ IMPORTANTE: No usar new Date() para evitar problemas de zona horaria
  * Las fechas vienen en formato YYYY-MM-DD y deben mostrarse como DD/MM/YYYY
+ * Maneja el caso especial de "ASAP" para Logistics y Offboarding
  */
 const formatDateToDay = (dateString: string): string => {
   if (!dateString) return '-';
 
+  // Manejar caso especial "ASAP"
   // ASAP es valor especial para Logistics (pickup/delivery)
   if (dateString === 'ASAP') return 'ASAP';
 
