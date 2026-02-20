@@ -2094,7 +2094,7 @@ Incluye identificación completa del producto (importante para history y Slack):
             "type": "Warehouse",
             "countryCode": "GT"
           },
-          "desirablePickupDate": "2025-01-23",
+          "desirablePickupDate": "ASAP",
           "desirableDeliveryDate": "2025-01-29"
         }
       ],
