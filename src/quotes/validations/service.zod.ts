@@ -419,11 +419,14 @@ const OffboardingProductSchema = z.object({
   destination: OffboardingDestinationSchema,
   desirableDeliveryDate: z
     .string()
-    .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val), {
-      message: 'Desirable delivery date debe estar en formato YYYY-MM-DD',
+    .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val) || val === 'ASAP', {
+      message:
+        'Desirable delivery date debe estar en formato YYYY-MM-DD o "ASAP" (mayúsculas)',
     })
     .optional()
-    .describe('Fecha deseable para la entrega del producto (YYYY-MM-DD)'),
+    .describe(
+      'Fecha deseable para la entrega del producto (YYYY-MM-DD o ASAP)',
+    ),
 });
 
 /**
@@ -439,12 +442,13 @@ export const OffboardingServiceSchema = z.object({
     .min(1, 'Al menos un producto es requerido para offboarding'),
   desirablePickupDate: z
     .string()
-    .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val), {
-      message: 'Desirable pickup date debe estar en formato YYYY-MM-DD',
+    .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val) || val === 'ASAP', {
+      message:
+        'Desirable pickup date debe estar en formato YYYY-MM-DD o "ASAP" (mayúsculas)',
     })
     .optional()
     .describe(
-      'Fecha deseable para el pickup de todos los productos (YYYY-MM-DD)',
+      'Fecha deseable para el pickup de todos los productos (YYYY-MM-DD o ASAP)',
     ),
   additionalDetails: z
     .string()
@@ -477,13 +481,9 @@ const LogisticsDestinationSchema = z.object({
  */
 const DateOrASAPSchema = z
   .string()
-  .refine(
-    (val) => /^\d{4}-\d{2}-\d{2}$/.test(val) || val === 'ASAP',
-    {
-      message:
-        'Debe ser una fecha en formato YYYY-MM-DD o "ASAP" (mayúsculas)',
-    },
-  )
+  .refine((val) => /^\d{4}-\d{2}-\d{2}$/.test(val) || val === 'ASAP', {
+    message: 'Debe ser una fecha en formato YYYY-MM-DD o "ASAP" (mayúsculas)',
+  })
   .optional();
 
 /**
