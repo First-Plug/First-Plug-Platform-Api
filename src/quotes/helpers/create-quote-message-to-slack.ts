@@ -38,11 +38,15 @@ const convertCountryCodeToName = (countryCode: string): string => {
 
 /**
  * Formatea fecha a formato DD/MM/YYYY (solo días, sin hora)
+ * Acepta también "ASAP" como valor especial (Logistics)
  * ⚠️ IMPORTANTE: No usar new Date() para evitar problemas de zona horaria
  * Las fechas vienen en formato YYYY-MM-DD y deben mostrarse como DD/MM/YYYY
  */
 const formatDateToDay = (dateString: string): string => {
   if (!dateString) return '-';
+
+  // ASAP es valor especial para Logistics (pickup/delivery)
+  if (dateString === 'ASAP') return 'ASAP';
 
   // Validar formato YYYY-MM-DD
   const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
