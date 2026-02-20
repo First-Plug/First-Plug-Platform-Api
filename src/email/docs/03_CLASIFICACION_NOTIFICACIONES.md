@@ -1,4 +1,4 @@
-# 📬 [3/10] Clasificación de Notificaciones por Email - FirstPlug
+# 📬 [2/5] Clasificación de Notificaciones por Email - FirstPlug
 
 ## 🎯 Resumen: 11 Notificaciones Organizadas
 

@@ -1,4 +1,4 @@
-# 📊 [1/10] Resumen Ejecutivo - Análisis Email Transaccional
+# 📊 [1/5] Resumen Ejecutivo - Email Transaccional FirstPlug
 
 ## 🎯 Objetivo
 

@@ -1,4 +1,4 @@
-# 🏗️ [4/10] Arquitectura del Email Service - FirstPlug
+# 🏗️ [3/5] Arquitectura del Email Service - FirstPlug
 
 ## 🎯 Principios de Diseño
 
